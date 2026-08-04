@@ -1,0 +1,2496 @@
+openapi: 3.0.3
+info:
+  title: 加工厂 ERP API
+  version: 1.0.0
+  x-erp-protocol-version: "1.0.0"
+  description: |
+    加工厂 ERP HTTP 协议（契约先行）。
+    功能边界对齐《加工厂ERP系统框架设计文档》第 3 章 13 域；不另立业务域名。
+    响应信封 `{ code, msg, data }`：`code=1` 成功，`code=0` 失败。
+    权限码格式：`核心功能:功能模块:动作`。
+servers:
+  - url: http://{host}:{port}
+    variables:
+      host:
+        default: 127.0.0.1
+      port:
+        default: "8080"
+tags:
+  - name: 健康检查
+  - name: 认证
+  - name: 权限中心
+  - name: 产品管理
+  - name: 库存管理
+  - name: 生产管理
+  - name: 工资管理
+  - name: 人事管理
+  - name: 审批管理
+  - name: 系统管理
+  - name: 销售管理
+    x-erp-phase: 2
+  - name: 客户管理
+    x-erp-phase: 2
+  - name: 采购管理
+    x-erp-phase: 2
+  - name: 统计报表
+    x-erp-phase: 2
+  - name: 财务管理
+    x-erp-phase: 3
+  - name: 固定资产管理
+    x-erp-phase: 3
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/health:
+    get:
+      tags: [健康检查]
+      summary: 健康检查
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/v1/auth/login:
+    post:
+      tags: [认证]
+      summary: 登录
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: 成功或业务失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [认证]
+      summary: 刷新令牌
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+
+  /api/v1/auth/me:
+    get:
+      tags: [认证]
+      summary: 当前用户（角色/权限/菜单/字段策略）
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+
+  /api/v1/iam/users:
+    get:
+      tags: [权限中心]
+      summary: 用户/管理员列表
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+        - name: user_type
+          in: query
+          schema:
+            type: string
+            enum: [admin, biz, line]
+        - name: keyword
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPageResponse"
+    post:
+      tags: [权限中心]
+      summary: 新建用户/管理员
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+
+  /api/v1/iam/users/{id}:
+    get:
+      tags: [权限中心]
+      summary: 用户详情
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+    put:
+      tags: [权限中心]
+      summary: 更新用户
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/iam/users/{id}/roles:
+    put:
+      tags: [权限中心]
+      summary: 绑定用户角色（覆盖式）
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role_ids]
+              properties:
+                role_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/iam/users/{id}/freeze:
+    post:
+      tags: [权限中心]
+      summary: 冻结账号
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/iam/users/{id}/unfreeze:
+    post:
+      tags: [权限中心]
+      summary: 解冻账号
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/iam/users/{id}/data-scope:
+    put:
+      tags: [权限中心]
+      summary: 设置用户数据范围覆盖
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataScopeRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/iam/admin-groups:
+    get:
+      tags: [权限中心]
+      summary: 管理员分组列表
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminGroupListResponse"
+    post:
+      tags: [权限中心]
+      summary: 新建管理员分组
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminGroupRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminGroupResponse"
+
+  /api/v1/iam/admin-groups/{id}:
+    get:
+      tags: [权限中心]
+      summary: 分组详情（含角色与成员）
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminGroupDetailResponse"
+    put:
+      tags: [权限中心]
+      summary: 更新分组
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminGroupRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/iam/admin-groups/{id}/roles:
+    put:
+      tags: [权限中心]
+      summary: 绑定分组角色
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role_ids]
+              properties:
+                role_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/iam/admin-groups/{id}/users:
+    put:
+      tags: [权限中心]
+      summary: 绑定分组成员
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_ids]
+              properties:
+                user_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/iam/roles:
+    get:
+      tags: [权限中心]
+      summary: 角色列表
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleListResponse"
+    post:
+      tags: [权限中心]
+      summary: 新建角色
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleResponse"
+
+  /api/v1/iam/roles/{id}:
+    get:
+      tags: [权限中心]
+      summary: 角色详情
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleDetailResponse"
+    put:
+      tags: [权限中心]
+      summary: 更新角色
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/iam/roles/{id}/permissions:
+    put:
+      tags: [权限中心]
+      summary: 更新角色权限码
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [permission_ids]
+              properties:
+                permission_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/iam/roles/{id}/warehouse-scope:
+    put:
+      tags: [权限中心]
+      summary: 设置角色仓范围
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [warehouse_ids]
+              properties:
+                warehouse_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/iam/roles/{id}/process-scope:
+    put:
+      tags: [权限中心]
+      summary: 设置角色工序范围
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/ProcessScopeItem"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/iam/permissions:
+    get:
+      tags: [权限中心]
+      summary: 权限码字典
+      parameters:
+        - name: domain
+          in: query
+          schema:
+            type: string
+        - name: module
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PermissionListResponse"
+
+  /api/v1/iam/permissions/sync:
+    post:
+      tags: [权限中心]
+      summary: 按 13 域功能模块同步生成权限码
+      description: 按「核心功能:功能模块:动作」生成缺失权限码
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncPermResponse"
+
+  /api/v1/iam/menus:
+    get:
+      tags: [权限中心]
+      summary: 按角色查询自定义菜单
+      parameters:
+        - name: role_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuListResponse"
+    put:
+      tags: [权限中心]
+      summary: 保存角色菜单裁剪
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MenuSaveRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/iam/field-policies:
+    get:
+      tags: [权限中心]
+      summary: 字段策略（成本隐藏等）
+      parameters:
+        - name: role_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FieldPolicyListResponse"
+    put:
+      tags: [权限中心]
+      summary: 批量保存字段策略
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FieldPolicySaveRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/iam/login-policy:
+    get:
+      tags: [权限中心]
+      summary: 获取登录控制策略
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginPolicyResponse"
+    put:
+      tags: [权限中心]
+      summary: 更新登录控制策略
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginPolicy"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/iam/sessions:
+    get:
+      tags: [权限中心]
+      summary: 会话列表
+      parameters:
+        - name: user_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionListResponse"
+
+  /api/v1/iam/sessions/{id}/revoke:
+    post:
+      tags: [权限中心]
+      summary: 强制下线
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  # ---------- 产品管理（一期） ----------
+  /api/v1/product/products:
+    get:
+      tags: [产品管理]
+      summary: 产品档案列表
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+        - name: product_type
+          in: query
+          schema:
+            type: string
+        - name: keyword
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductPageResponse"
+    post:
+      tags: [产品管理]
+      summary: 新建产品
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Product"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+
+  /api/v1/product/products/{id}:
+    get:
+      tags: [产品管理]
+      summary: 产品详情
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+    put:
+      tags: [产品管理]
+      summary: 更新产品
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Product"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/product/products/{id}/units:
+    get:
+      tags: [产品管理]
+      summary: 产品单位
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductUnitListResponse"
+    put:
+      tags: [产品管理]
+      summary: 保存产品单位
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                units:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/ProductUnit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  # ---------- 库存管理（一期） ----------
+  /api/v1/inventory/balances:
+    get:
+      tags: [库存管理]
+      summary: 库存查询
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+        - name: warehouse_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: product_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BalancePageResponse"
+
+  /api/v1/inventory/availability:
+    get:
+      tags: [库存管理]
+      summary: 可用量分析（实物-待用±在途）
+      parameters:
+        - name: warehouse_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: product_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvailabilityListResponse"
+
+  /api/v1/inventory/stock-txns:
+    get:
+      tags: [库存管理]
+      summary: 出入库记录汇总
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+        - name: doc_type
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockTxnPageResponse"
+    post:
+      tags: [库存管理]
+      summary: 创建出入库单（含期初）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StockTxnCreateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockTxnResponse"
+
+  /api/v1/inventory/stock-txns/{id}/post:
+    post:
+      tags: [库存管理]
+      summary: 过账
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/inventory/transfers:
+    get:
+      tags: [库存管理]
+      summary: 调拨列表
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [库存管理]
+      summary: 新建调拨
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferCreateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/inventory/stocktakes:
+    get:
+      tags: [库存管理]
+      summary: 盘点列表
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [库存管理]
+      summary: 新建盘点
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                stocktake_type:
+                  type: string
+                  enum: [warehouse, workshop]
+                warehouse_id:
+                  type: integer
+                  format: int64
+                workshop_id:
+                  type: integer
+                  format: int64
+                biz_date:
+                  type: string
+                  format: date
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/inventory/box-codes:
+    get:
+      tags: [库存管理]
+      summary: 箱码查询
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  # ---------- 生产管理（一期） ----------
+  /api/v1/production/processes:
+    get:
+      tags: [生产管理]
+      summary: 工序列表
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessListResponse"
+    post:
+      tags: [生产管理]
+      summary: 新建工序
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Process"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessResponse"
+
+  /api/v1/production/routings:
+    get:
+      tags: [生产管理]
+      summary: 工艺流程列表
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [生产管理]
+      summary: 新建工艺流程
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutingCreateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/production/tasks:
+    get:
+      tags: [生产管理]
+      summary: 生产任务单列表
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [生产管理]
+      summary: 下达生产任务单
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductionTaskCreateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/production/dispatches:
+    get:
+      tags: [生产管理]
+      summary: 派工列表
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [生产管理]
+      summary: 生产派工/灵活派发
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DispatchCreateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/production/requisitions:
+    post:
+      tags: [生产管理]
+      summary: 联动式领料
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequisitionCreateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/production/report-works:
+    get:
+      tags: [生产管理]
+      summary: 扫码报工记录
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+        - name: worker_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [生产管理]
+      summary: 提交扫码报工（含交接卡点）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportWorkCreateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/production/qc-orders:
+    get:
+      tags: [生产管理]
+      summary: 质检管理列表
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [生产管理]
+      summary: 新建质检单
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                qc_type:
+                  type: string
+                product_id:
+                  type: integer
+                  format: int64
+                result:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/production/progress:
+    get:
+      tags: [生产管理]
+      summary: 进度跟踪
+      parameters:
+        - name: task_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  # ---------- 工资 / 人事 / 审批 / 系统（一期） ----------
+  /api/v1/payroll/wage-rates:
+    get:
+      tags: [工资管理]
+      summary: 工序工资表
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/payroll/sheets:
+    get:
+      tags: [工资管理]
+      summary: 工资单列表
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [工资管理]
+      summary: 薪酬核算/批量生成工资单
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                period_year:
+                  type: integer
+                period_month:
+                  type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/hr/employees:
+    get:
+      tags: [人事管理]
+      summary: 员工列表
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [人事管理]
+      summary: 入职建档
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmployeeCreateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/hr/attendance/records:
+    get:
+      tags: [人事管理]
+      summary: 考勤明细
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [人事管理]
+      summary: 打卡
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                employee_id:
+                  type: integer
+                  format: int64
+                punch_type:
+                  type: string
+                  enum: [in, out]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/hr/leave-requests:
+    get:
+      tags: [人事管理]
+      summary: 请假列表
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [人事管理]
+      summary: 请假申请
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                leave_type:
+                  type: string
+                start_at:
+                  type: string
+                end_at:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/approval/tasks:
+    get:
+      tags: [审批管理]
+      summary: 审批任务（待办/已办）
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, approved, rejected]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/approval/tasks/{id}/approve:
+    post:
+      tags: [审批管理]
+      summary: 通过
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/approval/tasks/{id}/reject:
+    post:
+      tags: [审批管理]
+      summary: 驳回
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comment:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/system/settings:
+    get:
+      tags: [系统管理]
+      summary: 基础设置查询
+      parameters:
+        - name: key
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    put:
+      tags: [系统管理]
+      summary: 保存基础设置
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                setting_key:
+                  type: string
+                value_json:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  /api/v1/system/operation-logs:
+    get:
+      tags: [系统管理]
+      summary: 操作日志
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  # ---------- 二期骨架 ----------
+  /api/v1/crm/customers:
+    get:
+      tags: [客户管理]
+      summary: 客户列表
+      x-erp-phase: 2
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [客户管理]
+      summary: 新建客户
+      x-erp-phase: 2
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/sales/orders:
+    get:
+      tags: [销售管理]
+      summary: 销售订单列表
+      x-erp-phase: 2
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [销售管理]
+      summary: 新建销售订单/自助下单承接
+      x-erp-phase: 2
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/sales/inquiries:
+    get:
+      tags: [销售管理]
+      summary: 询价列表
+      x-erp-phase: 2
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [销售管理]
+      summary: 新建询价
+      x-erp-phase: 2
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/suppliers:
+    get:
+      tags: [采购管理]
+      summary: 供应商列表
+      x-erp-phase: 2
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/inbounds:
+    get:
+      tags: [采购管理]
+      summary: 采购入库列表
+      x-erp-phase: 2
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [采购管理]
+      summary: 采购入库
+      x-erp-phase: 2
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/report/dashboards/boss:
+    get:
+      tags: [统计报表]
+      summary: 老板驾驶舱指标
+      x-erp-phase: 2
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  # ---------- 三期骨架 ----------
+  /api/v1/finance/vouchers:
+    get:
+      tags: [财务管理]
+      summary: 凭证列表
+      x-erp-phase: 3
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/finance/receipt-writeoffs:
+    post:
+      tags: [财务管理]
+      summary: 收款核单
+      x-erp-phase: 3
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/asset/fixed-assets:
+    get:
+      tags: [固定资产管理]
+      summary: 固定资产项目列表
+      x-erp-phase: 3
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    PageNum:
+      name: page_num
+      in: query
+      schema:
+        type: integer
+        default: 1
+    PageSize:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        default: 20
+  schemas:
+    OkResponseBase:
+      type: object
+      required: [code, msg]
+      properties:
+        code:
+          type: integer
+          description: 1 成功 / 0 失败
+          example: 1
+        msg:
+          type: string
+          example: ok
+    OkEmptyResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              nullable: true
+    OkAnyResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              nullable: true
+    HealthResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: up
+                driver:
+                  type: string
+                  example: sqlite
+                server_time:
+                  type: string
+    LoginRequest:
+      type: object
+      required: [login_name, password]
+      properties:
+        login_name:
+          type: string
+        password:
+          type: string
+        client_type:
+          type: string
+          description: web/mp_worker/mp_sales/pad/boss
+    LoginData:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+        user:
+          $ref: "#/components/schemas/UserBrief"
+        roles:
+          type: array
+          items:
+            type: string
+        permissions:
+          type: array
+          items:
+            type: string
+    LoginResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/LoginData"
+    MeResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                user:
+                  $ref: "#/components/schemas/UserBrief"
+                roles:
+                  type: array
+                  items:
+                    type: string
+                permissions:
+                  type: array
+                  items:
+                    type: string
+                menus:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/MenuItem"
+                field_policies:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/FieldPolicy"
+    UserBrief:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        login_name:
+          type: string
+        user_type:
+          type: string
+        employee_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        status:
+          type: string
+    User:
+      allOf:
+        - $ref: "#/components/schemas/UserBrief"
+        - type: object
+          properties:
+            role_ids:
+              type: array
+              items:
+                type: integer
+                format: int64
+            data_scope_type:
+              type: string
+    UserCreateRequest:
+      type: object
+      required: [login_name, password, user_type]
+      properties:
+        login_name:
+          type: string
+        password:
+          type: string
+        user_type:
+          type: string
+        employee_id:
+          type: integer
+          format: int64
+        role_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+    UserUpdateRequest:
+      type: object
+      properties:
+        user_type:
+          type: string
+        employee_id:
+          type: integer
+          format: int64
+        status:
+          type: string
+    UserResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/User"
+    UserPageResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                list:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/User"
+                total:
+                  type: integer
+    AdminGroupRequest:
+      type: object
+      required: [code, name]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        remark:
+          type: string
+        sort_no:
+          type: integer
+    AdminGroup:
+      allOf:
+        - $ref: "#/components/schemas/AdminGroupRequest"
+        - type: object
+          properties:
+            id:
+              type: integer
+              format: int64
+            status:
+              type: string
+    AdminGroupResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/AdminGroup"
+    AdminGroupListResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                list:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/AdminGroup"
+    AdminGroupDetailResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                group:
+                  $ref: "#/components/schemas/AdminGroup"
+                role_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+                user_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+    RoleRequest:
+      type: object
+      required: [code, name]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        data_scope_type:
+          type: string
+          enum: [self, team, workshop, warehouse, all]
+        remark:
+          type: string
+    Role:
+      allOf:
+        - $ref: "#/components/schemas/RoleRequest"
+        - type: object
+          properties:
+            id:
+              type: integer
+              format: int64
+            is_system:
+              type: boolean
+            status:
+              type: string
+    RoleResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/Role"
+    RoleListResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                list:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/Role"
+    RoleDetailResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                role:
+                  $ref: "#/components/schemas/Role"
+                permission_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+                warehouse_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+                process_scopes:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/ProcessScopeItem"
+    ProcessScopeItem:
+      type: object
+      required: [process_id]
+      properties:
+        process_id:
+          type: integer
+          format: int64
+        can_report:
+          type: boolean
+        can_dispatch:
+          type: boolean
+    DataScopeRequest:
+      type: object
+      required: [data_scope_type]
+      properties:
+        data_scope_type:
+          type: string
+          enum: [self, team, workshop, warehouse, all]
+        workshop_id:
+          type: integer
+          format: int64
+        team_id:
+          type: integer
+          format: int64
+    Permission:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        code:
+          type: string
+          example: 生产管理:扫码报工:新增
+        name:
+          type: string
+        domain:
+          type: string
+        module:
+          type: string
+        action:
+          type: string
+    PermissionListResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                list:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/Permission"
+    SyncPermResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                created:
+                  type: integer
+                total:
+                  type: integer
+    MenuItem:
+      type: object
+      properties:
+        domain:
+          type: string
+        module:
+          type: string
+        menu_key:
+          type: string
+        visible:
+          type: boolean
+        sort_no:
+          type: integer
+    MenuListResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                list:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/MenuItem"
+    MenuSaveRequest:
+      type: object
+      required: [role_id, items]
+      properties:
+        role_id:
+          type: integer
+          format: int64
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MenuItem"
+    FieldPolicy:
+      type: object
+      properties:
+        role_id:
+          type: integer
+          format: int64
+        field_key:
+          type: string
+        field_name:
+          type: string
+        visible:
+          type: boolean
+        editable:
+          type: boolean
+    FieldPolicyListResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                list:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/FieldPolicy"
+    FieldPolicySaveRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FieldPolicy"
+    LoginPolicy:
+      type: object
+      properties:
+        max_fail_count:
+          type: integer
+        lock_minutes:
+          type: integer
+        session_ttl_min:
+          type: integer
+        password_min_len:
+          type: integer
+        password_require_letter:
+          type: boolean
+        password_require_digit:
+          type: boolean
+        password_require_special:
+          type: boolean
+        password_history:
+          type: integer
+        force_change_days:
+          type: integer
+          nullable: true
+        single_session:
+          type: boolean
+    LoginPolicyResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/LoginPolicy"
+    SessionListResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                list:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        format: int64
+                      user_id:
+                        type: integer
+                        format: int64
+                      client_type:
+                        type: string
+                      login_at:
+                        type: string
+                      expire_at:
+                        type: string
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        code:
+          type: string
+        name:
+          type: string
+        product_type:
+          type: string
+        cost_price:
+          type: number
+        sale_price:
+          type: number
+        status:
+          type: string
+    ProductResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/Product"
+    ProductPageResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                list:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/Product"
+                total:
+                  type: integer
+    ProductUnit:
+      type: object
+      properties:
+        unit_name:
+          type: string
+        is_base:
+          type: boolean
+        factor_to_base:
+          type: number
+    ProductUnitListResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                list:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/ProductUnit"
+    BalancePageResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                list:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      warehouse_id:
+                        type: integer
+                        format: int64
+                      product_id:
+                        type: integer
+                        format: int64
+                      batch_no:
+                        type: string
+                      qty:
+                        type: number
+                total:
+                  type: integer
+    AvailabilityListResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                list:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      product_id:
+                        type: integer
+                        format: int64
+                      on_hand:
+                        type: number
+                      reserved:
+                        type: number
+                      in_transit:
+                        type: number
+                      available:
+                        type: number
+    StockTxnCreateRequest:
+      type: object
+      required: [doc_type, biz_date, lines]
+      properties:
+        doc_type:
+          type: string
+        biz_date:
+          type: string
+          format: date
+        warehouse_id:
+          type: integer
+          format: int64
+        remark:
+          type: string
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id:
+                type: integer
+                format: int64
+              qty:
+                type: number
+              direction:
+                type: string
+                enum: [in, out]
+              batch_no:
+                type: string
+    StockTxnResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  format: int64
+                doc_no:
+                  type: string
+    StockTxnPageResponse:
+      $ref: "#/components/schemas/OkAnyResponse"
+    TransferCreateRequest:
+      type: object
+      properties:
+        from_warehouse_id:
+          type: integer
+          format: int64
+        to_warehouse_id:
+          type: integer
+          format: int64
+        biz_date:
+          type: string
+          format: date
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id:
+                type: integer
+                format: int64
+              qty:
+                type: number
+    Process:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        code:
+          type: string
+        name:
+          type: string
+        process_type:
+          type: string
+        is_piecework:
+          type: boolean
+        is_handover_point:
+          type: boolean
+        status:
+          type: string
+    ProcessResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/Process"
+    ProcessListResponse:
+      allOf:
+        - $ref: "#/components/schemas/OkResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                list:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/Process"
+    RoutingCreateRequest:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        product_id:
+          type: integer
+          format: int64
+        steps:
+          type: array
+          items:
+            type: object
+            properties:
+              seq_no:
+                type: integer
+              process_id:
+                type: integer
+                format: int64
+              is_inbound_checkpoint:
+                type: boolean
+    ProductionTaskCreateRequest:
+      type: object
+      properties:
+        routing_id:
+          type: integer
+          format: int64
+        workshop_id:
+          type: integer
+          format: int64
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id:
+                type: integer
+                format: int64
+              plan_qty:
+                type: number
+    DispatchCreateRequest:
+      type: object
+      properties:
+        work_order_id:
+          type: integer
+          format: int64
+        dispatch_type:
+          type: string
+          enum: [normal, flex]
+        worker_id:
+          type: integer
+          format: int64
+        plan_qty:
+          type: number
+    RequisitionCreateRequest:
+      type: object
+      properties:
+        dispatch_id:
+          type: integer
+          format: int64
+        warehouse_id:
+          type: integer
+          format: int64
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id:
+                type: integer
+                format: int64
+              qty:
+                type: number
+    ReportWorkCreateRequest:
+      type: object
+      required: [process_id, worker_id, qty, reported_at]
+      properties:
+        dispatch_id:
+          type: integer
+          format: int64
+        process_id:
+          type: integer
+          format: int64
+        worker_id:
+          type: integer
+          format: int64
+        report_type:
+          type: string
+          enum: [output, handover]
+        qty:
+          type: number
+        deduct_impurity:
+          type: number
+        deduct_water:
+          type: number
+        reported_at:
+          type: string
+        scan_code:
+          type: string
+    EmployeeCreateRequest:
+      type: object
+      required: [emp_no, name, org_id]
+      properties:
+        emp_no:
+          type: string
+        name:
+          type: string
+        org_id:
+          type: integer
+          format: int64
+        emp_type:
+          type: string
+          enum: [piece, fixed, office]
+        dept_id:
+          type: integer
+          format: int64
+        workshop_id:
+          type: integer
+          format: int64

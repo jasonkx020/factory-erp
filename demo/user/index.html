@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>客户自助端 · 用户端</title>
+  <link rel="stylesheet" href="../css/common.css" />
+</head>
+<body>
+  <div class="phone-page">
+    <div>
+      <a class="back-link" href="../index.html">← 返回展示入口</a>
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="phone-status"><span>9:41</span><span>客户自助</span></div>
+          <div class="phone-header" id="mpTitle">自助下单</div>
+          <div class="phone-body" id="mpBody"></div>
+          <div class="phone-tabbar" id="mpTabs" style="grid-template-columns:repeat(5,1fr)">
+            <button class="active" data-tab="order">下单</button>
+            <button data-tab="inquiry">询价</button>
+            <button data-tab="mine">订单</button>
+            <button data-tab="rebuy">复购</button>
+            <button data-tab="ship">发货</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="side-note">
+      <h3>用户端 · 客户自助（文档 6.1 / 6.3）</h3>
+      <p>前台作业流：</p>
+      <ol style="padding-left:18px;margin:8px 0">
+        <li>客户询价 → 询价管理</li>
+        <li>自助下单 / 复购 → 自助下单、订单复购、我的订单</li>
+        <li>锁价/合同内订单跟踪 → 销售锁价、合同（只读）、预发货状态</li>
+        <li>发货进度查看、单据打印（分享/预览）</li>
+      </ol>
+      <p>后台侧承接订单来源与规则；下单操作界面在本端。模块名与核心功能表一致，不另立名称。</p>
+    </aside>
+  </div>
+  <script>
+    const titles = {
+      order: "自助下单",
+      inquiry: "询价管理",
+      mine: "我的订单",
+      rebuy: "订单复购",
+      ship: "发货进度 / 报价"
+    };
+    const bodies = {
+      order: `
+        <div class="mp-card">
+          <h4>选择商品（APP产品排序）</h4>
+          <div class="mp-list-item"><div><strong>袋装木薯丁</strong><br/><span style="font-size:12px;color:#5c6b75">成品 · 锁价 ¥7.0/kg</span></div><button class="btn sm">选入</button></div>
+          <div class="mp-list-item"><div><strong>切块半成品</strong><br/><span style="font-size:12px;color:#5c6b75">半成品外售</span></div><button class="btn sm ghost">选入</button></div>
+        </div>
+        <div class="mp-card">
+          <h4>下单信息</h4>
+          <div class="mp-list-item"><span>数量</span><span>2,000 kg</span></div>
+          <div class="mp-list-item"><span>预估金额</span><span>¥14,000</span></div>
+          <div class="mp-list-item"><span>来源</span><span class="tag">自助下单</span></div>
+          <button class="btn" style="width:100%;margin-top:8px">提交订单</button>
+        </div>`,
+      inquiry: `
+        <div class="mp-card">
+          <h4>提交 / 查看询价</h4>
+          <div class="mp-list-item"><span>产品</span><span>袋装木薯丁</span></div>
+          <div class="mp-list-item"><span>意向量</span><span>8,000 kg</span></div>
+          <button class="btn" style="width:100%;margin-top:8px">提交询价</button>
+        </div>
+        <div class="mp-card">
+          <h4>历史报价查询</h4>
+          <div class="mp-list-item"><span>2026-07-12 · ¥7.0</span><span class="tag ok">可复用</span></div>
+          <div class="mp-list-item"><span>2026-05-20 · ¥6.9</span><span class="tag muted">过期</span></div>
+        </div>
+        <div class="mp-card">
+          <h4>报价计算器（简易）</h4>
+          <button class="btn ghost" style="width:100%">试算运费与单价</button>
+        </div>`,
+      mine: `
+        <div class="mp-card">
+          <div class="mp-list-item"><div><strong>SO20260802007</strong><br/><span style="font-size:12px;color:#5c6b75">袋装木薯丁 2,000kg</span></div><span class="tag warn">待发货</span></div>
+          <div class="mp-list-item"><div><strong>SO20260728003</strong><br/><span style="font-size:12px;color:#5c6b75">已签收 · 可复购</span></div><span class="tag ok">完成</span></div>
+        </div>
+        <div class="mp-card">
+          <h4>合同 / 锁价（只读）</h4>
+          <p>合同 CT-2026-088 有效期内；锁价 ¥7.0/kg 至 2026-09-30。</p>
+        </div>
+        <div class="mp-card">
+          <button class="btn ghost" style="width:100%">单据打印预览 / 分享</button>
+        </div>`,
+      rebuy: `
+        <div class="mp-card">
+          <h4>历史订单一键复购</h4>
+          <div class="mp-list-item"><div>SO20260728003<br/><span style="font-size:12px;color:#5c6b75">袋装木薯丁 · 1,500kg</span></div><button class="btn sm">复购</button></div>
+          <div class="mp-list-item"><div>SO20260615011<br/><span style="font-size:12px;color:#5c6b75">切块半成品 · 3,000kg</span></div><button class="btn sm">复购</button></div>
+        </div>
+        <p style="font-size:12px;color:#5c6b75;padding:0 4px">复购生成新销售订单，来源标记为订单复购；后台承接单据。</p>`,
+      ship: `
+        <div class="mp-card">
+          <h4>发货进度查看</h4>
+          <div class="mp-list-item"><span>预发货</span><span class="tag ok">已占用可用量</span></div>
+          <div class="mp-list-item"><span>发货审批</span><span class="tag warn">审批中</span></div>
+          <div class="mp-list-item"><span>物流</span><span>待揽收</span></div>
+        </div>
+        <div class="mp-card">
+          <h4>系统物流查询</h4>
+          <p>承运商轨迹只读（对接物流信息管理）。</p>
+        </div>`
+    };
+    function show(tab) {
+      document.getElementById("mpTitle").textContent = titles[tab];
+      document.getElementById("mpBody").innerHTML = bodies[tab];
+      document.querySelectorAll("#mpTabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+    }
+    document.getElementById("mpTabs").addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-tab]");
+      if (b) show(b.dataset.tab);
+    });
+    show("order");
+  </script>
+  <script src="../js/api.js"></script>
+  <script src="../js/front-boot.js"></script>
+  <script>document.addEventListener("DOMContentLoaded",()=>window.ERP_FRONT_BOOT&&window.ERP_FRONT_BOOT("/sales/my-orders"));</script>
+</body>
+</html>

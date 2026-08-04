@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>加工厂 ERP · 效果展示入口</title>
+  <link rel="stylesheet" href="css/common.css" />
+</head>
+<body class="portal-body">
+  <div class="portal">
+    <div class="portal-brand">加工厂 ERP</div>
+    <p class="portal-sub">
+      效果展示站。功能范围严格以《加工厂ERP系统框架设计文档》第 3 章核心功能表（13 大域）为准；
+      前后台模块名一致，端侧仅作业形态不同。产线通过生产管理 + 库存管理配置实现，不另立流程系统。
+    </p>
+
+    <div class="portal-grid">
+      <a class="portal-card" href="admin/index.html">
+        <span class="badge">后台 · 管理端 Web</span>
+        <h3>管理后台</h3>
+        <p>13 域菜单 + 权限中心：管理员/分组/角色/权限码/菜单裁剪/登录冻结（落权限分配与自定义权限）。</p>
+      </a>
+
+      <a class="portal-card" href="front/workshop.html">
+        <span class="badge">前台 · 车间工作台</span>
+        <h3>车间工作台</h3>
+        <p>车间工作台 · 生产派工 · 进度跟踪 · 质检/返修/废料 · 库存扫码（文档 8.4）。</p>
+      </a>
+
+      <a class="portal-card" href="front/worker.html">
+        <span class="badge">前台 · 工人小程序</span>
+        <h3>工人端</h3>
+        <p>扫码报工 · 联动式领料 · 我的计件/工资 · 考勤/请假 · 公告提醒。</p>
+      </a>
+
+      <a class="portal-card" href="front/sales.html">
+        <span class="badge">前台 · 销售小程序</span>
+        <h3>销售外勤端</h3>
+        <p>自助下单入口协同 · 我的订单 · 询价 · 客户跟进 · 任务提醒。</p>
+      </a>
+
+      <a class="portal-card" href="front/boss.html">
+        <span class="badge">前台 · 老板端 / 看板</span>
+        <h3>老板驾驶舱</h3>
+        <p>老板驾驶舱 · 生产看板 · 生产实况 · 毛利润/关键报表只读。</p>
+      </a>
+
+      <a class="portal-card" href="user/index.html">
+        <span class="badge">用户端 · 客户自助</span>
+        <h3>客户自助端</h3>
+        <p>自助下单 · 询价管理 · 我的订单 · 订单复购 · 历史报价 · 发货进度（文档 6.1/6.3）。</p>
+      </a>
+    </div>
+
+    <div class="portal-note">
+      <strong>文档依据：</strong>
+      加工厂ERP系统框架设计文档.md（功能基线）·
+      加工厂ERP逻辑数据模型.md（数据口径示意）·
+      木薯酒厂生产流程优化文档.md（产线场景）。
+      本站可对接本地 <code>erp-api</code>（默认 <code>http://127.0.0.1:18080</code>）；管理后台打开后自动登录演示账号并拉取各域列表。
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,108 @@
+package tablespec
+
+type ColType int
+
+const (
+	TypeStr ColType = iota
+	TypeInt
+	TypeFloat
+	TypeBool
+)
+
+type Col struct {
+	Name string
+	Type ColType
+}
+
+type LineSpec struct {
+	Table   string
+	FK      string
+	OrderBy string
+	Cols    []Col
+}
+
+type Spec struct {
+	Table      string
+	DocNo      string // auto-generate field name if empty on create
+	Status     string
+	SoftDelete bool
+	Cols       []Col
+	Lines      *LineSpec
+	Actions    map[string]string // action name -> new status
+}
+
+// Registry maps OpenAPI resourceKey to real table specs.
+var Registry = map[string]*Spec{
+	"production/routings": {
+		Table: "pd_routing", DocNo: "code", Status: "status", SoftDelete: true,
+		Cols: []Col{{"code", TypeStr}, {"name", TypeStr}, {"product_id", TypeInt}, {"version_no", TypeStr}, {"status", TypeStr}},
+		Lines: &LineSpec{
+			Table: "pd_routing_step", FK: "routing_id", OrderBy: "seq_no",
+			Cols: []Col{
+				{"seq_no", TypeInt}, {"process_id", TypeInt}, {"step_code", TypeStr}, {"step_name", TypeStr},
+				{"is_piecework", TypeBool}, {"is_inbound_checkpoint", TypeBool}, {"is_qc_required", TypeBool},
+				{"auto_next", TypeBool}, {"auto_stock_in", TypeBool}, {"auto_stock_out", TypeBool},
+				{"warehouse_id", TypeInt}, {"workshop_id", TypeInt},
+			},
+		},
+		Actions: map[string]string{"activate": "active", "close": "closed"},
+	},
+	"production/workshops": {
+		Table: "pd_workshop", DocNo: "code", Status: "status", SoftDelete: true,
+		Cols: []Col{{"org_id", TypeInt}, {"dept_id", TypeInt}, {"code", TypeStr}, {"name", TypeStr}, {"status", TypeStr}},
+	},
+	"production/boms": {
+		Table: "pd_routing", DocNo: "code", Status: "status", SoftDelete: true, // reuse lightweight until dedicated bom table widely used
+		Cols:    []Col{{"code", TypeStr}, {"name", TypeStr}, {"product_id", TypeInt}, {"status", TypeStr}},
+		Actions: map[string]string{"activate": "active"},
+	},
+	"inventory/box-codes": {
+		Table: "inv_box_code", DocNo: "code", Status: "status", SoftDelete: true,
+		Cols: []Col{
+			{"code", TypeStr}, {"product_id", TypeInt}, {"warehouse_id", TypeInt}, {"batch_no", TypeStr},
+			{"qty", TypeFloat}, {"weight", TypeFloat}, {"parent_box_id", TypeInt},
+			{"current_process_id", TypeInt}, {"current_step_id", TypeInt}, {"task_id", TypeInt},
+			{"work_order_id", TypeInt}, {"status", TypeStr},
+		},
+	},
+	"system/data-repairs": {
+		Table: "sys_data_repair", DocNo: "doc_no", Status: "status", SoftDelete: false,
+		Cols: []Col{
+			{"doc_no", TypeStr}, {"target_type", TypeStr}, {"target_id", TypeInt}, {"action", TypeStr},
+			{"reason", TypeStr}, {"status", TypeStr}, {"payload_json", TypeStr},
+			{"applied_by", TypeInt}, {"applied_at", TypeStr}, {"created_by", TypeInt},
+		},
+		Actions: map[string]string{"apply": "applied"},
+	},
+	"production/flow-events": {
+		Table: "pd_flow_event", Status: "status", SoftDelete: false,
+		Cols: []Col{
+			{"source_type", TypeStr}, {"source_id", TypeInt}, {"from_step_id", TypeInt}, {"to_step_id", TypeInt},
+			{"trigger_action", TypeStr}, {"trace_id", TypeStr}, {"status", TypeStr}, {"error", TypeStr}, {"payload_json", TypeStr},
+		},
+	},
+	"payroll/worker-profiles": {
+		Table: "hr_employee", DocNo: "emp_no", Status: "status", SoftDelete: true,
+		Cols: []Col{{"emp_no", TypeStr}, {"name", TypeStr}, {"org_id", TypeInt}, {"emp_type", TypeStr}, {"badge_code", TypeStr}, {"status", TypeStr}},
+	},
+	"purchase/inbounds": {
+		Table: "pur_purchase_inbound", DocNo: "doc_no", Status: "status", SoftDelete: true,
+		Cols: []Col{
+			{"doc_no", TypeStr}, {"supplier_id", TypeInt}, {"warehouse_id", TypeInt}, {"status", TypeStr},
+			{"biz_date", TypeStr}, {"plan_id", TypeInt}, {"remark", TypeStr},
+		},
+		Lines: &LineSpec{
+			Table: "pur_purchase_inbound_line", FK: "inbound_id", OrderBy: "id",
+			Cols: []Col{{"product_id", TypeInt}, {"qty", TypeFloat}, {"price", TypeFloat}, {"amount", TypeFloat}, {"batch_no", TypeStr}},
+		},
+		Actions: map[string]string{"post": "posted"},
+	},
+	"purchase/tasks": {
+		Table: "pur_purchase_task", DocNo: "doc_no", Status: "status", SoftDelete: true,
+		Cols: []Col{
+			{"doc_no", TypeStr}, {"assignee_id", TypeInt}, {"product_id", TypeInt}, {"qty", TypeFloat},
+			{"status", TypeStr}, {"due_date", TypeStr},
+		},
+		Actions: map[string]string{"assign": "assigned", "complete": "done"},
+	},
+}

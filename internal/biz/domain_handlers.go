@@ -1,0 +1,1336 @@
+package biz
+
+import (
+	"database/sql"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"erp/internal/api"
+	"erp/internal/middleware"
+	"erp/internal/security"
+)
+
+func (s *Services) handleProducts(c *gin.Context, method, action string) bool {
+	switch action {
+	case "list":
+		rows, err := s.DB.Query(`SELECT id, code, name, product_type, status, COALESCE(spec_text,''), cost_price, sale_price FROM prd_product WHERE is_deleted=0 ORDER BY id`)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		defer rows.Close()
+		list := []gin.H{}
+		for rows.Next() {
+			var id int64
+			var code, name, typ, status, spec string
+			var cost, sale sql.NullFloat64
+			_ = rows.Scan(&id, &code, &name, &typ, &status, &spec, &cost, &sale)
+			list = append(list, gin.H{"id": id, "code": code, "name": name, "product_type": typ, "status": status, "spec": spec, "cost_price": cost.Float64, "sale_price": sale.Float64})
+		}
+		api.OK(c, gin.H{"list": list, "total": len(list)})
+		return true
+	case "create":
+		body := bindBody(c)
+		code, _ := body["code"].(string)
+		name, _ := body["name"].(string)
+		if code == "" || name == "" {
+			api.FailJSON(c, "INVALID_REQUEST")
+			return true
+		}
+		typ, _ := body["product_type"].(string)
+		if typ == "" {
+			typ = "finished"
+		}
+		spec, _ := body["spec"].(string)
+		if spec == "" {
+			spec, _ = body["spec_text"].(string)
+		}
+		res, err := s.DB.Exec(`INSERT INTO prd_product(code, name, product_type, status, spec_text, is_deleted) VALUES(?,?,?,'active',?,0)`,
+			code, name, typ, spec)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		id, _ := res.LastInsertId()
+		api.OK(c, gin.H{"id": id, "code": code, "name": name, "status": "active"})
+		return true
+	case "get":
+		id := paramID(c)
+		var code, name, typ, status, spec string
+		err := s.DB.QueryRow(`SELECT code, name, product_type, status, COALESCE(spec_text,'') FROM prd_product WHERE id=? AND is_deleted=0`, id).
+			Scan(&code, &name, &typ, &status, &spec)
+		if err == sql.ErrNoRows {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		api.OK(c, gin.H{"id": id, "code": code, "name": name, "product_type": typ, "status": status, "spec": spec})
+		return true
+	case "update":
+		id := paramID(c)
+		body := bindBody(c)
+		name, _ := body["name"].(string)
+		spec, _ := body["spec"].(string)
+		status, _ := body["status"].(string)
+		_, err := s.DB.Exec(`UPDATE prd_product SET name=COALESCE(NULLIF(?,''),name), spec_text=COALESCE(?,spec_text), status=COALESCE(NULLIF(?,''),status) WHERE id=?`,
+			name, spec, status, id)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		api.OK(c, gin.H{"id": id})
+		return true
+	case "delete":
+		id := paramID(c)
+		_, _ = s.DB.Exec(`UPDATE prd_product SET is_deleted=1 WHERE id=?`, id)
+		api.OK(c, gin.H{})
+		return true
+	case "action:activate":
+		_, _ = s.DB.Exec(`UPDATE prd_product SET status='active' WHERE id=?`, paramID(c))
+		api.OK(c, gin.H{"id": paramID(c), "status": "active"})
+		return true
+	case "action:deactivate":
+		_, _ = s.DB.Exec(`UPDATE prd_product SET status='inactive' WHERE id=?`, paramID(c))
+		api.OK(c, gin.H{"id": paramID(c), "status": "inactive"})
+		return true
+	}
+	return false
+}
+
+func (s *Services) handleProcesses(c *gin.Context, method, action string) bool {
+	switch action {
+	case "list":
+		rows, err := s.DB.Query(`SELECT id, code, name, process_type, is_piecework, is_handover_point FROM pd_process ORDER BY id`)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		defer rows.Close()
+		list := []gin.H{}
+		for rows.Next() {
+			var id int64
+			var code, name, typ string
+			var piece, hand int
+			_ = rows.Scan(&id, &code, &name, &typ, &piece, &hand)
+			list = append(list, gin.H{"id": id, "code": code, "name": name, "process_type": typ, "is_piecework": piece == 1, "is_handover_point": hand == 1, "status": "active"})
+		}
+		api.OK(c, gin.H{"list": list, "total": len(list)})
+		return true
+	case "create":
+		body := bindBody(c)
+		code, _ := body["code"].(string)
+		name, _ := body["name"].(string)
+		typ, _ := body["process_type"].(string)
+		if typ == "" {
+			typ = "other"
+		}
+		piece := 0
+		if v, ok := body["is_piecework"].(bool); ok && v {
+			piece = 1
+		}
+		res, err := s.DB.Exec(`INSERT INTO pd_process(code, name, process_type, is_piecework, is_handover_point) VALUES(?,?,?,?,0)`, code, name, typ, piece)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		id, _ := res.LastInsertId()
+		api.OK(c, gin.H{"id": id, "code": code, "name": name})
+		return true
+	case "get", "update", "delete":
+		id := paramID(c)
+		if action == "get" {
+			var code, name, typ string
+			var piece, hand int
+			err := s.DB.QueryRow(`SELECT code, name, process_type, is_piecework, is_handover_point FROM pd_process WHERE id=?`, id).
+				Scan(&code, &name, &typ, &piece, &hand)
+			if err != nil {
+				api.FailJSON(c, "NOT_FOUND")
+				return true
+			}
+			api.OK(c, gin.H{"id": id, "code": code, "name": name, "process_type": typ, "is_piecework": piece == 1, "is_handover_point": hand == 1})
+			return true
+		}
+		if action == "update" {
+			body := bindBody(c)
+			name, _ := body["name"].(string)
+			_, _ = s.DB.Exec(`UPDATE pd_process SET name=COALESCE(NULLIF(?,''),name) WHERE id=?`, name, id)
+			api.OK(c, gin.H{"id": id})
+			return true
+		}
+		api.OK(c, gin.H{})
+		return true
+	}
+	return false
+}
+
+func (s *Services) handleProdTasks(c *gin.Context, method, action, path string) bool {
+	if strings.Contains(path, "/items") {
+		id := paramID(c)
+		if method == "GET" {
+			rows, err := s.DB.Query(`SELECT id, product_id, plan_qty, COALESCE(completed_qty,0) FROM pd_production_task_item WHERE task_id=?`, id)
+			if err != nil {
+				api.FailJSON(c, "DB_ERROR")
+				return true
+			}
+			defer rows.Close()
+			list := []gin.H{}
+			for rows.Next() {
+				var iid, pid int64
+				var qty, done float64
+				_ = rows.Scan(&iid, &pid, &qty, &done)
+				list = append(list, gin.H{"id": iid, "product_id": pid, "qty": qty, "plan_qty": qty, "completed_qty": done})
+			}
+			api.OK(c, gin.H{"list": list})
+			return true
+		}
+		body := bindBody(c)
+		pid, _ := asInt64(body["product_id"])
+		qty, _ := asFloat(body["qty"])
+		if qty == 0 {
+			qty, _ = asFloat(body["plan_qty"])
+		}
+		_, err := s.DB.Exec(`INSERT INTO pd_production_task_item(task_id, product_id, plan_qty) VALUES(?,?,?)`, id, pid, qty)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		api.OK(c, gin.H{"ok": true})
+		return true
+	}
+	switch action {
+	case "list":
+		rows, err := s.DB.Query(`SELECT id, doc_no, status, created_at FROM pd_production_task WHERE is_deleted=0 ORDER BY id DESC`)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		defer rows.Close()
+		list := []gin.H{}
+		for rows.Next() {
+			var id int64
+			var docNo, status, created string
+			_ = rows.Scan(&id, &docNo, &status, &created)
+			list = append(list, gin.H{"id": id, "doc_no": docNo, "status": status, "created_at": created})
+		}
+		api.OK(c, gin.H{"list": list, "total": len(list)})
+		return true
+	case "create":
+		body := bindBody(c)
+		docNo, _ := body["doc_no"].(string)
+		if docNo == "" {
+			docNo = fmt.Sprintf("PT%d", time.Now().Unix())
+		}
+		res, err := s.DB.Exec(`INSERT INTO pd_production_task(doc_no, status) VALUES(?,'pending')`, docNo)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		id, _ := res.LastInsertId()
+		api.OK(c, gin.H{"id": id, "doc_no": docNo, "status": "pending"})
+		return true
+	case "get":
+		id := paramID(c)
+		var docNo, status, created string
+		err := s.DB.QueryRow(`SELECT doc_no, status, created_at FROM pd_production_task WHERE id=? AND is_deleted=0`, id).
+			Scan(&docNo, &status, &created)
+		if err != nil {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		api.OK(c, gin.H{"id": id, "doc_no": docNo, "status": status, "created_at": created})
+		return true
+	case "update":
+		id := paramID(c)
+		body := bindBody(c)
+		status, _ := body["status"].(string)
+		if status != "" {
+			_, _ = s.DB.Exec(`UPDATE pd_production_task SET status=? WHERE id=?`, status, id)
+		}
+		api.OK(c, gin.H{"id": id})
+		return true
+	case "action:close", "action:release", "action:submit":
+		id := paramID(c)
+		st := "closed"
+		if strings.Contains(action, "release") {
+			st = "released"
+		}
+		if strings.Contains(action, "submit") {
+			st = "in_progress"
+		}
+		_, _ = s.DB.Exec(`UPDATE pd_production_task SET status=? WHERE id=?`, st, id)
+		api.OK(c, gin.H{"id": id, "status": st})
+		return true
+	}
+	return false
+}
+
+func (s *Services) handleDispatches(c *gin.Context, method, action, path string) bool {
+	// Use erp_doc + optional pd_work_order/pd_dispatch bridge
+	rk := "production/dispatches"
+	switch action {
+	case "list":
+		list, total, err := s.Store.List(rk, 1, 100)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		out := []map[string]interface{}{}
+		for _, d := range list {
+			out = append(out, d.Payload)
+		}
+		api.OK(c, gin.H{"list": out, "total": total})
+		return true
+	case "create":
+		body := bindBody(c)
+		taskID, _ := asInt64(body["task_id"])
+		procID, _ := asInt64(body["process_id"])
+		workerID, _ := asInt64(body["worker_id"])
+		qty, _ := asFloat(body["qty"])
+		docNo := fmt.Sprintf("DP%d", time.Now().UnixNano()%1e12)
+		// ensure work order
+		woNo := fmt.Sprintf("WO%d", time.Now().UnixNano()%1e12)
+		woRes, err := s.DB.Exec(`INSERT INTO pd_work_order(doc_no, task_id, process_id, status, plan_qty) VALUES(?,?,?,'pending',?)`, woNo, taskID, procID, qty)
+		var woID int64
+		if err == nil {
+			woID, _ = woRes.LastInsertId()
+			_, _ = s.DB.Exec(`INSERT INTO pd_dispatch(doc_no, work_order_id, worker_id, plan_qty, status) VALUES(?,?,?,?,'dispatched')`, docNo, woID, workerID, qty)
+		}
+		body["doc_no"] = docNo
+		body["work_order_id"] = woID
+		body["status"] = "dispatched"
+		d, err := s.Store.Create(rk, body, "dispatched")
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		api.OK(c, d.Payload)
+		return true
+	case "get", "update":
+		id := paramID(c)
+		if action == "get" {
+			d, _ := s.Store.Get(id)
+			if d == nil {
+				api.FailJSON(c, "NOT_FOUND")
+				return true
+			}
+			api.OK(c, d.Payload)
+			return true
+		}
+		d, err := s.Store.Update(id, bindBody(c), "")
+		if err != nil || d == nil {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		api.OK(c, d.Payload)
+		return true
+	case "action:confirm", "action:cancel":
+		name := strings.TrimPrefix(action, "action:")
+		d, err := s.ApplyDocAction(paramID(c), name, bindBody(c))
+		if err != nil {
+			api.FailJSON(c, err.Error())
+			return true
+		}
+		api.OK(c, d)
+		return true
+	}
+	return false
+}
+
+func (s *Services) handleReportWorks(c *gin.Context, method, action, path string) bool {
+	rk := "production/report-works"
+	switch action {
+	case "list":
+		list, total, err := s.Store.List(rk, 1, 100)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		out := []map[string]interface{}{}
+		for _, d := range list {
+			out = append(out, d.Payload)
+		}
+		api.OK(c, gin.H{"list": out, "total": total})
+		return true
+	case "create":
+		body := bindBody(c)
+		did, _ := asInt64(body["dispatch_id"])
+		pid, _ := asInt64(body["process_id"])
+		wid, _ := asInt64(body["worker_id"])
+		qty, _ := asFloat(body["qty"])
+		if qty <= 0 {
+			api.FailJSON(c, "INVALID_QTY")
+			return true
+		}
+		docNo := fmt.Sprintf("RW%d", time.Now().UnixNano()%1e12)
+		now := time.Now().Format("2006-01-02 15:04:05")
+		res, err := s.DB.Exec(`INSERT INTO pd_report_work(doc_no, dispatch_id, process_id, worker_id, qty, status, reported_at) VALUES(?,?,?,?,?,'submitted',?)`,
+			docNo, did, pid, wid, qty, now)
+		var rid int64
+		if err == nil {
+			rid, _ = res.LastInsertId()
+		}
+		var rate float64
+		_ = s.DB.QueryRow(`SELECT rate FROM pay_process_wage_rate WHERE process_id=? AND status='active' ORDER BY id DESC LIMIT 1`, pid).Scan(&rate)
+		amount := qty * rate
+		body["id"] = rid
+		body["doc_no"] = docNo
+		body["wage_amount"] = amount
+		body["rate"] = rate
+		d, err := s.Store.Create(rk, body, "submitted")
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		_, _ = s.Store.Create("payroll/piecework-lines", map[string]interface{}{
+			"report_work_id": rid, "worker_id": wid, "process_id": pid, "qty": qty, "rate": rate, "amount": amount,
+		}, "open")
+		api.OK(c, d.Payload)
+		return true
+	case "get", "update":
+		id := paramID(c)
+		if action == "get" {
+			d, _ := s.Store.Get(id)
+			if d == nil {
+				api.FailJSON(c, "NOT_FOUND")
+				return true
+			}
+			api.OK(c, d.Payload)
+			return true
+		}
+		d, err := s.Store.Update(id, bindBody(c), "")
+		if err != nil || d == nil {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		api.OK(c, d.Payload)
+		return true
+	case "action:confirm", "action:cancel":
+		d, err := s.ApplyDocAction(paramID(c), strings.TrimPrefix(action, "action:"), bindBody(c))
+		if err != nil {
+			api.FailJSON(c, err.Error())
+			return true
+		}
+		api.OK(c, d)
+		return true
+	}
+	return false
+}
+
+func (s *Services) handleRequisitions(c *gin.Context, method, action, path string) bool {
+	// store as erp_doc under production/requisitions + optional stock out draft
+	rk := "production/requisitions"
+	switch action {
+	case "list":
+		list, total, err := s.Store.List(rk, 1, 100)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		out := []map[string]interface{}{}
+		for _, d := range list {
+			out = append(out, d.Payload)
+		}
+		api.OK(c, gin.H{"list": out, "total": total})
+		return true
+	case "create":
+		body := bindBody(c)
+		body["doc_type"] = "requisition"
+		d, err := s.Store.Create(rk, body, "open")
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		api.OK(c, d.Payload)
+		return true
+	case "get", "update":
+		id := paramID(c)
+		if action == "get" {
+			d, _ := s.Store.Get(id)
+			if d == nil {
+				api.FailJSON(c, "NOT_FOUND")
+				return true
+			}
+			api.OK(c, d.Payload)
+			return true
+		}
+		d, err := s.Store.Update(id, bindBody(c), "")
+		if err != nil || d == nil {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		api.OK(c, d.Payload)
+		return true
+	case "action:post", "action:confirm":
+		id := paramID(c)
+		d, _ := s.Store.Get(id)
+		if d == nil {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		d.Payload["txn_type"] = "consume"
+		_ = s.applyPayloadStock(d)
+		nd, _ := s.Store.SetStatus(id, "posted")
+		api.OK(c, nd.Payload)
+		return true
+	}
+	return false
+}
+
+func (s *Services) handlePayroll(c *gin.Context, method, action, path string) bool {
+	if strings.Contains(path, "wage-rates") {
+		switch action {
+		case "list":
+			rows, err := s.DB.Query(`SELECT id, process_id, rate, effective_from, COALESCE(effective_to,''), status FROM pay_process_wage_rate ORDER BY id DESC`)
+			if err != nil {
+				api.FailJSON(c, "DB_ERROR")
+				return true
+			}
+			defer rows.Close()
+			list := []gin.H{}
+			for rows.Next() {
+				var id, pid int64
+				var rate float64
+				var from, to, status string
+				_ = rows.Scan(&id, &pid, &rate, &from, &to, &status)
+				list = append(list, gin.H{"id": id, "process_id": pid, "rate": rate, "effective_from": from, "effective_to": to, "status": status})
+			}
+			api.OK(c, gin.H{"list": list, "total": len(list)})
+			return true
+		case "create":
+			body := bindBody(c)
+			pid, _ := asInt64(body["process_id"])
+			rate, _ := asFloat(body["rate"])
+			from, _ := body["effective_from"].(string)
+			if from == "" {
+				from = time.Now().Format("2006-01-02")
+			}
+			res, err := s.DB.Exec(`INSERT INTO pay_process_wage_rate(process_id, rate, effective_from, status) VALUES(?,?,?,'active')`, pid, rate, from)
+			if err != nil {
+				api.FailJSON(c, "DB_ERROR")
+				return true
+			}
+			id, _ := res.LastInsertId()
+			api.OK(c, gin.H{"id": id, "process_id": pid, "rate": rate})
+			return true
+		case "get", "update", "delete":
+			id := paramID(c)
+			if action == "delete" {
+				_, _ = s.DB.Exec(`UPDATE pay_process_wage_rate SET status='inactive' WHERE id=?`, id)
+				api.OK(c, gin.H{})
+				return true
+			}
+			if action == "get" {
+				var pid int64
+				var rate float64
+				var from, to, status string
+				err := s.DB.QueryRow(`SELECT process_id, rate, effective_from, COALESCE(effective_to,''), status FROM pay_process_wage_rate WHERE id=?`, id).
+					Scan(&pid, &rate, &from, &to, &status)
+				if err != nil {
+					api.FailJSON(c, "NOT_FOUND")
+					return true
+				}
+				api.OK(c, gin.H{"id": id, "process_id": pid, "rate": rate, "effective_from": from, "effective_to": to, "status": status})
+				return true
+			}
+			body := bindBody(c)
+			if rate, ok := asFloat(body["rate"]); ok {
+				_, _ = s.DB.Exec(`UPDATE pay_process_wage_rate SET rate=? WHERE id=?`, rate, id)
+			}
+			api.OK(c, gin.H{"id": id})
+			return true
+		}
+	}
+	if strings.Contains(path, "sheets") || strings.Contains(path, "calculations") || strings.Contains(path, "commission") {
+		rk := resourceKeyFromPath(path)
+		return s.genericDoc(c, method, action, rk)
+	}
+	if strings.Contains(path, "worker-profiles") {
+		return s.genericDoc(c, method, action, "payroll/worker-profiles")
+	}
+	return false
+}
+
+func resourceKeyFromPath(path string) string {
+	p := strings.TrimPrefix(path, "/api/v1/")
+	parts := []string{}
+	for _, seg := range strings.Split(p, "/") {
+		if strings.HasPrefix(seg, "{") {
+			break
+		}
+		parts = append(parts, seg)
+	}
+	return strings.Join(parts, "/")
+}
+
+func (s *Services) genericDoc(c *gin.Context, method, action, rk string) bool {
+	switch action {
+	case "list":
+		pn, ps := 1, 50
+		list, total, err := s.Store.List(rk, pn, ps)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		out := []map[string]interface{}{}
+		for _, d := range list {
+			out = append(out, d.Payload)
+		}
+		api.OK(c, gin.H{"list": out, "total": total})
+		return true
+	case "create":
+		d, err := s.Store.Create(rk, bindBody(c), "draft")
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		api.OK(c, d.Payload)
+		return true
+	case "get":
+		d, _ := s.Store.Get(paramID(c))
+		if d == nil {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		api.OK(c, d.Payload)
+		return true
+	case "update", "replace":
+		d, err := s.Store.Update(paramID(c), bindBody(c), "")
+		if err != nil || d == nil {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		api.OK(c, d.Payload)
+		return true
+	case "delete":
+		_ = s.Store.Delete(paramID(c))
+		api.OK(c, gin.H{})
+		return true
+	default:
+		if strings.HasPrefix(action, "action:") {
+			name := strings.TrimPrefix(action, "action:")
+			// payroll sheet calc: aggregate piecework lines
+			if name == "calc" || name == "generate" || name == "batch-generate" {
+				body := bindBody(c)
+				lines, _, _ := s.Store.List("payroll/piecework-lines", 1, 500)
+				total := 0.0
+				for _, ln := range lines {
+					if a, ok := asFloat(ln.Payload["amount"]); ok {
+						total += a
+					}
+				}
+				body["piecework_total"] = total
+				body["line_count"] = len(lines)
+				d, err := s.Store.Create(rk, body, "calculated")
+				if err != nil {
+					api.FailJSON(c, "DB_ERROR")
+					return true
+				}
+				api.OK(c, d.Payload)
+				return true
+			}
+			d, err := s.ApplyDocAction(paramID(c), name, bindBody(c))
+			if err != nil {
+				api.FailJSON(c, err.Error())
+				return true
+			}
+			api.OK(c, d)
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
+	switch action {
+	case "list":
+		rows, err := s.DB.Query(`SELECT id, emp_no, name, COALESCE(org_id,0), COALESCE(dept_id,0), COALESCE(workshop_id,0), COALESCE(team_id,0),
+			COALESCE(job_title,''), emp_type, status, COALESCE(user_id,0), COALESCE(badge_code,''), COALESCE(mobile,'')
+			FROM hr_employee WHERE COALESCE(is_deleted,0)=0 ORDER BY id`)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		defer rows.Close()
+		list := []gin.H{}
+		for rows.Next() {
+			var id, org, dept, workshop, team, uid int64
+			var no, name, job, typ, status, badge, mobile string
+			_ = rows.Scan(&id, &no, &name, &org, &dept, &workshop, &team, &job, &typ, &status, &uid, &badge, &mobile)
+			list = append(list, gin.H{
+				"id": id, "emp_no": no, "name": name, "org_id": org, "dept_id": dept, "workshop_id": workshop, "team_id": team,
+				"job_title": job, "emp_type": typ, "status": status, "user_id": uid, "badge_code": badge, "mobile": mobile,
+				"has_account": uid > 0,
+			})
+		}
+		api.OK(c, gin.H{"list": list, "total": len(list)})
+		return true
+	case "create":
+		body := bindBody(c)
+		id, errMsg := s.createEmployeeFromBody(body, strOrDef(body["status"], "active"))
+		if errMsg != "" {
+			api.FailJSON(c, errMsg)
+			return true
+		}
+		api.OK(c, s.loadEmployeeMap(id))
+		return true
+	case "get", "update", "delete":
+		id := paramID(c)
+		if action == "get" {
+			m := s.loadEmployeeMap(id)
+			if m["emp_no"] == nil {
+				api.FailJSON(c, "NOT_FOUND")
+				return true
+			}
+			api.OK(c, m)
+			return true
+		}
+		if action == "update" {
+			body := bindBody(c)
+			if msg, err := s.updateEmployeeFromBody(id, body); err != nil || msg != "" {
+				if msg == "" {
+					msg = "DB_ERROR"
+				}
+				api.FailJSON(c, msg)
+				return true
+			}
+			if st := strOr(body["status"]); st != "" {
+				_, _ = s.DB.Exec(`UPDATE hr_employee SET status=? WHERE id=?`, st, id)
+			}
+			api.OK(c, s.loadEmployeeMap(id))
+			return true
+		}
+		_, _ = s.DB.Exec(`UPDATE hr_employee SET status='inactive' WHERE id=?`, id)
+		api.OK(c, gin.H{})
+		return true
+	}
+	return false
+}
+
+func (s *Services) handleApprovalTasks(c *gin.Context, method, action, path string) bool {
+	switch {
+	case strings.HasSuffix(path, "/approve") && method == "POST":
+		id := paramID(c)
+		body := bindBody(c)
+		comment, _ := body["comment"].(string)
+		now := time.Now().Format("2006-01-02 15:04:05")
+		_, err := s.DB.Exec(`UPDATE appr_task SET status='approved', acted_at=?, comment=? WHERE id=? AND status='pending'`, now, comment, id)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		// unlock linked doc in erp_doc if present
+		var docType string
+		var docID int64
+		_ = s.DB.QueryRow(`SELECT doc_type, doc_id FROM appr_task WHERE id=?`, id).Scan(&docType, &docID)
+		if docID > 0 {
+			_, _ = s.Store.SetStatus(docID, "approved")
+		}
+		api.OK(c, gin.H{"id": id, "status": "approved", "doc_type": docType, "doc_id": docID})
+		return true
+	case strings.HasSuffix(path, "/reject") && method == "POST":
+		id := paramID(c)
+		body := bindBody(c)
+		comment, _ := body["comment"].(string)
+		now := time.Now().Format("2006-01-02 15:04:05")
+		_, _ = s.DB.Exec(`UPDATE appr_task SET status='rejected', acted_at=?, comment=? WHERE id=?`, now, comment, id)
+		var docID int64
+		_ = s.DB.QueryRow(`SELECT doc_id FROM appr_task WHERE id=?`, id).Scan(&docID)
+		if docID > 0 {
+			_, _ = s.Store.SetStatus(docID, "rejected")
+		}
+		api.OK(c, gin.H{"id": id, "status": "rejected"})
+		return true
+	}
+	switch action {
+	case "list":
+		rows, err := s.DB.Query(`SELECT id, doc_type, doc_id, assignee_user_id, status, COALESCE(comment,''), created_at FROM appr_task ORDER BY id DESC`)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		defer rows.Close()
+		list := []gin.H{}
+		for rows.Next() {
+			var id, docID, uid int64
+			var docType, status, comment, created string
+			_ = rows.Scan(&id, &docType, &docID, &uid, &status, &comment, &created)
+			list = append(list, gin.H{"id": id, "doc_type": docType, "doc_id": docID, "assignee_user_id": uid, "status": status, "comment": comment, "created_at": created})
+		}
+		api.OK(c, gin.H{"list": list, "total": len(list)})
+		return true
+	case "create":
+		body := bindBody(c)
+		docType, _ := body["doc_type"].(string)
+		docID, _ := asInt64(body["doc_id"])
+		uid, _ := asInt64(body["assignee_user_id"])
+		if uid == 0 {
+			uid = 1
+		}
+		now := time.Now().Format("2006-01-02 15:04:05")
+		res, err := s.DB.Exec(`INSERT INTO appr_task(doc_type, doc_id, assignee_user_id, status, created_at) VALUES(?,?,?,'pending',?)`,
+			docType, docID, uid, now)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		id, _ := res.LastInsertId()
+		if docID > 0 {
+			_, _ = s.Store.SetStatus(docID, "pending_approval")
+		}
+		api.OK(c, gin.H{"id": id, "status": "pending"})
+		return true
+	case "get":
+		id := paramID(c)
+		var docType, status, comment, created string
+		var docID, uid int64
+		err := s.DB.QueryRow(`SELECT doc_type, doc_id, assignee_user_id, status, COALESCE(comment,''), created_at FROM appr_task WHERE id=?`, id).
+			Scan(&docType, &docID, &uid, &status, &comment, &created)
+		if err != nil {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		api.OK(c, gin.H{"id": id, "doc_type": docType, "doc_id": docID, "assignee_user_id": uid, "status": status, "comment": comment, "created_at": created})
+		return true
+	}
+	return false
+}
+
+func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
+	// GET lists (generated routes)
+	if method == "GET" {
+		switch {
+		case path == "/api/v1/iam/users" || (strings.HasPrefix(path, "/api/v1/iam/users") && action == "list"):
+			rows, err := s.DB.Query(`
+				SELECT u.id, u.login_name, u.user_type, u.status, COALESCE(e.name,''), COALESCE(u.employee_id,0)
+				FROM iam_user u LEFT JOIN hr_employee e ON e.id = u.employee_id
+				WHERE u.is_deleted = 0 ORDER BY u.id`)
+			if err != nil {
+				api.FailJSON(c, "DB_ERROR")
+				return true
+			}
+			defer rows.Close()
+			list := []gin.H{}
+			for rows.Next() {
+				var id, empID int64
+				var login, ut, status, name string
+				_ = rows.Scan(&id, &login, &ut, &status, &name, &empID)
+				list = append(list, gin.H{"id": id, "login_name": login, "user_type": ut, "status": status, "name": name, "employee_id": empID})
+			}
+			api.OK(c, gin.H{"list": list, "total": len(list)})
+			return true
+		case path == "/api/v1/iam/roles":
+			rows, err := s.DB.Query(`SELECT id, code, name, data_scope_type, is_system, status FROM iam_role WHERE is_deleted = 0`)
+			if err != nil {
+				api.FailJSON(c, "DB_ERROR")
+				return true
+			}
+			defer rows.Close()
+			list := []gin.H{}
+			for rows.Next() {
+				var id int64
+				var code, name, scope, status string
+				var isSys int
+				_ = rows.Scan(&id, &code, &name, &scope, &isSys, &status)
+				list = append(list, gin.H{"id": id, "code": code, "name": name, "data_scope_type": scope, "is_system": isSys == 1, "status": status})
+			}
+			api.OK(c, gin.H{"list": list})
+			return true
+		case path == "/api/v1/iam/admin-groups":
+			rows, err := s.DB.Query(`SELECT id, code, name, COALESCE(remark,''), sort_no, status FROM iam_admin_group WHERE is_deleted = 0 ORDER BY sort_no`)
+			if err != nil {
+				api.FailJSON(c, "DB_ERROR")
+				return true
+			}
+			defer rows.Close()
+			list := []gin.H{}
+			for rows.Next() {
+				var id int64
+				var code, name, remark, status string
+				var sortNo int
+				_ = rows.Scan(&id, &code, &name, &remark, &sortNo, &status)
+				list = append(list, gin.H{"id": id, "code": code, "name": name, "remark": remark, "sort_no": sortNo, "status": status})
+			}
+			api.OK(c, gin.H{"list": list})
+			return true
+		case path == "/api/v1/iam/permissions":
+			rows, err := s.DB.Query(`SELECT id, code, name, domain, module, action FROM iam_permission WHERE is_deleted = 0`)
+			if err != nil {
+				api.FailJSON(c, "DB_ERROR")
+				return true
+			}
+			defer rows.Close()
+			list := []gin.H{}
+			for rows.Next() {
+				var id int64
+				var code, name, domain, module, act string
+				_ = rows.Scan(&id, &code, &name, &domain, &module, &act)
+				list = append(list, gin.H{"id": id, "code": code, "name": name, "domain": domain, "module": module, "action": act})
+			}
+			api.OK(c, gin.H{"list": list})
+			return true
+		case path == "/api/v1/iam/login-policy":
+			var maxFail, lockMin, ttl, minLen, hist int
+			var reqLetter, reqDigit, reqSpecial, single int
+			err := s.DB.QueryRow(`SELECT max_fail_count, lock_minutes, session_ttl_min, password_min_len, password_require_letter, password_require_digit, password_require_special, password_history, single_session FROM iam_login_policy WHERE id=1`).
+				Scan(&maxFail, &lockMin, &ttl, &minLen, &reqLetter, &reqDigit, &reqSpecial, &hist, &single)
+			if err != nil {
+				api.FailJSON(c, "DB_ERROR")
+				return true
+			}
+			api.OK(c, gin.H{
+				"max_fail_count": maxFail, "lock_minutes": lockMin, "session_ttl_min": ttl,
+				"password_min_len": minLen, "password_require_letter": reqLetter == 1,
+				"password_require_digit": reqDigit == 1, "password_require_special": reqSpecial == 1,
+				"password_history": hist, "single_session": single == 1,
+			})
+			return true
+		case path == "/api/v1/iam/field-policies":
+			rows, err := s.DB.Query(`SELECT id, role_id, field_key, field_name, visible, editable FROM iam_field_policy`)
+			if err != nil {
+				api.FailJSON(c, "DB_ERROR")
+				return true
+			}
+			defer rows.Close()
+			list := []gin.H{}
+			for rows.Next() {
+				var id, rid int64
+				var fk, fn string
+				var vis, edit int
+				_ = rows.Scan(&id, &rid, &fk, &fn, &vis, &edit)
+				list = append(list, gin.H{"id": id, "role_id": rid, "field_key": fk, "field_name": fn, "visible": vis == 1, "editable": edit == 1})
+			}
+			api.OK(c, gin.H{"list": list})
+			return true
+		case path == "/api/v1/iam/menus":
+			roleID := c.Query("role_id")
+			q := `SELECT id, role_id, domain, module, menu_key, visible, sort_no FROM iam_menu_custom`
+			var rows *sql.Rows
+			var err error
+			if roleID != "" {
+				rows, err = s.DB.Query(q+` WHERE role_id=?`, roleID)
+			} else {
+				rows, err = s.DB.Query(q)
+			}
+			if err != nil {
+				api.FailJSON(c, "DB_ERROR")
+				return true
+			}
+			defer rows.Close()
+			list := []gin.H{}
+			for rows.Next() {
+				var id, rid int64
+				var domain, module, key string
+				var vis, sortNo int
+				_ = rows.Scan(&id, &rid, &domain, &module, &key, &vis, &sortNo)
+				list = append(list, gin.H{"id": id, "role_id": rid, "domain": domain, "module": module, "menu_key": key, "visible": vis == 1, "sort_no": sortNo})
+			}
+			api.OK(c, gin.H{"list": list})
+			return true
+		}
+	}
+	// Full IAM write paths — list endpoints may already be registered by iam package (first wins).
+	// This handles generated duplicates and missing writes.
+	switch {
+	case path == "/api/v1/iam/users" && method == "POST":
+		body := bindBody(c)
+		login, _ := body["login_name"].(string)
+		pass, _ := body["password"].(string)
+		if login == "" || pass == "" {
+			api.FailJSON(c, "INVALID_REQUEST")
+			return true
+		}
+		hash, err := security.HashPassword(pass)
+		if err != nil {
+			api.FailJSON(c, "HASH_ERROR")
+			return true
+		}
+		ut, _ := body["user_type"].(string)
+		if ut == "" {
+			ut = "admin"
+		}
+		empID, _ := asInt64(body["employee_id"])
+		var res sql.Result
+		if empID > 0 {
+			res, err = s.DB.Exec(`INSERT INTO iam_user(login_name, password_hash, employee_id, user_type, status, is_deleted) VALUES(?,?,?,?,'active',0)`, login, hash, empID, ut)
+		} else {
+			res, err = s.DB.Exec(`INSERT INTO iam_user(login_name, password_hash, user_type, status, is_deleted) VALUES(?,?,?,'active',0)`, login, hash, ut)
+		}
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		id, _ := res.LastInsertId()
+		if empID > 0 {
+			_, _ = s.DB.Exec(`UPDATE hr_employee SET user_id=? WHERE id=?`, id, empID)
+		}
+		if roleIDs, ok := body["role_ids"].([]interface{}); ok {
+			for _, r := range roleIDs {
+				rid, _ := asInt64(r)
+				_, _ = s.DB.Exec(`INSERT OR IGNORE INTO iam_user_role(user_id, role_id) VALUES(?,?)`, id, rid)
+			}
+		}
+		api.OK(c, gin.H{"id": id, "login_name": login, "status": "active", "employee_id": empID})
+		return true
+	case strings.HasPrefix(path, "/api/v1/iam/users/") && strings.HasSuffix(path, "/roles") && method == "PUT":
+		uid := paramID(c)
+		body := bindBody(c)
+		roleIDs, _ := body["role_ids"].([]interface{})
+		_, _ = s.DB.Exec(`DELETE FROM iam_user_role WHERE user_id=?`, uid)
+		for _, r := range roleIDs {
+			rid, _ := asInt64(r)
+			_, _ = s.DB.Exec(`INSERT INTO iam_user_role(user_id, role_id) VALUES(?,?)`, uid, rid)
+		}
+		api.OK(c, gin.H{"user_id": uid, "role_ids": roleIDs})
+		return true
+	case strings.HasSuffix(path, "/freeze") && method == "POST":
+		uid := paramID(c)
+		body := bindBody(c)
+		reason, _ := body["reason"].(string)
+		if reason == "" {
+			reason = "manual freeze"
+		}
+		var by interface{}
+		if claims := middleware.Claims(c); claims != nil {
+			by = claims.UserID
+		}
+		now := time.Now().Format("2006-01-02 15:04:05")
+		_, _ = s.DB.Exec(`UPDATE iam_user SET status='frozen', freeze_reason=?, frozen_at=?, frozen_by=? WHERE id=?`, reason, now, by, uid)
+		_, _ = s.DB.Exec(`DELETE FROM iam_user_session WHERE user_id=?`, uid)
+		api.OK(c, gin.H{"id": uid, "status": "frozen"})
+		return true
+	case strings.HasSuffix(path, "/unfreeze") && method == "POST":
+		uid := paramID(c)
+		_, _ = s.DB.Exec(`UPDATE iam_user SET status='active', freeze_reason=NULL, frozen_at=NULL, frozen_by=NULL WHERE id=?`, uid)
+		api.OK(c, gin.H{"id": uid, "status": "active"})
+		return true
+	case path == "/api/v1/iam/users/{id}" && method == "PUT":
+		uid := paramID(c)
+		body := bindBody(c)
+		if st, ok := body["status"].(string); ok {
+			_, _ = s.DB.Exec(`UPDATE iam_user SET status=? WHERE id=?`, st, uid)
+		}
+		api.OK(c, gin.H{"id": uid})
+		return true
+	case path == "/api/v1/iam/roles" && method == "POST":
+		return s.createRoleIAM(c)
+	case path == "/api/v1/iam/roles/{id}" && method == "PUT":
+		return s.updateRoleIAM(c)
+	case path == "/api/v1/iam/roles/{id}/permissions" && method == "PUT":
+		rid := paramID(c)
+		body := bindBody(c)
+		codes, _ := body["permission_ids"].([]interface{})
+		if codes == nil {
+			codes, _ = body["permission_codes"].([]interface{})
+		}
+		_, _ = s.DB.Exec(`DELETE FROM iam_role_permission WHERE role_id=?`, rid)
+		for _, x := range codes {
+			if id, ok := asInt64(x); ok {
+				_, _ = s.DB.Exec(`INSERT OR IGNORE INTO iam_role_permission(role_id, permission_id) VALUES(?,?)`, rid, id)
+				continue
+			}
+			if code, ok := x.(string); ok {
+				var pid int64
+				_ = s.DB.QueryRow(`SELECT id FROM iam_permission WHERE code=?`, code).Scan(&pid)
+				if pid > 0 {
+					_, _ = s.DB.Exec(`INSERT OR IGNORE INTO iam_role_permission(role_id, permission_id) VALUES(?,?)`, rid, pid)
+				}
+			}
+		}
+		api.OK(c, gin.H{"role_id": rid})
+		return true
+	case path == "/api/v1/iam/menus" && method == "PUT":
+		body := bindBody(c)
+		items, _ := body["items"].([]interface{})
+		for _, it := range items {
+			m, _ := it.(map[string]interface{})
+			if m == nil {
+				continue
+			}
+			rid, _ := asInt64(m["role_id"])
+			domain, _ := m["domain"].(string)
+			module, _ := m["module"].(string)
+			key, _ := m["menu_key"].(string)
+			vis := 1
+			if v, ok := m["visible"].(bool); ok && !v {
+				vis = 0
+			}
+			sortNo, _ := asInt64(m["sort_no"])
+			_, _ = s.DB.Exec(`INSERT INTO iam_menu_custom(role_id, domain, module, menu_key, visible, sort_no) VALUES(?,?,?,?,?,?)`,
+				rid, domain, module, key, vis, sortNo)
+		}
+		api.OK(c, gin.H{"ok": true})
+		return true
+	case path == "/api/v1/iam/field-policies" && method == "PUT":
+		body := bindBody(c)
+		items, _ := body["items"].([]interface{})
+		for _, it := range items {
+			m, _ := it.(map[string]interface{})
+			if m == nil {
+				continue
+			}
+			rid, _ := asInt64(m["role_id"])
+			fk, _ := m["field_key"].(string)
+			fn, _ := m["field_name"].(string)
+			vis, edit := 1, 0
+			if v, ok := m["visible"].(bool); ok && !v {
+				vis = 0
+			}
+			if v, ok := m["editable"].(bool); ok && v {
+				edit = 1
+			}
+			_, _ = s.DB.Exec(`INSERT INTO iam_field_policy(role_id, field_key, field_name, visible, editable) VALUES(?,?,?,?,?)`,
+				rid, fk, fn, vis, edit)
+		}
+		api.OK(c, gin.H{"ok": true})
+		return true
+	case path == "/api/v1/iam/login-policy" && method == "PUT":
+		body := bindBody(c)
+		maxFail, _ := asInt64(body["max_fail_count"])
+		lockMin, _ := asInt64(body["lock_minutes"])
+		ttl, _ := asInt64(body["session_ttl_min"])
+		minLen, _ := asInt64(body["password_min_len"])
+		_, _ = s.DB.Exec(`UPDATE iam_login_policy SET max_fail_count=COALESCE(NULLIF(?,0),max_fail_count), lock_minutes=COALESCE(NULLIF(?,0),lock_minutes), session_ttl_min=COALESCE(NULLIF(?,0),session_ttl_min), password_min_len=COALESCE(NULLIF(?,0),password_min_len) WHERE id=1`,
+			maxFail, lockMin, ttl, minLen)
+		api.OK(c, gin.H{"ok": true})
+		return true
+	case path == "/api/v1/iam/admin-groups" && method == "POST":
+		body := bindBody(c)
+		code, _ := body["code"].(string)
+		name, _ := body["name"].(string)
+		res, err := s.DB.Exec(`INSERT INTO iam_admin_group(code, name, sort_no, status) VALUES(?,?,10,'active')`, code, name)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		id, _ := res.LastInsertId()
+		api.OK(c, gin.H{"id": id, "code": code, "name": name})
+		return true
+	case path == "/api/v1/iam/sessions/{id}/revoke" && method == "POST":
+		id := paramID(c)
+		_, _ = s.DB.Exec(`DELETE FROM iam_user_session WHERE id=?`, id)
+		api.OK(c, gin.H{"id": id, "revoked": true})
+		return true
+	case strings.Contains(path, "warehouse-scope") && method == "PUT":
+		rid := paramID(c)
+		body := bindBody(c)
+		ids, _ := body["warehouse_ids"].([]interface{})
+		_, _ = s.DB.Exec(`DELETE FROM iam_role_warehouse_scope WHERE role_id=?`, rid)
+		for _, x := range ids {
+			wid, _ := asInt64(x)
+			if wid > 0 {
+				_, _ = s.DB.Exec(`INSERT INTO iam_role_warehouse_scope(role_id, warehouse_id) VALUES(?,?)`, rid, wid)
+			}
+		}
+		api.OK(c, gin.H{"role_id": rid, "warehouse_ids": ids})
+		return true
+	case strings.Contains(path, "process-scope") && method == "PUT":
+		rid := paramID(c)
+		body := bindBody(c)
+		_, _ = s.DB.Exec(`DELETE FROM iam_role_process_scope WHERE role_id=?`, rid)
+		if items, ok := body["items"].([]interface{}); ok && len(items) > 0 {
+			for _, it := range items {
+				m, _ := it.(map[string]interface{})
+				if m == nil {
+					continue
+				}
+				pid, _ := asInt64(m["process_id"])
+				if pid <= 0 {
+					continue
+				}
+				canReport, canDispatch := 1, 0
+				if v, ok := m["can_report"].(bool); ok && !v {
+					canReport = 0
+				}
+				if v, ok := m["can_dispatch"].(bool); ok && v {
+					canDispatch = 1
+				}
+				_, _ = s.DB.Exec(`INSERT INTO iam_role_process_scope(role_id, process_id, can_report, can_dispatch) VALUES(?,?,?,?)`,
+					rid, pid, canReport, canDispatch)
+			}
+		} else if ids, ok := body["process_ids"].([]interface{}); ok {
+			for _, x := range ids {
+				pid, _ := asInt64(x)
+				if pid > 0 {
+					_, _ = s.DB.Exec(`INSERT INTO iam_role_process_scope(role_id, process_id, can_report, can_dispatch) VALUES(?,?,1,0)`, rid, pid)
+				}
+			}
+		}
+		api.OK(c, gin.H{"role_id": rid})
+		return true
+	}
+	// fallback lists for generated iam routes not in old package
+	if method == "GET" && (action == "list" || action == "get") {
+		if strings.Contains(path, "/sessions") {
+			rows, err := s.DB.Query(`SELECT id, user_id, COALESCE(client_type,''), created_at FROM iam_user_session ORDER BY id DESC`)
+			if err != nil {
+				api.OK(c, gin.H{"list": []gin.H{}, "total": 0})
+				return true
+			}
+			defer rows.Close()
+			list := []gin.H{}
+			for rows.Next() {
+				var id, uid int64
+				var ct, created string
+				_ = rows.Scan(&id, &uid, &ct, &created)
+				list = append(list, gin.H{"id": id, "user_id": uid, "client_type": ct, "created_at": created})
+			}
+			api.OK(c, gin.H{"list": list, "total": len(list)})
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Services) createRoleIAM(c *gin.Context) bool {
+	body := bindBody(c)
+	code, _ := body["code"].(string)
+	name, _ := body["name"].(string)
+	if code == "" || name == "" {
+		api.FailJSON(c, "CODE_NAME_REQUIRED")
+		return true
+	}
+	scope, _ := body["data_scope_type"].(string)
+	if scope == "" {
+		scope = "self"
+	}
+	remark, _ := body["remark"].(string)
+	res, err := s.DB.Exec(`INSERT INTO iam_role(code, name, data_scope_type, remark, is_system, status, is_deleted) VALUES(?,?,?,?,0,'active',0)`,
+		code, name, scope, remark)
+	if err != nil {
+		api.FailJSON(c, "DB_ERROR:"+err.Error())
+		return true
+	}
+	id, _ := res.LastInsertId()
+	api.OK(c, gin.H{"id": id, "code": code, "name": name, "data_scope_type": scope, "is_system": false, "status": "active", "remark": remark})
+	return true
+}
+
+func (s *Services) updateRoleIAM(c *gin.Context) bool {
+	rid := paramID(c)
+	body := bindBody(c)
+	var code, name, scope, status, remark string
+	var isSys int
+	err := s.DB.QueryRow(`SELECT code, name, data_scope_type, status, COALESCE(remark,''), is_system FROM iam_role WHERE id=? AND COALESCE(is_deleted,0)=0`, rid).
+		Scan(&code, &name, &scope, &status, &remark, &isSys)
+	if err != nil {
+		api.FailJSON(c, "NOT_FOUND")
+		return true
+	}
+	if v, ok := body["name"].(string); ok && v != "" {
+		name = v
+	}
+	if v, ok := body["code"].(string); ok && v != "" && isSys == 0 {
+		code = v
+	}
+	if v, ok := body["data_scope_type"].(string); ok && v != "" {
+		scope = v
+	}
+	if v, ok := body["remark"].(string); ok {
+		remark = v
+	}
+	if v, ok := body["status"].(string); ok && v != "" {
+		status = v
+	}
+	_, err = s.DB.Exec(`UPDATE iam_role SET code=?, name=?, data_scope_type=?, remark=?, status=?, updated_at=datetime('now') WHERE id=?`,
+		code, name, scope, remark, status, rid)
+	if err != nil {
+		api.FailJSON(c, "DB_ERROR:"+err.Error())
+		return true
+	}
+	api.OK(c, gin.H{"id": rid, "code": code, "name": name, "data_scope_type": scope, "status": status, "remark": remark, "is_system": isSys == 1})
+	return true
+}
+
+func (s *Services) getRoleDetailIAM(c *gin.Context) bool {
+	rid := paramID(c)
+	var code, name, scope, status, remark string
+	var isSys int
+	err := s.DB.QueryRow(`SELECT code, name, data_scope_type, status, COALESCE(remark,''), is_system FROM iam_role WHERE id=? AND COALESCE(is_deleted,0)=0`, rid).
+		Scan(&code, &name, &scope, &status, &remark, &isSys)
+	if err != nil {
+		api.FailJSON(c, "NOT_FOUND")
+		return true
+	}
+	permIDs := []int64{}
+	if rows, e := s.DB.Query(`SELECT permission_id FROM iam_role_permission WHERE role_id=?`, rid); e == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var pid int64
+			_ = rows.Scan(&pid)
+			permIDs = append(permIDs, pid)
+		}
+	}
+	whIDs := []int64{}
+	if rows, e := s.DB.Query(`SELECT warehouse_id FROM iam_role_warehouse_scope WHERE role_id=?`, rid); e == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var wid int64
+			_ = rows.Scan(&wid)
+			whIDs = append(whIDs, wid)
+		}
+	}
+	procScopes := []gin.H{}
+	if rows, e := s.DB.Query(`SELECT process_id, can_report, can_dispatch FROM iam_role_process_scope WHERE role_id=?`, rid); e == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var pid int64
+			var cr, cd int
+			_ = rows.Scan(&pid, &cr, &cd)
+			procScopes = append(procScopes, gin.H{"process_id": pid, "can_report": cr == 1, "can_dispatch": cd == 1})
+		}
+	}
+	boundUsers := []gin.H{}
+	if rows, e := s.DB.Query(`
+		SELECT u.id, u.login_name, u.status, COALESCE(e.name,'')
+		FROM iam_user_role ur
+		JOIN iam_user u ON u.id=ur.user_id AND COALESCE(u.is_deleted,0)=0
+		LEFT JOIN hr_employee e ON e.id=u.employee_id
+		WHERE ur.role_id=?`, rid); e == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id int64
+			var login, st, ename string
+			_ = rows.Scan(&id, &login, &st, &ename)
+			boundUsers = append(boundUsers, gin.H{"id": id, "login_name": login, "status": st, "name": ename})
+		}
+	}
+	warehouses := []gin.H{}
+	if rows, e := s.DB.Query(`SELECT id, code, name FROM inv_warehouse WHERE COALESCE(is_deleted,0)=0 ORDER BY id`); e == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id int64
+			var c, n string
+			_ = rows.Scan(&id, &c, &n)
+			warehouses = append(warehouses, gin.H{"id": id, "code": c, "name": n})
+		}
+	}
+	processes := []gin.H{}
+	if rows, e := s.DB.Query(`SELECT id, code, name FROM pd_process WHERE COALESCE(is_deleted,0)=0 ORDER BY id`); e == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id int64
+			var c, n string
+			_ = rows.Scan(&id, &c, &n)
+			processes = append(processes, gin.H{"id": id, "code": c, "name": n})
+		}
+	}
+	api.OK(c, gin.H{
+		"role": gin.H{
+			"id": rid, "code": code, "name": name, "data_scope_type": scope,
+			"status": status, "remark": remark, "is_system": isSys == 1,
+		},
+		"permission_ids": permIDs,
+		"warehouse_ids":  whIDs,
+		"process_scopes": procScopes,
+		"bound_users":    boundUsers,
+		"warehouses":     warehouses,
+		"processes":      processes,
+	})
+	return true
+}

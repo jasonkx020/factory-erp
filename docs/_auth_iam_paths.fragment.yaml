@@ -1,0 +1,677 @@
+  /api/v1/health:
+    get:
+      tags: [健康检查]
+      summary: 健康检查
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+
+  /api/v1/auth/login:
+    post:
+      tags: [认证]
+      summary: 登录
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: 成功或业务失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [认证]
+      summary: 刷新令牌
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+
+
+  /api/v1/auth/me:
+    get:
+      tags: [认证]
+      summary: 当前用户（角色/权限/菜单/字段策略）
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+
+
+  /api/v1/iam/users:
+    get:
+      tags: [权限中心]
+      summary: 用户/管理员列表
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+        - name: user_type
+          in: query
+          schema:
+            type: string
+            enum: [admin, biz, line]
+        - name: keyword
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPageResponse"
+    post:
+      tags: [权限中心]
+      summary: 新建用户/管理员
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+
+
+  /api/v1/iam/users/{id}:
+    get:
+      tags: [权限中心]
+      summary: 用户详情
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+    put:
+      tags: [权限中心]
+      summary: 更新用户
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+
+  /api/v1/iam/users/{id}/roles:
+    put:
+      tags: [权限中心]
+      summary: 绑定用户角色（覆盖式）
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role_ids]
+              properties:
+                role_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+
+  /api/v1/iam/users/{id}/freeze:
+    post:
+      tags: [权限中心]
+      summary: 冻结账号
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+
+  /api/v1/iam/users/{id}/unfreeze:
+    post:
+      tags: [权限中心]
+      summary: 解冻账号
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+
+  /api/v1/iam/users/{id}/data-scope:
+    get:
+      tags: [权限中心]
+      summary: 查询用户数据范围覆盖
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    put:
+      tags: [权限中心]
+      summary: 设置用户数据范围覆盖
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataScopeRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+
+  /api/v1/iam/admin-groups:
+    get:
+      tags: [权限中心]
+      summary: 管理员分组列表
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminGroupListResponse"
+    post:
+      tags: [权限中心]
+      summary: 新建管理员分组
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminGroupRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminGroupResponse"
+
+
+  /api/v1/iam/admin-groups/{id}:
+    get:
+      tags: [权限中心]
+      summary: 分组详情（含角色与成员）
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminGroupDetailResponse"
+    put:
+      tags: [权限中心]
+      summary: 更新分组
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminGroupRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+
+  /api/v1/iam/admin-groups/{id}/roles:
+    put:
+      tags: [权限中心]
+      summary: 绑定分组角色
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role_ids]
+              properties:
+                role_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+
+  /api/v1/iam/admin-groups/{id}/users:
+    put:
+      tags: [权限中心]
+      summary: 绑定分组成员
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_ids]
+              properties:
+                user_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+
+  /api/v1/iam/roles:
+    get:
+      tags: [权限中心]
+      summary: 角色列表
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleListResponse"
+    post:
+      tags: [权限中心]
+      summary: 新建角色
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleResponse"
+
+
+  /api/v1/iam/roles/{id}:
+    get:
+      tags: [权限中心]
+      summary: 角色详情
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleDetailResponse"
+    put:
+      tags: [权限中心]
+      summary: 更新角色
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+
+  /api/v1/iam/roles/{id}/permissions:
+    put:
+      tags: [权限中心]
+      summary: 更新角色权限码
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [permission_ids]
+              properties:
+                permission_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+
+  /api/v1/iam/roles/{id}/warehouse-scope:
+    put:
+      tags: [权限中心]
+      summary: 设置角色仓范围
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [warehouse_ids]
+              properties:
+                warehouse_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+
+  /api/v1/iam/roles/{id}/process-scope:
+    put:
+      tags: [权限中心]
+      summary: 设置角色工序范围
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/ProcessScopeItem"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+
+  /api/v1/iam/permissions:
+    get:
+      tags: [权限中心]
+      summary: 权限码字典
+      parameters:
+        - name: domain
+          in: query
+          schema:
+            type: string
+        - name: module
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PermissionListResponse"
+
+
+  /api/v1/iam/permissions/sync:
+    post:
+      tags: [权限中心]
+      summary: 按 13 域功能模块同步生成权限码
+      description: 按「核心功能:功能模块:动作」生成缺失权限码
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncPermResponse"
+
+
+  /api/v1/iam/menus:
+    get:
+      tags: [权限中心]
+      summary: 按角色查询自定义菜单
+      parameters:
+        - name: role_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuListResponse"
+    put:
+      tags: [权限中心]
+      summary: 保存角色菜单裁剪
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MenuSaveRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+
+  /api/v1/iam/field-policies:
+    get:
+      tags: [权限中心]
+      summary: 字段策略（成本隐藏等）
+      parameters:
+        - name: role_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FieldPolicyListResponse"
+    put:
+      tags: [权限中心]
+      summary: 批量保存字段策略
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FieldPolicySaveRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+
+  /api/v1/iam/login-policy:
+    get:
+      tags: [权限中心]
+      summary: 获取登录控制策略
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginPolicyResponse"
+    put:
+      tags: [权限中心]
+      summary: 更新登录控制策略
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginPolicy"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+
+  /api/v1/iam/sessions:
+    get:
+      tags: [权限中心]
+      summary: 会话列表
+      parameters:
+        - name: user_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionListResponse"
+
+
+  /api/v1/iam/sessions/{id}/revoke:
+    post:
+      tags: [权限中心]
+      summary: 强制下线
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
+  # ---------- 产品管理（一期） ----------

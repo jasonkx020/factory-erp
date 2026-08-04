@@ -1,0 +1,31 @@
+{
+  "name": "erp-web",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @erp/portal",
+    "dev:portal": "npm run dev -w @erp/portal",
+    "dev:admin": "npm run dev -w @erp/admin",
+    "dev:workshop": "npm run dev -w @erp/workshop",
+    "dev:worker": "npm run dev -w @erp/worker",
+    "dev:sales": "npm run dev -w @erp/sales",
+    "dev:boss": "npm run dev -w @erp/boss",
+    "dev:customer": "npm run dev -w @erp/customer",
+    "build": "npm run build:all",
+    "build:all": "npm run build -w @erp/portal && npm run build -w @erp/admin && npm run build -w @erp/workshop && npm run build -w @erp/worker && npm run build -w @erp/sales && npm run build -w @erp/boss && npm run build -w @erp/customer",
+    "build:dist": "node scripts/build-dist.mjs",
+    "preview:dist": "npx --yes serve dist -p 4173",
+    "e2e": "node scripts/e2e.mjs",
+    "e2e:flow": "node scripts/e2e-flow.mjs",
+    "e2e:supplier": "node scripts/e2e-supplier.mjs",
+    "e2e:hr-perm": "node scripts/e2e-hr-perm.mjs",
+    "e2e:onboard": "node scripts/e2e-onboard.mjs",
+    "e2e:hr-ops": "node scripts/e2e-hr-ops.mjs",
+    "audit:routes": "node ../scripts/audit_module_routes.mjs",
+    "gen:meta": "python ../scripts/gen_web_meta.py"
+  }
+}

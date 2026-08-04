@@ -1,0 +1,12 @@
+server:
+  addr: ":18080"
+database:
+  driver: mysql
+  mysql_dsn: "erp:erp@tcp(127.0.0.1:3306)/erp_factory?parseTime=true&charset=utf8mb4&loc=Local"
+jwt:
+  secret: "CHANGE_ME_IN_PRODUCTION"
+  access_ttl_min: 120
+  refresh_ttl_min: 10080
+cors:
+  allow_origins:
+    - "https://erp.example.com"

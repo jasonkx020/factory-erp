@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>车间工作台 · 前台</title>
+  <link rel="stylesheet" href="../css/common.css" />
+</head>
+<body>
+  <div class="pad-shell">
+    <header class="pad-top">
+      <a class="back-link" href="../index.html" style="color:#9fd4cb;margin:0">← 入口</a>
+      <h1>车间工作台</h1>
+      <nav class="pad-nav" id="padNav">
+        <button class="active" data-pane="overview">车间工作台</button>
+        <button data-pane="dispatch">生产派工</button>
+        <button data-pane="progress">进度跟踪</button>
+        <button data-pane="qc">质检/返修/废料</button>
+        <button data-pane="stock">库存扫码</button>
+      </nav>
+      <span style="margin-left:auto;font-size:12px;color:#8aa0ab">一车间 · 主任视角 · 2026-08-04</span>
+    </header>
+
+    <div class="pad-body">
+      <section class="pad-panel" style="grid-column:1/-1">
+        <h3>产线节点（配置场景，功能仍落表内模块）</h3>
+        <div class="flow-steps" id="flowSteps">
+          <span>原料入库</span><span>清洗</span><span class="on">去皮·计件领料</span>
+          <span>收货卡点</span><span>切断</span><span>去芯·计件</span>
+          <span>半成品入库</span><span>出库切块</span><span>过筛装袋</span><span>成品入库销售</span>
+        </div>
+      </section>
+
+      <section class="pad-panel" id="paneMain"></section>
+      <section class="pad-panel" id="paneSide"></section>
+    </div>
+  </div>
+  <script>
+    const panes = {
+      overview: {
+        main: `
+          <h3>今日任务总览 · 生产任务单（只读）</h3>
+          <table class="pad-table">
+            <thead><tr><th>任务单</th><th>产品</th><th>工序</th><th>计划</th><th>完成</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td>PT0804-01</td><td>去芯薯肉</td><td>去皮→去芯</td><td>8000kg</td><td>3200kg</td><td>进行中</td></tr>
+              <tr><td>PT0804-02</td><td>切块半成品</td><td>切块</td><td>5000kg</td><td>0kg</td><td>待派工</td></tr>
+              <tr><td>PT0804-03</td><td>袋装木薯丁</td><td>过筛装袋</td><td>2000kg</td><td>860kg</td><td>进行中</td></tr>
+            </tbody>
+          </table>`,
+        side: `
+          <h3>班组实况</h3>
+          <table class="pad-table">
+            <thead><tr><th>班组</th><th>在岗</th><th>计件中</th><th>固定工</th></tr></thead>
+            <tbody>
+              <tr><td>去皮一组</td><td>12</td><td>10</td><td>2</td></tr>
+              <tr><td>去芯二组</td><td>9</td><td>8</td><td>1</td></tr>
+              <tr><td>包装线</td><td>6</td><td>0</td><td>6</td></tr>
+            </tbody>
+          </table>
+          <p style="font-size:12px;color:#8aa0ab;margin-top:12px">模块：车间工作台、生产任务单、进度跟踪（文档 6.2 步骤1）</p>`
+      },
+      dispatch: {
+        main: `
+          <h3>生产派工 / 灵活派发工单</h3>
+          <div style="margin-bottom:10px">
+            <button class="btn sm">正常派工</button>
+            <button class="btn sm warn" style="margin-left:6px">灵活加派</button>
+          </div>
+          <table class="pad-table">
+            <thead><tr><th>派工单</th><th>工序</th><th>对象</th><th>计划量</th><th>类型</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td>DP-771</td><td>去皮</td><td>计件·陈某</td><td>600kg</td><td>正常</td><td>已派</td></tr>
+              <tr><td>DP-772</td><td>收货卡点</td><td>固定·刘某</td><td>—</td><td>正常</td><td>已派</td></tr>
+              <tr><td>DP-780</td><td>切块</td><td>计件·黄某</td><td>500kg</td><td>灵活加派</td><td>待接收</td></tr>
+            </tbody>
+          </table>`,
+        side: `
+          <h3>可派工工序范围</h3>
+          <p style="font-size:13px;color:#b7c9d1;line-height:1.7">
+            受「权限分配 · 工序范围」约束：车间主任可派工全部工序；计件工仅接收授权工序。
+          </p>
+          <ul style="font-size:13px;color:#9eb0ba">
+            <li>去皮 / 去芯 / 切块 — 计件</li>
+            <li>收货 / 切断 / 装袋 — 固定工</li>
+          </ul>`
+      },
+      progress: {
+        main: `
+          <h3>进度跟踪 · 收货卡点可视</h3>
+          <table class="pad-table">
+            <thead><tr><th>工艺步骤</th><th>工序</th><th>卡点</th><th>完成量</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td>清洗</td><td>—</td><td>8000kg</td><td>完成</td></tr>
+              <tr><td>2</td><td>去皮</td><td>—</td><td>5200kg</td><td>进行中</td></tr>
+              <tr><td>3</td><td>收货</td><td>入库/质检卡点</td><td>4800kg</td><td>卡点确认</td></tr>
+              <tr><td>4</td><td>切断</td><td>—</td><td>3200kg</td><td>进行中</td></tr>
+              <tr><td>5</td><td>去芯</td><td>—</td><td>2100kg</td><td>进行中</td></tr>
+            </tbody>
+          </table>`,
+        side: `
+          <h3>说明</h3>
+          <p style="font-size:13px;color:#b7c9d1;line-height:1.7">
+            「收货」为工序交接/质检确认，对应扫码报工（交接）与质检管理，不与采购收货混用。
+          </p>`
+      },
+      qc: {
+        main: `
+          <h3>质检管理 · 返修单 · 废料管理</h3>
+          <table class="pad-table">
+            <thead><tr><th>单号</th><th>类型</th><th>关联</th><th>结果/去向</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td>QC-441</td><td>过程检</td><td>RW0804-102</td><td>合格</td><td>关闭</td></tr>
+              <tr><td>RW-019</td><td>返修单</td><td>夹带皮芯</td><td>回流去皮</td><td>流转中</td></tr>
+              <tr><td>SC-088</td><td>废料登记</td><td>去皮皮渣</td><td>副产物入库</td><td>已登记</td></tr>
+            </tbody>
+          </table>`,
+        side: `
+          <h3>现场录入</h3>
+          <button class="btn" style="width:100%;margin-bottom:8px">质检录入</button>
+          <button class="btn ghost" style="width:100%;margin-bottom:8px;background:#243b47;color:#fff;border-color:#35525e">返修登记</button>
+          <button class="btn ghost" style="width:100%;background:#243b47;color:#fff;border-color:#35525e">废料登记</button>`
+      },
+      stock: {
+        main: `
+          <h3>库存扫码 · 箱码 / 出入库确认</h3>
+          <div style="border:1px dashed #3d5a66;border-radius:8px;padding:24px;text-align:center;margin-bottom:12px">
+            <div style="font-size:40px;margin-bottom:8px">▦</div>
+            <div>扫描箱码 / 物料码</div>
+            <div style="font-size:12px;color:#8aa0ab;margin-top:6px">示意：BOX-FG-0804-0012</div>
+          </div>
+          <table class="pad-table">
+            <thead><tr><th>动作</th><th>物料</th><th>数量</th><th>仓库</th></tr></thead>
+            <tbody>
+              <tr><td>半成品入库</td><td>去芯薯肉</td><td>467kg</td><td>半成品仓</td></tr>
+              <tr><td>领料出库</td><td>洗净原料</td><td>600kg</td><td>原料仓</td></tr>
+            </tbody>
+          </table>`,
+        side: `
+          <h3>可用量速览</h3>
+          <p style="font-size:13px;line-height:1.8;color:#b7c9d1">
+            去芯薯肉 可用 <strong style="color:#7ad4c6">700 kg</strong><br/>
+            公式：实物 − 待用 ± 在途<br/>
+            模块：库存查询、箱码管理、物料调拨耗用
+          </p>`
+      }
+    };
+
+    function render(key) {
+      document.getElementById("paneMain").innerHTML = panes[key].main;
+      document.getElementById("paneSide").innerHTML = panes[key].side;
+      document.querySelectorAll("#padNav button").forEach((b) => {
+        b.classList.toggle("active", b.dataset.pane === key);
+      });
+    }
+    document.getElementById("padNav").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-pane]");
+      if (btn) render(btn.dataset.pane);
+    });
+    render("overview");
+  </script>
+  <script src="../js/api.js"></script>
+  <script src="../js/front-boot.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      if (window.ERP_FRONT_BOOT) window.ERP_FRONT_BOOT("/production/processes");
+    });
+  </script>
+</body>
+</html>
