@@ -41,6 +41,10 @@ export const usePermStore = defineStore('perm', () => {
     return module === '供应商管理'
   }
 
+  function isFarmerInboundModule(module: string) {
+    return module === '农户档案' || module === '过磅收货' || module === '农户结算' || module === '原料溯源'
+  }
+
   function isOnboardModule(module: string) {
     return module === '入职登记'
   }
@@ -52,5 +56,5 @@ export const usePermStore = defineStore('perm', () => {
     ].includes(module)
   }
 
-  return { visibleMenus, metaFor, isIamModule, isSupplierModule, isOnboardModule, isHrOpsModule }
+  return { visibleMenus, metaFor, isIamModule, isSupplierModule, isFarmerInboundModule, isOnboardModule, isHrOpsModule }
 })

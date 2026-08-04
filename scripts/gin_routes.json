@@ -57,6 +57,26 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/production/processes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/processes/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/progress"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/piecework-summaries"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/piecework-summaries/mine"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/production/tasks"
   },
   {
@@ -90,22 +110,6 @@
   {
     "method": "GET",
     "path": "/api/v1/production/cost-hide-policies"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/processes"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/processes/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/progress"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/piecework-summaries"
   },
   {
     "method": "GET",
@@ -253,6 +257,18 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/purchase/farmers"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/farmers/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/farmer-settlements"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/purchase/plans"
   },
   {
@@ -265,6 +281,18 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/purchase/tasks"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/tasks/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/trace-lots/:code"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/purchase/analytics/supplier-performance"
   },
   {
@@ -273,11 +301,11 @@
   },
   {
     "method": "GET",
-    "path": "/api/v1/purchase/tasks"
+    "path": "/api/v1/purchase/weigh-tickets"
   },
   {
     "method": "GET",
-    "path": "/api/v1/purchase/tasks/:id"
+    "path": "/api/v1/purchase/weigh-tickets/:id"
   },
   {
     "method": "GET",
@@ -1529,6 +1557,26 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/qc"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/stock-in"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/farmer-settlements"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/farmers"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/purchase/plans"
   },
   {
@@ -2157,15 +2205,19 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/hr/employee-imports"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/employee-journals"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/hr/employees"
   },
   {
     "method": "POST",
     "path": "/api/v1/hr/employees/:id/open-account"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/employee-journals"
   },
   {
     "method": "POST",
@@ -2361,11 +2413,19 @@
   },
   {
     "method": "PUT",
+    "path": "/api/v1/purchase/farmers/:id"
+  },
+  {
+    "method": "PUT",
     "path": "/api/v1/purchase/plans/:id"
   },
   {
     "method": "PUT",
     "path": "/api/v1/purchase/tasks/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/purchase/weigh-tickets/:id"
   },
   {
     "method": "PUT",
@@ -2854,6 +2914,10 @@
   {
     "method": "DELETE",
     "path": "/api/v1/payroll/wage-rates/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/purchase/farmers/:id"
   },
   {
     "method": "DELETE",

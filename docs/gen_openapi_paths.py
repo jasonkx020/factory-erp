@@ -167,6 +167,12 @@ add(1, "生产管理", "计件工资", "/api/v1/production/piecework-summaries",
     ("get", "", "计件产量汇总-查询", None),
     ("post", "recalc", "计件产量-重算", None),
 ])
+add(1, "生产管理", "计件工资", "/api/v1/production/piecework-summaries/mine", [
+    ("get", "", "计件日结-我的今日核对", None),
+])
+add(1, "人事管理", "员工", "/api/v1/hr/employee-imports", [
+    ("post", "", "员工-批量导入", None),
+])
 add(1, "生产管理", "进度跟踪", "/api/v1/production/progress", [
     ("get", "", "进度跟踪-查询", None),
 ])
@@ -567,6 +573,18 @@ add(2, "采购管理", "供应商管理", "/api/v1/purchase/suppliers", crud("�
 ])
 add(2, "采购管理", "供应商管理", "/api/v1/purchase/certificate-alerts", [
     ("get", "", "供应商证照到期预警", None),
+])
+add(2, "采购管理", "农户档案", "/api/v1/purchase/farmers", crud("农户档案", True))
+add(2, "采购管理", "过磅收货", "/api/v1/purchase/weigh-tickets", crud("过磅单") + [
+    action("post", "{id}/qc", "过磅单-质检"),
+    action("post", "{id}/stock-in", "过磅单-入库"),
+])
+add(2, "采购管理", "农户结算", "/api/v1/purchase/farmer-settlements", [
+    ("get", "", "农户结算-列表", None),
+    ("post", "", "农户结算-核价", None),
+])
+add(2, "采购管理", "原料溯源", "/api/v1/purchase/trace-lots/{code}", [
+    ("get", "", "追溯码-反查", None),
 ])
 add(2, "采购管理", "采购申请", "/api/v1/purchase/requests", crud("采购申请") + [
     action("post", "{id}/submit", "采购申请-提交审批"),

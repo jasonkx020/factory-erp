@@ -4711,6 +4711,30 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkEmptyResponse"
 
+  /api/v1/hr/employee-imports:
+    post:
+      tags: [人事管理]
+      summary: 员工-批量导入
+      operationId: post_api_v1_hr_employee_imports
+      description: |
+        功能模块：员工；分期：1
+      x-erp-phase: 1
+      x-erp-module: 员工
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
   /api/v1/hr/employee-journals:
     get:
       tags: [人事管理]
@@ -9858,6 +9882,26 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkAnyResponse"
 
+  /api/v1/production/piecework-summaries/mine:
+    get:
+      tags: [生产管理]
+      summary: 计件日结-我的今日核对
+      operationId: get_api_v1_production_piecework_summaries_mine
+      description: |
+        功能模块：计件工资；分期：1
+      x-erp-phase: 1
+      x-erp-module: 计件工资
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
   /api/v1/production/piecework-summaries/recalc:
     post:
       tags: [生产管理]
@@ -11393,6 +11437,165 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkAnyResponse"
 
+  /api/v1/purchase/farmer-settlements:
+    get:
+      tags: [采购管理]
+      summary: 农户结算-列表
+      operationId: get_api_v1_purchase_farmer_settlements
+      description: |
+        功能模块：农户结算；分期：2
+      x-erp-phase: 2
+      x-erp-module: 农户结算
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [采购管理]
+      summary: 农户结算-核价
+      operationId: post_api_v1_purchase_farmer_settlements
+      description: |
+        功能模块：农户结算；分期：2
+      x-erp-phase: 2
+      x-erp-module: 农户结算
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/farmers:
+    get:
+      tags: [采购管理]
+      summary: 农户档案-列表
+      operationId: get_api_v1_purchase_farmers
+      description: |
+        功能模块：农户档案；分期：2
+      x-erp-phase: 2
+      x-erp-module: 农户档案
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [采购管理]
+      summary: 农户档案-新建
+      operationId: post_api_v1_purchase_farmers
+      description: |
+        功能模块：农户档案；分期：2
+      x-erp-phase: 2
+      x-erp-module: 农户档案
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/farmers/{id}:
+    get:
+      tags: [采购管理]
+      summary: 农户档案-详情
+      operationId: get_api_v1_purchase_farmers_id
+      description: |
+        功能模块：农户档案；分期：2
+      x-erp-phase: 2
+      x-erp-module: 农户档案
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    put:
+      tags: [采购管理]
+      summary: 农户档案-更新
+      operationId: put_api_v1_purchase_farmers_id
+      description: |
+        功能模块：农户档案；分期：2
+      x-erp-phase: 2
+      x-erp-module: 农户档案
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    delete:
+      tags: [采购管理]
+      summary: 农户档案-删除
+      operationId: delete_api_v1_purchase_farmers_id
+      description: |
+        功能模块：农户档案；分期：2
+      x-erp-phase: 2
+      x-erp-module: 农户档案
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
   /api/v1/purchase/inbounds:
     get:
       tags: [采购管理]
@@ -12586,6 +12789,186 @@ paths:
         功能模块：采购任务管理；分期：2
       x-erp-phase: 2
       x-erp-module: 采购任务管理
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/trace-lots/{code}:
+    get:
+      tags: [采购管理]
+      summary: 追溯码-反查
+      operationId: get_api_v1_purchase_trace_lots_code
+      description: |
+        功能模块：原料溯源；分期：2
+      x-erp-phase: 2
+      x-erp-module: 原料溯源
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/weigh-tickets:
+    get:
+      tags: [采购管理]
+      summary: 过磅单-列表
+      operationId: get_api_v1_purchase_weigh_tickets
+      description: |
+        功能模块：过磅收货；分期：2
+      x-erp-phase: 2
+      x-erp-module: 过磅收货
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [采购管理]
+      summary: 过磅单-新建
+      operationId: post_api_v1_purchase_weigh_tickets
+      description: |
+        功能模块：过磅收货；分期：2
+      x-erp-phase: 2
+      x-erp-module: 过磅收货
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/weigh-tickets/{id}:
+    get:
+      tags: [采购管理]
+      summary: 过磅单-详情
+      operationId: get_api_v1_purchase_weigh_tickets_id
+      description: |
+        功能模块：过磅收货；分期：2
+      x-erp-phase: 2
+      x-erp-module: 过磅收货
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    put:
+      tags: [采购管理]
+      summary: 过磅单-更新
+      operationId: put_api_v1_purchase_weigh_tickets_id
+      description: |
+        功能模块：过磅收货；分期：2
+      x-erp-phase: 2
+      x-erp-module: 过磅收货
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/weigh-tickets/{id}/qc:
+    post:
+      tags: [采购管理]
+      summary: 过磅单-质检
+      operationId: post_api_v1_purchase_weigh_tickets_id_qc
+      description: |
+        功能模块：过磅收货；分期：2
+      x-erp-phase: 2
+      x-erp-module: 过磅收货
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/weigh-tickets/{id}/stock-in:
+    post:
+      tags: [采购管理]
+      summary: 过磅单-入库
+      operationId: post_api_v1_purchase_weigh_tickets_id_stock_in
+      description: |
+        功能模块：过磅收货；分期：2
+      x-erp-phase: 2
+      x-erp-module: 过磅收货
       parameters:
         - name: id
           in: path

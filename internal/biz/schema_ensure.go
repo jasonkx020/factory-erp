@@ -75,6 +75,22 @@ func EnsureAutomationSchema(db *sql.DB) {
 		`ALTER TABLE pd_routing_step ADD COLUMN auto_stock_in INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE pd_routing_step ADD COLUMN auto_stock_out INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE pd_routing_step ADD COLUMN warehouse_id INTEGER`,
+		`ALTER TABLE pd_report_work ADD COLUMN input_weight REAL`,
+		`ALTER TABLE pd_report_work ADD COLUMN output_weight REAL`,
+		`ALTER TABLE pd_report_work ADD COLUMN loss REAL`,
+		`ALTER TABLE pd_report_work ADD COLUMN utilization REAL`,
+		`ALTER TABLE pd_piecework_summary ADD COLUMN input_weight REAL`,
+		`ALTER TABLE pd_piecework_summary ADD COLUMN output_weight REAL`,
+		`ALTER TABLE pd_piecework_summary ADD COLUMN loss REAL`,
+		`ALTER TABLE pd_piecework_summary ADD COLUMN utilization REAL`,
+		`ALTER TABLE inv_box_code ADD COLUMN farmer_id INTEGER`,
+		`ALTER TABLE inv_box_code ADD COLUMN trace_code TEXT`,
+		`ALTER TABLE inv_box_code ADD COLUMN origin TEXT`,
+		`ALTER TABLE inv_box_code ADD COLUMN receive_date TEXT`,
+		`ALTER TABLE inv_box_code ADD COLUMN source_type TEXT`,
+		`UPDATE inv_warehouse SET name='保鲜库' WHERE code='WH-RAW' AND name='原料仓'`,
+		`UPDATE inv_warehouse SET name='半成品库' WHERE code='WH-SEMI' AND name='半成品仓'`,
+		`UPDATE inv_warehouse SET name='成品冷库' WHERE code='WH-FG' AND name='成品仓'`,
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {
@@ -83,6 +99,87 @@ func EnsureAutomationSchema(db *sql.DB) {
 		}
 	}
 	seedAutomation(db)
+	EnsureFarmerSchema(db)
+}
+
+// EnsureFarmerSchema creates farmer inbound / weigh / settlement tables.
+func EnsureFarmerSchema(db *sql.DB) {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS pur_farmer (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  mobile TEXT,
+  origin TEXT,
+  trace_code TEXT,
+  trace_code_prefix TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  remark TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  is_deleted INTEGER NOT NULL DEFAULT 0
+)`,
+		`CREATE TABLE IF NOT EXISTS pur_weigh_ticket (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc_no TEXT NOT NULL UNIQUE,
+  farmer_id INTEGER NOT NULL,
+  channel TEXT NOT NULL DEFAULT 'internal',
+  ticket_template TEXT,
+  product_id INTEGER NOT NULL DEFAULT 1,
+  variety TEXT,
+  gross_weight REAL NOT NULL DEFAULT 0,
+  deduct_rate REAL NOT NULL DEFAULT 0,
+  deduct_weight REAL NOT NULL DEFAULT 0,
+  net_weight REAL NOT NULL DEFAULT 0,
+  qc_result TEXT,
+  status TEXT NOT NULL DEFAULT 'draft',
+  trace_code TEXT,
+  origin TEXT,
+  biz_date TEXT NOT NULL,
+  source_type TEXT NOT NULL DEFAULT 'self',
+  image_url TEXT,
+  box_code TEXT,
+  warehouse_id INTEGER,
+  remark TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  is_deleted INTEGER NOT NULL DEFAULT 0
+)`,
+		`CREATE TABLE IF NOT EXISTS pur_farmer_settlement (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc_no TEXT NOT NULL UNIQUE,
+  farmer_id INTEGER NOT NULL,
+  weigh_ticket_id INTEGER,
+  biz_date TEXT NOT NULL,
+  net_weight REAL NOT NULL DEFAULT 0,
+  unit_price REAL NOT NULL DEFAULT 0,
+  amount REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'open',
+  remark TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+)`,
+		`CREATE TABLE IF NOT EXISTS pd_scrap_record (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc_no TEXT NOT NULL UNIQUE,
+  task_id INTEGER,
+  process_id INTEGER,
+  product_id INTEGER NOT NULL,
+  qty REAL NOT NULL DEFAULT 0,
+  weight REAL,
+  disposition TEXT,
+  status TEXT NOT NULL DEFAULT 'draft',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+)`,
+	}
+	for _, s := range stmts {
+		if _, err := db.Exec(s); err != nil {
+			log.Printf("farmer schema ensure note: %v", err)
+		}
+	}
+	_, _ = db.Exec(`INSERT OR IGNORE INTO pur_farmer(id, code, name, mobile, origin, trace_code, trace_code_prefix, status, remark) VALUES
+ (1, 'F-DEMO-01', '黄农户', '13900001111', '广西田东产地', 'TR-HUANG-DEMO', 'TR', 'active', '演示散户'),
+ (2, 'F-DEMO-02', '李农户', '13900002222', '广西武鸣产地', 'TR-LI-DEMO', 'TR', 'active', '演示散户')`)
 }
 
 func seedAutomation(db *sql.DB) {

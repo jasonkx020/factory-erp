@@ -24,6 +24,14 @@ func (s *Services) handlePurchase(c *gin.Context, method, openapiPath, resourceK
 		return s.handleSupplierPerformanceOne(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/suppliers"):
 		return s.handleSuppliers(c, method, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/purchase/farmers"):
+		return s.handleFarmers(c, method, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/purchase/weigh-tickets"):
+		return s.handleWeighTickets(c, method, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/purchase/farmer-settlements"):
+		return s.handleFarmerSettlements(c, method, action)
+	case strings.Contains(openapiPath, "/purchase/trace-lots/"):
+		return s.handleTraceLot(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/inbounds"):
 		return s.handlePurchaseInbounds(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/incoming-qcs"):

@@ -1,6 +1,6 @@
 # OpenAPI 路径全表（实现依据）
 
-> 协议 **1.1.0**；共 **730** 条操作、**455** 条路径。主文件 [openapi3.0-加工厂ERP.yaml](./openapi3.0-加工厂ERP.yaml)。
+> 协议 **1.1.0**；共 **746** 条操作、**465** 条路径。主文件 [openapi3.0-加工厂ERP.yaml](./openapi3.0-加工厂ERP.yaml)。
 
 | 分期 | 域 | 功能模块 | 方法 | 路径 | 摘要 |
 |------|----|----------|------|------|------|
@@ -32,6 +32,7 @@
 | 1 | 人事管理 | 考勤管理 | DELETE | `/api/v1/hr/attendance/rules/{id}` | 考勤规则-删除 |
 | 1 | 人事管理 | 考勤管理 | GET | `/api/v1/hr/attendance/rules/{id}` | 考勤规则-详情 |
 | 1 | 人事管理 | 考勤管理 | PUT | `/api/v1/hr/attendance/rules/{id}` | 考勤规则-更新 |
+| 1 | 人事管理 | 员工 | POST | `/api/v1/hr/employee-imports` | 员工-批量导入 |
 | 1 | 人事管理 | 员工日志 | GET | `/api/v1/hr/employee-journals` | 员工日志-列表 |
 | 1 | 人事管理 | 员工日志 | POST | `/api/v1/hr/employee-journals` | 员工日志-新建 |
 | 1 | 人事管理 | 员工日志 | GET | `/api/v1/hr/employee-journals/{id}` | 员工日志-详情 |
@@ -234,6 +235,7 @@
 | 1 | 生产管理 | 工艺流程 | GET | `/api/v1/production/flow-rules` | 流转规则-查询 |
 | 1 | 生产管理 | 工艺流程 | PUT | `/api/v1/production/flow-rules` | 流转规则-保存 |
 | 1 | 生产管理 | 计件工资 | GET | `/api/v1/production/piecework-summaries` | 计件产量汇总-查询 |
+| 1 | 生产管理 | 计件工资 | GET | `/api/v1/production/piecework-summaries/mine` | 计件日结-我的今日核对 |
 | 1 | 生产管理 | 计件工资 | POST | `/api/v1/production/piecework-summaries/recalc` | 计件产量-重算 |
 | 1 | 生产管理 | 工序设置 | GET | `/api/v1/production/processes` | 工序-列表 |
 | 1 | 生产管理 | 工序设置 | POST | `/api/v1/production/processes` | 工序-新建 |
@@ -463,6 +465,13 @@
 | 2 | 采购管理 | 采购分析 | GET | `/api/v1/purchase/analytics/supplier-performance` | 供应商绩效汇总 |
 | 2 | 采购管理 | 采购分析 | GET | `/api/v1/purchase/analytics/volume-price` | 采购量价分析 |
 | 2 | 采购管理 | 供应商管理 | GET | `/api/v1/purchase/certificate-alerts` | 供应商证照到期预警 |
+| 2 | 采购管理 | 农户结算 | GET | `/api/v1/purchase/farmer-settlements` | 农户结算-列表 |
+| 2 | 采购管理 | 农户结算 | POST | `/api/v1/purchase/farmer-settlements` | 农户结算-核价 |
+| 2 | 采购管理 | 农户档案 | GET | `/api/v1/purchase/farmers` | 农户档案-列表 |
+| 2 | 采购管理 | 农户档案 | POST | `/api/v1/purchase/farmers` | 农户档案-新建 |
+| 2 | 采购管理 | 农户档案 | DELETE | `/api/v1/purchase/farmers/{id}` | 农户档案-删除 |
+| 2 | 采购管理 | 农户档案 | GET | `/api/v1/purchase/farmers/{id}` | 农户档案-详情 |
+| 2 | 采购管理 | 农户档案 | PUT | `/api/v1/purchase/farmers/{id}` | 农户档案-更新 |
 | 2 | 采购管理 | 采购入库 | GET | `/api/v1/purchase/inbounds` | 采购入库-列表 |
 | 2 | 采购管理 | 采购入库 | POST | `/api/v1/purchase/inbounds` | 采购入库-新建 |
 | 2 | 采购管理 | 采购入库 | GET | `/api/v1/purchase/inbounds/{id}` | 采购入库-详情 |
@@ -510,6 +519,13 @@
 | 2 | 采购管理 | 采购任务管理 | PUT | `/api/v1/purchase/tasks/{id}` | 采购任务-更新 |
 | 2 | 采购管理 | 采购任务管理 | POST | `/api/v1/purchase/tasks/{id}/assign` | 采购任务-分派 |
 | 2 | 采购管理 | 采购任务管理 | POST | `/api/v1/purchase/tasks/{id}/complete` | 采购任务-完成 |
+| 2 | 采购管理 | 原料溯源 | GET | `/api/v1/purchase/trace-lots/{code}` | 追溯码-反查 |
+| 2 | 采购管理 | 过磅收货 | GET | `/api/v1/purchase/weigh-tickets` | 过磅单-列表 |
+| 2 | 采购管理 | 过磅收货 | POST | `/api/v1/purchase/weigh-tickets` | 过磅单-新建 |
+| 2 | 采购管理 | 过磅收货 | GET | `/api/v1/purchase/weigh-tickets/{id}` | 过磅单-详情 |
+| 2 | 采购管理 | 过磅收货 | PUT | `/api/v1/purchase/weigh-tickets/{id}` | 过磅单-更新 |
+| 2 | 采购管理 | 过磅收货 | POST | `/api/v1/purchase/weigh-tickets/{id}/qc` | 过磅单-质检 |
+| 2 | 采购管理 | 过磅收货 | POST | `/api/v1/purchase/weigh-tickets/{id}/stock-in` | 过磅单-入库 |
 | 2 | 销售管理 | 合同管理 | GET | `/api/v1/sales/contracts` | 合同-列表 |
 | 2 | 销售管理 | 合同管理 | POST | `/api/v1/sales/contracts` | 合同-新建 |
 | 2 | 销售管理 | 合同管理 | DELETE | `/api/v1/sales/contracts/{id}` | 合同-删除 |

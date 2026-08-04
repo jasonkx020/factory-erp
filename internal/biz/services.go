@@ -49,6 +49,8 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		return s.handleDispatches(c, method, action, openapiPath)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/report-works"):
 		return s.handleReportWorks(c, method, action, openapiPath)
+	case strings.HasPrefix(openapiPath, "/api/v1/production/piecework-summaries"):
+		return s.handlePieceworkSummaries(c, method, action, openapiPath)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/requisitions"):
 		return s.handleRequisitions(c, method, action, openapiPath)
 	case openapiPath == "/api/v1/production/scan" && method == "POST":
@@ -71,6 +73,8 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		return s.handleBadge(c)
 	case strings.Contains(openapiPath, "/hr/employees") && strings.Contains(openapiPath, "/open-account"):
 		return s.openEmployeeAccount(c)
+	case strings.HasPrefix(openapiPath, "/api/v1/hr/employee-imports") && method == "POST":
+		return s.batchImportEmployees(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/hr/onboards"):
 		return s.handleOnboards(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/hr/offboards"):

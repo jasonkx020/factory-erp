@@ -98,6 +98,14 @@ func (s *Services) handleBoxTrace(c *gin.Context) bool {
 	if len(codes) == 0 {
 		codes = []string{code}
 	}
+	var farmerID int64
+	var traceCode, origin, receiveDate, sourceType string
+	_ = s.DB.QueryRow(`SELECT COALESCE(farmer_id,0), COALESCE(trace_code,''), COALESCE(origin,''), COALESCE(receive_date,''), COALESCE(source_type,'')
+		FROM inv_box_code WHERE code=?`, code).Scan(&farmerID, &traceCode, &origin, &receiveDate, &sourceType)
+	farmer := gin.H{}
+	if farmerID > 0 {
+		farmer = s.loadFarmer(farmerID)
+	}
 	likeParts := make([]string, 0, len(codes))
 	args := make([]interface{}, 0, len(codes))
 	for _, bc := range codes {
@@ -142,7 +150,10 @@ func (s *Services) handleBoxTrace(c *gin.Context) bool {
 		}
 		logs.Close()
 	}
-	api.OK(c, gin.H{"box_code": code, "related_boxes": codes, "flow_events": events, "operation_logs": oplogs})
+	api.OK(c, gin.H{
+		"box_code": code, "related_boxes": codes, "flow_events": events, "operation_logs": oplogs,
+		"farmer": farmer, "trace_code": traceCode, "origin": origin, "receive_date": receiveDate, "source_type": sourceType,
+	})
 	return true
 }
 

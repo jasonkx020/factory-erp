@@ -13,6 +13,7 @@ import {
 } from '@erp/shared'
 import IamView from './iam/IamView.vue'
 import SupplierView from './purchase/SupplierView.vue'
+import FarmerInboundView from './purchase/FarmerInboundView.vue'
 import OnboardView from './hr/OnboardView.vue'
 import HrOpsView from './hr/HrOpsView.vue'
 
@@ -43,7 +44,7 @@ function visibleColumns() {
 }
 
 async function load() {
-  if (perm.isIamModule(moduleName.value) || perm.isSupplierModule(moduleName.value) || perm.isOnboardModule(moduleName.value) || perm.isHrOpsModule(moduleName.value)) return
+  if (perm.isIamModule(moduleName.value) || perm.isSupplierModule(moduleName.value) || perm.isFarmerInboundModule(moduleName.value) || perm.isOnboardModule(moduleName.value) || perm.isHrOpsModule(moduleName.value)) return
   const m = meta.value
   if (!m?.list) {
     list.value = []
@@ -162,6 +163,7 @@ watch(() => route.fullPath, load)
 <template>
   <IamView v-if="perm.isIamModule(moduleName)" :module="moduleName" />
   <SupplierView v-else-if="perm.isSupplierModule(moduleName)" />
+  <FarmerInboundView v-else-if="perm.isFarmerInboundModule(moduleName)" />
   <OnboardView v-else-if="perm.isOnboardModule(moduleName)" />
   <HrOpsView v-else-if="perm.isHrOpsModule(moduleName)" :module="moduleName" />
   <div v-else class="panel">

@@ -28,20 +28,37 @@ type routingStep struct {
 }
 
 // AfterReportWork drives automation after a report-work is created.
-func (s *Services) AfterReportWork(c *gin.Context, reportID, processID, workerID int64, qty float64, boxCode string, taskID, workOrderID, stepID int64) map[string]interface{} {
+func (s *Services) AfterReportWork(c *gin.Context, reportID, processID, workerID int64, qty float64, boxCode string, taskID, workOrderID, stepID int64, extra ...float64) map[string]interface{} {
 	traceID := middleware.TraceID(c)
 	out := gin.H{"report_id": reportID}
+	inputWeight, loss, utilization := 0.0, 0.0, 0.0
+	if len(extra) > 0 {
+		inputWeight = extra[0]
+	}
+	if len(extra) > 1 {
+		loss = extra[1]
+	}
+	if len(extra) > 2 {
+		utilization = extra[2]
+	}
+	if inputWeight <= 0 {
+		inputWeight = qty
+	}
+	if utilization <= 0 && inputWeight > 0 {
+		utilization = qty / inputWeight
+	}
 
-	// piecework summary
+	// piecework summary (UPSERT by day)
 	if processID > 0 && workerID > 0 {
+		s.upsertPieceworkSummary(workerID, processID, reportID, qty, inputWeight, qty, loss, utilization)
 		var rate float64
 		_ = s.DB.QueryRow(`SELECT rate FROM pay_process_wage_rate WHERE process_id=? AND status='active' ORDER BY id DESC LIMIT 1`, processID).Scan(&rate)
-		amount := qty * rate
-		bizDate := time.Now().Format("2006-01-02")
-		_, _ = s.DB.Exec(`INSERT INTO pd_piecework_summary(worker_id, process_id, biz_date, qty, weight, amount, source_report_ids)
-			VALUES(?,?,?,?,?,?,?)`, workerID, processID, bizDate, qty, qty, amount, fmt.Sprintf("%d", reportID))
-		out["wage_amount"] = amount
+		out["wage_amount"] = qty * rate
 		out["rate"] = rate
+		out["input_weight"] = inputWeight
+		out["output_weight"] = qty
+		out["loss"] = loss
+		out["utilization"] = utilization
 	}
 
 	// accumulate task completed qty
@@ -62,9 +79,17 @@ func (s *Services) AfterReportWork(c *gin.Context, reportID, processID, workerID
 	var toStepID int64
 
 	if step != nil {
-		payload := map[string]interface{}{"box_code": boxCode, "qty": qty, "process_id": processID}
+		payload := map[string]interface{}{
+			"box_code": boxCode, "qty": qty, "process_id": processID,
+			"input_weight": inputWeight, "output_weight": qty, "loss": loss, "utilization": utilization,
+		}
 		if step.AutoStockOut {
-			if err := s.autoStock(boxCode, step.WarehouseID, processID, qty, "consume"); err != nil {
+			// consume input weight when available
+			consumeQty := inputWeight
+			if consumeQty <= 0 {
+				consumeQty = qty
+			}
+			if err := s.autoStock(boxCode, step.WarehouseID, processID, consumeQty, "consume"); err != nil {
 				status = "failed"
 				errMsg = "stock_out:" + err.Error()
 			}
@@ -214,10 +239,15 @@ func (s *Services) autoStockInNewBox(oldCode string, warehouseID, processID int6
 	} else if warehouseID == 1 {
 		productID = 1
 	}
+	var farmerID int64
+	var trace, origin, receiveDate, sourceType string
+	_ = s.DB.QueryRow(`SELECT COALESCE(farmer_id,0), COALESCE(trace_code,''), COALESCE(origin,''), COALESCE(receive_date,''), COALESCE(source_type,'')
+		FROM inv_box_code WHERE code=?`, oldCode).Scan(&farmerID, &trace, &origin, &receiveDate, &sourceType)
 	newCode := fmt.Sprintf("BX%d", time.Now().UnixNano()%1e12)
-	_, err := s.DB.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, parent_box_id, current_process_id, current_step_id, task_id, work_order_id, status)
-		VALUES(?,?,?,?,?,?, (SELECT id FROM inv_box_code WHERE code=?), ?,?,?,?,'open')`,
-		newCode, productID, warehouseID, time.Now().Format("20060102"), qty, qty, oldCode, processID, stepID, taskID, woID)
+	_, err := s.DB.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, parent_box_id, current_process_id, current_step_id, task_id, work_order_id, farmer_id, trace_code, origin, receive_date, source_type, status)
+		VALUES(?,?,?,?,?,?, (SELECT id FROM inv_box_code WHERE code=?), ?,?,?,?,?,?,?,?,?,'open')`,
+		newCode, productID, warehouseID, time.Now().Format("20060102"), qty, qty, oldCode, processID, stepID, taskID, woID,
+		nullIf0(farmerID), trace, origin, receiveDate, sourceType)
 	if err != nil {
 		return "", err
 	}

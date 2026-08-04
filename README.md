@@ -7,6 +7,7 @@
 | 文档 | 说明 |
 |------|------|
 | [docs/系统框架设计.md](docs/系统框架设计.md) | 架构与包结构 |
+| [docs/木薯粗加工需求澄清与现状差距分析.md](docs/木薯粗加工需求澄清与现状差距分析.md) | 需求澄清与现状差距 |
 | [docs/ERP-持续开发约束.md](docs/ERP-持续开发约束.md) | 工程约束与门禁 |
 | [docs/openapi3.0-加工厂ERP.yaml](docs/openapi3.0-加工厂ERP.yaml) | OpenAPI 3.0 唯一契约 |
 | [docs/openapi-使用说明.md](docs/openapi-使用说明.md) | 协议约定与域前缀 |

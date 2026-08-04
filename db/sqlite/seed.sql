@@ -8,9 +8,9 @@ INSERT OR IGNORE INTO pd_workshop(id, org_id, dept_id, code, name) VALUES (1, 1,
 INSERT OR IGNORE INTO pd_work_team(id, workshop_id, code, name) VALUES (1, 1, 'T01', '去皮一组');
 
 INSERT OR IGNORE INTO inv_warehouse(id, org_id, code, name, warehouse_type) VALUES
- (1, 1, 'WH-RAW', '原料仓', 'raw'),
- (2, 1, 'WH-SEMI', '半成品仓', 'semi'),
- (3, 1, 'WH-FG', '成品仓', 'finished');
+ (1, 1, 'WH-RAW', '保鲜库', 'raw'),
+ (2, 1, 'WH-SEMI', '半成品库', 'semi'),
+ (3, 1, 'WH-FG', '成品冷库', 'finished');
 
 INSERT OR IGNORE INTO pd_process(id, code, name, process_type, is_piecework, is_handover_point) VALUES
  (1, 'PEEL', '去皮', 'peel', 1, 0),
