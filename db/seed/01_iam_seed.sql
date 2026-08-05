@@ -61,6 +61,7 @@ SELECT t.emp_type, r.id FROM (
   SELECT 'admin' emp_type, 'sys_admin' role_code UNION ALL
   SELECT 'office', 'hr' UNION ALL
   SELECT 'piece', 'piece' UNION ALL
+  SELECT 'temp', 'piece' UNION ALL
   SELECT 'fixed', 'fixed'
 ) t JOIN iam_role r ON r.code = t.role_code
 WHERE NOT EXISTS (

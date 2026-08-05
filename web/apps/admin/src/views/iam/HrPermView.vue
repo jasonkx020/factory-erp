@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { hrApi, iamApi } from '@erp/shared'
+import { empTypeLabel, hrApi, iamApi } from '@erp/shared'
 
 type Row = Record<string, unknown>
 
@@ -377,7 +377,9 @@ onMounted(loadCore)
           <el-table-column prop="id" label="ID" width="70" />
           <el-table-column prop="emp_no" label="工号" width="110" />
           <el-table-column prop="name" label="姓名" />
-          <el-table-column prop="emp_type" label="类型" width="90" />
+          <el-table-column label="类型" width="90">
+            <template #default="{ row }">{{ empTypeLabel(row.emp_type) }}</template>
+          </el-table-column>
           <el-table-column prop="status" label="状态" width="90" />
           <el-table-column prop="user_id" label="账号ID" width="90" />
           <el-table-column label="开户" width="90">

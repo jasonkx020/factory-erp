@@ -13,7 +13,7 @@ const portalUrl = portalHomeUrl()
 async function onSubmit() {
   loading.value = true
   try {
-    const ok = await auth.login(form.login_name, form.password, 'web')
+    const ok = await auth.login(form.login_name, form.password, 'admin')
     if (!ok) {
       ElMessage.error(auth.error || '登录失败')
       return

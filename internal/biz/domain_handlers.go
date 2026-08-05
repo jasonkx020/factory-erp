@@ -1167,7 +1167,7 @@ func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
 	// fallback lists for generated iam routes not in old package
 	if method == "GET" && (action == "list" || action == "get") {
 		if strings.Contains(path, "/sessions") {
-			rows, err := s.DB.Query(`SELECT id, user_id, COALESCE(client_type,''), created_at FROM iam_user_session ORDER BY id DESC`)
+			rows, err := s.DB.Query(`SELECT id, user_id, COALESCE(client_type,''), login_at FROM iam_user_session WHERE revoked_at IS NULL ORDER BY id DESC`)
 			if err != nil {
 				api.OK(c, gin.H{"list": []gin.H{}, "total": 0})
 				return true
@@ -1178,7 +1178,7 @@ func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
 				var id, uid int64
 				var ct, created string
 				_ = rows.Scan(&id, &uid, &ct, &created)
-				list = append(list, gin.H{"id": id, "user_id": uid, "client_type": ct, "created_at": created})
+				list = append(list, gin.H{"id": id, "user_id": uid, "client_type": ct, "created_at": created, "login_at": created})
 			}
 			api.OK(c, gin.H{"list": list, "total": len(list)})
 			return true

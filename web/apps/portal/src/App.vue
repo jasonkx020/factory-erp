@@ -9,34 +9,16 @@ const cards = [
     desc: '13 域菜单与权限中心：采购入库、生产派工、库存过账、销售出库与 IAM。',
   },
   {
-    key: 'workshop' as const,
-    badge: '前台 · 车间 Pad',
-    title: '车间工作台',
-    desc: '产线节点：清洗 → 去皮计件 → 收货卡点 → 切断去芯 → 切块装袋。',
-  },
-  {
-    key: 'worker' as const,
-    badge: '前台 · 工人端',
-    title: '工人端',
-    desc: '去皮 / 去芯 / 切块扫码报工、联动领料、本人工资与考勤。',
-  },
-  {
-    key: 'sales' as const,
-    badge: '前台 · 销售端',
-    title: '销售外勤端',
-    desc: '袋装木薯丁等成品：下单协同、询价、客户跟进与任务提醒。',
+    key: 'employee' as const,
+    badge: '前台 · 员工端',
+    title: '统一员工端',
+    desc: '车间 / 工人 / 销售同一站点；登录后按 IAM 权限显示可用模块。另有 Android/iOS Flutter App。',
   },
   {
     key: 'boss' as const,
     badge: '前台 · 看板',
     title: '老板驾驶舱',
     desc: '驾驶舱 · 生产看板 · 产线实况 · 经营报表只读。',
-  },
-  {
-    key: 'customer' as const,
-    badge: '用户端 · 自助',
-    title: '客户自助端',
-    desc: '自助下单、询价、我的订单、复购与发货进度。',
   },
 ]
 
@@ -48,7 +30,7 @@ const flow = ['鲜木薯入库', '清洗', '去皮计件', '收货卡点', '切�
     <header class="hero">
       <p class="eyebrow">木薯加工 · 计件产线</p>
       <h1 class="brand">木薯加工厂 ERP</h1>
-      <p class="lead">选择终端登录。功能落在设计文档 13 大域内，产线由生产管理 + 库存管理配置，不另立流程系统。</p>
+      <p class="lead">选择终端登录。员工端为统一 Web（+ Flutter App）；管理与老板驾驶舱独立。客户自助仅保留 API，无前端。</p>
       <ol class="flow" aria-label="产线节点">
         <li v-for="(step, i) in flow" :key="step" :class="{ accent: i === 2 || i === 3 }">{{ step }}</li>
       </ol>
@@ -80,162 +62,125 @@ const flow = ['鲜木薯入库', '清洗', '去皮计件', '收货卡点', '切�
 </template>
 
 <style scoped>
-/* 木薯意象：薯皮肉色、薯皮褐、叶色绿；全部纯色，无渐变 */
 .page {
-  --soil: #2a241c;
-  --bark: #6b5344;
-  --flesh: #f3ebe0;
-  --starch: #e7dfd2;
-  --leaf: #2f6b45;
-  --leaf-deep: #1f4d32;
-  --panel: #fffdf9;
-  --line: #d4c8b8;
-  --ink: #1e2a22;
-  --mute: #5c655c;
-
   min-height: 100vh;
-  margin: 0;
-  background: var(--starch);
-  color: var(--ink);
-  font-family: "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  color: #1a2b34;
+  background:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(13, 122, 111, 0.18), transparent),
+    radial-gradient(ellipse 60% 40% at 90% 10%, rgba(47, 107, 69, 0.12), transparent),
+    linear-gradient(180deg, #f4f7f8 0%, #e8eef1 100%);
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
-
 .hero {
-  background: var(--soil);
-  color: var(--flesh);
-  padding: 48px 24px 40px;
+  padding: 48px 24px 28px;
+  max-width: 960px;
+  margin: 0 auto;
 }
-
 .eyebrow {
-  margin: 0 0 10px;
-  font-size: 12px;
-  letter-spacing: 0.18em;
+  margin: 0 0 8px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #c4b49a;
+  color: #0d7a6f;
+  font-weight: 600;
 }
-
 .brand {
   margin: 0 0 12px;
   font-size: clamp(28px, 5vw, 40px);
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  color: #fff;
-  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
-
 .lead {
-  margin: 0 0 28px;
-  max-width: 640px;
+  margin: 0 0 20px;
+  max-width: 52ch;
+  color: #44555e;
+  line-height: 1.55;
   font-size: 15px;
-  line-height: 1.65;
-  color: #d9cfc0;
 }
-
 .flow {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
-
 .flow li {
-  padding: 6px 12px;
-  background: #3a3228;
-  color: #e8dfd0;
   font-size: 12px;
-  border: 1px solid #4a4034;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(26, 43, 52, 0.06);
+  color: #3a4a52;
 }
-
 .flow li.accent {
-  background: var(--leaf);
-  border-color: var(--leaf);
+  background: #0d7a6f;
   color: #fff;
 }
-
 .terminals {
-  max-width: 1080px;
+  max-width: 960px;
   margin: 0 auto;
-  padding: 36px 24px 24px;
+  padding: 8px 24px 48px;
 }
-
 .section-title {
-  margin: 0 0 16px;
   font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--bark);
+  color: #5c6b75;
+  margin: 0 0 14px;
 }
-
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 14px;
 }
-
 .card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 20px 20px 18px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-left: 4px solid var(--leaf);
-  color: inherit;
+  display: block;
   text-decoration: none;
-  transition: border-color 0.15s, background 0.15s;
+  color: inherit;
+  background: #fff;
+  border-radius: 14px;
+  padding: 18px 18px 16px;
+  border: 1px solid rgba(26, 43, 52, 0.08);
+  box-shadow: 0 8px 24px rgba(15, 28, 34, 0.06);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-
 .card:hover {
-  border-color: var(--leaf);
-  background: var(--flesh);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(15, 28, 34, 0.1);
 }
-
 .badge {
-  align-self: flex-start;
+  display: inline-block;
   font-size: 11px;
   padding: 2px 8px;
-  background: #e2eee6;
-  color: var(--leaf-deep);
+  border-radius: 4px;
+  background: #e8f5f2;
+  color: #0d7a6f;
+  margin-bottom: 10px;
 }
-
 .card h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--soil);
+  margin: 0 0 8px;
+  font-size: 17px;
 }
-
 .card p {
-  margin: 0;
-  flex: 1;
+  margin: 0 0 14px;
   font-size: 13px;
-  line-height: 1.55;
-  color: var(--mute);
+  line-height: 1.5;
+  color: #5c6b75;
+  min-height: 3.9em;
 }
-
 .enter {
-  margin-top: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--leaf);
+  color: #0d7a6f;
 }
-
 .foot {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 8px 24px 40px;
+  text-align: center;
+  padding: 0 24px 32px;
   font-size: 12px;
-  color: var(--mute);
-  line-height: 1.6;
+  color: #7a8a94;
 }
-
 .foot code {
-  font-size: 11px;
+  background: rgba(0, 0, 0, 0.05);
   padding: 1px 5px;
-  background: var(--flesh);
-  border: 1px solid var(--line);
-  color: var(--soil);
+  border-radius: 3px;
 }
 </style>

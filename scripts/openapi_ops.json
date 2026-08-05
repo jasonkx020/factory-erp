@@ -2244,6 +2244,98 @@
     "path": "/api/v1/purchase/weigh-tickets/{id}/stock-in"
   },
   {
+    "method": "POST",
+    "path": "/api/v1/mqtt/auth"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/mqtt/superuser"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/mqtt/acl"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/notify/mqtt-connect"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/notify/inbox"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/notify/inbox/{id}/read"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/workflow/tasks"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/workflow/tasks/{id}/claim"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/biz/evidences"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/biz/evidences"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/biz/corrections"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/inbound-arrivals"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/inbound-arrivals"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/inbound-arrivals/{id}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/inbound-arrivals/{id}/qc"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/{id}/confirm"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/weigh-tickets/{id}/label"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/{id}/warehouse-confirm"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/farmer-settlements/summary"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/farmer-settlements/{id}/pay"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/trace-lots/verify"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/report-works/{id}/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/piecework-summaries/{id}/pay"
+  },
+  {
     "method": "GET",
     "path": "/api/v1/report/accounts"
   },
@@ -2982,5 +3074,73 @@
   {
     "method": "PUT",
     "path": "/api/v1/system/table-customs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/outbound-settles"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/outbound-settles"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/outbound-settles/{id}"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/sales/outbound-settles/{id}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/outbound-settles/{id}/close"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/piece-issue-sheets"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/piece-issue-sheets"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/piece-issue-sheets/generate"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/piece-issue-sheets/{id}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/process-reports"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/tool-items"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/tool-issues"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/tool-issues"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/tool-issues/{id}/return"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/weighbridges"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/weighbridges"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/inventory/weighbridges/{id}"
   }
 ]

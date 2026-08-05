@@ -97,6 +97,22 @@ async function main() {
   assert(cancel.code === 1 && cancel.data?.status === 'cancelled', `cancel: ${cancel.msg}`)
   log('cancel draft')
 
+  // 临时工：与计件工采集字段一致，仅类别不同
+  const empNo3 = `ONB3-${Date.now()}`
+  const d3 = await req('POST', '/hr/onboards', {
+    emp_no: empNo3, name: '临时工E2E', emp_type: '临时工', workshop_id: 1, need_account: false,
+  }, token)
+  assert(d3.code === 1, `draft3: ${d3.msg}`)
+  const d3Detail = await req('GET', `/hr/onboards/${d3.data.id}`, undefined, token)
+  assert(d3Detail.data?.emp_type === 'temp', `temp emp_type: ${d3Detail.data?.emp_type}`)
+  log('temp employee type (中文名归一化)')
+
+  const bad = await req('POST', '/hr/employees', {
+    emp_no: `BAD-${Date.now()}`, name: '非法类型', emp_type: 'unknown_type',
+  }, token)
+  assert(bad.code !== 1 && String(bad.msg).includes('INVALID_EMP_TYPE'), `reject bad emp_type: ${bad.msg}`)
+  log('reject invalid emp_type')
+
   const list = await req('GET', '/hr/onboards?status=confirmed', undefined, token)
   assert(list.code === 1 && (list.data?.list || []).some((x) => x.id === oid), 'list filter confirmed')
   assert(typeof list.data?.summary?.confirmed === 'number', 'summary')

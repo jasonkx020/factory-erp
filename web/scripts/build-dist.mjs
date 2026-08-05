@@ -1,11 +1,11 @@
 /**
- * Build all apps and assemble demo-like layout under web/dist/
+ * Build retained web apps and assemble under web/dist/
  *
  * web/dist/
- *   index.html
+ *   index.html          (portal)
  *   admin/
- *   front/workshop|worker|sales|boss/
- *   user/
+ *   front/              (unified employee)
+ *   front/boss/
  */
 import { cpSync, mkdirSync, rmSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -18,11 +18,8 @@ const dist = join(root, 'dist')
 const map = [
   { workspace: '@erp/portal', from: 'apps/portal/dist', to: '.' },
   { workspace: '@erp/admin', from: 'apps/admin/dist', to: 'admin' },
-  { workspace: '@erp/workshop', from: 'apps/workshop/dist', to: 'front/workshop' },
-  { workspace: '@erp/worker', from: 'apps/worker/dist', to: 'front/worker' },
-  { workspace: '@erp/sales', from: 'apps/sales/dist', to: 'front/sales' },
+  { workspace: '@erp/employee', from: 'apps/employee/dist', to: 'front' },
   { workspace: '@erp/boss', from: 'apps/boss/dist', to: 'front/boss' },
-  { workspace: '@erp/customer', from: 'apps/customer/dist', to: 'user' },
 ]
 
 function run(cmd, args) {

@@ -1,40 +1,94 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { purchaseApi } from '@erp/shared'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { purchaseApi, bizApi } from '@erp/shared'
+import ConfirmSnapshotCompare from '../../components/closed-loop/ConfirmSnapshotCompare.vue'
 
 type Row = Record<string, unknown>
 
 const farmers = ref<Row[]>([])
+const arrivals = ref<Row[]>([])
 const tickets = ref<Row[]>([])
 const settlements = ref<Row[]>([])
 const loading = ref(false)
-const farmerForm = reactive({ name: '', mobile: '', origin: '', remark: '' })
+const farmerForm = reactive({ name: '', mobile: '', origin: '', remark: '', default_unit_price: 1 })
+const arrivalForm = reactive({
+  farmer_id: 0,
+  origin: '',
+  variety: '鲜木薯',
+  estimate_weight: 1000,
+  source_type: 'self',
+  channel: 'internal',
+  qc_image_url: '',
+  plate_no: '',
+  receive_address: '',
+  pass_rate: 100,
+  reject_weight: 0,
+  freight_fee: 0,
+  loading_fee: 0,
+  weigh_fee: 0,
+})
 const weighForm = reactive({
-  farmer_id: 1,
+  arrival_id: 0,
+  farmer_id: 0,
   channel: 'internal',
   gross_weight: 1000,
   deduct_rate: 0.05,
   variety: '鲜木薯',
   source_type: 'self',
   image_url: '',
+  ocr_draft_json: '',
+  plate_no: '',
+  receive_address: '',
+  pass_rate: 100,
+  reject_weight: 0,
+  freight_fee: 0,
+  loading_fee: 0,
+  weigh_fee: 0,
 })
+const confirmDlg = ref(false)
+const confirmTicket = ref<Row | null>(null)
+const confirmModel = reactive<Record<string, unknown>>({
+  gross_weight: '',
+  deduct_rate: '',
+  deduct_weight: '',
+  net_weight: '',
+})
+const payDlg = ref(false)
+const payRow = ref<Row | null>(null)
+const payForm = reactive({ transfer_no: '', pay_evidence_url: '' })
+const correctDlg = ref(false)
+const correctForm = reactive({ biz_type: 'weigh_ticket', biz_id: 0, reason: '', unit_price: '', net_weight: '' })
+const labelPreview = ref<Row | null>(null)
 const traceCode = ref('')
 const traceResult = ref<Row | null>(null)
+
+const ocrDraft = computed(() => {
+  const raw = String(confirmTicket.value?.ocr_draft_json || weighForm.ocr_draft_json || '')
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as Record<string, unknown>
+  } catch {
+    return { raw }
+  }
+})
 
 async function refresh() {
   loading.value = true
   try {
-    const [f, t, s] = await Promise.all([
+    const [f, a, t, s] = await Promise.all([
       purchaseApi.farmers(),
+      purchaseApi.arrivals(),
       purchaseApi.weighTickets(),
       purchaseApi.farmerSettlements(),
     ])
     farmers.value = ((f.data as { list?: Row[] })?.list) || []
+    arrivals.value = ((a.data as { list?: Row[] })?.list) || []
     tickets.value = ((t.data as { list?: Row[] })?.list) || []
     settlements.value = ((s.data as { list?: Row[] })?.list) || []
-    if (farmers.value.length && !weighForm.farmer_id) {
-      weighForm.farmer_id = Number(farmers.value[0].id)
+    if (farmers.value.length) {
+      if (!arrivalForm.farmer_id) arrivalForm.farmer_id = Number(farmers.value[0].id)
+      if (!weighForm.farmer_id) weighForm.farmer_id = Number(farmers.value[0].id)
     }
   } finally {
     loading.value = false
@@ -46,30 +100,120 @@ async function createFarmer() {
   const res = await purchaseApi.createFarmer({ ...farmerForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success('农户已建档')
-  farmerForm.name = ''
-  farmerForm.mobile = ''
-  farmerForm.origin = ''
+  Object.assign(farmerForm, { name: '', mobile: '', origin: '', remark: '' })
+  await refresh()
+}
+
+async function createArrival() {
+  if (!arrivalForm.farmer_id) return ElMessage.warning('请选择农户')
+  const res = await purchaseApi.createArrival({ ...arrivalForm })
+  if (res.code !== 1) return ElMessage.error(res.msg)
+  ElMessage.success('到货单已创建，请质检定级')
+  await refresh()
+}
+
+async function qcArrival(id: number, pass: boolean) {
+  const grade = pass ? ((await ElMessageBox.prompt('请输入等级 A/B/C', '质检定级', { inputValue: 'A' })).value || 'A') : ''
+  const img = arrivalForm.qc_image_url
+  const res = await purchaseApi.qcArrival(id, {
+    qc_result: pass ? 'pass' : 'fail',
+    grade: String(grade).toUpperCase(),
+    qc_image_url: img,
+  })
+  if (res.code !== 1) return ElMessage.error(res.msg)
+  ElMessage.success(pass ? '质检合格，可过磅出码' : '质检不合格，不可过磅')
   await refresh()
 }
 
 async function createWeigh() {
-  const res = await purchaseApi.createWeighTicket({ ...weighForm })
+  if (!weighForm.image_url) return ElMessage.warning('过磅图必填')
+  const body: Record<string, unknown> = { ...weighForm }
+  if (weighForm.arrival_id) body.arrival_id = weighForm.arrival_id
+  if (weighForm.ocr_draft_json) {
+    try {
+      body.ocr_draft_json = JSON.parse(weighForm.ocr_draft_json)
+    } catch {
+      body.ocr_draft_json = { text: weighForm.ocr_draft_json }
+    }
+  }
+  const res = await purchaseApi.createWeighTicket(body)
   if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success(`过磅单已创建，净重 ${(res.data as Row)?.net_weight}`)
+  ElMessage.success(`过磅草稿已建，净重预填 ${(res.data as Row)?.net_weight} — 请对照原图确认`)
   await refresh()
 }
 
-async function qcPass(id: number) {
-  const res = await purchaseApi.qcWeighTicket(id, { qc_result: 'pass', auto_stock_in: true })
+function openConfirm(row: Row) {
+  confirmTicket.value = row
+  confirmModel.gross_weight = row.gross_weight
+  confirmModel.deduct_rate = row.deduct_rate
+  confirmModel.deduct_weight = row.deduct_weight
+  confirmModel.net_weight = row.net_weight
+  confirmDlg.value = true
+}
+
+async function doConfirm() {
+  const id = Number(confirmTicket.value?.id)
+  const res = await purchaseApi.confirmWeighTicket(id, {
+    gross_weight: Number(confirmModel.gross_weight),
+    deduct_rate: Number(confirmModel.deduct_rate),
+    deduct_weight: Number(confirmModel.deduct_weight),
+    net_weight: Number(confirmModel.net_weight),
+    confirmed: true,
+  })
   if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success(`质检合格已入保鲜库 箱码=${(res.data as Row)?.box_code || '-'}`)
+  ElMessage.success(`已确认出码 ${(res.data as Row)?.trace_code || ''}`)
+  confirmDlg.value = false
+  const label = await purchaseApi.labelWeighTicket(id)
+  if (label.code === 1) labelPreview.value = (label.data as Row) || null
   await refresh()
 }
 
-async function qcFail(id: number) {
-  const res = await purchaseApi.qcWeighTicket(id, { qc_result: 'fail', auto_stock_in: false })
+function openPay(row: Row) {
+  payRow.value = row
+  payForm.transfer_no = ''
+  payForm.pay_evidence_url = ''
+  payDlg.value = true
+}
+
+async function doPay() {
+  if (!payForm.transfer_no || !payForm.pay_evidence_url) {
+    return ElMessage.warning('转账单号与回单证据必填')
+  }
+  const res = await purchaseApi.payFarmerSettlement(Number(payRow.value?.id), { ...payForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success('不合格已留档，未入库')
+  ElMessage.success('已支付关单')
+  payDlg.value = false
+  await refresh()
+}
+
+function openCorrect(row: Row, bizType: string) {
+  correctForm.biz_type = bizType
+  correctForm.biz_id = Number(row.id)
+  correctForm.reason = ''
+  correctForm.unit_price = String(row.unit_price ?? '')
+  correctForm.net_weight = String(row.net_weight ?? '')
+  correctDlg.value = true
+}
+
+async function doCorrect() {
+  if (!correctForm.reason) return ElMessage.warning('纠错原因必填')
+  const fields: Record<string, unknown> = {}
+  if (correctForm.biz_type === 'farmer_settlement' && correctForm.unit_price !== '') {
+    fields.unit_price = Number(correctForm.unit_price)
+  }
+  if (correctForm.biz_type === 'weigh_ticket' && correctForm.net_weight !== '') {
+    fields.net_weight = Number(correctForm.net_weight)
+  }
+  const res = await bizApi.correct({
+    biz_type: correctForm.biz_type,
+    biz_id: correctForm.biz_id,
+    action: 'correct',
+    reason: correctForm.reason,
+    fields,
+  })
+  if (res.code !== 1) return ElMessage.error(res.msg)
+  ElMessage.success('已记录纠错审计')
+  correctDlg.value = false
   await refresh()
 }
 
@@ -85,95 +229,204 @@ onMounted(refresh)
 
 <template>
   <div class="page" v-loading="loading">
-    <h2>农户过磅入场</h2>
-    <p class="hint">散户建档 → 双渠道过磅（外磅/厂内）→ 扣损净重 → 质检 → 合格入保鲜库并绑定追溯码；不合格留档不入库。</p>
+    <h2>农户采购闭环</h2>
+    <p class="hint">
+      到货拍照质检定级 → 过磅图+自动预填 → 对照原图确认出码贴标 → 仓管扫码入库 → 财务转账回单关单。业务可查可改不可删。
+    </p>
 
     <el-row :gutter="16">
-      <el-col :span="10">
-        <el-card header="新建农户">
-          <el-form label-width="80px">
+      <el-col :span="8">
+        <el-card header="1. 农户建档">
+          <el-form label-width="80px" size="small">
             <el-form-item label="姓名"><el-input v-model="farmerForm.name" /></el-form-item>
             <el-form-item label="电话"><el-input v-model="farmerForm.mobile" /></el-form-item>
             <el-form-item label="产地"><el-input v-model="farmerForm.origin" /></el-form-item>
+            <el-form-item label="默认单价"><el-input-number v-model="farmerForm.default_unit_price" :min="0" :step="0.1" /></el-form-item>
             <el-button type="primary" @click="createFarmer">保存</el-button>
           </el-form>
         </el-card>
       </el-col>
-      <el-col :span="14">
-        <el-card header="过磅单">
-          <el-form label-width="100px" inline>
+      <el-col :span="8">
+        <el-card header="2. 到货 + 质检照">
+          <el-form label-width="90px" size="small">
             <el-form-item label="农户">
-              <el-select v-model="weighForm.farmer_id" style="width:160px">
+              <el-select v-model="arrivalForm.farmer_id" style="width:100%">
                 <el-option v-for="f in farmers" :key="String(f.id)" :label="String(f.name)" :value="Number(f.id)" />
               </el-select>
             </el-form-item>
-            <el-form-item label="渠道">
-              <el-select v-model="weighForm.channel" style="width:120px">
-                <el-option label="厂内叉车秤" value="internal" />
-                <el-option label="外部过磅单" value="external" />
+            <el-form-item label="估重"><el-input-number v-model="arrivalForm.estimate_weight" :min="0" /></el-form-item>
+            <el-form-item label="车牌"><el-input v-model="arrivalForm.plate_no" /></el-form-item>
+            <el-form-item label="收货地址"><el-input v-model="arrivalForm.receive_address" /></el-form-item>
+            <el-form-item label="合格率%"><el-input-number v-model="arrivalForm.pass_rate" :min="0" :max="100" /></el-form-item>
+            <el-form-item label="不合格重"><el-input-number v-model="arrivalForm.reject_weight" :min="0" /></el-form-item>
+            <el-form-item label="运费"><el-input-number v-model="arrivalForm.freight_fee" :min="0" :step="1" /></el-form-item>
+            <el-form-item label="装卸费"><el-input-number v-model="arrivalForm.loading_fee" :min="0" :step="1" /></el-form-item>
+            <el-form-item label="过磅费"><el-input-number v-model="arrivalForm.weigh_fee" :min="0" :step="1" /></el-form-item>
+            <el-form-item label="质检照URL"><el-input v-model="arrivalForm.qc_image_url" placeholder="必填证据" /></el-form-item>
+            <el-button type="primary" @click="createArrival">创建到货单</el-button>
+          </el-form>
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card header="3. 过磅草稿（图必填）">
+          <el-form label-width="90px" size="small">
+            <el-form-item label="到货单">
+              <el-select v-model="weighForm.arrival_id" clearable style="width:100%" placeholder="优先选已 QC 通过单">
+                <el-option
+                  v-for="a in arrivals.filter((x) => x.status === 'qc_pass')"
+                  :key="String(a.id)"
+                  :label="`${a.doc_no} ${a.farmer_name} ${a.grade}`"
+                  :value="Number(a.id)"
+                />
               </el-select>
             </el-form-item>
-            <el-form-item label="来源">
-              <el-select v-model="weighForm.source_type" style="width:120px">
-                <el-option label="自产原料" value="self" />
-                <el-option label="外购半成品" value="outsource" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="毛重"><el-input-number v-model="weighForm.gross_weight" :min="0" /></el-form-item>
+            <el-form-item label="入场重量"><el-input-number v-model="weighForm.gross_weight" :min="0" /></el-form-item>
             <el-form-item label="扣损率"><el-input-number v-model="weighForm.deduct_rate" :min="0" :max="1" :step="0.01" /></el-form-item>
-            <el-form-item label="影像URL"><el-input v-model="weighForm.image_url" placeholder="P2 OCR 前先存链接" style="width:200px" /></el-form-item>
-            <el-button type="primary" @click="createWeigh">创建过磅单</el-button>
+            <el-form-item label="车牌"><el-input v-model="weighForm.plate_no" /></el-form-item>
+            <el-form-item label="收货地址"><el-input v-model="weighForm.receive_address" /></el-form-item>
+            <el-form-item label="合格率%"><el-input-number v-model="weighForm.pass_rate" :min="0" :max="100" /></el-form-item>
+            <el-form-item label="不合格重"><el-input-number v-model="weighForm.reject_weight" :min="0" /></el-form-item>
+            <el-form-item label="运费"><el-input-number v-model="weighForm.freight_fee" :min="0" /></el-form-item>
+            <el-form-item label="装卸费"><el-input-number v-model="weighForm.loading_fee" :min="0" /></el-form-item>
+            <el-form-item label="过磅费"><el-input-number v-model="weighForm.weigh_fee" :min="0" /></el-form-item>
+            <el-form-item label="过磅图"><el-input v-model="weighForm.image_url" placeholder="必填" /></el-form-item>
+            <el-form-item label="OCR草稿"><el-input v-model="weighForm.ocr_draft_json" type="textarea" :rows="2" placeholder='可选 {"gross_weight":1000}' /></el-form-item>
+            <el-button type="primary" @click="createWeigh">创建过磅草稿</el-button>
           </el-form>
         </el-card>
       </el-col>
     </el-row>
 
-    <el-card header="过磅单列表" style="margin-top:16px">
-      <el-table :data="tickets" size="small">
-        <el-table-column prop="doc_no" label="单号" width="160" />
+    <el-card header="到货质检" style="margin-top:16px">
+      <el-table :data="arrivals" size="small">
+        <el-table-column prop="doc_no" label="单号" width="150" />
         <el-table-column prop="farmer_name" label="农户" width="100" />
-        <el-table-column prop="channel" label="渠道" width="90" />
-        <el-table-column prop="source_type" label="来源" width="90" />
-        <el-table-column prop="gross_weight" label="毛重" width="80" />
-        <el-table-column prop="net_weight" label="净重" width="80" />
+        <el-table-column prop="estimate_weight" label="估重" width="80" />
         <el-table-column prop="qc_result" label="质检" width="70" />
-        <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column prop="trace_code" label="追溯码" min-width="140" />
-        <el-table-column prop="box_code" label="箱码" min-width="120" />
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column prop="grade" label="等级" width="60" />
+        <el-table-column prop="status" label="状态" width="100" />
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="row.status==='draft'" link type="success" @click="qcPass(Number(row.id))">合格入库</el-button>
-            <el-button v-if="row.status==='draft'" link type="danger" @click="qcFail(Number(row.id))">不合格</el-button>
+            <el-button v-if="row.status==='qc_pending' || row.status==='draft'" link type="success" @click="qcArrival(Number(row.id), true)">合格定级</el-button>
+            <el-button v-if="row.status==='qc_pending' || row.status==='draft'" link type="danger" @click="qcArrival(Number(row.id), false)">不合格</el-button>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
 
+    <el-card header="过磅确认 / 出码（入库请到仓管待办）" style="margin-top:16px">
+      <p class="hint">确认出码后系统将溯源码与单号推送给仓管；仓管确认后方为采购完成。</p>
+      <el-table :data="tickets" size="small">
+        <el-table-column prop="doc_no" label="单号" width="150" />
+        <el-table-column prop="farmer_name" label="农户" width="90" />
+        <el-table-column prop="gross_weight" label="入场重量" width="90" />
+        <el-table-column prop="net_weight" label="净重" width="70" />
+        <el-table-column prop="plate_no" label="车牌" width="90" />
+        <el-table-column prop="pass_rate" label="合格率%" width="80" />
+        <el-table-column prop="freight_fee" label="运费" width="70" />
+        <el-table-column prop="status" label="状态" width="90" />
+        <el-table-column prop="trace_code" label="溯源码" min-width="160" />
+        <el-table-column prop="box_code" label="箱码" min-width="120" />
+        <el-table-column label="操作" width="280" fixed="right">
+          <template #default="{ row }">
+            <el-button v-if="row.status==='draft' || row.status==='qc_pass'" link type="primary" @click="openConfirm(row)">对照确认出码</el-button>
+            <el-button v-if="row.status==='weighed'" link type="info" disabled>等待仓管入库</el-button>
+            <el-button link type="warning" @click="openCorrect(row, 'weigh_ticket')">纠错</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <pre v-if="labelPreview" class="trace">标签预览：{{ JSON.stringify(labelPreview, null, 2) }}</pre>
+    </el-card>
+
     <el-row :gutter="16" style="margin-top:16px">
-      <el-col :span="12">
-        <el-card header="农户结算依据（扣损后净重）">
+      <el-col :span="14">
+        <el-card header="农户结算（财务支付须转账单号+回单）">
           <el-table :data="settlements" size="small">
-            <el-table-column prop="doc_no" label="结算单" />
-            <el-table-column prop="farmer_name" label="农户" width="100" />
-            <el-table-column prop="net_weight" label="净重" width="90" />
-            <el-table-column prop="amount" label="金额" width="90" />
-            <el-table-column prop="status" label="状态" width="80" />
+            <el-table-column prop="doc_no" label="结算单" width="140" />
+            <el-table-column prop="farmer_name" label="农户" width="90" />
+            <el-table-column prop="net_weight" label="净重" width="80" />
+            <el-table-column prop="goods_amount" label="货款" width="80" />
+            <el-table-column prop="freight_fee" label="运费" width="70" />
+            <el-table-column prop="loading_fee" label="装卸" width="70" />
+            <el-table-column prop="weigh_fee" label="过磅费" width="70" />
+            <el-table-column prop="amount" label="结算金额" width="90" />
+            <el-table-column prop="status" label="状态" width="110" />
+            <el-table-column prop="transfer_no" label="转账单号" min-width="120" />
+            <el-table-column label="操作" width="160" fixed="right">
+              <template #default="{ row }">
+                <el-button v-if="row.status!=='settle_paid'" link type="primary" @click="openPay(row)">支付关单</el-button>
+                <el-button link type="warning" @click="openCorrect(row, 'farmer_settlement')">纠错</el-button>
+              </template>
+            </el-table-column>
           </el-table>
         </el-card>
       </el-col>
-      <el-col :span="12">
-        <el-card header="追溯码反查">
-          <el-input v-model="traceCode" placeholder="追溯码或箱码" style="max-width:280px;margin-right:8px" />
-          <el-button type="primary" @click="doTrace">查询</el-button>
-          <pre v-if="traceResult" class="trace">{{ JSON.stringify(traceResult, null, 2) }}</pre>
+      <el-col :span="10">
+        <el-card header="溯源倒查时间轴">
+          <el-input v-model="traceCode" placeholder="T1-/箱码/过磅单号" style="max-width:260px;margin-right:8px" />
+          <el-button type="primary" @click="doTrace">倒查</el-button>
+          <div v-if="traceResult" class="timeline">
+            <div v-for="(ev, i) in ((traceResult.timeline as Row[]) || [])" :key="i" class="tl-item">
+              <strong>{{ ev.step }}</strong>
+              <pre>{{ JSON.stringify(ev, null, 2) }}</pre>
+            </div>
+          </div>
         </el-card>
       </el-col>
     </el-row>
+
+    <el-dialog v-model="confirmDlg" title="原图与数值并排确认" width="860px">
+      <ConfirmSnapshotCompare
+        v-model="confirmModel"
+        :image-url="String(confirmTicket?.image_url || '')"
+        :draft="ocrDraft"
+        :fields="[
+          { key: 'gross_weight', label: '毛重', highlight: true },
+          { key: 'deduct_rate', label: '扣损率' },
+          { key: 'deduct_weight', label: '扣损重' },
+          { key: 'net_weight', label: '净重', highlight: true },
+        ]"
+      />
+      <template #footer>
+        <el-button @click="confirmDlg = false">取消</el-button>
+        <el-button type="primary" @click="doConfirm">确认无误并出码</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="payDlg" title="财务支付关单" width="480px">
+      <el-form label-width="100px">
+        <el-form-item label="转账单号"><el-input v-model="payForm.transfer_no" /></el-form-item>
+        <el-form-item label="回单URL"><el-input v-model="payForm.pay_evidence_url" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="payDlg = false">取消</el-button>
+        <el-button type="primary" @click="doPay">确认已付</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="correctDlg" title="纠错（审计必填原因）" width="480px">
+      <el-form label-width="100px">
+        <el-form-item label="原因"><el-input v-model="correctForm.reason" type="textarea" /></el-form-item>
+        <el-form-item v-if="correctForm.biz_type==='farmer_settlement'" label="单价">
+          <el-input v-model="correctForm.unit_price" />
+        </el-form-item>
+        <el-form-item v-if="correctForm.biz_type==='weigh_ticket'" label="净重">
+          <el-input v-model="correctForm.net_weight" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="correctDlg = false">取消</el-button>
+        <el-button type="warning" @click="doCorrect">提交纠错</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped>
 .page { padding: 16px 20px; }
 .hint { color: #667; font-size: 13px; margin: 0 0 12px; }
-.trace { background: #f6f8fa; padding: 12px; border-radius: 8px; margin-top: 12px; max-height: 320px; overflow: auto; font-size: 12px; }
+.trace { background: #f6f8fa; padding: 12px; border-radius: 8px; margin-top: 12px; max-height: 240px; overflow: auto; font-size: 12px; }
+.timeline { margin-top: 12px; max-height: 480px; overflow: auto; }
+.tl-item { border-left: 3px solid #0d7a6f; padding: 0 0 12px 12px; margin-bottom: 8px; }
+.tl-item pre { background: #f6f8fa; padding: 8px; border-radius: 6px; font-size: 11px; margin: 4px 0 0; }
 </style>

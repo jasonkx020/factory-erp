@@ -2,7 +2,7 @@ import { api } from './client'
 import type { LoginData, MeData, PageData } from '../types'
 
 export const authApi = {
-  login: (login_name: string, password: string, client_type = 'web') =>
+  login: (login_name: string, password: string, client_type = 'admin') =>
     api.post<LoginData>('/auth/login', { login_name, password, client_type }),
   refresh: (refresh_token: string) =>
     api.post<LoginData>('/auth/refresh', { refresh_token }),
@@ -41,6 +41,10 @@ export const productionApi = {
   createDispatch: (body: Record<string, unknown>) => api.post('/production/dispatches', body),
   listReportWorks: () => api.get<PageData>('/production/report-works'),
   createReportWork: (body: Record<string, unknown>) => api.post('/production/report-works', body),
+  confirmReportWork: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/production/report-works/${id}/confirm`, body || {}),
+  correctReportWork: (id: number, body: Record<string, unknown>) =>
+    api.post(`/production/report-works/${id}/correct`, body),
   listRequisitions: () => api.get<PageData>('/production/requisitions'),
   createRequisition: (body: Record<string, unknown>) => api.post('/production/requisitions', body),
   postRequisition: (id: number) => api.post(`/production/requisitions/${id}/post`, {}),
@@ -63,6 +67,8 @@ export const productionApi = {
     api.get(`/production/piecework-summaries/mine${params ? `?${params}` : ''}`),
   pieceworkSummaries: (params?: string) =>
     api.get(`/production/piecework-summaries${params ? `?${params}` : ''}`),
+  payPiecework: (id: number, body: Record<string, unknown>) =>
+    api.post(`/production/piecework-summaries/${id}/pay`, body),
   recalcPiecework: (body?: Record<string, unknown>) =>
     api.post('/production/piecework-summaries/recalc', body || {}),
   flowEvents: () => api.get<PageData>('/production/flow-events'),
@@ -71,6 +77,21 @@ export const productionApi = {
   saveFlowRules: (body: Record<string, unknown>) => api.put('/production/flow-rules', body),
   listRoutings: () => api.get<PageData>('/production/routings'),
   getRouting: (id: number) => api.get(`/production/routings/${id}`),
+}
+
+export const bizApi = {
+  listEvidence: (bizType: string, bizId: number) =>
+    api.get(`/biz/evidences?biz_type=${encodeURIComponent(bizType)}&biz_id=${bizId}`),
+  addEvidence: (body: Record<string, unknown>) => api.post('/biz/evidences', body),
+  correct: (body: Record<string, unknown>) => api.post('/biz/corrections', body),
+}
+
+export const notifyApi = {
+  mqttConnect: () => api.get<{ mqtt?: Record<string, unknown> }>('/notify/mqtt-connect'),
+  inbox: (params?: string) => api.get(`/notify/inbox${params ? `?${params}` : ''}`),
+  readInbox: (id: number) => api.post(`/notify/inbox/${id}/read`, {}),
+  tasks: (params?: string) => api.get(`/workflow/tasks${params ? `?${params}` : ''}`),
+  claimTask: (id: number) => api.post(`/workflow/tasks/${id}/claim`, {}),
 }
 
 export const systemApi = {
@@ -202,6 +223,30 @@ export const salesApi = {
   confirmPreShip: (id: number, body?: Record<string, unknown>) =>
     api.post(`/sales/pre-shipments/${id}/confirm`, body || {}),
   createPreShip: (body: Record<string, unknown>) => api.post('/sales/pre-shipments', body),
+  outboundSettles: () => api.get<PageData>('/sales/outbound-settles'),
+  createOutboundSettle: (body: Record<string, unknown>) => api.post('/sales/outbound-settles', body),
+  updateOutboundSettle: (id: number, body: Record<string, unknown>) =>
+    api.put(`/sales/outbound-settles/${id}`, body),
+  closeOutboundSettle: (id: number) => api.post(`/sales/outbound-settles/${id}/close`, {}),
+}
+
+export const fieldLedgerApi = {
+  pieceIssueSheets: () => api.get<PageData>('/production/piece-issue-sheets'),
+  createPieceIssueSheet: (body: Record<string, unknown>) => api.post('/production/piece-issue-sheets', body),
+  getPieceIssueSheet: (id: number) => api.get(`/production/piece-issue-sheets/${id}`),
+  generatePieceIssue: (body: Record<string, unknown>) =>
+    api.post('/production/piece-issue-sheets/generate', body),
+  processReports: (params?: string) =>
+    api.get<PageData>(`/production/process-reports${params ? `?${params}` : ''}`),
+  toolItems: () => api.get<PageData>('/hr/tool-items'),
+  toolIssues: () => api.get<PageData>('/hr/tool-issues'),
+  createToolIssue: (body: Record<string, unknown>) => api.post('/hr/tool-issues', body),
+  returnToolIssue: (id: number, body: Record<string, unknown>) =>
+    api.post(`/hr/tool-issues/${id}/return`, body),
+  weighbridges: () => api.get<PageData>('/inventory/weighbridges'),
+  createWeighbridge: (body: Record<string, unknown>) => api.post('/inventory/weighbridges', body),
+  updateWeighbridge: (id: number, body: Record<string, unknown>) =>
+    api.put(`/inventory/weighbridges/${id}`, body),
 }
 
 export const purchaseApi = {
@@ -209,15 +254,30 @@ export const purchaseApi = {
   createFarmer: (body: Record<string, unknown>) => api.post('/purchase/farmers', body),
   getFarmer: (id: number) => api.get(`/purchase/farmers/${id}`),
   updateFarmer: (id: number, body: Record<string, unknown>) => api.put(`/purchase/farmers/${id}`, body),
+  arrivals: (params?: string) =>
+    api.get<PageData>(`/purchase/inbound-arrivals${params ? `?${params}` : ''}`),
+  createArrival: (body: Record<string, unknown>) => api.post('/purchase/inbound-arrivals', body),
+  getArrival: (id: number) => api.get(`/purchase/inbound-arrivals/${id}`),
+  qcArrival: (id: number, body: Record<string, unknown>) =>
+    api.post(`/purchase/inbound-arrivals/${id}/qc`, body),
   weighTickets: () => api.get<PageData>('/purchase/weigh-tickets'),
   createWeighTicket: (body: Record<string, unknown>) => api.post('/purchase/weigh-tickets', body),
   getWeighTicket: (id: number) => api.get(`/purchase/weigh-tickets/${id}`),
   qcWeighTicket: (id: number, body: Record<string, unknown>) =>
     api.post(`/purchase/weigh-tickets/${id}/qc`, body),
+  confirmWeighTicket: (id: number, body: Record<string, unknown>) =>
+    api.post(`/purchase/weigh-tickets/${id}/confirm`, body),
+  labelWeighTicket: (id: number) => api.get(`/purchase/weigh-tickets/${id}/label`),
+  warehouseConfirmWeigh: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/purchase/weigh-tickets/${id}/warehouse-confirm`, body || {}),
   stockInWeighTicket: (id: number) => api.post(`/purchase/weigh-tickets/${id}/stock-in`, {}),
   farmerSettlements: () => api.get<PageData>('/purchase/farmer-settlements'),
+  farmerSettlementSummary: () => api.get('/purchase/farmer-settlements/summary'),
   settleFarmer: (body: Record<string, unknown>) => api.post('/purchase/farmer-settlements', body),
+  payFarmerSettlement: (id: number, body: Record<string, unknown>) =>
+    api.post(`/purchase/farmer-settlements/${id}/pay`, body),
   traceLot: (code: string) => api.get(`/purchase/trace-lots/${encodeURIComponent(code)}`),
+  verifyTraceLot: (body: Record<string, unknown>) => api.post('/purchase/trace-lots/verify', body),
   suppliers: (params?: string) => api.get<PageData>(`/purchase/suppliers${params ? `?${params}` : ''}`),
   getSupplier: (id: number) => api.get(`/purchase/suppliers/${id}`),
   createSupplier: (body: Record<string, unknown>) => api.post('/purchase/suppliers', body),

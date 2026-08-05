@@ -2,6 +2,7 @@ package auth
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -34,6 +35,7 @@ func (h *Handler) Login(c *gin.Context) {
 		api.FailJSON(c, "INVALID_REQUEST")
 		return
 	}
+	clientType := security.NormalizeClientType(req.ClientType)
 	var id int64
 	var hash, userType, status, name string
 	var empID sql.NullInt64
@@ -60,6 +62,7 @@ func (h *Handler) Login(c *gin.Context) {
 		UserID:      id,
 		LoginName:   req.LoginName,
 		UserType:    userType,
+		ClientType:  clientType,
 		Roles:       roles,
 		Permissions: perms,
 	}
@@ -69,11 +72,13 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 	refresh, _ := security.IssueToken(h.Cfg.JWT.Secret, h.Cfg.JWT.RefreshTTLMin, claims)
+	h.saveSession(c, id, access, clientType, h.Cfg.JWT.AccessTTLMin)
 	_, _ = h.DB.Exec(`UPDATE iam_user SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?`, id)
 	api.OK(c, gin.H{
 		"access_token":  access,
 		"refresh_token": refresh,
 		"expires_in":    h.Cfg.JWT.AccessTTLMin * 60,
+		"client_type":   clientType,
 		"user": gin.H{
 			"id":          id,
 			"login_name":  req.LoginName,
@@ -100,15 +105,18 @@ func (h *Handler) Refresh(c *gin.Context) {
 		api.FailJSON(c, "UNAUTHORIZED")
 		return
 	}
+	claims.ClientType = security.NormalizeClientType(claims.ClientType)
 	access, err := security.IssueToken(h.Cfg.JWT.Secret, h.Cfg.JWT.AccessTTLMin, *claims)
 	if err != nil {
 		api.FailJSON(c, "TOKEN_ERROR")
 		return
 	}
+	h.saveSession(c, claims.UserID, access, claims.ClientType, h.Cfg.JWT.AccessTTLMin)
 	api.OK(c, gin.H{
 		"access_token":  access,
 		"refresh_token": req.RefreshToken,
 		"expires_in":    h.Cfg.JWT.AccessTTLMin * 60,
+		"client_type":   claims.ClientType,
 		"roles":         claims.Roles,
 		"permissions":   claims.Permissions,
 	})
@@ -128,11 +136,33 @@ func (h *Handler) Me(c *gin.Context) {
 			"login_name": claims.LoginName,
 			"user_type":  claims.UserType,
 		},
+		"client_type":    claims.ClientType,
 		"roles":          claims.Roles,
 		"permissions":    claims.Permissions,
 		"menus":          menus,
 		"field_policies": fields,
 	})
+}
+
+func (h *Handler) saveSession(c *gin.Context, userID int64, accessToken, clientType string, ttlMin int) {
+	expireAt := time.Now().Add(time.Duration(ttlMin) * time.Minute).UTC().Format("2006-01-02 15:04:05.000")
+	_, _ = h.DB.Exec(`
+		INSERT INTO iam_user_session (user_id, token_hash, client_type, ip, user_agent, expire_at)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		userID,
+		security.HashToken(accessToken),
+		clientType,
+		c.ClientIP(),
+		truncateUA(c.Request.UserAgent()),
+		expireAt,
+	)
+}
+
+func truncateUA(ua string) string {
+	if len(ua) > 512 {
+		return ua[:512]
+	}
+	return ua
 }
 
 func (h *Handler) loadRolesPerms(userID int64) ([]string, []string) {

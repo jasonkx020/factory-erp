@@ -100,6 +100,140 @@ func EnsureAutomationSchema(db *sql.DB) {
 	}
 	seedAutomation(db)
 	EnsureFarmerSchema(db)
+	EnsureClosedLoopSchema(db)
+	EnsureFieldLedgerSchema(db)
+}
+
+// EnsureClosedLoopSchema evidence, audit, arrival, trace lot, confirm columns.
+func EnsureClosedLoopSchema(db *sql.DB) {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS biz_evidence (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  biz_type TEXT NOT NULL,
+  biz_id INTEGER NOT NULL,
+  evidence_type TEXT NOT NULL,
+  file_url TEXT NOT NULL,
+  meta_json TEXT,
+  uploaded_by INTEGER,
+  uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
+  voided_at TEXT
+)`,
+		`CREATE TABLE IF NOT EXISTS biz_audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  biz_type TEXT NOT NULL,
+  biz_id INTEGER NOT NULL,
+  action TEXT NOT NULL,
+  reason TEXT,
+  before_json TEXT,
+  after_json TEXT,
+  actor_user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+)`,
+		`CREATE TABLE IF NOT EXISTS pur_inbound_arrival (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc_no TEXT NOT NULL UNIQUE,
+  farmer_id INTEGER NOT NULL,
+  origin TEXT,
+  variety TEXT,
+  estimate_weight REAL DEFAULT 0,
+  source_type TEXT NOT NULL DEFAULT 'self',
+  channel TEXT NOT NULL DEFAULT 'internal',
+  qc_result TEXT,
+  grade TEXT,
+  status TEXT NOT NULL DEFAULT 'draft',
+  qc_image_url TEXT,
+  confirmed_by INTEGER,
+  confirmed_at TEXT,
+  confirmed_snapshot_json TEXT,
+  remark TEXT,
+  biz_date TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  is_deleted INTEGER NOT NULL DEFAULT 0
+)`,
+		`CREATE TABLE IF NOT EXISTS pur_trace_lot (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  trace_code TEXT NOT NULL UNIQUE,
+  biz_date TEXT NOT NULL,
+  batch_no TEXT NOT NULL,
+  farmer_id INTEGER NOT NULL,
+  grade TEXT,
+  arrival_id INTEGER,
+  weigh_ticket_id INTEGER,
+  channel TEXT,
+  source_type TEXT,
+  net_weight REAL NOT NULL DEFAULT 0,
+  payload_canonical TEXT NOT NULL,
+  signature TEXT NOT NULL,
+  algo TEXT NOT NULL DEFAULT 'HmacSHA256_v1',
+  replaces_trace_code TEXT,
+  status TEXT NOT NULL DEFAULT 'open',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+)`,
+		`CREATE TABLE IF NOT EXISTS pur_grade_price (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  grade TEXT NOT NULL UNIQUE,
+  unit_price REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active'
+)`,
+	}
+	for _, s := range stmts {
+		if _, err := db.Exec(s); err != nil {
+			log.Printf("closed-loop schema note: %v", err)
+		}
+	}
+	alters := []string{
+		`ALTER TABLE pur_farmer ADD COLUMN default_unit_price REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN arrival_id INTEGER`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN grade TEXT`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN batch_no TEXT`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN ocr_draft_json TEXT`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN confirmed_by INTEGER`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN confirmed_at TEXT`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN confirmed_snapshot_json TEXT`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN purchase_completed_at TEXT`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN plate_no TEXT`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN receive_address TEXT`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN pass_rate REAL DEFAULT 0`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN reject_weight REAL DEFAULT 0`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN freight_fee REAL DEFAULT 0`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN loading_fee REAL DEFAULT 0`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN weigh_fee REAL DEFAULT 0`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN weighbridge_id INTEGER`,
+		`ALTER TABLE pur_inbound_arrival ADD COLUMN plate_no TEXT`,
+		`ALTER TABLE pur_inbound_arrival ADD COLUMN receive_address TEXT`,
+		`ALTER TABLE pur_inbound_arrival ADD COLUMN pass_rate REAL DEFAULT 0`,
+		`ALTER TABLE pur_inbound_arrival ADD COLUMN reject_weight REAL DEFAULT 0`,
+		`ALTER TABLE pur_inbound_arrival ADD COLUMN freight_fee REAL DEFAULT 0`,
+		`ALTER TABLE pur_inbound_arrival ADD COLUMN loading_fee REAL DEFAULT 0`,
+		`ALTER TABLE pur_inbound_arrival ADD COLUMN weigh_fee REAL DEFAULT 0`,
+		`ALTER TABLE pur_farmer_settlement ADD COLUMN transfer_no TEXT`,
+		`ALTER TABLE pur_farmer_settlement ADD COLUMN paid_at TEXT`,
+		`ALTER TABLE pur_farmer_settlement ADD COLUMN pay_evidence_url TEXT`,
+		`ALTER TABLE pur_farmer_settlement ADD COLUMN freight_fee REAL DEFAULT 0`,
+		`ALTER TABLE pur_farmer_settlement ADD COLUMN loading_fee REAL DEFAULT 0`,
+		`ALTER TABLE pur_farmer_settlement ADD COLUMN weigh_fee REAL DEFAULT 0`,
+		`ALTER TABLE pur_farmer_settlement ADD COLUMN goods_amount REAL DEFAULT 0`,
+		`ALTER TABLE pd_report_work ADD COLUMN confirmed_by INTEGER`,
+		`ALTER TABLE pd_report_work ADD COLUMN confirmed_at TEXT`,
+		`ALTER TABLE pd_report_work ADD COLUMN confirmed_snapshot_json TEXT`,
+		`ALTER TABLE pd_report_work ADD COLUMN process_qc_result TEXT`,
+		`ALTER TABLE pd_report_work ADD COLUMN bag_qty REAL DEFAULT 0`,
+		`ALTER TABLE pd_scrap_record ADD COLUMN scrap_type TEXT`,
+		`ALTER TABLE pd_piecework_summary ADD COLUMN transfer_no TEXT`,
+		`ALTER TABLE pd_piecework_summary ADD COLUMN paid_at TEXT`,
+		`ALTER TABLE pd_piecework_summary ADD COLUMN pay_evidence_url TEXT`,
+		`ALTER TABLE pd_piecework_summary ADD COLUMN status TEXT DEFAULT 'open'`,
+		`ALTER TABLE pay_process_wage_rate ADD COLUMN rate_unit TEXT DEFAULT 'kg'`,
+	}
+	for _, a := range alters {
+		if _, err := db.Exec(a); err != nil {
+			// column may already exist
+			_ = err
+		}
+	}
+	_, _ = db.Exec(`INSERT OR IGNORE INTO pur_grade_price(grade, unit_price, status) VALUES
+ ('A', 1.20, 'active'), ('B', 1.00, 'active'), ('C', 0.80, 'active')`)
 }
 
 // EnsureFarmerSchema creates farmer inbound / weigh / settlement tables.
@@ -440,3 +574,111 @@ func seedPurchase(db *sql.DB) {
  (2, 2, 2, 1, 100, 7, 0.45),
  (3, 3, 1, 0, 500, 5, 1.90)`)
 }
+
+// EnsureFieldLedgerSchema 现场台账：出厂结算、计件领料表、工具领还、地磅。
+func EnsureFieldLedgerSchema(db *sql.DB) {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS sl_outbound_settle (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc_no TEXT NOT NULL UNIQUE,
+  biz_date TEXT NOT NULL,
+  product_id INTEGER,
+  product_name TEXT,
+  plate_no TEXT,
+  driver_name TEXT,
+  trace_code TEXT,
+  produce_date TEXT,
+  qty REAL DEFAULT 0,
+  weight REAL DEFAULT 0,
+  unit TEXT DEFAULT 'kg',
+  freight_fee REAL DEFAULT 0,
+  loading_fee REAL DEFAULT 0,
+  weigh_fee REAL DEFAULT 0,
+  unit_price REAL DEFAULT 0,
+  goods_amount REAL DEFAULT 0,
+  amount REAL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'draft',
+  remark TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  is_deleted INTEGER NOT NULL DEFAULT 0
+)`,
+		`CREATE TABLE IF NOT EXISTS pd_piece_issue_sheet (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc_no TEXT NOT NULL UNIQUE,
+  biz_date TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft',
+  remark TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+)`,
+		`CREATE TABLE IF NOT EXISTS pd_piece_issue_line (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sheet_id INTEGER NOT NULL,
+  seq_no INTEGER NOT NULL DEFAULT 1,
+  employee_id INTEGER,
+  employee_name TEXT,
+  process_id INTEGER,
+  process_name TEXT,
+  process_kind TEXT DEFAULT 'piece',
+  unit_price REAL DEFAULT 0,
+  qty REAL DEFAULT 0,
+  reject_qty REAL DEFAULT 0,
+  qty_total REAL DEFAULT 0,
+  amount REAL DEFAULT 0,
+  remark TEXT
+)`,
+		`CREATE TABLE IF NOT EXISTS hr_tool_item (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active'
+)`,
+		`CREATE TABLE IF NOT EXISTS hr_tool_issue (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc_no TEXT NOT NULL UNIQUE,
+  biz_date TEXT NOT NULL,
+  seq_no INTEGER DEFAULT 1,
+  employee_id INTEGER,
+  employee_name TEXT,
+  tool_item_id INTEGER NOT NULL,
+  tool_name TEXT,
+  issue_qty REAL DEFAULT 0,
+  return_qty REAL DEFAULT 0,
+  total_qty REAL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'open',
+  remark TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+)`,
+		`CREATE TABLE IF NOT EXISTS inv_weighbridge (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  location TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  remark TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+)`,
+	}
+	for _, s := range stmts {
+		if _, err := db.Exec(s); err != nil {
+			log.Printf("field ledger schema note: %v", err)
+		}
+	}
+	_, _ = db.Exec(`INSERT OR IGNORE INTO hr_tool_item(id, code, name, status) VALUES
+ (1,'TOOL-SCRAPER','刮刀','active'),
+ (2,'TOOL-KNIFE','小刀','active'),
+ (3,'TOOL-GLOVE-T','厚手套','active'),
+ (4,'TOOL-GLOVE-S','薄手套','active'),
+ (5,'TOOL-HAT','帽子','active'),
+ (6,'TOOL-UNIFORM','工服','active'),
+ (7,'TOOL-SHOES','鞋子','active')`)
+	_, _ = db.Exec(`INSERT OR IGNORE INTO inv_weighbridge(id, code, name, location, status) VALUES
+ (1,'WB-GATE','大门地磅','厂区大门','active'),
+ (2,'WB-FORK','叉车秤','原料区','active')`)
+	_, _ = db.Exec(`INSERT OR IGNORE INTO prd_product_unit(product_id, unit_name, is_base, factor_to_base, is_purchase, is_sale, is_stock)
+ SELECT id, '袋', 0, 25, 1, 1, 1 FROM prd_product WHERE product_type IN ('semi','finished') AND id NOT IN (
+  SELECT product_id FROM prd_product_unit WHERE unit_name='袋'
+ )`)
+}
+

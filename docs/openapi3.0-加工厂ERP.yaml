@@ -13283,6 +13283,528 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkAnyResponse"
 
+
+
+  /api/v1/mqtt/auth:
+    post:
+      tags: [系统管理]
+      summary: NanoMQ-HTTP认证
+      operationId: post_api_v1_mqtt_auth
+      description: |
+        功能模块：工作流推送；分期：2
+      x-erp-phase: 2
+      x-erp-module: 工作流推送
+      security: []
+      responses:
+        "200":
+          description: OK
+        "403":
+          description: Forbidden
+
+  /api/v1/mqtt/superuser:
+    post:
+      tags: [系统管理]
+      summary: NanoMQ-超管校验
+      operationId: post_api_v1_mqtt_superuser
+      description: |
+        功能模块：工作流推送；分期：2
+      x-erp-phase: 2
+      x-erp-module: 工作流推送
+      security: []
+      responses:
+        "200":
+          description: OK
+        "403":
+          description: Forbidden
+
+  /api/v1/mqtt/acl:
+    post:
+      tags: [系统管理]
+      summary: NanoMQ-ACL
+      operationId: post_api_v1_mqtt_acl
+      description: |
+        功能模块：工作流推送；分期：2
+      x-erp-phase: 2
+      x-erp-module: 工作流推送
+      security: []
+      responses:
+        "200":
+          description: OK
+        "403":
+          description: Forbidden
+
+  /api/v1/notify/mqtt-connect:
+    get:
+      tags: [系统管理]
+      summary: MQTT连接凭证下发
+      operationId: get_api_v1_notify_mqtt_connect
+      description: |
+        功能模块：工作流推送；分期：2
+      x-erp-phase: 2
+      x-erp-module: 工作流推送
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/notify/inbox:
+    get:
+      tags: [系统管理]
+      summary: 通知收件箱
+      operationId: get_api_v1_notify_inbox
+      description: |
+        功能模块：工作流推送；分期：2
+      x-erp-phase: 2
+      x-erp-module: 工作流推送
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/notify/inbox/{id}/read:
+    post:
+      tags: [系统管理]
+      summary: 通知已读
+      operationId: post_api_v1_notify_inbox_id_read
+      description: |
+        功能模块：工作流推送；分期：2
+      x-erp-phase: 2
+      x-erp-module: 工作流推送
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/workflow/tasks:
+    get:
+      tags: [系统管理]
+      summary: 工作流待办
+      operationId: get_api_v1_workflow_tasks
+      description: |
+        功能模块：工作流推送；分期：2
+      x-erp-phase: 2
+      x-erp-module: 工作流推送
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/workflow/tasks/{id}/claim:
+    post:
+      tags: [系统管理]
+      summary: 认领待办
+      operationId: post_api_v1_workflow_tasks_id_claim
+      description: |
+        功能模块：工作流推送；分期：2
+      x-erp-phase: 2
+      x-erp-module: 工作流推送
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/biz/evidences:
+    get:
+      tags: [系统管理]
+      summary: 业务证据-列表
+      operationId: get_api_v1_biz_evidences
+      description: |
+        功能模块：证据倒查；分期：2
+      x-erp-phase: 2
+      x-erp-module: 证据倒查
+      parameters:
+        - name: biz_type
+          in: query
+          schema: { type: string }
+        - name: biz_id
+          in: query
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [系统管理]
+      summary: 业务证据-上传登记
+      operationId: post_api_v1_biz_evidences
+      description: |
+        功能模块：证据倒查；分期：2
+      x-erp-phase: 2
+      x-erp-module: 证据倒查
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/biz/corrections:
+    post:
+      tags: [系统管理]
+      summary: 业务纠错/作废（禁止物理删除）
+      operationId: post_api_v1_biz_corrections
+      description: |
+        功能模块：证据倒查；分期：2
+      x-erp-phase: 2
+      x-erp-module: 证据倒查
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/inbound-arrivals:
+    get:
+      tags: [采购管理]
+      summary: 到货单-列表
+      operationId: get_api_v1_purchase_inbound_arrivals
+      description: |
+        功能模块：过磅收货；分期：2
+      x-erp-phase: 2
+      x-erp-module: 过磅收货
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [采购管理]
+      summary: 到货单-新建
+      operationId: post_api_v1_purchase_inbound_arrivals
+      description: |
+        功能模块：过磅收货；分期：2
+      x-erp-phase: 2
+      x-erp-module: 过磅收货
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/inbound-arrivals/{id}:
+    get:
+      tags: [采购管理]
+      summary: 到货单-详情
+      operationId: get_api_v1_purchase_inbound_arrivals_id
+      description: |
+        功能模块：过磅收货；分期：2
+      x-erp-phase: 2
+      x-erp-module: 过磅收货
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/inbound-arrivals/{id}/qc:
+    post:
+      tags: [采购管理]
+      summary: 到货单-质检定级确认
+      operationId: post_api_v1_purchase_inbound_arrivals_id_qc
+      description: |
+        功能模块：过磅收货；分期：2
+      x-erp-phase: 2
+      x-erp-module: 过磅收货
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/weigh-tickets/{id}/confirm:
+    post:
+      tags: [采购管理]
+      summary: 过磅单-确认出码
+      operationId: post_api_v1_purchase_weigh_tickets_id_confirm
+      description: |
+        功能模块：过磅收货；分期：2
+      x-erp-phase: 2
+      x-erp-module: 过磅收货
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/weigh-tickets/{id}/label:
+    get:
+      tags: [采购管理]
+      summary: 过磅单-标签打印数据
+      operationId: get_api_v1_purchase_weigh_tickets_id_label
+      description: |
+        功能模块：原料溯源；分期：2
+      x-erp-phase: 2
+      x-erp-module: 原料溯源
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/weigh-tickets/{id}/warehouse-confirm:
+    post:
+      tags: [采购管理]
+      summary: 过磅单-仓管确认入库
+      operationId: post_api_v1_purchase_weigh_tickets_id_warehouse_confirm
+      description: |
+        功能模块：过磅收货；分期：2
+      x-erp-phase: 2
+      x-erp-module: 过磅收货
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/farmer-settlements/summary:
+    get:
+      tags: [采购管理]
+      summary: 农户结算-汇总
+      operationId: get_api_v1_purchase_farmer_settlements_summary
+      description: |
+        功能模块：农户结算；分期：2
+      x-erp-phase: 2
+      x-erp-module: 农户结算
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/farmer-settlements/{id}/pay:
+    post:
+      tags: [采购管理]
+      summary: 农户结算-支付关单
+      operationId: post_api_v1_purchase_farmer_settlements_id_pay
+      description: |
+        功能模块：农户结算；分期：2
+      x-erp-phase: 2
+      x-erp-module: 农户结算
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/trace-lots/verify:
+    post:
+      tags: [采购管理]
+      summary: 追溯码-验签
+      operationId: post_api_v1_purchase_trace_lots_verify
+      description: |
+        功能模块：原料溯源；分期：2
+      x-erp-phase: 2
+      x-erp-module: 原料溯源
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/production/report-works/{id}/confirm:
+    post:
+      tags: [生产管理]
+      summary: 报工-确认过账
+      operationId: post_api_v1_production_report_works_id_confirm
+      description: |
+        功能模块：扫码报工；分期：1
+      x-erp-phase: 1
+      x-erp-module: 扫码报工
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/production/piecework-summaries/{id}/pay:
+    post:
+      tags: [生产管理]
+      summary: 计件汇总-劳动支付
+      operationId: post_api_v1_production_piecework_summaries_id_pay
+      description: |
+        功能模块：扫码报工；分期：2
+      x-erp-phase: 2
+      x-erp-module: 扫码报工
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
   /api/v1/report/accounts:
     get:
       tags: [统计报表]
@@ -17537,6 +18059,93 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkAnyResponse"
 
+  /api/v1/sales/outbound-settles:
+    get:
+      operationId: get_api_v1_sales_outbound_settles
+      summary: 销售出厂结算列表
+      responses: { '200': { description: ok } }
+    post:
+      operationId: post_api_v1_sales_outbound_settles
+      summary: 新建销售出厂结算
+      responses: { '200': { description: ok } }
+  /api/v1/sales/outbound-settles/{id}:
+    get:
+      operationId: get_api_v1_sales_outbound_settles_id
+      summary: 出厂结算详情
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { '200': { description: ok } }
+    put:
+      operationId: put_api_v1_sales_outbound_settles_id
+      summary: 更新出厂结算
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { '200': { description: ok } }
+  /api/v1/sales/outbound-settles/{id}/close:
+    post:
+      operationId: post_api_v1_sales_outbound_settles_id_close
+      summary: 关单出厂结算
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { '200': { description: ok } }
+  /api/v1/production/piece-issue-sheets:
+    get:
+      operationId: get_api_v1_production_piece_issue_sheets
+      summary: 计件领料表列表
+      responses: { '200': { description: ok } }
+    post:
+      operationId: post_api_v1_production_piece_issue_sheets
+      summary: 新建计件领料表
+      responses: { '200': { description: ok } }
+  /api/v1/production/piece-issue-sheets/generate:
+    post:
+      operationId: post_api_v1_production_piece_issue_sheets_generate
+      summary: 从报工生成领料表草稿
+      responses: { '200': { description: ok } }
+  /api/v1/production/piece-issue-sheets/{id}:
+    get:
+      operationId: get_api_v1_production_piece_issue_sheets_id
+      summary: 计件领料表详情
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { '200': { description: ok } }
+  /api/v1/production/process-reports:
+    get:
+      operationId: get_api_v1_production_process_reports
+      summary: 加工记录列表
+      responses: { '200': { description: ok } }
+  /api/v1/hr/tool-items:
+    get:
+      operationId: get_api_v1_hr_tool_items
+      summary: 工具品类
+      responses: { '200': { description: ok } }
+  /api/v1/hr/tool-issues:
+    get:
+      operationId: get_api_v1_hr_tool_issues
+      summary: 工具领还列表
+      responses: { '200': { description: ok } }
+    post:
+      operationId: post_api_v1_hr_tool_issues
+      summary: 工具领取
+      responses: { '200': { description: ok } }
+  /api/v1/hr/tool-issues/{id}/return:
+    post:
+      operationId: post_api_v1_hr_tool_issues_id_return
+      summary: 工具交还
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { '200': { description: ok } }
+  /api/v1/inventory/weighbridges:
+    get:
+      operationId: get_api_v1_inventory_weighbridges
+      summary: 地磅列表
+      responses: { '200': { description: ok } }
+    post:
+      operationId: post_api_v1_inventory_weighbridges
+      summary: 新建地磅
+      responses: { '200': { description: ok } }
+  /api/v1/inventory/weighbridges/{id}:
+    put:
+      operationId: put_api_v1_inventory_weighbridges_id
+      summary: 更新地磅
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { '200': { description: ok } }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -17615,7 +18224,9 @@ components:
           type: string
         client_type:
           type: string
-          description: web/mp_worker/mp_sales/pad/boss
+          description: Canonical admin|boss|employee|mobile. Legacy web→admin; pad/mp_worker/mp_sales→employee.
+          enum: [admin, boss, employee, mobile, web, pad, mp_worker, mp_sales]
+
     LoginData:
       type: object
       properties:
@@ -18391,7 +19002,8 @@ components:
           format: int64
         emp_type:
           type: string
-          enum: [piece, fixed, office]
+          description: piece 计件工 / temp 临时工 / fixed 固定工 / office 职能内勤
+          enum: [piece, temp, fixed, office]
         dept_id:
           type: integer
           format: int64

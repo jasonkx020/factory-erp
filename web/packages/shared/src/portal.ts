@@ -1,22 +1,16 @@
-/** Dev ports and production public paths — aligned with demo layout */
+/** Dev ports and production public paths */
 export const TERMINAL_DEV_PORTS = {
   portal: 5170,
   admin: 5173,
-  workshop: 5174,
-  worker: 5175,
-  sales: 5176,
+  employee: 5174,
   boss: 5177,
-  customer: 5178,
 } as const
 
 export const TERMINAL_PROD_PATHS = {
   portal: '/',
   admin: '/admin/',
-  workshop: '/front/workshop/',
-  worker: '/front/worker/',
-  sales: '/front/sales/',
+  employee: '/front/',
   boss: '/front/boss/',
-  customer: '/user/',
 } as const
 
 export type TerminalKey = keyof typeof TERMINAL_PROD_PATHS

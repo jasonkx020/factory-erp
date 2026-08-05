@@ -276,7 +276,7 @@ erDiagram
 
 | 实体 | 中文名 | 主键 | 关键字段 | 关联 | 分期 |
 |------|--------|------|----------|------|------|
-| Employee | 员工 | id | emp_no, name, org_id, dept_id, workshop_id, team_id, job_title, emp_type(piece/fixed/office), mobile, status, user_id | Organization, Department, Workshop, WorkTeam, User | 一期 |
+| Employee | 员工 | id | emp_no, name, org_id, dept_id, workshop_id, team_id, job_title, emp_type(piece计件工/temp临时工/fixed固定工/office职能内勤), mobile, status, user_id | Organization, Department, Workshop, WorkTeam, User | 一期 |
 | Onboard | 入职登记 | id | employee_id, onboard_date, status, role_ids_json | Employee | 一期 |
 | Offboard | 离职登记 | id | employee_id, offboard_date, reason, revoke_permission(bool), status | Employee | 一期 |
 | Shift | 班次 | id | code, name, start_time, end_time, workshop_id | Workshop | 一期 |

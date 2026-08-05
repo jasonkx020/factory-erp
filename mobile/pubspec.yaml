@@ -1,0 +1,25 @@
+name: erp_employee
+description: Factory ERP employee app (Android/iOS). Shared IAM with admin; client_type=mobile.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  http: ^1.2.2
+  shared_preferences: ^2.3.3
+  provider: ^6.1.2
+  mqtt_client: ^10.11.11
+  flutter_local_notifications: ^22.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

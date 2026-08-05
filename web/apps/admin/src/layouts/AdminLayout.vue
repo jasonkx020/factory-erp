@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore, usePermStore, portalHomeUrl } from '@erp/shared'
+import NotifyBell from '../components/NotifyBell.vue'
 
 const auth = useAuthStore()
 const perm = usePermStore()
@@ -16,6 +17,12 @@ const crumb = computed(() => {
   const m = route.params.module as string
   if (d && m) return `${d} / ${m}`
   if (route.path.startsWith('/loops')) return '业务闭环'
+  if (route.path.includes('/warehouse/inbound')) return '仓管待入库'
+  if (route.path.includes('/sales/outbound-settle')) return '出厂结算'
+  if (route.path.includes('/production/process-reports')) return '加工记录'
+  if (route.path.includes('/production/piece-issue')) return '计件领料表'
+  if (route.path.includes('/hr/tool-issues')) return '工具领还'
+  if (route.path.includes('/inventory/ledger')) return '库存/地磅'
   if (route.path.includes('/automation/routing')) return '工艺路线'
   if (route.path.includes('/automation/trace')) return '全链追溯'
   if (route.path.includes('/automation/logs')) return '操作日志'
@@ -50,6 +57,12 @@ function logout() {
       </div>
       <el-button class="home-btn" @click="router.push('/')">工作台</el-button>
       <el-button class="home-btn ghost" @click="router.push('/loops')">业务闭环</el-button>
+      <el-button class="home-btn ghost" @click="router.push('/warehouse/inbound')">仓管待入库</el-button>
+      <el-button class="home-btn ghost" @click="router.push('/sales/outbound-settle')">出厂结算</el-button>
+      <el-button class="home-btn ghost" @click="router.push('/production/process-reports')">加工记录</el-button>
+      <el-button class="home-btn ghost" @click="router.push('/production/piece-issue')">计件领料表</el-button>
+      <el-button class="home-btn ghost" @click="router.push('/hr/tool-issues')">工具领还</el-button>
+      <el-button class="home-btn ghost" @click="router.push('/inventory/ledger')">库存/地磅</el-button>
       <el-button class="home-btn ghost" @click="router.push('/automation/routing')">工艺路线</el-button>
       <el-button class="home-btn ghost" @click="router.push('/automation/trace')">追溯</el-button>
       <el-button class="home-btn ghost" @click="router.push('/automation/logs')">审计日志</el-button>
@@ -76,6 +89,7 @@ function logout() {
       <header class="topbar">
         <span class="crumb">{{ crumb }}</span>
         <span class="user">
+          <NotifyBell />
           {{ auth.user?.name || auth.user?.login_name || '用户' }}
           <el-button link type="danger" @click="logout">退出</el-button>
         </span>

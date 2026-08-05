@@ -11,3 +11,17 @@ jwt:
 cors:
   allow_origins:
     - "*"
+trace:
+  hmac_secret: "dev-trace-hmac-change-me"
+mqtt:
+  enabled: true
+  broker: nanomq
+  broker_url: "tcp://127.0.0.1:1883"
+  ws_url: "ws://127.0.0.1:8083/mqtt"
+  http_auth_enabled: true
+  server_username: "erp-hub"
+  server_password: "change-me-hub"
+  client_prefix: "erp"
+  tenant: "default"
+  token_ttl_seconds: 43200
+  keep_alive_seconds: 60

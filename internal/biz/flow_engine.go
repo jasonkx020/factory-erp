@@ -212,7 +212,7 @@ func (s *Services) autoStock(boxCode string, warehouseID, processID int64, qty f
 		productID = 1
 	}
 	docNo := fmt.Sprintf("ST%d", time.Now().UnixNano())
-	res, err := s.DB.Exec(`INSERT INTO inv_stock_txn(doc_no, doc_type, biz_date, status, warehouse_id, remark) VALUES(?,?,date('now'),'draft',?,?)`,
+	res, err := s.DB.Exec(`INSERT INTO inv_stock_txn(doc_no, doc_type, biz_date, status, warehouse_id, remark) VALUES(?,?,date('now'),'posted',?,?)`,
 		docNo, txnType, wh, "auto:"+boxCode)
 	if err != nil {
 		return err
@@ -224,7 +224,6 @@ func (s *Services) autoStock(boxCode string, warehouseID, processID int64, qty f
 	}
 	_, _ = s.DB.Exec(`INSERT INTO inv_stock_txn_line(txn_id, line_no, product_id, qty, base_qty, direction) VALUES(?,?,?,?,?,?)`,
 		tid, 1, productID, qty, qty, dir)
-	// post immediately
 	sign := -1.0
 	if dir == "in" {
 		sign = 1

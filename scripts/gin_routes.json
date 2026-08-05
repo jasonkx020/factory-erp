@@ -1,5 +1,1009 @@
 [
   {
+    "method": "POST",
+    "path": "/api/v1/production/report-works"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/report-works/:id/correct"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/report-works/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/requisitions"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/requisitions/:id/post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/reworks"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/reworks/:id/close"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/routings"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/task-merges"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/task-merges/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/tasks"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/tasks/:id/close"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/dispatches"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/dispatches/:id/receive"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/drawing-links"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/flex-dispatches"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/flex-dispatches/:id/reassign"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/flow-events/:id/retry"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/scan"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/scan/resolve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/scraps"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/piecework-summaries/recalc"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/piecework-summaries/:id/pay"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/processes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/boms"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/boms/generate"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/outsources"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/outsources/:id/receive"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/qc-orders"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/qc-orders/:id/complete"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/consignments"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/mrp-runs"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/workshops"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/product/products"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/product/products/:id/activate"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/product/products/:id/deactivate"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/product/specs"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/inbounds"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/inbounds/:id/post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/inbound-arrivals"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/inbound-arrivals/:id/qc"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/incoming-qcs"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/incoming-qcs/:id/fail"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/incoming-qcs/:id/pass"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/suppliers"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/suppliers/:id/activate"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/suppliers/:id/blacklist"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/suppliers/:id/freeze"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/suppliers/:id/qualify"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/qc"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/stock-in"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/warehouse-confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/requests"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/requests/:id/submit"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/returns"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/returns/:id/post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/tasks"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/tasks/:id/assign"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/tasks/:id/complete"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/trace-lots/verify"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/farmer-settlements"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/farmer-settlements/:id/pay"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/farmers"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/plans"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/plans/:id/submit"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/payroll/commission-calcs"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/payroll/commission-rules"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/payroll/calculations"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/payroll/sheets"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/payroll/sheets/batch-generate"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/payroll/sheets/:id/adjust"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/payroll/wage-rates"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/payroll/worker-profiles"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/pre-shipments"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/pre-shipments/:id/release"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/pre-shipments/:id/reserve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/pre-shipments/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/price-locks"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/prints"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/orders"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/orders/:id/cancel"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/orders/:id/changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/orders/:id/rebuy"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/orders/:id/submit"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/deliveries"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/deliveries/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/deliveries/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/deliveries/:id/ship"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/inquiries"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/inquiries/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/inquiries/:id/to-order"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/contracts"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/cost-budgets"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/quote-calculator/apply"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/quote-calculator/calc"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/sales-boms"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/self-orders"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/system/data-repairs"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/system/data-repairs/:id/apply"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/system/documents"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/system/drawings"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/system/announcements"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/system/announcements/:id/publish"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/system/approval-flows"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/system/personnel-transfers"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/system/personnel-transfers/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/system/print-templates"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/system/batch-payroll-jobs"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/system/batch-price-jobs"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/system/courses"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/system/formulas"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/system/knowledge"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/system/logistics/carriers"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/system/memos"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/system/reminders"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/stock-txns"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/stock-txns/:id/cancel"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/stock-txns/:id/post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/stocktakes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/stocktakes/:id/post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/stocktakes/:id/submit"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/sales-peel-returns"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/sales-peel-returns/:id/post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/inbound-qcs"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/inbound-qcs/:id/fail"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/inbound-qcs/:id/pass"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/workshop-stocktakes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/workshop-stocktakes/:id/post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/workshop-stocktakes/:id/submit"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/assemble-splits"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/assemble-splits/:id/post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/box-codes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/box-codes/:id/bind"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/consumes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/consumes/:id/post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/material-to-payables"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/material-to-payables/:id/submit"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/openings"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/openings/:id/post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/transfers"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/transfers/:id/post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/price-adjusts"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/reservations/:id/release"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/iam/users"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/iam/users/:id/freeze"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/iam/users/:id/unfreeze"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/iam/admin-groups"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/iam/permissions/sync"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/iam/roles"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/iam/sessions/:id/revoke"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/cost-accountings"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/cost-accountings/:id/calc"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/cost-allocations"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/cost-allocations/:id/revoke"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/contract-profits/recalc"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/cashier-reconciles"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/cashier-reconciles/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/approvals/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/approvals/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/arap-adjusts"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/arap-adjusts/:id/post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/account-subjects"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/fund-transfers"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/fund-transfers/:id/post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/fund-accounts"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/fx-settlements"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/fx-settlements/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/month-closes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/month-closes/:id/reopen"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/miniprogram-bills/reconcile"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/payment-recognitions"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/payment-recognitions/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/prepay-prepaids"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/receipt-writeoffs"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/receipt-writeoffs/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/receipt-alerts/:id/handle"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/sales-return-finances"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/sales-return-finances/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/statements/generate"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/vouchers"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/vouchers/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/invoices"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/ledger-entries"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/affairs/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/affairs/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/attendance/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/attendance/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/expense-finance/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/expense-finance/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/expense-requests"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/expense-requests/:id/submit"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/inquiry-finance/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/inquiry-finance/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/inquiry-lines/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/inquiry-lines/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/purchase-plans/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/purchase-plans/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/purchases/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/purchases/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/doc-reviews/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/doc-reviews/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/tasks/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/tasks/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/asset/transfers"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/asset/transfers/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/asset/categories"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/asset/fixed-assets"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/auth/login"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/auth/refresh"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/onboards"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/onboards/:id/cancel"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/onboards/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/offboards"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/offboards/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/overtime-patches"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/attendance/records"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/attendance/records/patch"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/attendance/records/punch"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/attendance/rules"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/attendance/month-stats/recalc"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/employee-imports"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/employee-journals"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/employees"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/employees/:id/open-account"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/leave-requests"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/leave-requests/:id/cancel"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/performance/results"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/performance/schemes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/memos"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/shifts"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/visits"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/crm/customers"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/crm/customers/:id/hide"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/crm/customers/:id/lock"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/crm/opportunities"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/crm/opportunities/:id/convert"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/crm/follow-ups"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/crm/imports"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/crm/lead-assigns"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/crm/protect-rules"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/crm/releases"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/crm/task-reminders"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/mqtt/auth"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/mqtt/acl"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/mqtt/superuser"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/biz/evidences"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/biz/corrections"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/notify/inbox/:id/read"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/workflow/tasks/:id/claim"
+  },
+  {
     "method": "GET",
     "path": "/api/v1/production/report-works"
   },
@@ -205,6 +1209,30 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/purchase/inbounds"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/inbounds/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/inbound-arrivals"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/inbound-arrivals/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/incoming-qcs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/incoming-qcs/:id"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/purchase/suppliers"
   },
   {
@@ -222,22 +1250,6 @@
   {
     "method": "GET",
     "path": "/api/v1/purchase/suppliers/:id/supply-items"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/inbounds"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/inbounds/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/incoming-qcs"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/incoming-qcs/:id"
   },
   {
     "method": "GET",
@@ -269,6 +1281,10 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/purchase/farmer-settlements/summary"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/purchase/plans"
   },
   {
@@ -293,19 +1309,23 @@
   },
   {
     "method": "GET",
-    "path": "/api/v1/purchase/analytics/supplier-performance"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/analytics/volume-price"
-  },
-  {
-    "method": "GET",
     "path": "/api/v1/purchase/weigh-tickets"
   },
   {
     "method": "GET",
     "path": "/api/v1/purchase/weigh-tickets/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/weigh-tickets/:id/label"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/analytics/supplier-performance"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/analytics/volume-price"
   },
   {
     "method": "GET",
@@ -1345,951 +2365,23 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/notify/mqtt-connect"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/notify/inbox"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/workflow/tasks"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/biz/evidences"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/_debug/routes"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/report-works"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/report-works/:id/correct"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/requisitions"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/requisitions/:id/post"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/reworks"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/reworks/:id/close"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/routings"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/task-merges"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/task-merges/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/tasks"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/tasks/:id/close"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/dispatches"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/dispatches/:id/receive"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/drawing-links"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/flex-dispatches"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/flex-dispatches/:id/reassign"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/flow-events/:id/retry"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/scan"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/scan/resolve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/scraps"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/boms"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/boms/generate"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/outsources"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/outsources/:id/receive"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/piecework-summaries/recalc"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/processes"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/qc-orders"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/qc-orders/:id/complete"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/consignments"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/mrp-runs"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/workshops"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/product/products"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/product/products/:id/activate"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/product/products/:id/deactivate"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/product/specs"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/incoming-qcs"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/incoming-qcs/:id/fail"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/incoming-qcs/:id/pass"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/inbounds"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/inbounds/:id/post"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/suppliers"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/suppliers/:id/activate"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/suppliers/:id/blacklist"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/suppliers/:id/freeze"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/suppliers/:id/qualify"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/requests"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/requests/:id/submit"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/returns"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/returns/:id/post"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/tasks"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/tasks/:id/assign"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/tasks/:id/complete"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/:id/qc"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/:id/stock-in"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/farmer-settlements"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/farmers"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/plans"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/plans/:id/submit"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/payroll/commission-calcs"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/payroll/commission-rules"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/payroll/calculations"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/payroll/sheets"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/payroll/sheets/batch-generate"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/payroll/sheets/:id/adjust"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/payroll/wage-rates"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/payroll/worker-profiles"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/pre-shipments"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/pre-shipments/:id/release"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/pre-shipments/:id/reserve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/pre-shipments/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/price-locks"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/prints"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/orders"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/orders/:id/cancel"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/orders/:id/changes"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/orders/:id/rebuy"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/orders/:id/submit"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/deliveries"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/deliveries/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/deliveries/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/deliveries/:id/ship"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/inquiries"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/inquiries/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/inquiries/:id/to-order"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/contracts"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/cost-budgets"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/quote-calculator/apply"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/quote-calculator/calc"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/sales-boms"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/self-orders"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/system/data-repairs"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/system/data-repairs/:id/apply"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/system/documents"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/system/drawings"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/system/announcements"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/system/announcements/:id/publish"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/system/approval-flows"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/system/personnel-transfers"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/system/personnel-transfers/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/system/print-templates"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/system/batch-payroll-jobs"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/system/batch-price-jobs"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/system/courses"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/system/formulas"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/system/knowledge"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/system/logistics/carriers"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/system/memos"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/system/reminders"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/stock-txns"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/stock-txns/:id/cancel"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/stock-txns/:id/post"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/stocktakes"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/stocktakes/:id/post"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/stocktakes/:id/submit"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/sales-peel-returns"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/sales-peel-returns/:id/post"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/inbound-qcs"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/inbound-qcs/:id/fail"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/inbound-qcs/:id/pass"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/workshop-stocktakes"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/workshop-stocktakes/:id/post"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/workshop-stocktakes/:id/submit"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/assemble-splits"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/assemble-splits/:id/post"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/box-codes"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/box-codes/:id/bind"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/consumes"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/consumes/:id/post"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/material-to-payables"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/material-to-payables/:id/submit"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/openings"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/openings/:id/post"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/transfers"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/transfers/:id/post"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/price-adjusts"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/reservations/:id/release"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/iam/users"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/iam/users/:id/freeze"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/iam/users/:id/unfreeze"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/iam/admin-groups"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/iam/permissions/sync"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/iam/roles"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/iam/sessions/:id/revoke"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/cost-accountings"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/cost-accountings/:id/calc"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/cost-allocations"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/cost-allocations/:id/revoke"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/contract-profits/recalc"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/cashier-reconciles"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/cashier-reconciles/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/approvals/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/approvals/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/arap-adjusts"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/arap-adjusts/:id/post"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/account-subjects"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/fund-transfers"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/fund-transfers/:id/post"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/fund-accounts"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/fx-settlements"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/fx-settlements/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/month-closes"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/month-closes/:id/reopen"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/miniprogram-bills/reconcile"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/payment-recognitions"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/payment-recognitions/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/prepay-prepaids"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/receipt-writeoffs"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/receipt-writeoffs/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/receipt-alerts/:id/handle"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/sales-return-finances"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/sales-return-finances/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/statements/generate"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/vouchers"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/vouchers/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/invoices"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/finance/ledger-entries"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/affairs/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/affairs/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/attendance/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/attendance/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/expense-finance/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/expense-finance/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/expense-requests"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/expense-requests/:id/submit"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/inquiry-finance/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/inquiry-finance/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/inquiry-lines/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/inquiry-lines/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/purchase-plans/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/purchase-plans/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/purchases/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/purchases/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/doc-reviews/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/doc-reviews/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/tasks/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/tasks/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/asset/transfers"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/asset/transfers/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/asset/categories"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/asset/fixed-assets"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/auth/login"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/auth/refresh"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/onboards"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/onboards/:id/cancel"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/onboards/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/offboards"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/offboards/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/overtime-patches"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/attendance/records"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/attendance/records/patch"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/attendance/records/punch"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/attendance/rules"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/attendance/month-stats/recalc"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/employee-imports"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/employee-journals"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/employees"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/employees/:id/open-account"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/leave-requests"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/leave-requests/:id/cancel"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/performance/results"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/performance/schemes"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/memos"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/shifts"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/visits"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/crm/customers"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/crm/customers/:id/hide"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/crm/customers/:id/lock"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/crm/opportunities"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/crm/opportunities/:id/convert"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/crm/follow-ups"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/crm/imports"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/crm/lead-assigns"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/crm/protect-rules"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/crm/releases"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/crm/task-reminders"
   },
   {
     "method": "PUT",

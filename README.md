@@ -1,6 +1,6 @@
 # 加工厂 ERP
 
-契约先行的多端 ERP：Go/Gin 单二进制 `erp-api` + Vue 多端前端。开发默认 SQLite，生产可切 MySQL。
+契约先行的多端 ERP：Go/Gin 单二进制 `erp-api` + Vue Web（管理/员工/老板）+ Flutter 员工 App。开发默认 SQLite，生产可切 MySQL。
 
 ## 文档
 
@@ -18,7 +18,8 @@
 
 - Go（与 `go.mod` 一致）
 - Python 3（契约生成 / 覆盖率脚本）
-- Node.js + npm（前端 monorepo，可选）
+- Node.js + npm（Web monorepo，可选）
+- Flutter（员工 App Android/iOS，可选）
 
 无需本机预装数据库即可开发：默认使用仓库内 SQLite 文件库。
 
@@ -45,15 +46,29 @@ go run ./cmd/erp-api -config configs/erp.dev.yaml
 
 健康检查：`GET /api/v1/health`
 
-## 前端（可选）
+## Web 前端
 
 ```bash
 cd web
 npm install
-npm run dev:admin    # 管理端；另有 workshop / worker / sales / boss / customer
+npm run dev:portal     # 入口
+npm run dev:admin      # 管理后台  client_type=admin
+npm run dev:employee   # 统一员工端  client_type=employee（车间/工人/销售按权限）
+npm run dev:boss       # 老板驾驶舱  client_type=boss
 ```
 
-开发时将 API 指到本机 `erp-api`（见各端代理或 `erp_api_base` 约定）。静态效果页也可直接打开 `demo/index.html`（需先启动 API）。
+客户自助下单**无 Web 前端**；相关销售/客户 API 仍保留在 OpenAPI 与后端。
+
+## Flutter 员工 App
+
+```bash
+cd mobile
+flutter pub get
+flutter run
+# 可选：flutter run --dart-define=API_BASE=http://<host>:18080/api/v1
+```
+
+登录 `client_type=mobile`；与员工 Web 同一套 IAM 模块显隐规则。详见 [mobile/README.md](mobile/README.md)。
 
 ## 契约与门禁
 
@@ -68,7 +83,6 @@ python scripts/openapi_coverage.py # 契约操作须 100% 注册
 冒烟 / 业务 e2e（需 API 已启动）：
 
 ```bash
-# 可选：scripts/smoke_api.ps1（Windows）或等价 curl 登录探测
 cd web
 npm run e2e
 npm run e2e:flow
@@ -86,11 +100,12 @@ npm run e2e:onboard
 | `internal/apigen` | OpenAPI 全量路由（生成）与分发 |
 | `internal/biz` | 业务规则（IAM / 采购 / 生产 / 人事权限等） |
 | `internal/store` | 通用单据落库 |
-| `internal/auth` | 登录 / refresh / me |
-| `web/` | 多端 Vue 应用与共享包 |
+| `internal/auth` | 登录 / refresh / me（分端 `client_type` + 会话） |
+| `web/` | portal / admin / employee / boss |
+| `mobile/` | Flutter 员工 App（Android/iOS） |
 | `db/` | SQLite 开发脚本与 MySQL 生产 DDL |
 
-约定摘要：统一信封 `{ code, msg, data }`（`code=1` 成功）、Bearer JWT、权限码 `域:模块:动作`。
+约定摘要：统一信封 `{ code, msg, data }`（`code=1` 成功）、Bearer JWT、权限码 `域:模块:动作`；员工与管理员共享 `iam_user` 等表，登录不同系统签发独立 token（claims 含 `client_type` + `jti`，写入 `iam_user_session`）。
 
 ## 生产 MySQL
 

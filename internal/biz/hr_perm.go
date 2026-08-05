@@ -345,7 +345,10 @@ func (s *Services) handleOnboards(c *gin.Context, method, action string) bool {
 			empCreated = true
 		} else {
 			// 若员工仍无档案关键字段，允许补写
-			_, _ = s.updateEmployeeFromBody(empID, body)
+			if msg, _ := s.updateEmployeeFromBody(empID, body); msg == "INVALID_EMP_TYPE" {
+				api.FailJSON(c, msg)
+				return true
+			}
 		}
 		onboardDate := strOr(body["onboard_date"])
 		if onboardDate == "" {
@@ -380,7 +383,10 @@ func (s *Services) handleOnboards(c *gin.Context, method, action string) bool {
 			return true
 		}
 		body := bindBody(c)
-		_, _ = s.updateEmployeeFromBody(empID, body)
+		if msg, _ := s.updateEmployeeFromBody(empID, body); msg == "INVALID_EMP_TYPE" {
+			api.FailJSON(c, msg)
+			return true
+		}
 		onboardDate := strOr(body["onboard_date"])
 		remark := strOr(body["remark"])
 		login := strOr(body["login_name"])
@@ -537,7 +543,10 @@ func (s *Services) createEmployeeFromBody(body map[string]interface{}, status st
 	if status == "" {
 		status = "active"
 	}
-	typ := strOrDef(body["emp_type"], "piece")
+	typ, ok := normalizeEmpType(strOr(body["emp_type"]))
+	if !ok {
+		return 0, "INVALID_EMP_TYPE"
+	}
 	orgID, _ := asInt64(body["org_id"])
 	if orgID == 0 {
 		orgID = 1
@@ -564,7 +573,10 @@ func (s *Services) updateEmployeeFromBody(id int64, body map[string]interface{})
 		return "NOT_FOUND", fmt.Errorf("not found")
 	}
 	name := strOrDef(body["name"], fmt.Sprint(cur["name"]))
-	typ := strOrDef(body["emp_type"], fmt.Sprint(cur["emp_type"]))
+	typ, typOK := normalizeEmpType(strOrDef(body["emp_type"], fmt.Sprint(cur["emp_type"])))
+	if !typOK {
+		return "INVALID_EMP_TYPE", fmt.Errorf("invalid emp_type")
+	}
 	job := strOrDef(body["job_title"], fmt.Sprint(cur["job_title"]))
 	mobile := strOrDef(body["mobile"], fmt.Sprint(cur["mobile"]))
 	badge := strOrDef(body["badge_code"], fmt.Sprint(cur["badge_code"]))
@@ -844,12 +856,10 @@ func ensureHRPermTables(db *sql.DB) {
 		_, _ = db.Exec(q)
 	}
 	// 按员工类型默认角色模板
-	_, _ = db.Exec(`INSERT OR IGNORE INTO iam_onboard_role_template(emp_type, role_id)
-		SELECT 'piece', id FROM iam_role WHERE code='piece' LIMIT 1`)
-	_, _ = db.Exec(`INSERT OR IGNORE INTO iam_onboard_role_template(emp_type, role_id)
-		SELECT 'fixed', id FROM iam_role WHERE code='fixed' LIMIT 1`)
-	_, _ = db.Exec(`INSERT OR IGNORE INTO iam_onboard_role_template(emp_type, role_id)
-		SELECT 'office', id FROM iam_role WHERE code='hr' LIMIT 1`)
+	for _, t := range EmpTypes {
+		_, _ = db.Exec(`INSERT OR IGNORE INTO iam_onboard_role_template(emp_type, role_id)
+			SELECT ?, id FROM iam_role WHERE code=? LIMIT 1`, t.Code, t.RoleCode)
+	}
 }
 
 // EnsureHRPermSchema is called at startup.

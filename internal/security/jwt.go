@@ -1,10 +1,14 @@
 package security
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -12,9 +16,34 @@ type Claims struct {
 	UserID      int64    `json:"user_id"`
 	LoginName   string   `json:"login_name"`
 	UserType    string   `json:"user_type"`
+	ClientType  string   `json:"client_type"`
 	Roles       []string `json:"roles"`
 	Permissions []string `json:"permissions"`
 	jwt.RegisteredClaims
+}
+
+// NormalizeClientType maps legacy client labels onto the canonical set:
+// admin | boss | employee | mobile
+func NormalizeClientType(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "admin", "web":
+		return "admin"
+	case "boss":
+		return "boss"
+	case "mobile":
+		return "mobile"
+	case "employee", "pad", "mp_worker", "mp_sales", "front":
+		return "employee"
+	case "":
+		return "admin"
+	default:
+		return "employee"
+	}
+}
+
+func HashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 func HashPassword(plain string) (string, error) {
@@ -29,6 +58,7 @@ func CheckPassword(hash, plain string) bool {
 func IssueToken(secret string, ttlMin int, claims Claims) (string, error) {
 	now := time.Now()
 	claims.RegisteredClaims = jwt.RegisteredClaims{
+		ID:        uuid.NewString(),
 		IssuedAt:  jwt.NewNumericDate(now),
 		ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(ttlMin) * time.Minute)),
 		Issuer:    "erp-api",

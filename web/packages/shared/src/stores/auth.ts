@@ -16,7 +16,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isLoggedIn = computed(() => !!accessToken.value)
 
-  async function login(loginName: string, password: string, clientType = 'web') {
+  async function login(loginName: string, password: string, clientType = 'admin') {
     loading.value = true
     error.value = ''
     try {
@@ -59,6 +59,14 @@ export const useAuthStore = defineStore('auth', () => {
     permissions.value = []
     menus.value = []
     fieldPolicies.value = []
+    try {
+      // lazy avoid circular import at module init
+      void import('./notify').then(({ useNotifyStore }) => {
+        useNotifyStore().stop()
+      })
+    } catch {
+      /* ignore */
+    }
   }
 
   function hasPerm(code: string) {

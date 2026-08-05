@@ -15,6 +15,12 @@ const router = createRouter({
         { path: 'automation/trace', name: 'trace', component: () => import('./views/automation/TraceView.vue') },
         { path: 'automation/logs', name: 'logs', component: () => import('./views/automation/LogsView.vue') },
         { path: 'automation/repairs', name: 'repairs', component: () => import('./views/automation/RepairView.vue') },
+        { path: 'warehouse/inbound', name: 'warehouse-inbound', component: () => import('./views/warehouse/WarehouseInboundView.vue') },
+        { path: 'sales/outbound-settle', name: 'outbound-settle', component: () => import('./views/sales/OutboundSettleView.vue') },
+        { path: 'production/process-reports', name: 'process-reports', component: () => import('./views/production/ProcessReportView.vue') },
+        { path: 'production/piece-issue', name: 'piece-issue', component: () => import('./views/production/PieceIssueView.vue') },
+        { path: 'hr/tool-issues', name: 'tool-issues', component: () => import('./views/hr/ToolIssueView.vue') },
+        { path: 'inventory/ledger', name: 'stock-ledger', component: () => import('./views/inventory/StockLedgerView.vue') },
         {
           path: 'm/:domain/:module',
           name: 'module',

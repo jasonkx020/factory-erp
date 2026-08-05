@@ -11,23 +11,43 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"erp/internal/api"
+	"erp/internal/notify"
 	"erp/internal/persistence/sqlutil"
 	"erp/internal/store"
 )
 
 type Services struct {
-	DB     *sql.DB
-	Driver string
-	Store  *store.Store
+	DB              *sql.DB
+	Driver          string
+	Store           *store.Store
+	TraceHMACSecret string
+	Notify          *notify.Service
 }
 
 func New(db *sql.DB, driver string, st *store.Store) *Services {
-	return &Services{DB: db, Driver: driver, Store: st}
+	return &Services{DB: db, Driver: driver, Store: st, TraceHMACSecret: TraceHMACSecret("")}
 }
 
 // Handle returns true if the request was fully handled.
 func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, action string) bool {
 	switch {
+	case strings.HasPrefix(openapiPath, "/api/v1/notify/") || strings.HasPrefix(openapiPath, "/api/v1/workflow/"):
+		if s.Notify != nil {
+			return s.Notify.HandleAPI(c, method, openapiPath, action)
+		}
+		return false
+	case strings.HasPrefix(openapiPath, "/api/v1/sales/outbound-settles"):
+		return s.handleOutboundSettles(c, method, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/production/piece-issue-sheets"):
+		return s.handlePieceIssueSheets(c, method, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/production/process-reports"):
+		return s.listProcessReports(c)
+	case strings.HasPrefix(openapiPath, "/api/v1/hr/tool-items"):
+		return s.handleToolItems(c, method, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/hr/tool-issues"):
+		return s.handleToolIssues(c, method, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/inventory/weighbridges"):
+		return s.handleWeighbridges(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/product/products") && !strings.Contains(openapiPath, "/units") && !strings.Contains(openapiPath, "/activate") && !strings.Contains(openapiPath, "/deactivate"):
 		return s.handleProducts(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/inventory/balances") && method == "GET":
@@ -48,7 +68,23 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 	case strings.HasPrefix(openapiPath, "/api/v1/production/dispatches"):
 		return s.handleDispatches(c, method, action, openapiPath)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/report-works"):
+		if strings.HasSuffix(openapiPath, "/confirm") && method == "POST" {
+			return s.confirmReportWork(c)
+		}
+		if strings.HasSuffix(openapiPath, "/correct") && method == "POST" {
+			body := bindBody(c)
+			body["biz_type"] = "report_work"
+			body["biz_id"] = paramID(c)
+			body["action"] = strOrDef(body["action"], "correct")
+			return s.handleCorrectionsWithBody(c, body)
+		}
 		return s.handleReportWorks(c, method, action, openapiPath)
+	case openapiPath == "/api/v1/biz/evidences" || strings.HasPrefix(openapiPath, "/api/v1/biz/evidences"):
+		return s.handleEvidenceAPI(c, method)
+	case openapiPath == "/api/v1/biz/corrections" && method == "POST":
+		return s.handleCorrections(c)
+	case strings.HasPrefix(openapiPath, "/api/v1/production/piecework-summaries") && strings.HasSuffix(openapiPath, "/pay") && method == "POST":
+		return s.payLaborSummary(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/piecework-summaries"):
 		return s.handlePieceworkSummaries(c, method, action, openapiPath)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/requisitions"):

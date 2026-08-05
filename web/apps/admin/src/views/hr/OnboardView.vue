@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { hrApi, iamApi } from '@erp/shared'
+import { DEFAULT_EMP_TYPE, EMP_TYPE_OPTIONS, empTypeLabel, hrApi, iamApi } from '@erp/shared'
 
 type Row = Record<string, unknown>
 
@@ -9,6 +9,7 @@ const loading = ref(false)
 const list = ref<Row[]>([])
 const summary = reactive({ draft: 0, confirmed: 0, cancelled: 0 })
 const statusFilter = ref('')
+const empTypeFilter = ref('')
 const roles = ref<Row[]>([])
 
 const dialog = ref(false)
@@ -16,7 +17,7 @@ const editingId = ref<number | null>(null)
 const form = reactive({
   emp_no: '',
   name: '',
-  emp_type: 'piece',
+  emp_type: DEFAULT_EMP_TYPE,
   org_id: 1,
   dept_id: 1,
   workshop_id: 1,
@@ -36,13 +37,12 @@ const statusLabel: Record<string, string> = {
   confirmed: '已入职',
   cancelled: '已取消',
 }
-const empTypeLabel: Record<string, string> = {
-  piece: '计件工',
-  fixed: '固定工',
-  office: '职能/内勤',
-}
-
 const isEdit = computed(() => editingId.value != null)
+
+const visibleList = computed(() => {
+  if (!empTypeFilter.value) return list.value
+  return list.value.filter((r) => String(r.emp_type || '') === empTypeFilter.value)
+})
 
 function today() {
   const d = new Date()
@@ -53,7 +53,7 @@ function resetForm() {
   Object.assign(form, {
     emp_no: `E${Date.now().toString().slice(-8)}`,
     name: '',
-    emp_type: 'piece',
+    emp_type: DEFAULT_EMP_TYPE,
     org_id: 1,
     dept_id: 1,
     workshop_id: 1,
@@ -103,7 +103,7 @@ async function openEdit(row: Row) {
   Object.assign(form, {
     emp_no: String(emp.emp_no || d.emp_no || ''),
     name: String(emp.name || d.name || ''),
-    emp_type: String(emp.emp_type || 'piece'),
+    emp_type: String(emp.emp_type || DEFAULT_EMP_TYPE),
     org_id: Number(emp.org_id) || 1,
     dept_id: Number(emp.dept_id) || 1,
     workshop_id: Number(emp.workshop_id) || 0,
@@ -194,17 +194,24 @@ onMounted(load)
         <el-radio-button label="confirmed">已入职</el-radio-button>
         <el-radio-button label="cancelled">已取消</el-radio-button>
       </el-radio-group>
+      <el-select v-model="empTypeFilter" size="small" clearable placeholder="全部类型" style="width:130px">
+        <el-option v-for="t in EMP_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
+      </el-select>
       <el-button type="primary" @click="openCreate">新建入职</el-button>
       <el-button @click="load">刷新</el-button>
     </div>
 
-    <el-table :data="list" border stripe>
+    <el-table :data="visibleList" border stripe>
       <el-table-column prop="id" label="单号" width="70" />
       <el-table-column prop="onboard_date" label="入职日" width="110" />
       <el-table-column prop="emp_no" label="工号" width="120" />
       <el-table-column prop="name" label="姓名" width="100" />
       <el-table-column label="类型" width="90">
-        <template #default="{ row }">{{ empTypeLabel[String(row.emp_type)] || row.emp_type }}</template>
+        <template #default="{ row }">
+          <el-tag size="small" :type="row.emp_type === 'temp' ? 'warning' : 'info'">
+            {{ empTypeLabel(row.emp_type) }}
+          </el-tag>
+        </template>
       </el-table-column>
       <el-table-column prop="job_title" label="岗位" width="100" />
       <el-table-column prop="workshop_id" label="车间" width="70" />
@@ -257,9 +264,7 @@ onMounted(load)
           <el-col :span="12">
             <el-form-item label="员工类型">
               <el-select v-model="form.emp_type" style="width:100%">
-                <el-option label="计件工" value="piece" />
-                <el-option label="固定工" value="fixed" />
-                <el-option label="职能/内勤" value="office" />
+                <el-option v-for="t in EMP_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -315,7 +320,7 @@ onMounted(load)
                   {{ r.name }} ({{ r.code }})
                 </el-checkbox>
               </el-checkbox-group>
-              <p class="hint">不选则按员工类型使用入职角色模板（计件→piece / 固定→fixed / 职能→hr）。</p>
+              <p class="hint">不选则按员工类型使用入职角色模板（计件/临时→piece / 固定→fixed / 职能→hr）。</p>
             </el-form-item>
           </el-col>
           <el-col :span="24">

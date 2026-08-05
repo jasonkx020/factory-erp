@@ -13,6 +13,7 @@ SOURCE schema/06_crm_sales_purchase.sql;
 SOURCE schema/07_finance_asset.sql;
 SOURCE schema/08_approval_system_report.sql;
 SOURCE schema/09_farmer_weigh.sql;
+SOURCE schema/16_field_ledger.sql;
 SOURCE seed/01_iam_seed.sql;
 
 SELECT 'erp_factory schema installed' AS message;

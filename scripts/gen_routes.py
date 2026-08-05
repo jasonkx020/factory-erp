@@ -87,10 +87,14 @@ def emit_go(ops):
         "// RegisterGenerated mounts all OpenAPI paths onto /api/v1 group.",
         "func RegisterGenerated(r *gin.RouterGroup, h Handler) {",
     ]
-    # dedupe exact method+ginpath; skip health/auth (registered by dedicated packages)
+    # dedupe exact method+ginpath; skip health/auth/mqtt (registered by dedicated packages)
     seen = set()
     for method, opath in ops:
-        if opath.startswith("/api/v1/health") or opath.startswith("/api/v1/auth/"):
+        if (
+            opath.startswith("/api/v1/health")
+            or opath.startswith("/api/v1/auth/")
+            or opath.startswith("/api/v1/mqtt/")
+        ):
             continue
         gp = gin_path(opath)
         key = (method, gp)

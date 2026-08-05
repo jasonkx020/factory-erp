@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS hr_employee (
   workshop_id   BIGINT NULL,
   team_id       BIGINT NULL,
   job_title     VARCHAR(64) NULL,
-  emp_type      VARCHAR(16) NOT NULL DEFAULT 'office' COMMENT 'piece/fixed/office',
+  emp_type      VARCHAR(16) NOT NULL DEFAULT 'office' COMMENT 'piece计件工/temp临时工/fixed固定工/office职能内勤',
   mobile        VARCHAR(32) NULL,
   status        VARCHAR(16) NOT NULL DEFAULT 'active' COMMENT 'active/inactive/left',
   user_id       BIGINT NULL COMMENT '关联登录用户，循环引用用应用层维护',
@@ -271,7 +271,7 @@ CREATE TABLE IF NOT EXISTS iam_user_session (
   id            BIGINT PRIMARY KEY AUTO_INCREMENT,
   user_id       BIGINT NOT NULL,
   token_hash    VARCHAR(128) NOT NULL,
-  client_type   VARCHAR(32) NULL COMMENT 'web/mp_worker/mp_sales/pad/boss',
+  client_type   VARCHAR(32) NULL COMMENT 'admin/boss/employee/mobile (legacy web/pad/mp_* mapped)',
   ip            VARCHAR(64) NULL,
   user_agent    VARCHAR(512) NULL,
   login_at      DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -294,7 +294,7 @@ CREATE TABLE IF NOT EXISTS iam_password_history (
 -- 入职赋权模板（角色列表）
 CREATE TABLE IF NOT EXISTS iam_onboard_role_template (
   id            BIGINT PRIMARY KEY AUTO_INCREMENT,
-  emp_type      VARCHAR(16) NOT NULL COMMENT 'piece/fixed/office/admin',
+  emp_type      VARCHAR(16) NOT NULL COMMENT 'piece/temp/fixed/office/admin',
   role_id       BIGINT NOT NULL,
   created_at    DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   UNIQUE KEY uk_onboard_tpl (emp_type, role_id),

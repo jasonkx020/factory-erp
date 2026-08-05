@@ -192,6 +192,11 @@ func (s *Services) tableUpdate(c *gin.Context, spec *tablespec.Spec) {
 }
 
 func (s *Services) tableDelete(c *gin.Context, spec *tablespec.Spec) {
+	// 闭环业务：禁止物理删除，仅允许软删/作废
+	if !spec.SoftDelete {
+		api.FailJSON(c, "DELETE_FORBIDDEN")
+		return
+	}
 	id := paramID(c)
 	var err error
 	if spec.SoftDelete {

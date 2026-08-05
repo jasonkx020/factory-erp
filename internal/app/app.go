@@ -13,14 +13,18 @@ import (
 	"erp/internal/biz"
 	"erp/internal/config"
 	"erp/internal/middleware"
+	erpmqtt "erp/internal/mqtt"
+	"erp/internal/notify"
 	"erp/internal/persistence"
 	"erp/internal/server/health"
 )
 
 type App struct {
-	Cfg *config.Config
-	DB  *persistence.DB
-	Eng *gin.Engine
+	Cfg        *config.Config
+	DB         *persistence.DB
+	Eng        *gin.Engine
+	mqttHub    *erpmqtt.Hub
+	notifyStop chan struct{}
 }
 
 func New(cfgPath string) (*App, error) {
@@ -40,23 +44,37 @@ func New(cfgPath string) (*App, error) {
 		"/api/v1/health",
 		"/api/v1/auth/login",
 		"/api/v1/auth/refresh",
+		"/api/v1/mqtt/auth",
+		"/api/v1/mqtt/superuser",
+		"/api/v1/mqtt/acl",
 	}
 	eng.Use(middleware.JWT(cfg.JWT.Secret, permit))
 	eng.Use(middleware.Audit(db.SQL))
 
-	// ensure automation tables/columns/seed on existing DBs
 	biz.EnsureAutomationSchema(db.SQL)
 	biz.EnsureHRPermSchema(db.SQL)
 	biz.EnsureHROpsSchema(db.SQL)
+	notify.EnsureSchema(db.SQL)
+
+	hub := erpmqtt.NewHub(cfg)
+	notifySvc := notify.New(db.SQL, cfg, hub)
+	mqttAuth := erpmqtt.NewAuthHandler(cfg)
+	mqttAuth.Register(eng)
 
 	v1 := eng.Group("/api/v1")
 	health.Register(v1, db.Driver)
 	auth.Register(v1, &auth.Handler{DB: db.SQL, Cfg: cfg})
 
 	engine := apigen.NewEngine(db.SQL, db.Driver)
+	if cfg.Trace.HMACSecret != "" {
+		engine.Biz.TraceHMACSecret = cfg.Trace.HMACSecret
+	}
+	engine.Biz.Notify = notifySvc
 	apigen.RegisterGenerated(v1, engine)
 
-	// coverage helper: dump gin routes to scripts/gin_routes.json
+	stop := make(chan struct{})
+	go notifySvc.StartPublisher(stop)
+
 	v1.GET("/_debug/routes", func(c *gin.Context) {
 		routes := apigen.DumpRoutes(eng)
 		_ = writeRoutesJSON(routes)
@@ -64,7 +82,7 @@ func New(cfgPath string) (*App, error) {
 		c.JSON(200, apiOK)
 	})
 
-	return &App{Cfg: cfg, DB: db, Eng: eng}, nil
+	return &App{Cfg: cfg, DB: db, Eng: eng, mqttHub: hub, notifyStop: stop}, nil
 }
 
 func writeRoutesJSON(routes []map[string]string) error {
@@ -78,12 +96,17 @@ func writeRoutesJSON(routes []map[string]string) error {
 }
 
 func (a *App) Run() error {
-	// dump routes at startup for coverage offline
 	_ = writeRoutesJSON(apigen.DumpRoutes(a.Eng))
-	log.Printf("erp-api listening on %s (driver=%s)", a.Cfg.Server.Addr, a.DB.Driver)
+	log.Printf("erp-api listening on %s (driver=%s mqtt=%v)", a.Cfg.Server.Addr, a.DB.Driver, a.Cfg.Mqtt.Enabled)
 	return a.Eng.Run(a.Cfg.Server.Addr)
 }
 
 func (a *App) Close() {
+	if a.notifyStop != nil {
+		close(a.notifyStop)
+	}
+	if a.mqttHub != nil {
+		a.mqttHub.Close()
+	}
 	_ = a.DB.Close()
 }
