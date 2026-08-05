@@ -14,9 +14,13 @@ import (
 )
 
 func (s *Services) handleProducts(c *gin.Context, method, action string) bool {
+	_ = method
 	switch action {
 	case "list":
-		rows, err := s.DB.Query(`SELECT id, code, name, product_type, status, COALESCE(spec_text,''), cost_price, sale_price FROM prd_product WHERE is_deleted=0 ORDER BY id`)
+		rows, err := s.DB.Query(`SELECT id, code, name, COALESCE(category,''), product_type, status,
+			COALESCE(spec_text,''), COALESCE(barcode,''), cost_price, sale_price,
+			COALESCE(is_batch_managed,1), COALESCE(is_box_managed,0)
+			FROM prd_product WHERE is_deleted=0 ORDER BY id`)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR")
 			return true
@@ -25,10 +29,16 @@ func (s *Services) handleProducts(c *gin.Context, method, action string) bool {
 		list := []gin.H{}
 		for rows.Next() {
 			var id int64
-			var code, name, typ, status, spec string
+			var code, name, cat, typ, status, spec, barcode string
 			var cost, sale sql.NullFloat64
-			_ = rows.Scan(&id, &code, &name, &typ, &status, &spec, &cost, &sale)
-			list = append(list, gin.H{"id": id, "code": code, "name": name, "product_type": typ, "status": status, "spec": spec, "cost_price": cost.Float64, "sale_price": sale.Float64})
+			var batch, box int
+			_ = rows.Scan(&id, &code, &name, &cat, &typ, &status, &spec, &barcode, &cost, &sale, &batch, &box)
+			list = append(list, gin.H{
+				"id": id, "code": code, "name": name, "category": cat, "product_type": typ, "status": status,
+				"spec": spec, "spec_text": spec, "barcode": barcode,
+				"cost_price": cost.Float64, "sale_price": sale.Float64,
+				"is_batch_managed": batch == 1, "is_box_managed": box == 1,
+			})
 		}
 		api.OK(c, gin.H{"list": list, "total": len(list)})
 		return true
@@ -48,59 +58,111 @@ func (s *Services) handleProducts(c *gin.Context, method, action string) bool {
 		if spec == "" {
 			spec, _ = body["spec_text"].(string)
 		}
-		res, err := s.DB.Exec(`INSERT INTO prd_product(code, name, product_type, status, spec_text, is_deleted) VALUES(?,?,?,'active',?,0)`,
-			code, name, typ, spec)
+		cost, _ := asFloat(body["cost_price"])
+		sale, _ := asFloat(body["sale_price"])
+		res, err := s.DB.Exec(`INSERT INTO prd_product(code, name, category, product_type, status, spec_text, barcode, cost_price, sale_price, is_batch_managed, is_box_managed, is_deleted)
+			VALUES(?,?,?,?,'active',?,?,?,?,?,?,0)`,
+			code, name, strOr(body["category"]), typ, spec, strOr(body["barcode"]),
+			cost, sale,
+			boolIntDef(body["is_batch_managed"], 1), boolIntDef(body["is_box_managed"], 0))
 		if err != nil {
-			api.FailJSON(c, "DB_ERROR")
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
 		}
 		id, _ := res.LastInsertId()
-		api.OK(c, gin.H{"id": id, "code": code, "name": name, "status": "active"})
+		// default base unit kg
+		unitName := strOrDef(body["base_unit"], "kg")
+		_, _ = s.DB.Exec(`INSERT OR IGNORE INTO prd_product_unit(product_id, unit_name, is_base, factor_to_base, is_purchase, is_sale, is_stock)
+			VALUES(?,?,1,1,1,1,1)`, id, unitName)
+		// app sort entry
+		_, _ = s.DB.Exec(`INSERT OR IGNORE INTO prd_product_app_sort(product_id, channel, sort_no, is_visible) VALUES(?,?,?,1)`,
+			id, "app", id*10)
+		api.OK(c, gin.H{"id": id, "code": code, "name": name, "product_type": typ, "status": "active"})
 		return true
 	case "get":
 		id := paramID(c)
-		var code, name, typ, status, spec string
-		err := s.DB.QueryRow(`SELECT code, name, product_type, status, COALESCE(spec_text,'') FROM prd_product WHERE id=? AND is_deleted=0`, id).
-			Scan(&code, &name, &typ, &status, &spec)
-		if err == sql.ErrNoRows {
-			api.FailJSON(c, "NOT_FOUND")
-			return true
-		}
+		rows, err := s.DB.Query(`SELECT id, code, name, COALESCE(category,''), product_type, status,
+			COALESCE(spec_text,''), COALESCE(barcode,''), cost_price, sale_price,
+			COALESCE(is_batch_managed,1), COALESCE(is_box_managed,0)
+			FROM prd_product WHERE id=? AND is_deleted=0`, id)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR")
 			return true
 		}
-		api.OK(c, gin.H{"id": id, "code": code, "name": name, "product_type": typ, "status": status, "spec": spec})
+		defer rows.Close()
+		list, _ := rowsToMaps(rows)
+		if len(list) == 0 {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		m := gin.H(list[0])
+		m["spec"] = m["spec_text"]
+		urows, _ := s.DB.Query(`SELECT id, unit_name, is_base, factor_to_base, is_purchase, is_sale, is_stock FROM prd_product_unit WHERE product_id=?`, id)
+		units := []map[string]interface{}{}
+		if urows != nil {
+			defer urows.Close()
+			units, _ = rowsToMaps(urows)
+		}
+		m["units"] = units
+		api.OK(c, m)
 		return true
 	case "update":
 		id := paramID(c)
 		body := bindBody(c)
-		name, _ := body["name"].(string)
-		spec, _ := body["spec"].(string)
-		status, _ := body["status"].(string)
-		_, err := s.DB.Exec(`UPDATE prd_product SET name=COALESCE(NULLIF(?,''),name), spec_text=COALESCE(?,spec_text), status=COALESCE(NULLIF(?,''),status) WHERE id=?`,
-			name, spec, status, id)
+		_, err := s.DB.Exec(`UPDATE prd_product SET
+			name=COALESCE(NULLIF(?,''),name),
+			category=COALESCE(NULLIF(?,''),category),
+			product_type=COALESCE(NULLIF(?,''),product_type),
+			spec_text=COALESCE(NULLIF(?,''),spec_text),
+			barcode=COALESCE(NULLIF(?,''),barcode),
+			cost_price=COALESCE(?,cost_price),
+			sale_price=COALESCE(?,sale_price),
+			is_batch_managed=COALESCE(?,is_batch_managed),
+			is_box_managed=COALESCE(?,is_box_managed),
+			status=COALESCE(NULLIF(?,''),status),
+			updated_at=datetime('now')
+			WHERE id=? AND is_deleted=0`,
+			strOr(body["name"]), strOr(body["category"]), strOr(body["product_type"]),
+			firstNonEmpty(strOr(body["spec"]), strOr(body["spec_text"])),
+			strOr(body["barcode"]),
+			nullFloat(body["cost_price"]), nullFloat(body["sale_price"]),
+			nullableBoolInt(body["is_batch_managed"]), nullableBoolInt(body["is_box_managed"]),
+			strOr(body["status"]), id)
 		if err != nil {
-			api.FailJSON(c, "DB_ERROR")
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
 		}
 		api.OK(c, gin.H{"id": id})
 		return true
 	case "delete":
 		id := paramID(c)
-		_, _ = s.DB.Exec(`UPDATE prd_product SET is_deleted=1 WHERE id=?`, id)
+		_, _ = s.DB.Exec(`UPDATE prd_product SET is_deleted=1, updated_at=datetime('now') WHERE id=?`, id)
 		api.OK(c, gin.H{})
 		return true
 	case "action:activate":
-		_, _ = s.DB.Exec(`UPDATE prd_product SET status='active' WHERE id=?`, paramID(c))
+		_, _ = s.DB.Exec(`UPDATE prd_product SET status='active', updated_at=datetime('now') WHERE id=?`, paramID(c))
 		api.OK(c, gin.H{"id": paramID(c), "status": "active"})
 		return true
 	case "action:deactivate":
-		_, _ = s.DB.Exec(`UPDATE prd_product SET status='inactive' WHERE id=?`, paramID(c))
+		_, _ = s.DB.Exec(`UPDATE prd_product SET status='inactive', updated_at=datetime('now') WHERE id=?`, paramID(c))
 		api.OK(c, gin.H{"id": paramID(c), "status": "inactive"})
 		return true
 	}
 	return false
+}
+
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
+func nullableBoolInt(v interface{}) interface{} {
+	if v == nil {
+		return nil
+	}
+	return boolInt(v)
 }
 
 func (s *Services) handleProcesses(c *gin.Context, method, action string) bool {
@@ -224,14 +286,31 @@ func (s *Services) handleProdTasks(c *gin.Context, method, action, path string) 
 		body := bindBody(c)
 		docNo, _ := body["doc_no"].(string)
 		if docNo == "" {
-			docNo = fmt.Sprintf("PT%d", time.Now().Unix())
+			docNo = fmt.Sprintf("PT%s", time.Now().Format("060102150405"))
 		}
-		res, err := s.DB.Exec(`INSERT INTO pd_production_task(doc_no, status) VALUES(?,'pending')`, docNo)
+		res, err := s.DB.Exec(`INSERT INTO pd_production_task(doc_no, source_type, status, routing_id, workshop_id, remark, created_by)
+			VALUES(?,?,?,?,?,?,?)`,
+			docNo, strOrDef(body["source_type"], "manual"), "pending",
+			nullInt(body["routing_id"]), nullInt(body["workshop_id"]), strOr(body["remark"]), claimsUserID(c))
 		if err != nil {
-			api.FailJSON(c, "DB_ERROR")
-			return true
+			res, err = s.DB.Exec(`INSERT INTO pd_production_task(doc_no, status) VALUES(?,'pending')`, docNo)
+			if err != nil {
+				api.FailJSON(c, "DB_ERROR")
+				return true
+			}
 		}
 		id, _ := res.LastInsertId()
+		pid, _ := asInt64(body["product_id"])
+		qty, _ := asFloat(body["qty"])
+		if qty == 0 {
+			qty, _ = asFloat(body["plan_qty"])
+		}
+		if pid > 0 {
+			if qty <= 0 {
+				qty = 1
+			}
+			_, _ = s.DB.Exec(`INSERT INTO pd_production_task_item(task_id, product_id, plan_qty) VALUES(?,?,?)`, id, pid, qty)
+		}
 		api.OK(c, gin.H{"id": id, "doc_no": docNo, "status": "pending"})
 		return true
 	case "get":
@@ -329,8 +408,14 @@ func (s *Services) handleDispatches(c *gin.Context, method, action, path string)
 		}
 		api.OK(c, d.Payload)
 		return true
-	case "action:confirm", "action:cancel":
+	case "action:confirm", "action:cancel", "action:receive":
 		name := strings.TrimPrefix(action, "action:")
+		if name == "receive" {
+			id := paramID(c)
+			_, _ = s.DB.Exec(`UPDATE pd_dispatch SET status='received' WHERE id=?`, id)
+			api.OK(c, gin.H{"id": id, "status": "received"})
+			return true
+		}
 		d, err := s.ApplyDocAction(paramID(c), name, bindBody(c))
 		if err != nil {
 			api.FailJSON(c, err.Error())
@@ -638,94 +723,6 @@ func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
 	return false
 }
 
-func (s *Services) handleApprovalTasks(c *gin.Context, method, action, path string) bool {
-	switch {
-	case strings.HasSuffix(path, "/approve") && method == "POST":
-		id := paramID(c)
-		body := bindBody(c)
-		comment, _ := body["comment"].(string)
-		now := time.Now().Format("2006-01-02 15:04:05")
-		_, err := s.DB.Exec(`UPDATE appr_task SET status='approved', acted_at=?, comment=? WHERE id=? AND status='pending'`, now, comment, id)
-		if err != nil {
-			api.FailJSON(c, "DB_ERROR")
-			return true
-		}
-		// unlock linked doc in erp_doc if present
-		var docType string
-		var docID int64
-		_ = s.DB.QueryRow(`SELECT doc_type, doc_id FROM appr_task WHERE id=?`, id).Scan(&docType, &docID)
-		if docID > 0 {
-			_, _ = s.Store.SetStatus(docID, "approved")
-		}
-		api.OK(c, gin.H{"id": id, "status": "approved", "doc_type": docType, "doc_id": docID})
-		return true
-	case strings.HasSuffix(path, "/reject") && method == "POST":
-		id := paramID(c)
-		body := bindBody(c)
-		comment, _ := body["comment"].(string)
-		now := time.Now().Format("2006-01-02 15:04:05")
-		_, _ = s.DB.Exec(`UPDATE appr_task SET status='rejected', acted_at=?, comment=? WHERE id=?`, now, comment, id)
-		var docID int64
-		_ = s.DB.QueryRow(`SELECT doc_id FROM appr_task WHERE id=?`, id).Scan(&docID)
-		if docID > 0 {
-			_, _ = s.Store.SetStatus(docID, "rejected")
-		}
-		api.OK(c, gin.H{"id": id, "status": "rejected"})
-		return true
-	}
-	switch action {
-	case "list":
-		rows, err := s.DB.Query(`SELECT id, doc_type, doc_id, assignee_user_id, status, COALESCE(comment,''), created_at FROM appr_task ORDER BY id DESC`)
-		if err != nil {
-			api.FailJSON(c, "DB_ERROR")
-			return true
-		}
-		defer rows.Close()
-		list := []gin.H{}
-		for rows.Next() {
-			var id, docID, uid int64
-			var docType, status, comment, created string
-			_ = rows.Scan(&id, &docType, &docID, &uid, &status, &comment, &created)
-			list = append(list, gin.H{"id": id, "doc_type": docType, "doc_id": docID, "assignee_user_id": uid, "status": status, "comment": comment, "created_at": created})
-		}
-		api.OK(c, gin.H{"list": list, "total": len(list)})
-		return true
-	case "create":
-		body := bindBody(c)
-		docType, _ := body["doc_type"].(string)
-		docID, _ := asInt64(body["doc_id"])
-		uid, _ := asInt64(body["assignee_user_id"])
-		if uid == 0 {
-			uid = 1
-		}
-		now := time.Now().Format("2006-01-02 15:04:05")
-		res, err := s.DB.Exec(`INSERT INTO appr_task(doc_type, doc_id, assignee_user_id, status, created_at) VALUES(?,?,?,'pending',?)`,
-			docType, docID, uid, now)
-		if err != nil {
-			api.FailJSON(c, "DB_ERROR")
-			return true
-		}
-		id, _ := res.LastInsertId()
-		if docID > 0 {
-			_, _ = s.Store.SetStatus(docID, "pending_approval")
-		}
-		api.OK(c, gin.H{"id": id, "status": "pending"})
-		return true
-	case "get":
-		id := paramID(c)
-		var docType, status, comment, created string
-		var docID, uid int64
-		err := s.DB.QueryRow(`SELECT doc_type, doc_id, assignee_user_id, status, COALESCE(comment,''), created_at FROM appr_task WHERE id=?`, id).
-			Scan(&docType, &docID, &uid, &status, &comment, &created)
-		if err != nil {
-			api.FailJSON(c, "NOT_FOUND")
-			return true
-		}
-		api.OK(c, gin.H{"id": id, "doc_type": docType, "doc_id": docID, "assignee_user_id": uid, "status": status, "comment": comment, "created_at": created})
-		return true
-	}
-	return false
-}
 
 func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
 	// GET lists (generated routes)

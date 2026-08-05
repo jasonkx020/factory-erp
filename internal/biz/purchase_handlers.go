@@ -49,11 +49,37 @@ func (s *Services) handlePurchase(c *gin.Context, method, openapiPath, resourceK
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/analytics/supplier-performance"):
 		return s.handleSupplierPerformanceList(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/requests"):
+		if strings.Contains(openapiPath, "/to-plan") {
+			return s.convertRequestToPlan(c)
+		}
+		if strings.Contains(openapiPath, "/approve") {
+			id := paramID(c)
+			_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET status='approved', updated_at=datetime('now') WHERE id=? AND status='submitted'`, id)
+			api.OK(c, s.loadPurchaseRequest(id))
+			return true
+		}
+		if strings.Contains(openapiPath, "/reject") {
+			body := bindBody(c)
+			id := paramID(c)
+			_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET status='rejected', remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=? AND status='submitted'`,
+				strOr(body["reason"]), id)
+			api.OK(c, s.loadPurchaseRequest(id))
+			return true
+		}
 		return s.handlePurchaseRequests(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/plans"):
+		if strings.Contains(openapiPath, "/to-inbound") {
+			return s.convertPlanToInbound(c)
+		}
+		if strings.Contains(openapiPath, "/approve") {
+			id := paramID(c)
+			_, _ = s.DB.Exec(`UPDATE pur_purchase_plan SET status='approved', updated_at=datetime('now') WHERE id=? AND status='submitted'`, id)
+			api.OK(c, s.loadPurchasePlan(id))
+			return true
+		}
 		return s.handlePurchasePlans(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/tasks"):
-		return s.handleTableCRUD(c, "purchase/tasks", action)
+		return s.handlePurchaseTasks(c, method, action)
 	default:
 		return s.handleTableCRUD(c, resourceKey, action)
 	}
@@ -981,11 +1007,12 @@ func (s *Services) handleVolumePrice(c *gin.Context) bool {
 }
 
 func (s *Services) handlePurchaseRequests(c *gin.Context, method, action string) bool {
-	if action == "create" {
+	switch {
+	case action == "create":
 		body := bindBody(c)
 		docNo, _ := body["doc_no"].(string)
 		if docNo == "" {
-			docNo = fmt.Sprintf("PRQ%d", time.Now().UnixNano()%1e12)
+			docNo = fmt.Sprintf("PRQ%s", time.Now().Format("060102150405"))
 		}
 		sug, _ := asInt64(body["suggest_supplier_id"])
 		if sug == 0 {
@@ -995,14 +1022,98 @@ func (s *Services) handlePurchaseRequests(c *gin.Context, method, action string)
 			api.FailJSON(c, "SUPPLIER_NOT_FOUND")
 			return true
 		}
+		applicant := claimsUserID(c)
+		if v, ok := asInt64(body["applicant_id"]); ok && v > 0 {
+			applicant = v
+		}
 		res, err := s.DB.Exec(`INSERT INTO pur_purchase_request(doc_no, applicant_id, title, qty, status, need_date, remark)
-			VALUES(?,?,?,?,'draft',?,?)`, docNo, nullInt(body["applicant_id"]), strOrDef(body["title"], strOr(body["name"])),
+			VALUES(?,?,?,?,'draft',?,?)`, docNo, nullIf0(applicant), strOrDef(body["title"], strOr(body["name"])),
 			nullFloat(body["qty"]), strOr(body["need_date"]), strOr(body["remark"]))
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
 		}
 		hid, _ := res.LastInsertId()
+		s.insertRequestLines(hid, body, sug)
+		api.OK(c, s.loadPurchaseRequest(hid))
+		return true
+	case action == "update" || action == "replace":
+		id := paramID(c)
+		body := bindBody(c)
+		var status string
+		_ = s.DB.QueryRow(`SELECT status FROM pur_purchase_request WHERE id=? AND COALESCE(is_deleted,0)=0`, id).Scan(&status)
+		if status == "" {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		if status != "draft" && status != "rejected" {
+			api.FailJSON(c, "ONLY_DRAFT_EDITABLE")
+			return true
+		}
+		_, err := s.DB.Exec(`UPDATE pur_purchase_request SET
+			title=COALESCE(NULLIF(?,''),title), qty=COALESCE(?,qty), need_date=COALESCE(NULLIF(?,''),need_date),
+			remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=?`,
+			strOr(body["title"]), nullFloat(body["qty"]), strOr(body["need_date"]), strOr(body["remark"]), id)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
+			return true
+		}
+		if _, ok := body["product_id"]; ok || body["lines"] != nil {
+			_, _ = s.DB.Exec(`DELETE FROM pur_purchase_request_line WHERE request_id=?`, id)
+			sug, _ := asInt64(body["suggest_supplier_id"])
+			if sug == 0 {
+				sug, _ = asInt64(body["supplier_id"])
+			}
+			s.insertRequestLines(id, body, sug)
+		}
+		api.OK(c, s.loadPurchaseRequest(id))
+		return true
+	case action == "action:submit":
+		id := paramID(c)
+		_, err := s.DB.Exec(`UPDATE pur_purchase_request SET status='submitted', updated_at=datetime('now') WHERE id=? AND status IN ('draft','rejected')`, id)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
+			return true
+		}
+		api.OK(c, s.loadPurchaseRequest(id))
+		return true
+	case action == "action:approve":
+		id := paramID(c)
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET status='approved', updated_at=datetime('now') WHERE id=? AND status='submitted'`, id)
+		api.OK(c, s.loadPurchaseRequest(id))
+		return true
+	case action == "action:reject":
+		id := paramID(c)
+		body := bindBody(c)
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET status='rejected', remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=? AND status='submitted'`,
+			strOr(body["reason"]), id)
+		api.OK(c, s.loadPurchaseRequest(id))
+		return true
+	case action == "action:to-plan" || strings.Contains(c.FullPath(), "/to-plan"):
+		return s.convertRequestToPlan(c)
+	case action == "list":
+		return s.listDocTable(c, `SELECT * FROM pur_purchase_request WHERE COALESCE(is_deleted,0)=0`)
+	case action == "get":
+		m := s.loadPurchaseRequest(paramID(c))
+		if m == nil {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		api.OK(c, m)
+		return true
+	case action == "delete":
+		id := paramID(c)
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET is_deleted=1, status='cancelled', updated_at=datetime('now') WHERE id=? AND status='draft'`, id)
+		api.OK(c, gin.H{"id": id})
+		return true
+	}
+	_ = method
+	return true
+}
+
+func (s *Services) insertRequestLines(hid int64, body map[string]interface{}, sug int64) {
+	lines, _ := body["lines"].([]interface{})
+	if len(lines) == 0 {
 		pid, _ := asInt64(body["product_id"])
 		qty, _ := asFloat(body["qty"])
 		if pid == 0 {
@@ -1013,48 +1124,106 @@ func (s *Services) handlePurchaseRequests(c *gin.Context, method, action string)
 		}
 		_, _ = s.DB.Exec(`INSERT INTO pur_purchase_request_line(request_id, product_id, qty, suggest_supplier_id) VALUES(?,?,?,?)`,
 			hid, pid, qty, nullIf0(sug))
-		api.OK(c, gin.H{"id": hid, "doc_no": docNo, "status": "draft"})
-		return true
+		return
 	}
-	if action == "action:submit" {
-		id := paramID(c)
-		_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET status='submitted' WHERE id=?`, id)
-		api.OK(c, gin.H{"id": id, "status": "submitted"})
-		return true
-	}
-	if action == "list" {
-		return s.listDocTable(c, `SELECT * FROM pur_purchase_request WHERE COALESCE(is_deleted,0)=0`)
-	}
-	if action == "get" {
-		id := paramID(c)
-		rows, _ := s.DB.Query(`SELECT * FROM pur_purchase_request WHERE id=?`, id)
-		if rows == nil {
-			api.FailJSON(c, "NOT_FOUND")
-			return true
+	var total float64
+	for _, ln := range lines {
+		m, _ := ln.(map[string]interface{})
+		if m == nil {
+			continue
 		}
-		defer rows.Close()
-		list, _ := rowsToMaps(rows)
-		if len(list) == 0 {
-			api.FailJSON(c, "NOT_FOUND")
-			return true
+		pid, _ := asInt64(m["product_id"])
+		qty, _ := asFloat(m["qty"])
+		lineSug, _ := asInt64(m["suggest_supplier_id"])
+		if lineSug == 0 {
+			lineSug = sug
 		}
-		api.OK(c, list[0])
+		_, _ = s.DB.Exec(`INSERT INTO pur_purchase_request_line(request_id, product_id, qty, suggest_supplier_id) VALUES(?,?,?,?)`,
+			hid, pid, qty, nullIf0(lineSug))
+		total += qty
+	}
+	if total > 0 {
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET qty=? WHERE id=?`, total, hid)
+	}
+}
+
+func (s *Services) loadPurchaseRequest(id int64) gin.H {
+	rows, err := s.DB.Query(`SELECT * FROM pur_purchase_request WHERE id=? AND COALESCE(is_deleted,0)=0`, id)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	list, _ := rowsToMaps(rows)
+	if len(list) == 0 {
+		return nil
+	}
+	m := gin.H(list[0])
+	lrows, _ := s.DB.Query(`SELECT * FROM pur_purchase_request_line WHERE request_id=? ORDER BY id`, id)
+	lines := []map[string]interface{}{}
+	if lrows != nil {
+		defer lrows.Close()
+		lines, _ = rowsToMaps(lrows)
+	}
+	m["lines"] = lines
+	return m
+}
+
+func (s *Services) convertRequestToPlan(c *gin.Context) bool {
+	id := paramID(c)
+	req := s.loadPurchaseRequest(id)
+	if req == nil {
+		api.FailJSON(c, "NOT_FOUND")
 		return true
 	}
+	st := strOr(req["status"])
+	if st != "approved" && st != "submitted" {
+		api.FailJSON(c, "REQUEST_NOT_APPROVED")
+		return true
+	}
+	docNo := fmt.Sprintf("PPL%s", time.Now().Format("060102150405"))
+	res, err := s.DB.Exec(`INSERT INTO pur_purchase_plan(doc_no, status, plan_date, remark) VALUES(?,'draft',?,?)`,
+		docNo, time.Now().Format("2006-01-02"), fmt.Sprintf("来自申请 %s", strOr(req["doc_no"])))
+	if err != nil {
+		api.FailJSON(c, "DB_ERROR:"+err.Error())
+		return true
+	}
+	pid, _ := res.LastInsertId()
+	lines, _ := req["lines"].([]map[string]interface{})
+	if lines == nil {
+		if raw, ok := req["lines"].([]interface{}); ok {
+			for _, x := range raw {
+				if m, ok := x.(map[string]interface{}); ok {
+					lines = append(lines, m)
+				}
+			}
+		}
+	}
+	for _, ln := range lines {
+		productID, _ := asInt64(ln["product_id"])
+		qty, _ := asFloat(ln["qty"])
+		sug, _ := asInt64(ln["suggest_supplier_id"])
+		lineID, _ := asInt64(ln["id"])
+		_, _ = s.DB.Exec(`INSERT INTO pur_purchase_plan_line(plan_id, product_id, qty, supplier_id, request_line_id) VALUES(?,?,?,?,?)`,
+			pid, productID, qty, nullIf0(sug), nullIf0(lineID))
+	}
+	_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET status='planned', updated_at=datetime('now') WHERE id=?`, id)
+	out := s.loadPurchasePlan(pid)
+	out["from_request_id"] = id
+	api.OK(c, out)
 	return true
 }
 
 func (s *Services) handlePurchasePlans(c *gin.Context, method, action string) bool {
-	if action == "create" {
+	switch {
+	case action == "create":
 		body := bindBody(c)
 		docNo, _ := body["doc_no"].(string)
 		if docNo == "" {
-			docNo = fmt.Sprintf("PPL%d", time.Now().UnixNano()%1e12)
+			docNo = fmt.Sprintf("PPL%s", time.Now().Format("060102150405"))
 		}
 		sid, _ := asInt64(body["supplier_id"])
 		if sid > 0 {
 			if msg := s.assertSupplierCanPurchase(sid); msg != "" && msg != "SUPPLIER_NOT_QUALIFIED" {
-				// plans may draft with potential; block only frozen/blacklist
 				if strings.HasPrefix(msg, "SUPPLIER_BLOCKED") || msg == "SUPPLIER_NOT_FOUND" {
 					api.FailJSON(c, msg)
 					return true
@@ -1068,6 +1237,71 @@ func (s *Services) handlePurchasePlans(c *gin.Context, method, action string) bo
 			return true
 		}
 		hid, _ := res.LastInsertId()
+		s.insertPlanLines(hid, body, sid)
+		api.OK(c, s.loadPurchasePlan(hid))
+		return true
+	case action == "update" || action == "replace":
+		id := paramID(c)
+		body := bindBody(c)
+		var status string
+		_ = s.DB.QueryRow(`SELECT status FROM pur_purchase_plan WHERE id=? AND COALESCE(is_deleted,0)=0`, id).Scan(&status)
+		if status == "" {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		if status != "draft" && status != "rejected" {
+			api.FailJSON(c, "ONLY_DRAFT_EDITABLE")
+			return true
+		}
+		_, err := s.DB.Exec(`UPDATE pur_purchase_plan SET
+			plan_date=COALESCE(NULLIF(?,''),plan_date), remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=?`,
+			strOr(body["plan_date"]), strOr(body["remark"]), id)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
+			return true
+		}
+		if _, ok := body["product_id"]; ok || body["lines"] != nil {
+			_, _ = s.DB.Exec(`DELETE FROM pur_purchase_plan_line WHERE plan_id=?`, id)
+			sid, _ := asInt64(body["supplier_id"])
+			s.insertPlanLines(id, body, sid)
+		}
+		api.OK(c, s.loadPurchasePlan(id))
+		return true
+	case action == "action:submit":
+		id := paramID(c)
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_plan SET status='submitted', updated_at=datetime('now') WHERE id=? AND status IN ('draft','rejected')`, id)
+		api.OK(c, s.loadPurchasePlan(id))
+		return true
+	case action == "action:approve":
+		id := paramID(c)
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_plan SET status='approved', updated_at=datetime('now') WHERE id=? AND status='submitted'`, id)
+		api.OK(c, s.loadPurchasePlan(id))
+		return true
+	case action == "action:to-inbound" || strings.Contains(c.FullPath(), "/to-inbound"):
+		return s.convertPlanToInbound(c)
+	case action == "list":
+		return s.listDocTable(c, `SELECT * FROM pur_purchase_plan WHERE COALESCE(is_deleted,0)=0`)
+	case action == "get":
+		m := s.loadPurchasePlan(paramID(c))
+		if m == nil {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		api.OK(c, m)
+		return true
+	case action == "delete":
+		id := paramID(c)
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_plan SET is_deleted=1, status='cancelled', updated_at=datetime('now') WHERE id=? AND status='draft'`, id)
+		api.OK(c, gin.H{"id": id})
+		return true
+	}
+	_ = method
+	return true
+}
+
+func (s *Services) insertPlanLines(hid int64, body map[string]interface{}, sid int64) {
+	lines, _ := body["lines"].([]interface{})
+	if len(lines) == 0 {
 		pid, _ := asInt64(body["product_id"])
 		qty, _ := asFloat(body["qty"])
 		if pid == 0 {
@@ -1077,35 +1311,194 @@ func (s *Services) handlePurchasePlans(c *gin.Context, method, action string) bo
 			qty = 1
 		}
 		_, _ = s.DB.Exec(`INSERT INTO pur_purchase_plan_line(plan_id, product_id, qty, supplier_id) VALUES(?,?,?,?)`, hid, pid, qty, nullIf0(sid))
-		api.OK(c, gin.H{"id": hid, "doc_no": docNo, "status": "draft"})
-		return true
+		return
 	}
-	if action == "action:submit" {
-		id := paramID(c)
-		_, _ = s.DB.Exec(`UPDATE pur_purchase_plan SET status='submitted' WHERE id=?`, id)
-		api.OK(c, gin.H{"id": id, "status": "submitted"})
-		return true
-	}
-	if action == "list" {
-		return s.listDocTable(c, `SELECT * FROM pur_purchase_plan WHERE COALESCE(is_deleted,0)=0`)
-	}
-	if action == "get" {
-		id := paramID(c)
-		rows, _ := s.DB.Query(`SELECT * FROM pur_purchase_plan WHERE id=?`, id)
-		if rows == nil {
-			api.FailJSON(c, "NOT_FOUND")
-			return true
+	for _, ln := range lines {
+		m, _ := ln.(map[string]interface{})
+		if m == nil {
+			continue
 		}
-		defer rows.Close()
-		list, _ := rowsToMaps(rows)
-		if len(list) == 0 {
-			api.FailJSON(c, "NOT_FOUND")
-			return true
+		pid, _ := asInt64(m["product_id"])
+		qty, _ := asFloat(m["qty"])
+		lineSid, _ := asInt64(m["supplier_id"])
+		if lineSid == 0 {
+			lineSid = sid
 		}
-		api.OK(c, list[0])
+		_, _ = s.DB.Exec(`INSERT INTO pur_purchase_plan_line(plan_id, product_id, qty, supplier_id, request_line_id) VALUES(?,?,?,?,?)`,
+			hid, pid, qty, nullIf0(lineSid), nullInt(m["request_line_id"]))
+	}
+}
+
+func (s *Services) loadPurchasePlan(id int64) gin.H {
+	rows, err := s.DB.Query(`SELECT * FROM pur_purchase_plan WHERE id=? AND COALESCE(is_deleted,0)=0`, id)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	list, _ := rowsToMaps(rows)
+	if len(list) == 0 {
+		return nil
+	}
+	m := gin.H(list[0])
+	lrows, _ := s.DB.Query(`SELECT * FROM pur_purchase_plan_line WHERE plan_id=? ORDER BY id`, id)
+	lines := []map[string]interface{}{}
+	if lrows != nil {
+		defer lrows.Close()
+		lines, _ = rowsToMaps(lrows)
+	}
+	m["lines"] = lines
+	return m
+}
+
+func (s *Services) convertPlanToInbound(c *gin.Context) bool {
+	id := paramID(c)
+	plan := s.loadPurchasePlan(id)
+	if plan == nil {
+		api.FailJSON(c, "NOT_FOUND")
 		return true
 	}
+	st := strOr(plan["status"])
+	if st != "approved" && st != "submitted" {
+		api.FailJSON(c, "PLAN_NOT_APPROVED")
+		return true
+	}
+	body := bindBody(c)
+	sid, _ := asInt64(body["supplier_id"])
+	lines, _ := plan["lines"].([]map[string]interface{})
+	if lines == nil {
+		if raw, ok := plan["lines"].([]interface{}); ok {
+			for _, x := range raw {
+				if m, ok := x.(map[string]interface{}); ok {
+					lines = append(lines, m)
+				}
+			}
+		}
+	}
+	if sid == 0 && len(lines) > 0 {
+		sid, _ = asInt64(lines[0]["supplier_id"])
+	}
+	if sid == 0 {
+		api.FailJSON(c, "SUPPLIER_REQUIRED")
+		return true
+	}
+	if msg := s.assertSupplierCanPurchase(sid); msg != "" {
+		api.FailJSON(c, msg)
+		return true
+	}
+	wh, _ := asInt64(body["warehouse_id"])
+	if wh == 0 {
+		_ = s.DB.QueryRow(`SELECT COALESCE(default_warehouse_id,1) FROM pur_supplier WHERE id=?`, sid).Scan(&wh)
+		if wh == 0 {
+			wh = 1
+		}
+	}
+	docNo := fmt.Sprintf("PI%s", time.Now().Format("060102150405"))
+	bizDate := time.Now().Format("2006-01-02")
+	res, err := s.DB.Exec(`INSERT INTO pur_purchase_inbound(doc_no, supplier_id, warehouse_id, status, biz_date, plan_id, remark)
+		VALUES(?,?,?,'draft',?,?,?)`, docNo, sid, wh, bizDate, id, fmt.Sprintf("来自计划 %s", strOr(plan["doc_no"])))
+	if err != nil {
+		api.FailJSON(c, "DB_ERROR:"+err.Error())
+		return true
+	}
+	hid, _ := res.LastInsertId()
+	price, _ := asFloat(body["price"])
+	for _, ln := range lines {
+		pid, _ := asInt64(ln["product_id"])
+		qty, _ := asFloat(ln["qty"])
+		_, _ = s.DB.Exec(`INSERT INTO pur_purchase_inbound_line(inbound_id, product_id, qty, price, amount, batch_no) VALUES(?,?,?,?,?,?)`,
+			hid, pid, qty, nullFloat(price), qty*price, strOr(body["batch_no"]))
+	}
+	_, _ = s.DB.Exec(`UPDATE pur_purchase_plan SET status='ordered', updated_at=datetime('now') WHERE id=?`, id)
+	api.OK(c, s.loadInbound(hid))
 	return true
+}
+
+func (s *Services) handlePurchaseTasks(c *gin.Context, method, action string) bool {
+	switch {
+	case action == "list":
+		return s.listDocTable(c, `SELECT * FROM pur_purchase_task WHERE COALESCE(is_deleted,0)=0`)
+	case action == "create":
+		body := bindBody(c)
+		docNo := strOrDef(body["doc_no"], fmt.Sprintf("PT%s", time.Now().Format("060102150405")))
+		res, err := s.DB.Exec(`INSERT INTO pur_purchase_task(doc_no, title, assignee_id, product_id, qty, supplier_id, status, due_date, remark)
+			VALUES(?,?,?,?,?,?,'open',?,?)`,
+			docNo, strOrDef(body["title"], "采购任务"), nullInt(body["assignee_id"]), nullInt(body["product_id"]),
+			nullFloat(body["qty"]), nullInt(body["supplier_id"]), strOr(body["due_date"]), strOr(body["remark"]))
+		if err != nil {
+			// fallback without extended columns
+			res, err = s.DB.Exec(`INSERT INTO pur_purchase_task(doc_no, assignee_id, product_id, qty, status, due_date)
+				VALUES(?,?,?,?,'open',?)`,
+				docNo, nullInt(body["assignee_id"]), nullInt(body["product_id"]), nullFloat(body["qty"]), strOr(body["due_date"]))
+			if err != nil {
+				api.FailJSON(c, "DB_ERROR:"+err.Error())
+				return true
+			}
+		}
+		id, _ := res.LastInsertId()
+		api.OK(c, s.loadPurchaseTask(id))
+		return true
+	case action == "get":
+		m := s.loadPurchaseTask(paramID(c))
+		if m == nil {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		api.OK(c, m)
+		return true
+	case action == "update" || action == "replace":
+		id := paramID(c)
+		body := bindBody(c)
+		_, err := s.DB.Exec(`UPDATE pur_purchase_task SET
+			assignee_id=COALESCE(?,assignee_id), product_id=COALESCE(?,product_id), qty=COALESCE(?,qty),
+			due_date=COALESCE(NULLIF(?,''),due_date), status=COALESCE(NULLIF(?,''),status),
+			updated_at=datetime('now') WHERE id=?`,
+			nullInt(body["assignee_id"]), nullInt(body["product_id"]), nullFloat(body["qty"]),
+			strOr(body["due_date"]), strOr(body["status"]), id)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
+			return true
+		}
+		// best-effort extended fields
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_task SET title=COALESCE(NULLIF(?,''),title), remark=COALESCE(NULLIF(?,''),remark),
+			supplier_id=COALESCE(?,supplier_id) WHERE id=?`,
+			strOr(body["title"]), strOr(body["remark"]), nullInt(body["supplier_id"]), id)
+		api.OK(c, s.loadPurchaseTask(id))
+		return true
+	case action == "action:assign":
+		id := paramID(c)
+		body := bindBody(c)
+		aid, _ := asInt64(body["assignee_id"])
+		if aid == 0 {
+			aid = claimsUserID(c)
+		}
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_task SET assignee_id=?, status='assigned', updated_at=datetime('now') WHERE id=?`, aid, id)
+		api.OK(c, s.loadPurchaseTask(id))
+		return true
+	case action == "action:complete":
+		id := paramID(c)
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_task SET status='done', updated_at=datetime('now') WHERE id=?`, id)
+		api.OK(c, s.loadPurchaseTask(id))
+		return true
+	case action == "delete":
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_task SET is_deleted=1, updated_at=datetime('now') WHERE id=?`, paramID(c))
+		api.OK(c, gin.H{})
+		return true
+	}
+	_ = method
+	return true
+}
+
+func (s *Services) loadPurchaseTask(id int64) gin.H {
+	rows, err := s.DB.Query(`SELECT * FROM pur_purchase_task WHERE id=? AND COALESCE(is_deleted,0)=0`, id)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	list, _ := rowsToMaps(rows)
+	if len(list) == 0 {
+		return nil
+	}
+	return gin.H(list[0])
 }
 
 func (s *Services) listDocTable(c *gin.Context, baseSQL string) bool {

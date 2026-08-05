@@ -15,6 +15,19 @@ type Config struct {
 	CORS     CORSConfig     `yaml:"cors"`
 	Trace    TraceConfig    `yaml:"trace"`
 	Mqtt     MqttConfig     `yaml:"mqtt"`
+	Seed     SeedConfig     `yaml:"seed"`
+}
+
+type SeedConfig struct {
+	// Demo controls showcase fake data for all menus. nil = auto (on for sqlite).
+	Demo *bool `yaml:"demo"`
+}
+
+func (s SeedConfig) DemoEnabled() bool {
+	if s.Demo != nil {
+		return *s.Demo
+	}
+	return true
 }
 
 type TraceConfig struct {

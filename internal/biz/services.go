@@ -48,8 +48,10 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		return s.handleToolIssues(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/inventory/weighbridges"):
 		return s.handleWeighbridges(c, method, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/product/products") && !strings.Contains(openapiPath, "/units") && !strings.Contains(openapiPath, "/activate") && !strings.Contains(openapiPath, "/deactivate"):
-		return s.handleProducts(c, method, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/product/"):
+		return s.handleProductDomain(c, method, openapiPath, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/asset/"):
+		return s.handleAssetDomain(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/inventory/balances") && method == "GET":
 		s.listBalances(c)
 		return true
@@ -61,6 +63,10 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		return true
 	case openapiPath == "/api/v1/inventory/stock-txns" || strings.HasPrefix(openapiPath, "/api/v1/inventory/stock-txns/{id}"):
 		return s.handleStockTxns(c, method, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/inventory/") && !strings.Contains(openapiPath, "/box-codes") && !strings.Contains(openapiPath, "/weighbridges"):
+		if s.handleInventoryExt(c, method, openapiPath, action) {
+			return true
+		}
 	case openapiPath == "/api/v1/production/processes" || openapiPath == "/api/v1/production/processes/{id}":
 		return s.handleProcesses(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/tasks"):
@@ -97,6 +103,10 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		return s.handleFlowEvents(c, method, action, openapiPath)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/flow-rules"):
 		return s.handleFlowRules(c, method, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/production/"):
+		if s.handleProductionExt(c, method, openapiPath, action) {
+			return true
+		}
 	case strings.HasPrefix(openapiPath, "/api/v1/system/operation-logs"):
 		return s.handleOperationLogs(c, method, action, openapiPath)
 	case strings.HasPrefix(openapiPath, "/api/v1/system/data-repairs"):
@@ -123,8 +133,8 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		return s.handleEmployees(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/hr/"):
 		return s.handleHROps(c, method, openapiPath, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/approval/tasks"):
-		return s.handleApprovalTasks(c, method, action, openapiPath)
+	case strings.HasPrefix(openapiPath, "/api/v1/approval/"):
+		return s.handleApprovalDomain(c, method, openapiPath, action)
 	case openapiPath == "/api/v1/iam/hr-perm-overview":
 		return s.hrPermOverview(c)
 	case strings.Contains(openapiPath, "/iam/users/") && strings.Contains(openapiPath, "/bind-employee"):
@@ -140,16 +150,16 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 			return s.getRoleDetailIAM(c)
 		}
 		return s.handleIAM(c, method, action, openapiPath)
+	case strings.HasPrefix(openapiPath, "/api/v1/crm/"):
+		return s.handleCRM(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/"):
 		return s.handlePurchase(c, method, openapiPath, resourceKey, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/prepay-prepaids") || strings.HasPrefix(openapiPath, "/api/v1/finance/arap-adjusts"):
-		if s.handleFinancePartyGuard(c, method, openapiPath, action) {
-			return true
-		}
-	case strings.HasPrefix(openapiPath, "/api/v1/sales/orders") && method == "POST" && action == "create":
-		return s.handleSalesOrderCreate(c)
-	case openapiPath == "/api/v1/sales/pre-shipments/{id}/confirm" || (strings.Contains(openapiPath, "pre-shipments") && strings.HasSuffix(action, "confirm")):
-		return s.handlePreShipConfirm(c)
+	case strings.HasPrefix(openapiPath, "/api/v1/finance/"):
+		return s.handleFinanceDomain(c, method, openapiPath, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/report/"):
+		return s.handleReportDomain(c, method, openapiPath, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/sales/"):
+		return s.handleSales(c, method, openapiPath, action)
 	case openapiPath == "/api/v1/health":
 		return false // keep health package
 	case strings.HasPrefix(openapiPath, "/api/v1/auth/"):

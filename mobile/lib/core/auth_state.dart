@@ -9,12 +9,22 @@ class AuthState extends ChangeNotifier {
 
   String? name;
   String? loginName;
+  int userId = 0;
+  int employeeId = 0;
   List<String> roles = [];
   List<String> permissions = [];
   String error = '';
   bool loading = false;
 
   bool get isLoggedIn => api.accessToken != null && api.accessToken!.isNotEmpty;
+
+  void _applyUser(Map<String, dynamic>? user) {
+    if (user == null) return;
+    name = user['name']?.toString().isNotEmpty == true ? user['name']?.toString() : name;
+    loginName = user['login_name']?.toString() ?? loginName;
+    userId = (user['id'] as num?)?.toInt() ?? userId;
+    employeeId = (user['employee_id'] as num?)?.toInt() ?? employeeId;
+  }
 
   Future<bool> login(String login, String password) async {
     loading = true;
@@ -41,9 +51,7 @@ class AuthState extends ChangeNotifier {
       );
       roles = (data['roles'] as List?)?.map((e) => e.toString()).toList() ?? [];
       permissions = (data['permissions'] as List?)?.map((e) => e.toString()).toList() ?? [];
-      final user = data['user'] as Map<String, dynamic>?;
-      name = user?['name']?.toString();
-      loginName = user?['login_name']?.toString() ?? login;
+      _applyUser(data['user'] as Map<String, dynamic>?);
       await fetchMe();
       return true;
     } finally {
@@ -61,8 +69,7 @@ class AuthState extends ChangeNotifier {
     final data = r.data as Map<String, dynamic>;
     roles = (data['roles'] as List?)?.map((e) => e.toString()).toList() ?? roles;
     permissions = (data['permissions'] as List?)?.map((e) => e.toString()).toList() ?? permissions;
-    final user = data['user'] as Map<String, dynamic>?;
-    loginName = user?['login_name']?.toString() ?? loginName;
+    _applyUser(data['user'] as Map<String, dynamic>?);
     notifyListeners();
     return true;
   }
@@ -71,6 +78,8 @@ class AuthState extends ChangeNotifier {
     await api.clearTokens();
     name = null;
     loginName = null;
+    userId = 0;
+    employeeId = 0;
     roles = [];
     permissions = [];
     notifyListeners();

@@ -166,7 +166,10 @@ watch(() => route.fullPath, load)
 <template>
   <IamView v-if="perm.isIamModule(moduleName)" :module="moduleName" />
   <SupplierView v-else-if="perm.isSupplierModule(moduleName)" />
-  <FarmerInboundView v-else-if="perm.isFarmerInboundModule(moduleName)" />
+  <FarmerInboundView
+    v-else-if="perm.isFarmerInboundModule(moduleName)"
+    :section="moduleName === '农户档案' ? 'farmers' : moduleName === '农户结算' ? 'settlements' : 'weigh'"
+  />
   <OnboardView v-else-if="perm.isOnboardModule(moduleName)" />
   <EmployeeView v-else-if="perm.isEmployeeModule(moduleName)" />
   <HrOpsView v-else-if="perm.isHrOpsModule(moduleName)" :module="moduleName" />

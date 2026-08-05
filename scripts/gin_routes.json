@@ -105,6 +105,18 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/production/consignments"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/consignments/:id/progress"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/cost-hide-policies"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/production/boms"
   },
   {
@@ -126,10 +138,6 @@
   {
     "method": "POST",
     "path": "/api/v1/production/qc-orders/:id/complete"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/consignments"
   },
   {
     "method": "POST",
@@ -185,6 +193,34 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/purchase/requests"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/requests/:id/submit"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/requests/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/requests/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/requests/:id/to-plan"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/returns"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/returns/:id/post"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/purchase/suppliers"
   },
   {
@@ -225,22 +261,6 @@
   },
   {
     "method": "POST",
-    "path": "/api/v1/purchase/requests"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/requests/:id/submit"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/returns"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/returns/:id/post"
-  },
-  {
-    "method": "POST",
     "path": "/api/v1/purchase/tasks"
   },
   {
@@ -257,6 +277,22 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/purchase/plans"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/plans/:id/submit"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/plans/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/plans/:id/to-inbound"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/purchase/farmer-settlements"
   },
   {
@@ -266,14 +302,6 @@
   {
     "method": "POST",
     "path": "/api/v1/purchase/farmers"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/plans"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/plans/:id/submit"
   },
   {
     "method": "POST",
@@ -641,6 +669,146 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/approval/inquiry-finance"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/inquiry-finance/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/inquiry-finance/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/inquiry-lines"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/inquiry-lines/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/inquiry-lines/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/purchases"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/purchases/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/purchases/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/purchase-plans"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/purchase-plans/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/purchase-plans/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/affairs"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/affairs/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/affairs/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/attendance"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/attendance/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/attendance/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/expense-finance"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/expense-finance/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/expense-finance/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/expense-requests"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/expense-requests/:id/submit"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/tasks"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/tasks/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/tasks/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/doc-reviews"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/doc-reviews/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/approval/doc-reviews/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/asset/transfers"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/asset/transfers/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/asset/categories"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/asset/fixed-assets"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/auth/login"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/auth/refresh"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/finance/cost-accountings"
   },
   {
@@ -893,110 +1061,6 @@
   },
   {
     "method": "POST",
-    "path": "/api/v1/approval/affairs/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/affairs/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/attendance/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/attendance/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/expense-finance/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/expense-finance/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/expense-requests"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/expense-requests/:id/submit"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/inquiry-finance/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/inquiry-finance/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/inquiry-lines/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/inquiry-lines/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/purchase-plans/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/purchase-plans/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/purchases/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/purchases/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/doc-reviews/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/doc-reviews/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/tasks/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/approval/tasks/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/asset/transfers"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/asset/transfers/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/asset/categories"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/asset/fixed-assets"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/auth/login"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/auth/refresh"
-  },
-  {
-    "method": "POST",
     "path": "/api/v1/crm/customers"
   },
   {
@@ -1218,6 +1282,10 @@
   {
     "method": "GET",
     "path": "/api/v1/production/drawing-links"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/drawing-links/:id"
   },
   {
     "method": "GET",

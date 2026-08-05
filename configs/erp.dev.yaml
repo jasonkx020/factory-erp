@@ -4,6 +4,8 @@ database:
   driver: sqlite
   sqlite_path: data/erp_dev.db
   # mysql_dsn: "user:pass@tcp(127.0.0.1:3306)/erp_factory?parseTime=true&charset=utf8mb4&loc=Local"
+seed:
+  demo: true
 jwt:
   secret: "dev-only-change-me"
   access_ttl_min: 120

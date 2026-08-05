@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
 import '../../core/employee_modules.dart';
 import '../../core/notify_service.dart';
@@ -38,7 +39,9 @@ class _WorkerPageState extends State<WorkerPage> {
   List<Map<String, dynamic>> _issueLines = [];
   List<Map<String, dynamic>> _tools = [];
 
-  static const _titles = ['双扫报工', '今日核对', '领料/工具', '提醒'];
+  static const _titles = ['双扫报工', '今日核对', '领料/工具', '联动领料', '提醒'];
+  final _reqQty = TextEditingController(text: '50');
+  List<dynamic> _reqs = [];
 
   @override
   void initState() {
@@ -62,6 +65,7 @@ class _WorkerPageState extends State<WorkerPage> {
     _in.dispose();
     _out.dispose();
     _bag.dispose();
+    _reqQty.dispose();
     super.dispose();
   }
 
@@ -199,6 +203,42 @@ class _WorkerPageState extends State<WorkerPage> {
     if (r.ok && !resolveOnly && _pendingReportId == null) await _loadWage();
   }
 
+  Future<void> _loadReqs() async {
+    final r = await context.read<AuthState>().api.get('/production/requisitions');
+    if (!mounted) return;
+    setState(() => _reqs = ApiClient.listOf(r.data));
+  }
+
+  Future<void> _createReq() async {
+    final api = context.read<AuthState>().api;
+    final qty = double.tryParse(_reqQty.text) ?? 50;
+    final r = await api.post('/production/requisitions', {
+      'product_id': 1,
+      'qty': qty,
+      'warehouse_id': 1,
+      'weight': qty,
+      'remark': '工人联动领料',
+      'lines': [
+        {'product_id': 1, 'qty': qty},
+      ],
+    });
+    if (!mounted) return;
+    setState(() => _msg = r.ok ? '领料单已建' : r.msg);
+    if (r.ok) await _loadReqs();
+  }
+
+  Future<void> _postReq(Map m) async {
+    final id = (m['id'] as num?)?.toInt();
+    if (id == null) {
+      setState(() => _msg = '单据无 id，无法过账');
+      return;
+    }
+    final r = await context.read<AuthState>().api.post('/production/requisitions/$id/post', {});
+    if (!mounted) return;
+    setState(() => _msg = r.ok ? '领料已过账出库' : r.msg);
+    if (r.ok) await _loadReqs();
+  }
+
   Future<void> _confirm() async {
     final id = _pendingReportId ?? (_last?['id'] as num?)?.toInt();
     if (id == null) {
@@ -276,13 +316,32 @@ class _WorkerPageState extends State<WorkerPage> {
           ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              ListTile(title: const Text('预计工钱'), subtitle: Text('¥${_daily?['total_amount'] ?? 0}')),
-              ListTile(title: const Text('总完工重'), subtitle: Text('${_daily?['total_output_weight'] ?? _daily?['total_qty'] ?? 0}')),
-              const Divider(),
+              Card(
+                color: Colors.teal.shade50,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('今日产量与工钱', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      const SizedBox(height: 8),
+                      Text('预计工钱  ¥${_daily?['total_amount'] ?? 0}', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+                      Text('完工重 ${_daily?['total_output_weight'] ?? _daily?['total_qty'] ?? 0} kg'),
+                      Text('报工次数 ${_daily?['report_count'] ?? _daily?['count'] ?? '-'}'),
+                      const SizedBox(height: 8),
+                      OutlinedButton(onPressed: _loadWage, child: const Text('刷新核对')),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
               const Text('工序工价参考', style: TextStyle(fontWeight: FontWeight.bold)),
               ..._wages.map((e) {
                 final m = Map<String, dynamic>.from(e as Map);
-                return ListTile(title: Text('工序 ${m['process_id']}'), trailing: Text('¥${m['rate']}'));
+                return ListTile(
+                  title: Text('${m['process_name'] ?? '工序 ${m['process_id']}'}'),
+                  trailing: Text('¥${m['rate']}/kg'),
+                );
               }),
             ],
           ),
@@ -309,6 +368,24 @@ class _WorkerPageState extends State<WorkerPage> {
           ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              const Text('联动领料（提交并过账出库）', style: TextStyle(fontWeight: FontWeight.bold)),
+              TextField(controller: _reqQty, decoration: const InputDecoration(labelText: '领料数量/重量'), keyboardType: TextInputType.number),
+              FilledButton(onPressed: _createReq, child: const Text('新建领料单')),
+              if (_msg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_msg)),
+              const Divider(),
+              ..._reqs.map((e) {
+                final m = Map<String, dynamic>.from(e as Map);
+                return ListTile(
+                  title: Text('${m['doc_no'] ?? m['id'] ?? '领料'}'),
+                  subtitle: Text('${m['status'] ?? m['doc_type'] ?? ''} · qty ${m['qty'] ?? ''}'),
+                  trailing: TextButton(onPressed: () => _postReq(m), child: const Text('过账')),
+                );
+              }),
+            ],
+          ),
+          ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
               Text('MQTT ${context.watch<NotifyService>().mqttStatus}', style: const TextStyle(color: Colors.black54, fontSize: 12)),
               const SizedBox(height: 8),
               if (_notices.isEmpty) const Text('暂无提醒（报工确认 / 劳动支付）'),
@@ -330,12 +407,14 @@ class _WorkerPageState extends State<WorkerPage> {
           setState(() => _tab = i);
           if (i == 1) _loadWage();
           if (i == 2) _loadLedger();
-          if (i == 3) _applyNotices();
+          if (i == 3) _loadReqs();
+          if (i == 4) _applyNotices();
         },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.qr_code), label: '报工'),
           NavigationDestination(icon: Icon(Icons.payments), label: '核对'),
           NavigationDestination(icon: Icon(Icons.inventory_2), label: '领料'),
+          NavigationDestination(icon: Icon(Icons.outbox), label: '联动'),
           NavigationDestination(icon: Icon(Icons.notifications), label: '提醒'),
         ],
       ),

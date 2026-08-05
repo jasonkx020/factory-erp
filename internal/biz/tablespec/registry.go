@@ -52,8 +52,15 @@ var Registry = map[string]*Spec{
 		Cols: []Col{{"org_id", TypeInt}, {"dept_id", TypeInt}, {"code", TypeStr}, {"name", TypeStr}, {"status", TypeStr}},
 	},
 	"production/boms": {
-		Table: "pd_routing", DocNo: "code", Status: "status", SoftDelete: true, // reuse lightweight until dedicated bom table widely used
-		Cols:    []Col{{"code", TypeStr}, {"name", TypeStr}, {"product_id", TypeInt}, {"status", TypeStr}},
+		Table: "pd_bom", DocNo: "code", Status: "status", SoftDelete: false,
+		Cols: []Col{
+			{"code", TypeStr}, {"product_id", TypeInt}, {"version_no", TypeStr}, {"name", TypeStr},
+			{"is_auto_generated", TypeInt}, {"status", TypeStr}, {"remark", TypeStr},
+		},
+		Lines: &LineSpec{
+			Table: "pd_bom_line", FK: "bom_id", OrderBy: "id",
+			Cols: []Col{{"component_product_id", TypeInt}, {"qty", TypeFloat}, {"scrap_rate", TypeFloat}, {"remark", TypeStr}},
+		},
 		Actions: map[string]string{"activate": "active"},
 	},
 	"inventory/box-codes": {

@@ -121,6 +121,14 @@ func EnsureAutomationSchema(db *sql.DB) {
 	EnsureFarmerSchema(db)
 	EnsureClosedLoopSchema(db)
 	EnsureFieldLedgerSchema(db)
+	EnsureSalesSchema(db)
+	EnsureProductionExtSchema(db)
+	EnsureInventoryExtSchema(db)
+	EnsureProductExtSchema(db)
+	EnsureAssetSchema(db)
+	EnsureFinanceSchema(db)
+	EnsureReportSchema(db)
+	EnsureApprovalSchema(db)
 }
 
 // EnsureClosedLoopSchema evidence, audit, arrival, trace lot, confirm columns.
@@ -554,6 +562,9 @@ func EnsurePurchaseSchema(db *sql.DB) {
 		`ALTER TABLE pur_supplier ADD COLUMN remark TEXT`,
 		`ALTER TABLE pur_supplier ADD COLUMN updated_at TEXT`,
 		`ALTER TABLE pur_incoming_qc ADD COLUMN supplier_id INTEGER`,
+		`ALTER TABLE pur_purchase_task ADD COLUMN title TEXT`,
+		`ALTER TABLE pur_purchase_task ADD COLUMN supplier_id INTEGER`,
+		`ALTER TABLE pur_purchase_task ADD COLUMN remark TEXT`,
 	}
 	execSchemaRuns(db, "purchase", stmts)
 	seedPurchase(db)

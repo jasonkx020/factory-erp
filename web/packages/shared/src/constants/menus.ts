@@ -89,17 +89,17 @@ export const ERP_MENUS: Array<{ domain: string; modules: string[] }> = [
 ]
 
 export const DOMAIN_LIST_PATH: Record<string, string> = {
-  产品管理: '/product/products',
-  库存管理: '/inventory/balances',
+  产品管理: '/product/hub/products',
+  库存管理: '/inventory/hub/balances',
   生产管理: '/production/processes',
   工资管理: '/payroll/wage-rates',
   人事管理: '/hr/employees',
-  审批管理: '/approval/tasks',
+  审批管理: '/approval/hub/tasks',
   系统管理: '/system/settings',
   客户管理: '/crm/customers',
   销售管理: '/sales/orders',
   采购管理: '/purchase/suppliers',
-  统计报表: '/report/dashboards/boss',
-  财务管理: '/finance/vouchers',
-  固定资产管理: '/asset/fixed-assets',
+  统计报表: '/report/hub/boss',
+  财务管理: '/finance/hub/vouchers',
+  固定资产管理: '/asset/hub/fixed-assets',
 }

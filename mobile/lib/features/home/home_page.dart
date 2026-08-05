@@ -21,11 +21,37 @@ class _HomePageState extends State<HomePage> {
       final notify = context.read<NotifyService>();
       await auth.fetchMe();
       await notify.start();
-      final mods = visibleEmployeeModules(auth.permissions, auth.roles);
+      // 仅单一作业角色时自动进入；资料/我的始终留在首页
+      final mods = visibleEmployeeModules(auth.permissions, auth.roles)
+          .where((m) => m.key != EmployeeModule.mine && m.key != EmployeeModule.knowledge)
+          .toList();
       if (mods.length == 1 && mounted) {
         Navigator.of(context).pushNamed(mods.first.route);
       }
     });
+  }
+
+  IconData _icon(EmployeeModule m) {
+    switch (m) {
+      case EmployeeModule.workshop:
+        return Icons.precision_manufacturing;
+      case EmployeeModule.worker:
+        return Icons.badge;
+      case EmployeeModule.receiving:
+        return Icons.scale;
+      case EmployeeModule.warehouse:
+        return Icons.warehouse;
+      case EmployeeModule.sales:
+        return Icons.storefront;
+      case EmployeeModule.assets:
+        return Icons.handyman;
+      case EmployeeModule.collab:
+        return Icons.payments;
+      case EmployeeModule.knowledge:
+        return Icons.menu_book;
+      case EmployeeModule.mine:
+        return Icons.person;
+    }
   }
 
   @override
@@ -64,7 +90,11 @@ class _HomePageState extends State<HomePage> {
                 final m = mods[i];
                 return Card(
                   child: ListTile(
-                    title: Text(m.title),
+                    leading: CircleAvatar(
+                      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                      child: Icon(_icon(m.key)),
+                    ),
+                    title: Text(m.title, style: const TextStyle(fontWeight: FontWeight.w600)),
                     subtitle: Text(m.desc),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => Navigator.of(context).pushNamed(m.route),

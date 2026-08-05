@@ -1,3 +1,6 @@
+seed:
+  # 生产环境建议关闭展示假数据
+  demo: false
 server:
   addr: ":18080"
 database:

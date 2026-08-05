@@ -57,10 +57,10 @@ onMounted(refresh)
       <el-col :span="14">
         <el-card header="库存查询（三仓结存）">
           <div style="margin-bottom:8px">
-            <el-button @click="$router.push('/warehouse/inbound')">采购入库待办</el-button>
-            <el-button @click="router.push('/m/' + encodeURIComponent('库存管理') + '/' + encodeURIComponent('仓库盘点'))">仓库盘点</el-button>
-            <el-button @click="router.push('/m/' + encodeURIComponent('库存管理') + '/' + encodeURIComponent('出入库记录汇总'))">出入库流水</el-button>
-            <el-button @click="router.push('/m/' + encodeURIComponent('销售管理') + '/' + encodeURIComponent('订单发货'))">订单发货</el-button>
+            <el-button @click="router.push('/inventory/hub/inbound')">采购入库待办</el-button>
+            <el-button @click="router.push('/inventory/hub/stocktakes')">仓库盘点</el-button>
+            <el-button @click="router.push('/inventory/hub/stock-txns')">出入库流水</el-button>
+            <el-button @click="router.push('/sales/hub/deliveries')">订单发货</el-button>
           </div>
           <el-table :data="balances" size="small" max-height="480">
             <el-table-column prop="warehouse_name" label="仓" width="120" />

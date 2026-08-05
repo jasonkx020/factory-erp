@@ -6,6 +6,23 @@ import ConfirmSnapshotCompare from '../../components/closed-loop/ConfirmSnapshot
 
 type Row = Record<string, unknown>
 
+const props = withDefaults(defineProps<{ section?: string }>(), { section: 'all' })
+
+const showFarmers = computed(() => ['all', 'farmers'].includes(props.section || 'all'))
+const showWeigh = computed(() => ['all', 'weigh'].includes(props.section || 'all'))
+const showSettlements = computed(() => ['all', 'settlements'].includes(props.section || 'all'))
+const showTrace = computed(() => ['all', 'trace'].includes(props.section || 'all'))
+
+const pageTitle = computed(() => {
+  switch (props.section) {
+    case 'farmers': return '农户档案'
+    case 'weigh': return '过磅收货'
+    case 'settlements': return '农户结算'
+    case 'trace': return '原料溯源'
+    default: return '农户采购闭环'
+  }
+})
+
 const farmers = ref<Row[]>([])
 const arrivals = ref<Row[]>([])
 const tickets = ref<Row[]>([])
@@ -100,7 +117,8 @@ async function createFarmer() {
   const res = await purchaseApi.createFarmer({ ...farmerForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success('农户已建档')
-  Object.assign(farmerForm, { name: '', mobile: '', origin: '', remark: '' })
+  farmerForm.name = ''
+  farmerForm.mobile = ''
   await refresh()
 }
 
@@ -113,7 +131,9 @@ async function createArrival() {
 }
 
 async function qcArrival(id: number, pass: boolean) {
-  const grade = pass ? ((await ElMessageBox.prompt('请输入等级 A/B/C', '质检定级', { inputValue: 'A' })).value || 'A') : ''
+  const grade = pass
+    ? ((await ElMessageBox.prompt('请输入等级 A/B/C', '质检定级', { inputValue: 'A' })).value || 'A')
+    : ''
   const img = arrivalForm.qc_image_url
   const res = await purchaseApi.qcArrival(id, {
     qc_result: pass ? 'pass' : 'fail',
@@ -138,7 +158,7 @@ async function createWeigh() {
   }
   const res = await purchaseApi.createWeighTicket(body)
   if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success(`过磅草稿已建，净重预填 ${(res.data as Row)?.net_weight} — 请对照原图确认`)
+  ElMessage.success(`过磅草稿已建，净重预估 ${(res.data as Row)?.net_weight}，请对照原图确认`)
   await refresh()
 }
 
@@ -176,10 +196,9 @@ function openPay(row: Row) {
 }
 
 async function doPay() {
-  if (!payForm.transfer_no || !payForm.pay_evidence_url) {
-    return ElMessage.warning('转账单号与回单证据必填')
-  }
-  const res = await purchaseApi.payFarmerSettlement(Number(payRow.value?.id), { ...payForm })
+  if (!payRow.value) return
+  if (!payForm.transfer_no || !payForm.pay_evidence_url) return ElMessage.warning('转账单号与回单必填')
+  const res = await purchaseApi.payFarmerSettlement(Number(payRow.value.id), { ...payForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success('已支付关单')
   payDlg.value = false
@@ -190,13 +209,13 @@ function openCorrect(row: Row, bizType: string) {
   correctForm.biz_type = bizType
   correctForm.biz_id = Number(row.id)
   correctForm.reason = ''
-  correctForm.unit_price = String(row.unit_price ?? '')
-  correctForm.net_weight = String(row.net_weight ?? '')
+  correctForm.unit_price = ''
+  correctForm.net_weight = ''
   correctDlg.value = true
 }
 
 async function doCorrect() {
-  if (!correctForm.reason) return ElMessage.warning('纠错原因必填')
+  if (!correctForm.reason) return ElMessage.warning('请填写纠错原因')
   const fields: Record<string, unknown> = {}
   if (correctForm.biz_type === 'farmer_settlement' && correctForm.unit_price !== '') {
     fields.unit_price = Number(correctForm.unit_price)
@@ -229,14 +248,14 @@ onMounted(refresh)
 
 <template>
   <div class="page" v-loading="loading">
-    <h2>农户采购闭环</h2>
+    <h2>{{ pageTitle }}</h2>
     <p class="hint">
       到货拍照质检定级 → 过磅图+自动预填 → 对照原图确认出码贴标 → 仓管扫码入库 → 财务转账回单关单。业务可查可改不可删。
     </p>
 
-    <el-row :gutter="16">
-      <el-col :span="8">
-        <el-card header="1. 农户建档">
+    <el-row v-if="showFarmers || showWeigh" :gutter="16">
+      <el-col v-if="showFarmers" :span="showWeigh ? 8 : 12">
+        <el-card header="农户建档">
           <el-form label-width="80px" size="small">
             <el-form-item label="姓名"><el-input v-model="farmerForm.name" /></el-form-item>
             <el-form-item label="电话"><el-input v-model="farmerForm.mobile" /></el-form-item>
@@ -246,58 +265,71 @@ onMounted(refresh)
           </el-form>
         </el-card>
       </el-col>
-      <el-col :span="8">
-        <el-card header="2. 到货 + 质检照">
-          <el-form label-width="90px" size="small">
-            <el-form-item label="农户">
-              <el-select v-model="arrivalForm.farmer_id" style="width:100%">
-                <el-option v-for="f in farmers" :key="String(f.id)" :label="String(f.name)" :value="Number(f.id)" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="估重"><el-input-number v-model="arrivalForm.estimate_weight" :min="0" /></el-form-item>
-            <el-form-item label="车牌"><el-input v-model="arrivalForm.plate_no" /></el-form-item>
-            <el-form-item label="收货地址"><el-input v-model="arrivalForm.receive_address" /></el-form-item>
-            <el-form-item label="合格率%"><el-input-number v-model="arrivalForm.pass_rate" :min="0" :max="100" /></el-form-item>
-            <el-form-item label="不合格重"><el-input-number v-model="arrivalForm.reject_weight" :min="0" /></el-form-item>
-            <el-form-item label="运费"><el-input-number v-model="arrivalForm.freight_fee" :min="0" :step="1" /></el-form-item>
-            <el-form-item label="装卸费"><el-input-number v-model="arrivalForm.loading_fee" :min="0" :step="1" /></el-form-item>
-            <el-form-item label="过磅费"><el-input-number v-model="arrivalForm.weigh_fee" :min="0" :step="1" /></el-form-item>
-            <el-form-item label="质检照URL"><el-input v-model="arrivalForm.qc_image_url" placeholder="必填证据" /></el-form-item>
-            <el-button type="primary" @click="createArrival">创建到货单</el-button>
-          </el-form>
-        </el-card>
-      </el-col>
-      <el-col :span="8">
-        <el-card header="3. 过磅草稿（图必填）">
-          <el-form label-width="90px" size="small">
-            <el-form-item label="到货单">
-              <el-select v-model="weighForm.arrival_id" clearable style="width:100%" placeholder="优先选已 QC 通过单">
-                <el-option
-                  v-for="a in arrivals.filter((x) => x.status === 'qc_pass')"
-                  :key="String(a.id)"
-                  :label="`${a.doc_no} ${a.farmer_name} ${a.grade}`"
-                  :value="Number(a.id)"
-                />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="入场重量"><el-input-number v-model="weighForm.gross_weight" :min="0" /></el-form-item>
-            <el-form-item label="扣损率"><el-input-number v-model="weighForm.deduct_rate" :min="0" :max="1" :step="0.01" /></el-form-item>
-            <el-form-item label="车牌"><el-input v-model="weighForm.plate_no" /></el-form-item>
-            <el-form-item label="收货地址"><el-input v-model="weighForm.receive_address" /></el-form-item>
-            <el-form-item label="合格率%"><el-input-number v-model="weighForm.pass_rate" :min="0" :max="100" /></el-form-item>
-            <el-form-item label="不合格重"><el-input-number v-model="weighForm.reject_weight" :min="0" /></el-form-item>
-            <el-form-item label="运费"><el-input-number v-model="weighForm.freight_fee" :min="0" /></el-form-item>
-            <el-form-item label="装卸费"><el-input-number v-model="weighForm.loading_fee" :min="0" /></el-form-item>
-            <el-form-item label="过磅费"><el-input-number v-model="weighForm.weigh_fee" :min="0" /></el-form-item>
-            <el-form-item label="过磅图"><el-input v-model="weighForm.image_url" placeholder="必填" /></el-form-item>
-            <el-form-item label="OCR草稿"><el-input v-model="weighForm.ocr_draft_json" type="textarea" :rows="2" placeholder='可选 {"gross_weight":1000}' /></el-form-item>
-            <el-button type="primary" @click="createWeigh">创建过磅草稿</el-button>
-          </el-form>
-        </el-card>
-      </el-col>
+      <template v-if="showWeigh">
+        <el-col :span="showFarmers ? 8 : 12">
+          <el-card header="到货 + 质检照">
+            <el-form label-width="90px" size="small">
+              <el-form-item label="农户">
+                <el-select v-model="arrivalForm.farmer_id" style="width:100%">
+                  <el-option v-for="f in farmers" :key="String(f.id)" :label="String(f.name)" :value="Number(f.id)" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="估重"><el-input-number v-model="arrivalForm.estimate_weight" :min="0" /></el-form-item>
+              <el-form-item label="车牌"><el-input v-model="arrivalForm.plate_no" /></el-form-item>
+              <el-form-item label="收货地址"><el-input v-model="arrivalForm.receive_address" /></el-form-item>
+              <el-form-item label="合格率%"><el-input-number v-model="arrivalForm.pass_rate" :min="0" :max="100" /></el-form-item>
+              <el-form-item label="不合格重"><el-input-number v-model="arrivalForm.reject_weight" :min="0" /></el-form-item>
+              <el-form-item label="运费"><el-input-number v-model="arrivalForm.freight_fee" :min="0" :step="1" /></el-form-item>
+              <el-form-item label="装卸费"><el-input-number v-model="arrivalForm.loading_fee" :min="0" :step="1" /></el-form-item>
+              <el-form-item label="过磅费"><el-input-number v-model="arrivalForm.weigh_fee" :min="0" :step="1" /></el-form-item>
+              <el-form-item label="质检照URL"><el-input v-model="arrivalForm.qc_image_url" placeholder="必填证据" /></el-form-item>
+              <el-button type="primary" @click="createArrival">创建到货单</el-button>
+            </el-form>
+          </el-card>
+        </el-col>
+        <el-col :span="showFarmers ? 8 : 12">
+          <el-card header="过磅草稿（图必填）">
+            <el-form label-width="90px" size="small">
+              <el-form-item label="到货单">
+                <el-select v-model="weighForm.arrival_id" clearable style="width:100%" placeholder="优先选已 QC 通过单">
+                  <el-option
+                    v-for="a in arrivals.filter((x) => x.status === 'qc_pass')"
+                    :key="String(a.id)"
+                    :label="`${a.doc_no} ${a.farmer_name} ${a.grade}`"
+                    :value="Number(a.id)"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="入场重量"><el-input-number v-model="weighForm.gross_weight" :min="0" /></el-form-item>
+              <el-form-item label="扣损率"><el-input-number v-model="weighForm.deduct_rate" :min="0" :max="1" :step="0.01" /></el-form-item>
+              <el-form-item label="车牌"><el-input v-model="weighForm.plate_no" /></el-form-item>
+              <el-form-item label="收货地址"><el-input v-model="weighForm.receive_address" /></el-form-item>
+              <el-form-item label="合格率%"><el-input-number v-model="weighForm.pass_rate" :min="0" :max="100" /></el-form-item>
+              <el-form-item label="不合格重"><el-input-number v-model="weighForm.reject_weight" :min="0" /></el-form-item>
+              <el-form-item label="运费"><el-input-number v-model="weighForm.freight_fee" :min="0" /></el-form-item>
+              <el-form-item label="装卸费"><el-input-number v-model="weighForm.loading_fee" :min="0" /></el-form-item>
+              <el-form-item label="过磅费"><el-input-number v-model="weighForm.weigh_fee" :min="0" /></el-form-item>
+              <el-form-item label="过磅图"><el-input v-model="weighForm.image_url" placeholder="必填" /></el-form-item>
+              <el-form-item label="OCR草稿"><el-input v-model="weighForm.ocr_draft_json" type="textarea" :rows="2" placeholder='可选 {"gross_weight":1000}' /></el-form-item>
+              <el-button type="primary" @click="createWeigh">创建过磅草稿</el-button>
+            </el-form>
+          </el-card>
+        </el-col>
+      </template>
     </el-row>
 
-    <el-card header="到货质检" style="margin-top:16px">
+    <el-card v-if="showFarmers" header="农户列表" style="margin-top:16px">
+      <el-table :data="farmers" size="small">
+        <el-table-column prop="id" label="ID" width="70" />
+        <el-table-column prop="name" label="姓名" width="120" />
+        <el-table-column prop="mobile" label="电话" width="130" />
+        <el-table-column prop="origin" label="产地" />
+        <el-table-column prop="default_unit_price" label="默认单价" width="100" />
+        <el-table-column prop="status" label="状态" width="90" />
+      </el-table>
+    </el-card>
+
+    <el-card v-if="showWeigh" header="到货质检" style="margin-top:16px">
       <el-table :data="arrivals" size="small">
         <el-table-column prop="doc_no" label="单号" width="150" />
         <el-table-column prop="farmer_name" label="农户" width="100" />
@@ -314,7 +346,7 @@ onMounted(refresh)
       </el-table>
     </el-card>
 
-    <el-card header="过磅确认 / 出码（入库请到仓管待办）" style="margin-top:16px">
+    <el-card v-if="showWeigh" header="过磅确认 / 出码（入库请到仓管待办）" style="margin-top:16px">
       <p class="hint">确认出码后系统将溯源码与单号推送给仓管；仓管确认后方为采购完成。</p>
       <el-table :data="tickets" size="small">
         <el-table-column prop="doc_no" label="单号" width="150" />
@@ -338,8 +370,8 @@ onMounted(refresh)
       <pre v-if="labelPreview" class="trace">标签预览：{{ JSON.stringify(labelPreview, null, 2) }}</pre>
     </el-card>
 
-    <el-row :gutter="16" style="margin-top:16px">
-      <el-col :span="14">
+    <el-row v-if="showSettlements || showTrace" :gutter="16" style="margin-top:16px">
+      <el-col v-if="showSettlements" :span="showTrace ? 14 : 24">
         <el-card header="农户结算（财务支付须转账单号+回单）">
           <el-table :data="settlements" size="small">
             <el-table-column prop="doc_no" label="结算单" width="140" />
@@ -361,7 +393,7 @@ onMounted(refresh)
           </el-table>
         </el-card>
       </el-col>
-      <el-col :span="10">
+      <el-col v-if="showTrace" :span="showSettlements ? 10 : 24">
         <el-card header="溯源倒查时间轴">
           <el-input v-model="traceCode" placeholder="T1-/箱码/过磅单号" style="max-width:260px;margin-right:8px" />
           <el-button type="primary" @click="doTrace">倒查</el-button>

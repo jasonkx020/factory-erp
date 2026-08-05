@@ -4,9 +4,14 @@ import 'package:provider/provider.dart';
 import 'core/api_client.dart';
 import 'core/auth_state.dart';
 import 'core/notify_service.dart';
+import 'features/assets/assets_page.dart';
 import 'features/auth/login_page.dart';
+import 'features/collab/collab_finance_page.dart';
 import 'features/home/home_page.dart';
+import 'features/knowledge/knowledge_page.dart';
+import 'features/mine/mine_page.dart';
 import 'features/notify/inbox_page.dart';
+import 'features/receiving/receiving_page.dart';
 import 'features/sales/sales_page.dart';
 import 'features/warehouse/warehouse_page.dart';
 import 'features/worker/worker_page.dart';
@@ -53,8 +58,13 @@ class ErpEmployeeApp extends StatelessWidget {
         routes: {
           '/workshop': (_) => const WorkshopPage(),
           '/worker': (_) => const WorkerPage(),
+          '/receiving': (_) => const ReceivingPage(),
           '/warehouse': (_) => const WarehousePage(),
           '/sales': (_) => const SalesPage(),
+          '/assets': (_) => const AssetsPage(),
+          '/collab': (_) => const CollabFinancePage(),
+          '/knowledge': (_) => const KnowledgePage(),
+          '/mine': (_) => const MinePage(),
           '/inbox': (_) => const InboxPage(),
         },
       ),

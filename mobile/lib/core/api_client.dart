@@ -71,6 +71,15 @@ class ApiClient {
     return _parse(res);
   }
 
+  Future<ApiEnvelope> put(String path, Map<String, dynamic> body, {bool auth = true}) async {
+    final res = await http.put(
+      Uri.parse('$baseUrl$path'),
+      headers: _headers(auth: auth),
+      body: jsonEncode(body),
+    );
+    return _parse(res);
+  }
+
   Future<ApiEnvelope> get(String path, {bool auth = true}) async {
     final res = await http.get(
       Uri.parse('$baseUrl$path'),
@@ -85,5 +94,11 @@ class ApiClient {
       if (j is Map<String, dynamic>) return ApiEnvelope.fromJson(j);
     } catch (_) {}
     return ApiEnvelope(code: 0, msg: 'HTTP_${res.statusCode}');
+  }
+
+  static List<dynamic> listOf(dynamic data) {
+    if (data is Map) return (data['list'] as List?) ?? [];
+    if (data is List) return data;
+    return [];
   }
 }
