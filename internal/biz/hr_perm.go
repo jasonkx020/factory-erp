@@ -775,6 +775,22 @@ func (s *Services) handleOffboards(c *gin.Context, method, action string) bool {
 			api.OK(c, gin.H{"id": id, "status": "confirmed"})
 			return true
 		}
+		body := bindBody(c)
+		force, _ := body["force"].(bool)
+		var openTools int
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_tool_issue WHERE (employee_id=? OR employee_id IN (SELECT id FROM hr_employee WHERE id=?)) AND status='open'`, empID, empID).Scan(&openTools)
+		// also match by employee name if issues only stored name
+		if openTools == 0 {
+			var ename string
+			_ = s.DB.QueryRow(`SELECT name FROM hr_employee WHERE id=?`, empID).Scan(&ename)
+			if ename != "" {
+				_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_tool_issue WHERE status='open' AND employee_name=?`, ename).Scan(&openTools)
+			}
+		}
+		if openTools > 0 && !force {
+			api.FailJSON(c, fmt.Sprintf("OPEN_TOOLS:%d", openTools))
+			return true
+		}
 		var uid int64
 		_ = s.DB.QueryRow(`SELECT COALESCE(user_id,0) FROM hr_employee WHERE id=?`, empID).Scan(&uid)
 		if uid == 0 {

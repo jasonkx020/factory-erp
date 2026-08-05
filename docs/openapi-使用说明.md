@@ -103,18 +103,19 @@
 
 ---
 
-## 6. 重新生成契约
+## 6. 契约与路由生成
+
+OpenAPI 主文件为真相源，**直接编辑** `docs/openapi3.0-加工厂ERP.yaml`（原 `gen_openapi_paths.py` 整文件重生成已退役）。
+
+改契约后执行：
 
 ```bash
-python docs/gen_openapi_paths.py
+go run ./cmd/erp-tools gen-routes         # → internal/apigen/routes_gen.go
+go run ./cmd/erp-tools openapi-coverage   # 对照 scripts/gin_routes.json 或运行中 API
+go run ./cmd/erp-tools gen-web-meta       # 可选：管理端 modules.ts
 ```
 
-依赖：
-
-- `docs/_restore_openapi_v1.yaml`：auth/iam 与一期富 schema 基底
-- `docs/_auth_iam_paths.fragment.yaml`：鉴权路径片段（防止覆盖丢失）
-
-生成结果写回主 YAML，并刷新 `openapi-路径全表.md`。
+历史基底文件 `_restore_openapi_v1.yaml` / `_auth_iam_paths.fragment.yaml` 仅作参考归档，日常不必再跑合并脚本。
 
 ---
 
@@ -129,10 +130,11 @@ npx @redocly/cli lint docs/openapi3.0-加工厂ERP.yaml
 
 ## 8. 开发 SOP
 
-1. 先改本 YAML（或改 `gen_openapi_paths.py` 中 MODULES 后重新生成）
+1. 先改本 YAML，再 `go run ./cmd/erp-tools gen-routes`
 2. 再改 `internal/{domain}` handler；未实现接口可返回 `NOT_IMPLEMENTED`
 3. 本地默认 SQLite：`go run ./cmd/erp-api`（端口 **18080**）
 4. 演示账号：`admin` / `admin123`（仅开发种子）
+5. 门禁：`go run ./cmd/erp-tools openapi-coverage` 须退出码 0
 
 ---
 

@@ -755,5 +755,5 @@
 
 - 权限分配 / 自定义权限 / 自定义菜单 / 登录控制 / 账户冻结：以 `/api/v1/iam/*` 与 `/api/v1/auth/*` 为准（完整 schema）。
 - 一期部分资源保留 v1 富 schema；其余与二/三期为契约骨架（requestBody 自由 object），实现时再收紧。
-- 重新生成：`python docs/gen_openapi_paths.py`（依赖 `_restore_openapi_v1.yaml` + `_auth_iam_paths.fragment.yaml`）。
+- 路径表随契约维护：直接编辑 [openapi3.0-加工厂ERP.yaml](./openapi3.0-加工厂ERP.yaml)；改完后 `go run ./cmd/erp-tools gen-routes`，必要时同步本表。原 `gen_openapi_paths.py` 已退役。
 - `x-erp-phase` / `x-erp-module` 须与核心功能表一致。

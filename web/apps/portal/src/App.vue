@@ -1,18 +1,12 @@
 <script setup lang="ts">
 import { terminalUrl } from '@erp/shared'
 
-const cards = [
+const linkCards = [
   {
     key: 'admin' as const,
     badge: '后台 · 管理端',
     title: '管理后台',
     desc: '13 域菜单与权限中心：采购入库、生产派工、库存过账、销售出库与 IAM。',
-  },
-  {
-    key: 'employee' as const,
-    badge: '前台 · 员工端',
-    title: '统一员工端',
-    desc: '车间 / 工人 / 销售同一站点；登录后按 IAM 权限显示可用模块。另有 Android/iOS Flutter App。',
   },
   {
     key: 'boss' as const,
@@ -30,7 +24,7 @@ const flow = ['鲜木薯入库', '清洗', '去皮计件', '收货卡点', '切�
     <header class="hero">
       <p class="eyebrow">木薯加工 · 计件产线</p>
       <h1 class="brand">木薯加工厂 ERP</h1>
-      <p class="lead">选择终端登录。员工端为统一 Web（+ Flutter App）；管理与老板驾驶舱独立。客户自助仅保留 API，无前端。</p>
+      <p class="lead">选择终端登录。员工现场作业仅使用 Flutter App；管理后台与老板驾驶舱为 Web。客户自助仅保留 API，无前端。</p>
       <ol class="flow" aria-label="产线节点">
         <li v-for="(step, i) in flow" :key="step" :class="{ accent: i === 2 || i === 3 }">{{ step }}</li>
       </ol>
@@ -40,7 +34,7 @@ const flow = ['鲜木薯入库', '清洗', '去皮计件', '收货卡点', '切�
       <h2 class="section-title">选择登录平台</h2>
       <div class="grid">
         <a
-          v-for="c in cards"
+          v-for="c in linkCards"
           :key="c.key"
           class="card"
           :href="terminalUrl(c.key)"
@@ -50,6 +44,12 @@ const flow = ['鲜木薯入库', '清洗', '去皮计件', '收货卡点', '切�
           <p>{{ c.desc }}</p>
           <span class="enter">进入登录 →</span>
         </a>
+        <div class="card card-static">
+          <span class="badge">现场 · 员工 App</span>
+          <h3>Flutter 员工端</h3>
+          <p>车间 / 工人 / 仓管 / 销售。登录 <code>client_type=mobile</code>，按 IAM 显隐模块。请用 Android/iOS 安装包；说明见仓库 <code>mobile/README.md</code>。</p>
+          <span class="enter muted">无 Web 入口</span>
+        </div>
       </div>
     </section>
 
@@ -147,6 +147,13 @@ const flow = ['鲜木薯入库', '清洗', '去皮计件', '收货卡点', '切�
   transform: translateY(-2px);
   box-shadow: 0 12px 28px rgba(15, 28, 34, 0.1);
 }
+.card-static {
+  cursor: default;
+}
+.card-static:hover {
+  transform: none;
+  box-shadow: 0 8px 24px rgba(15, 28, 34, 0.06);
+}
 .badge {
   display: inline-block;
   font-size: 11px;
@@ -167,10 +174,20 @@ const flow = ['鲜木薯入库', '清洗', '去皮计件', '收货卡点', '切�
   color: #5c6b75;
   min-height: 3.9em;
 }
+.card code {
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
 .enter {
   font-size: 13px;
   font-weight: 600;
   color: #0d7a6f;
+}
+.enter.muted {
+  color: #7a8a94;
+  font-weight: 500;
 }
 .foot {
   text-align: center;

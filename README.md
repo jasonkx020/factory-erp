@@ -1,6 +1,6 @@
 # 加工厂 ERP
 
-契约先行的多端 ERP：Go/Gin 单二进制 `erp-api` + Vue Web（管理/员工/老板）+ Flutter 员工 App。开发默认 SQLite，生产可切 MySQL。
+契约先行的多端 ERP：Go/Gin 单二进制 `erp-api` + Vue Web（入口/管理/老板）+ Flutter 员工 App。开发默认 SQLite，生产可切 MySQL。
 
 ## 文档
 
@@ -17,9 +17,9 @@
 ## 环境要求
 
 - Go（与 `go.mod` 一致）
-- Python 3（契约生成 / 覆盖率脚本）
-- Node.js + npm（Web monorepo，可选）
-- Flutter（员工 App Android/iOS，可选）
+- Python 3（可选；契约工具已改为 Go：`cmd/erp-tools`）
+- Node.js + npm（Web monorepo：portal / admin / boss）
+- Flutter（员工现场 App Android/iOS，必选现场端）
 
 无需本机预装数据库即可开发：默认使用仓库内 SQLite 文件库。
 
@@ -53,11 +53,10 @@ cd web
 npm install
 npm run dev:portal     # 入口
 npm run dev:admin      # 管理后台  client_type=admin
-npm run dev:employee   # 统一员工端  client_type=employee（车间/工人/销售按权限）
 npm run dev:boss       # 老板驾驶舱  client_type=boss
 ```
 
-客户自助下单**无 Web 前端**；相关销售/客户 API 仍保留在 OpenAPI 与后端。
+员工现场作业**无 Web 前端**（原统一员工端已下线）；请使用 Flutter App。客户自助下单亦无 Web；相关销售/客户 API 仍保留在 OpenAPI 与后端。
 
 ## Flutter 员工 App
 
@@ -68,17 +67,19 @@ flutter run
 # 可选：flutter run --dart-define=API_BASE=http://<host>:18080/api/v1
 ```
 
-登录 `client_type=mobile`；与员工 Web 同一套 IAM 模块显隐规则。详见 [mobile/README.md](mobile/README.md)。
+登录 `client_type=mobile`；按 IAM 显隐车间 / 工人 / 仓管 / 销售。详见 [mobile/README.md](mobile/README.md)。
 
 ## 契约与门禁
 
 改 OpenAPI 后在根目录执行：
 
 ```bash
-python docs/gen_openapi_paths.py   # 如有路径生成步骤
-python scripts/gen_routes.py       # 生成 Gin 路由
-python scripts/openapi_coverage.py # 契约操作须 100% 注册
+go run ./cmd/erp-tools gen-routes         # OpenAPI → Gin 路由
+go run ./cmd/erp-tools openapi-coverage   # 契约操作须 100% 注册
+go run ./cmd/erp-tools gen-web-meta       # 管理端 modules.ts（可选）
 ```
+
+OpenAPI 主文件 [`docs/openapi3.0-加工厂ERP.yaml`](docs/openapi3.0-加工厂ERP.yaml) 为契约真相源；直接编辑 YAML，勿再整文件批量重生成。
 
 冒烟 / 业务 e2e（需 API 已启动）：
 

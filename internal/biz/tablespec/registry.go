@@ -85,6 +85,81 @@ var Registry = map[string]*Spec{
 		Table: "hr_employee", DocNo: "emp_no", Status: "status", SoftDelete: true,
 		Cols: []Col{{"emp_no", TypeStr}, {"name", TypeStr}, {"org_id", TypeInt}, {"emp_type", TypeStr}, {"badge_code", TypeStr}, {"status", TypeStr}},
 	},
+	"system/print-templates": {
+		Table: "sys_print_template", DocNo: "code", Status: "status", SoftDelete: true,
+		Cols: []Col{{"code", TypeStr}, {"name", TypeStr}, {"doc_type", TypeStr}, {"content", TypeStr}, {"status", TypeStr}},
+	},
+	"system/formulas": {
+		Table: "sys_formula", DocNo: "code", Status: "status", SoftDelete: true,
+		Cols: []Col{{"code", TypeStr}, {"name", TypeStr}, {"scope", TypeStr}, {"expression", TypeStr}, {"remark", TypeStr}, {"status", TypeStr}},
+	},
+	"system/logistics/carriers": {
+		Table: "sys_carrier", DocNo: "code", Status: "status", SoftDelete: true,
+		Cols: []Col{{"code", TypeStr}, {"name", TypeStr}, {"contact", TypeStr}, {"phone", TypeStr}, {"remark", TypeStr}, {"status", TypeStr}},
+	},
+	"system/approval-flows": {
+		Table: "sys_approval_flow", DocNo: "code", Status: "status", SoftDelete: true,
+		Cols: []Col{{"code", TypeStr}, {"name", TypeStr}, {"doc_type", TypeStr}, {"status", TypeStr}},
+		Lines: &LineSpec{
+			Table: "sys_approval_flow_node", FK: "flow_id", OrderBy: "seq_no",
+			Cols: []Col{{"seq_no", TypeInt}, {"node_name", TypeStr}, {"approver_role", TypeStr}, {"approver_user_id", TypeInt}, {"require_all", TypeBool}},
+		},
+	},
+	"system/personnel-transfers": {
+		Table: "sys_personnel_transfer", DocNo: "doc_no", Status: "status", SoftDelete: true,
+		Cols: []Col{
+			{"doc_no", TypeStr}, {"employee_id", TypeInt}, {"from_dept_id", TypeInt}, {"to_dept_id", TypeInt},
+			{"from_workshop_id", TypeInt}, {"to_workshop_id", TypeInt}, {"reason", TypeStr},
+			{"status", TypeStr}, {"effective_date", TypeStr}, {"confirmed_at", TypeStr}, {"created_by", TypeInt},
+		},
+		Actions: map[string]string{"confirm": "confirmed"},
+	},
+	"system/batch-price-jobs": {
+		Table: "sys_batch_price_job", DocNo: "doc_no", Status: "status", SoftDelete: true,
+		Cols: []Col{
+			{"doc_no", TypeStr}, {"target_type", TypeStr}, {"adjust_type", TypeStr}, {"adjust_value", TypeFloat},
+			{"scope_json", TypeStr}, {"status", TypeStr}, {"result_msg", TypeStr}, {"created_by", TypeInt}, {"applied_at", TypeStr},
+		},
+	},
+	"system/batch-payroll-jobs": {
+		Table: "sys_batch_payroll_job", DocNo: "doc_no", Status: "status", SoftDelete: true,
+		Cols: []Col{
+			{"doc_no", TypeStr}, {"period_ym", TypeStr}, {"workshop_id", TypeInt}, {"status", TypeStr},
+			{"result_msg", TypeStr}, {"created_by", TypeInt}, {"applied_at", TypeStr},
+		},
+	},
+	"system/reminders": {
+		Table: "sys_reminder", Status: "status", SoftDelete: true,
+		Cols: []Col{
+			{"title", TypeStr}, {"content", TypeStr}, {"remind_at", TypeStr},
+			{"target_user_id", TypeInt}, {"target_role", TypeStr}, {"status", TypeStr},
+		},
+	},
+	"system/announcements": {
+		Table: "sys_announcement", Status: "status", SoftDelete: true,
+		Cols: []Col{{"title", TypeStr}, {"content", TypeStr}, {"status", TypeStr}, {"published_at", TypeStr}, {"created_by", TypeInt}},
+		Actions: map[string]string{"publish": "published"},
+	},
+	"system/memos": {
+		Table: "sys_memo", Status: "status", SoftDelete: true,
+		Cols: []Col{{"title", TypeStr}, {"content", TypeStr}, {"owner_id", TypeInt}, {"status", TypeStr}},
+	},
+	"system/documents": {
+		Table: "sys_document", DocNo: "code", Status: "status", SoftDelete: true,
+		Cols: []Col{{"code", TypeStr}, {"title", TypeStr}, {"category", TypeStr}, {"content", TypeStr}, {"file_url", TypeStr}, {"status", TypeStr}},
+	},
+	"system/drawings": {
+		Table: "sys_drawing", DocNo: "code", Status: "status", SoftDelete: true,
+		Cols: []Col{{"code", TypeStr}, {"title", TypeStr}, {"product_id", TypeInt}, {"version_no", TypeStr}, {"file_url", TypeStr}, {"status", TypeStr}},
+	},
+	"system/knowledge": {
+		Table: "sys_knowledge", DocNo: "code", Status: "status", SoftDelete: true,
+		Cols: []Col{{"code", TypeStr}, {"title", TypeStr}, {"category", TypeStr}, {"content", TypeStr}, {"status", TypeStr}},
+	},
+	"system/courses": {
+		Table: "sys_course", DocNo: "code", Status: "status", SoftDelete: true,
+		Cols: []Col{{"code", TypeStr}, {"title", TypeStr}, {"category", TypeStr}, {"content", TypeStr}, {"duration_min", TypeInt}, {"status", TypeStr}},
+	},
 	"purchase/inbounds": {
 		Table: "pur_purchase_inbound", DocNo: "doc_no", Status: "status", SoftDelete: true,
 		Cols: []Col{

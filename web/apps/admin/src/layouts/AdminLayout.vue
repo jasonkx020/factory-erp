@@ -1,7 +1,14 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useAuthStore, usePermStore, portalHomeUrl } from '@erp/shared'
+import {
+  useAuthStore,
+  usePermStore,
+  portalHomeUrl,
+  adminSpecialPath,
+  adminModuleForPath,
+  isAdminModuleActive,
+} from '@erp/shared'
 import NotifyBell from '../components/NotifyBell.vue'
 
 const auth = useAuthStore()
@@ -15,20 +22,26 @@ const menus = computed(() => perm.visibleMenus)
 const crumb = computed(() => {
   const d = route.params.domain as string
   const m = route.params.module as string
-  if (d && m) return `${d} / ${m}`
-  if (route.path.startsWith('/loops')) return '业务闭环'
-  if (route.path.includes('/warehouse/inbound')) return '仓管待入库'
-  if (route.path.includes('/sales/outbound-settle')) return '出厂结算'
-  if (route.path.includes('/production/process-reports')) return '加工记录'
-  if (route.path.includes('/production/piece-issue')) return '计件领料表'
-  if (route.path.includes('/hr/tool-issues')) return '工具领还'
-  if (route.path.includes('/inventory/ledger')) return '库存/地磅'
-  if (route.path.includes('/automation/routing')) return '工艺路线'
-  if (route.path.includes('/automation/trace')) return '全链追溯'
-  if (route.path.includes('/automation/logs')) return '操作日志'
-  if (route.path.includes('/automation/repairs')) return '数据修复'
+  if (d && m) return `${decodeURIComponent(d)} / ${decodeURIComponent(m)}`
+  const hit = adminModuleForPath(route.path)
+  if (hit) return `${hit.domain} / ${hit.module}`
+  if (route.path === '/' || route.path === '') return '工作台'
   return '工作台'
 })
+
+watch(
+  () => route.path,
+  (path) => {
+    const hit = adminModuleForPath(path)
+    if (hit && !openDomains.value.includes(hit.domain)) openDomains.value.push(hit.domain)
+    const d = route.params.domain as string
+    if (d) {
+      const domain = decodeURIComponent(d)
+      if (!openDomains.value.includes(domain)) openDomains.value.push(domain)
+    }
+  },
+  { immediate: true },
+)
 
 function toggle(domain: string) {
   const i = openDomains.value.indexOf(domain)
@@ -38,7 +51,18 @@ function toggle(domain: string) {
 
 function goModule(domain: string, module: string) {
   if (!openDomains.value.includes(domain)) openDomains.value.push(domain)
+  const special = adminSpecialPath(domain, module)
+  if (special) {
+    router.push(special)
+    return
+  }
   router.push(`/m/${encodeURIComponent(domain)}/${encodeURIComponent(module)}`)
+}
+
+function moduleActive(domain: string, module: string) {
+  const rd = route.params.domain ? decodeURIComponent(String(route.params.domain)) : undefined
+  const rm = route.params.module ? decodeURIComponent(String(route.params.module)) : undefined
+  return isAdminModuleActive(domain, module, route.path, rd, rm)
 }
 
 function logout() {
@@ -56,17 +80,6 @@ function logout() {
         <a class="portal-link" :href="portalUrl">← 返回入口</a>
       </div>
       <el-button class="home-btn" @click="router.push('/')">工作台</el-button>
-      <el-button class="home-btn ghost" @click="router.push('/loops')">业务闭环</el-button>
-      <el-button class="home-btn ghost" @click="router.push('/warehouse/inbound')">仓管待入库</el-button>
-      <el-button class="home-btn ghost" @click="router.push('/sales/outbound-settle')">出厂结算</el-button>
-      <el-button class="home-btn ghost" @click="router.push('/production/process-reports')">加工记录</el-button>
-      <el-button class="home-btn ghost" @click="router.push('/production/piece-issue')">计件领料表</el-button>
-      <el-button class="home-btn ghost" @click="router.push('/hr/tool-issues')">工具领还</el-button>
-      <el-button class="home-btn ghost" @click="router.push('/inventory/ledger')">库存/地磅</el-button>
-      <el-button class="home-btn ghost" @click="router.push('/automation/routing')">工艺路线</el-button>
-      <el-button class="home-btn ghost" @click="router.push('/automation/trace')">追溯</el-button>
-      <el-button class="home-btn ghost" @click="router.push('/automation/logs')">审计日志</el-button>
-      <el-button class="home-btn ghost" @click="router.push('/automation/repairs')">数据修复</el-button>
       <nav class="nav">
         <div v-for="d in menus" :key="d.domain" class="nav-domain" :class="{ open: openDomains.includes(d.domain) }">
           <button type="button" class="dom-btn" @click="toggle(d.domain)">
@@ -78,7 +91,7 @@ function logout() {
               v-for="m in d.modules"
               :key="m"
               href="#"
-              :class="{ active: route.params.domain === d.domain && route.params.module === m, iam: perm.isIamModule(m) }"
+              :class="{ active: moduleActive(d.domain, m), iam: perm.isIamModule(m) }"
               @click.prevent="goModule(d.domain, m)"
             >{{ m }}</a>
           </div>
@@ -108,101 +121,115 @@ function logout() {
   overflow: hidden;
 }
 .sidebar {
-  width: 260px;
+  width: 240px;
   flex-shrink: 0;
-  height: 100%;
-  background: var(--sidebar, #1a2b34);
-  color: #fff;
+  background: #0f1c22;
+  color: #c5d0d6;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 .brand {
-  flex-shrink: 0;
-  padding: 16px;
-  font-weight: 600;
-  border-bottom: 1px solid rgba(255,255,255,.08);
+  padding: 16px 14px 10px;
+  font-weight: 700;
+  color: #9fd4cb;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
-.brand small { display: block; font-weight: 400; opacity: .7; font-size: 11px; margin-top: 4px; }
+.brand small {
+  display: block;
+  font-weight: 400;
+  font-size: 11px;
+  color: #6a7d86;
+  margin-top: 4px;
+}
 .portal-link {
   display: inline-block;
   margin-top: 8px;
   font-size: 12px;
-  font-weight: 400;
-  color: #9fd4cb;
+  color: #7eb8ae;
+  text-decoration: none;
 }
 .home-btn {
-  flex-shrink: 0;
-  margin: 8px 12px 0;
+  margin: 10px 12px 6px;
   width: calc(100% - 24px);
-  background: #243b47;
-  border-color: #35525e;
-  color: #fff;
 }
-.home-btn.ghost { background: transparent; }
 .nav {
   flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 8px 0;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  overflow: auto;
+  padding: 4px 0 16px;
 }
-.nav::-webkit-scrollbar {
-  width: 6px;
-}
-.nav::-webkit-scrollbar-track {
+.nav-domain .dom-btn {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
   background: transparent;
+  border: 0;
+  color: #9fb0ba;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 13px;
 }
-.nav::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.22);
-  border-radius: 3px;
+.nav-domain.open .dom-btn {
+  color: #e8eef1;
 }
-.nav::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.35);
+.mods {
+  display: none;
+  padding: 0 8px 8px;
 }
-.nav::-webkit-scrollbar-corner {
-  background: transparent;
+.nav-domain.open .mods {
+  display: block;
 }
-.dom-btn {
-  width: 100%; display: flex; justify-content: space-between; align-items: center;
-  background: transparent; border: 0; color: #c5d4dc; padding: 10px 14px; cursor: pointer; text-align: left;
-}
-.dom-btn:hover { background: #243b47; color: #fff; }
-.mods { display: none; padding: 0 8px 8px; }
-.nav-domain.open .mods { display: block; }
 .mods a {
-  display: block; padding: 6px 10px; color: #9fb0ba; border-radius: 4px; font-size: 13px;
+  display: block;
+  padding: 6px 10px;
+  border-radius: 4px;
+  color: #8a9ba4;
+  text-decoration: none;
+  font-size: 12px;
 }
-.mods a:hover, .mods a.active { background: #0d7a6f; color: #fff; }
-.mods a.iam { color: #9fd4cb; }
+.mods a:hover {
+  background: #1a2b34;
+  color: #e8eef1;
+}
+.mods a.active {
+  background: #0d7a6f;
+  color: #fff;
+}
+.mods a.iam {
+  color: #c9a86c;
+}
+.mods a.iam.active {
+  color: #fff;
+}
 .main {
   flex: 1;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  min-width: 0;
+  background: #eef2f4;
 }
 .topbar {
-  flex-shrink: 0;
-  height: 52px;
+  height: 48px;
   background: #fff;
-  border-bottom: 1px solid var(--border, #d5dde3);
+  border-bottom: 1px solid #d5dde3;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 16px;
 }
-.crumb { font-weight: 500; }
-.user { color: var(--muted, #5c6b75); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.crumb {
+  font-size: 13px;
+  color: #44555e;
+}
+.user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
 .content {
   flex: 1;
-  min-height: 0;
-  padding: 16px 20px;
   overflow: auto;
+  padding: 12px 16px;
 }
 </style>

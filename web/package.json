@@ -10,10 +10,9 @@
     "dev": "npm run dev -w @erp/portal",
     "dev:portal": "npm run dev -w @erp/portal",
     "dev:admin": "npm run dev -w @erp/admin",
-    "dev:employee": "npm run dev -w @erp/employee",
     "dev:boss": "npm run dev -w @erp/boss",
     "build": "npm run build:all",
-    "build:all": "npm run build -w @erp/portal && npm run build -w @erp/admin && npm run build -w @erp/employee && npm run build -w @erp/boss",
+    "build:all": "npm run build -w @erp/portal && npm run build -w @erp/admin && npm run build -w @erp/boss",
     "build:dist": "node scripts/build-dist.mjs",
     "preview:dist": "npx --yes serve dist -p 4173",
     "e2e": "node scripts/e2e.mjs",
@@ -23,6 +22,6 @@
     "e2e:onboard": "node scripts/e2e-onboard.mjs",
     "e2e:hr-ops": "node scripts/e2e-hr-ops.mjs",
     "audit:routes": "node ../scripts/audit_module_routes.mjs",
-    "gen:meta": "python ../scripts/gen_web_meta.py"
+    "gen:meta": "go run ../cmd/erp-tools gen-web-meta"
   }
 }

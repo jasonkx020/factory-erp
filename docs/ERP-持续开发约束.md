@@ -34,7 +34,7 @@
 提交前须满足：
 
 - [ ] OpenAPI 变更已 lint（可选 Redocly）
-- [ ] `python scripts/openapi_coverage.py` 退出码 0（路径全覆盖且无 `NOT_IMPLEMENTED`）
+- [ ] `go run ./cmd/erp-tools openapi-coverage` 退出码 0（路径全覆盖且无 `NOT_IMPLEMENTED`）
 - [ ] `go build ./...` 通过
 - [ ] 冒烟：`scripts/smoke_api.ps1`（health + login + 抽样写读）
 

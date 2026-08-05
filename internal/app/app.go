@@ -52,8 +52,10 @@ func New(cfgPath string) (*App, error) {
 	eng.Use(middleware.Audit(db.SQL))
 
 	biz.EnsureAutomationSchema(db.SQL)
+	biz.EnsureSystemAdminSchema(db.SQL)
 	biz.EnsureHRPermSchema(db.SQL)
 	biz.EnsureHROpsSchema(db.SQL)
+	biz.EnsurePayrollSchema(db.SQL)
 	notify.EnsureSchema(db.SQL)
 
 	hub := erpmqtt.NewHub(cfg)
@@ -71,6 +73,8 @@ func New(cfgPath string) (*App, error) {
 	}
 	engine.Biz.Notify = notifySvc
 	apigen.RegisterGenerated(v1, engine)
+	apigen.RegisterHRExtra(v1, engine)
+	apigen.RegisterPayrollExtra(v1, engine)
 
 	stop := make(chan struct{})
 	go notifySvc.StartPublisher(stop)

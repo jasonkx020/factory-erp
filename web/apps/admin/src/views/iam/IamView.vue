@@ -1,44 +1,112 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { iamApi } from '@erp/shared'
+import { iamApi, ERP_MENUS } from '@erp/shared'
 import HrPermView from './HrPermView.vue'
 
 const props = defineProps<{ module: string }>()
 
-const users = ref<Record<string, unknown>[]>([])
-const roles = ref<Record<string, unknown>[]>([])
-const groups = ref<Record<string, unknown>[]>([])
-const permissions = ref<Record<string, unknown>[]>([])
-const menus = ref<Record<string, unknown>[]>([])
-const fieldPolicies = ref<Record<string, unknown>[]>([])
-const loginPolicy = ref<Record<string, unknown>>({})
+type Row = Record<string, unknown>
+
+const users = ref<Row[]>([])
+const roles = ref<Row[]>([])
+const permissions = ref<Row[]>([])
+const menus = ref<Row[]>([])
+const fieldPolicies = ref<Row[]>([])
+const loginPolicy = ref<Row>({})
 const loading = ref(false)
+
+const selectedRoleId = ref<number | null>(null)
+const menuDraft = ref<Row[]>([])
+const policyDraft = ref<Row[]>([])
+
+const COST_FIELDS = [
+  { field_key: 'cost_price', field_name: '成本价' },
+  { field_key: 'cost', field_name: '成本' },
+  { field_key: 'gross_margin', field_name: '毛利率' },
+  { field_key: 'gross_profit', field_name: '毛利' },
+]
 
 async function loadAll() {
   if (props.module === '权限分配') return
   loading.value = true
   try {
-    const [u, r, g, p, m, f, lp] = await Promise.all([
+    const [u, r, p, m, f, lp] = await Promise.all([
       iamApi.users(),
       iamApi.roles(),
-      iamApi.groups(),
       iamApi.permissions(),
       iamApi.menus(),
       iamApi.fieldPolicies(),
       iamApi.loginPolicy(),
     ])
-    users.value = (u.data as { list?: Record<string, unknown>[] })?.list || []
-    roles.value = (r.data as { list?: Record<string, unknown>[] })?.list || []
-    groups.value = (g.data as { list?: Record<string, unknown>[] })?.list || []
-    permissions.value = (p.data as { list?: Record<string, unknown>[] })?.list || []
-    menus.value = (m.data as { list?: Record<string, unknown>[] })?.list || []
-    fieldPolicies.value = (f.data as { list?: Record<string, unknown>[] })?.list || []
-    loginPolicy.value = (lp.data as Record<string, unknown>) || {}
+    users.value = (u.data as { list?: Row[] })?.list || []
+    roles.value = (r.data as { list?: Row[] })?.list || []
+    permissions.value = (p.data as { list?: Row[] })?.list || []
+    menus.value = (m.data as { list?: Row[] })?.list || []
+    fieldPolicies.value = (f.data as { list?: Row[] })?.list || []
+    loginPolicy.value = (lp.data as Row) || {}
+    if (!selectedRoleId.value && roles.value.length) {
+      selectedRoleId.value = Number(roles.value[0].id)
+    }
+    rebuildMenuDraft()
+    rebuildPolicyDraft()
   } finally {
     loading.value = false
   }
 }
+
+function rebuildMenuDraft() {
+  const rid = selectedRoleId.value
+  if (!rid) {
+    menuDraft.value = []
+    return
+  }
+  const existing = menus.value.filter((x) => Number(x.role_id) === rid)
+  const byKey = new Map(existing.map((x) => [`${x.domain}|${x.module}`, x]))
+  const rows: Row[] = []
+  let sort = 10
+  for (const d of ERP_MENUS) {
+    for (const mod of d.modules) {
+      const key = `${d.domain}|${mod}`
+      const old = byKey.get(key)
+      rows.push({
+        role_id: rid,
+        domain: d.domain,
+        module: mod,
+        menu_key: old?.menu_key || `${d.domain}/${mod}`,
+        visible: old ? Number(old.visible) !== 0 && old.visible !== false : true,
+        sort_no: old?.sort_no ?? sort,
+      })
+      sort += 10
+    }
+  }
+  menuDraft.value = rows
+}
+
+function rebuildPolicyDraft() {
+  const rid = selectedRoleId.value
+  if (!rid) {
+    policyDraft.value = []
+    return
+  }
+  const existing = fieldPolicies.value.filter((x) => Number(x.role_id) === rid)
+  const byKey = new Map(existing.map((x) => [String(x.field_key), x]))
+  policyDraft.value = COST_FIELDS.map((f) => {
+    const old = byKey.get(f.field_key)
+    return {
+      role_id: rid,
+      field_key: f.field_key,
+      field_name: old?.field_name || f.field_name,
+      visible: old ? Number(old.visible) !== 0 && old.visible !== false : false,
+      editable: old ? Number(old.editable) !== 0 && old.editable !== false : false,
+    }
+  })
+}
+
+watch(selectedRoleId, () => {
+  rebuildMenuDraft()
+  rebuildPolicyDraft()
+})
 
 async function freeze(id: number, frozen: boolean) {
   const res = frozen ? await iamApi.unfreeze(id) : await iamApi.freeze(id)
@@ -53,41 +121,97 @@ async function saveLoginPolicy() {
   ElMessage.success('登录策略已保存')
 }
 
+async function saveMenus() {
+  const items = menuDraft.value.map((x) => ({
+    role_id: Number(x.role_id),
+    domain: x.domain,
+    module: x.module,
+    menu_key: x.menu_key,
+    visible: !!x.visible,
+    sort_no: Number(x.sort_no) || 0,
+  }))
+  const res = await iamApi.saveMenus(items)
+  if (res.code !== 1) return ElMessage.error(res.msg)
+  ElMessage.success('菜单可见性已保存')
+  await loadAll()
+}
+
+async function saveFieldPolicies() {
+  const items = policyDraft.value.map((x) => ({
+    role_id: Number(x.role_id),
+    field_key: x.field_key,
+    field_name: x.field_name,
+    visible: !!x.visible,
+    editable: !!x.editable,
+  }))
+  const res = await iamApi.saveFieldPolicies(items)
+  if (res.code !== 1) return ElMessage.error(res.msg)
+  ElMessage.success('字段策略已保存')
+  await loadAll()
+}
+
+const roleOptions = computed(() =>
+  roles.value.map((r) => ({ label: `${r.code || ''} ${r.name || ''}`.trim(), value: Number(r.id) })),
+)
+
 onMounted(loadAll)
+watch(() => props.module, loadAll)
 </script>
 
 <template>
   <HrPermView v-if="module === '权限分配'" />
   <div v-else v-loading="loading" class="iam">
     <h2 class="title">{{ module }}</h2>
-    <p class="desc">权限能力落在「人事·权限分配」与「系统·自定义权限/菜单/登录控制/账户冻结」，不另立核心功能名。</p>
+    <p class="desc">身份与权限配置；角色裁剪菜单/字段后即时对对应用户生效。</p>
 
     <template v-if="module === '自定义权限' || module === '成本隐藏'">
-      <h3>权限码字典</h3>
-      <el-table :data="permissions.slice(0, 50)" border height="280">
+      <div class="row">
+        <span>角色</span>
+        <el-select v-model="selectedRoleId" style="width:260px" placeholder="选择角色">
+          <el-option v-for="o in roleOptions" :key="o.value" :label="o.label" :value="o.value" />
+        </el-select>
+        <el-button type="primary" @click="saveFieldPolicies">保存字段策略</el-button>
+        <el-button @click="loadAll">刷新</el-button>
+      </div>
+      <h3>成本字段策略（当前角色）</h3>
+      <el-table :data="policyDraft" border>
+        <el-table-column prop="field_key" label="字段" min-width="140" />
+        <el-table-column prop="field_name" label="名称" min-width="120" />
+        <el-table-column label="可见" width="100">
+          <template #default="{ row }"><el-switch v-model="row.visible" /></template>
+        </el-table-column>
+        <el-table-column label="可编辑" width="100">
+          <template #default="{ row }"><el-switch v-model="row.editable" /></template>
+        </el-table-column>
+      </el-table>
+      <h3 style="margin-top:16px">权限码字典（只读）</h3>
+      <el-table :data="permissions.slice(0, 80)" border height="280">
         <el-table-column prop="code" label="权限码" min-width="220" />
         <el-table-column prop="domain" label="域" />
         <el-table-column prop="module" label="模块" />
         <el-table-column prop="action" label="动作" />
       </el-table>
-      <h3 style="margin-top:16px">字段策略（成本隐藏）</h3>
-      <el-table :data="fieldPolicies" border>
-        <el-table-column prop="role_id" label="角色ID" width="90" />
-        <el-table-column prop="field_key" label="字段" />
-        <el-table-column prop="field_name" label="名称" />
-        <el-table-column prop="visible" label="可见" />
-        <el-table-column prop="editable" label="可编辑" />
-      </el-table>
     </template>
 
     <template v-else-if="module === '自定义菜单'">
-      <el-table :data="menus" border>
-        <el-table-column prop="role_id" label="角色ID" width="90" />
-        <el-table-column prop="domain" label="域" />
-        <el-table-column prop="module" label="模块" />
-        <el-table-column prop="menu_key" label="菜单键" />
-        <el-table-column prop="visible" label="可见" />
-        <el-table-column prop="sort_no" label="排序" />
+      <div class="row">
+        <span>角色</span>
+        <el-select v-model="selectedRoleId" style="width:260px" placeholder="选择角色">
+          <el-option v-for="o in roleOptions" :key="o.value" :label="o.label" :value="o.value" />
+        </el-select>
+        <el-button type="primary" @click="saveMenus">保存菜单可见性</el-button>
+        <el-button @click="loadAll">刷新</el-button>
+      </div>
+      <el-table :data="menuDraft" border height="520">
+        <el-table-column prop="domain" label="域" width="120" />
+        <el-table-column prop="module" label="模块" min-width="160" />
+        <el-table-column prop="menu_key" label="菜单键" min-width="180" />
+        <el-table-column label="可见" width="90">
+          <template #default="{ row }"><el-switch v-model="row.visible" /></template>
+        </el-table-column>
+        <el-table-column label="排序" width="120">
+          <template #default="{ row }"><el-input-number v-model="row.sort_no" :min="0" :step="10" controls-position="right" /></template>
+        </el-table-column>
       </el-table>
     </template>
 
@@ -132,6 +256,5 @@ onMounted(loadAll)
 .iam { background: #fff; padding: 16px; border-radius: 8px; border: 1px solid #d5dde3; }
 .title { margin: 0 0 4px; }
 .desc { color: #5c6b75; font-size: 13px; margin: 0 0 12px; }
-.row { display: flex; gap: 8px; margin-bottom: 12px; }
-.steps { line-height: 1.8; }
+.row { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
 </style>

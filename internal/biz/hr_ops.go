@@ -337,22 +337,23 @@ func (s *Services) handleAttendanceRecords(c *gin.Context, method, action, path 
 	case "list":
 		empID := c.Query("employee_id")
 		from, to := c.Query("from"), c.Query("to")
-		q := `SELECT id, employee_id, biz_date, COALESCE(check_in_at,''), COALESCE(check_out_at,''), COALESCE(shift_id,0), COALESCE(source,'')
-			FROM hr_attendance_record WHERE 1=1`
+		q := `SELECT r.id, r.employee_id, COALESCE(e.emp_no,''), COALESCE(e.name,''), r.biz_date,
+			COALESCE(r.check_in_at,''), COALESCE(r.check_out_at,''), COALESCE(r.shift_id,0), COALESCE(r.source,'')
+			FROM hr_attendance_record r LEFT JOIN hr_employee e ON e.id=r.employee_id WHERE 1=1`
 		args := []interface{}{}
 		if empID != "" {
-			q += ` AND employee_id=?`
+			q += ` AND r.employee_id=?`
 			args = append(args, empID)
 		}
 		if from != "" {
-			q += ` AND biz_date>=?`
+			q += ` AND r.biz_date>=?`
 			args = append(args, from)
 		}
 		if to != "" {
-			q += ` AND biz_date<=?`
+			q += ` AND r.biz_date<=?`
 			args = append(args, to)
 		}
-		q += ` ORDER BY biz_date DESC, id DESC`
+		q += ` ORDER BY r.biz_date DESC, r.id DESC`
 		rows, err := s.DB.Query(q, args...)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -362,9 +363,12 @@ func (s *Services) handleAttendanceRecords(c *gin.Context, method, action, path 
 		list := []gin.H{}
 		for rows.Next() {
 			var id, eid, sid int64
-			var date, cin, cout, src string
-			_ = rows.Scan(&id, &eid, &date, &cin, &cout, &sid, &src)
-			list = append(list, gin.H{"id": id, "employee_id": eid, "biz_date": date, "check_in_at": cin, "check_out_at": cout, "shift_id": sid, "source": src})
+			var empNo, name, date, cin, cout, src string
+			_ = rows.Scan(&id, &eid, &empNo, &name, &date, &cin, &cout, &sid, &src)
+			list = append(list, gin.H{
+				"id": id, "employee_id": eid, "emp_no": empNo, "name": name, "biz_date": date,
+				"check_in_at": cin, "check_out_at": cout, "shift_id": sid, "source": src,
+			})
 		}
 		api.OK(c, gin.H{"list": list, "total": len(list)})
 		return true
@@ -451,15 +455,20 @@ func (s *Services) punchAttendance(c *gin.Context, source string) bool {
 func (s *Services) handleLeaveRequests(c *gin.Context, method, action string) bool {
 	switch action {
 	case "list":
-		rows, _ := s.DB.Query(`SELECT id, doc_no, employee_id, leave_type, start_at, end_at, status, COALESCE(remark,''), created_at FROM hr_leave_request ORDER BY id DESC`)
+		rows, _ := s.DB.Query(`SELECT l.id, l.doc_no, l.employee_id, COALESCE(e.emp_no,''), COALESCE(e.name,''),
+			l.leave_type, l.start_at, l.end_at, l.status, COALESCE(l.remark,''), l.created_at
+			FROM hr_leave_request l LEFT JOIN hr_employee e ON e.id=l.employee_id ORDER BY l.id DESC`)
 		list := []gin.H{}
 		if rows != nil {
 			defer rows.Close()
 			for rows.Next() {
 				var id, eid int64
-				var no, typ, start, end, st, remark, created string
-				_ = rows.Scan(&id, &no, &eid, &typ, &start, &end, &st, &remark, &created)
-				list = append(list, gin.H{"id": id, "doc_no": no, "employee_id": eid, "leave_type": typ, "start_at": start, "end_at": end, "status": st, "remark": remark, "created_at": created})
+				var no, empNo, name, typ, start, end, st, remark, created string
+				_ = rows.Scan(&id, &no, &eid, &empNo, &name, &typ, &start, &end, &st, &remark, &created)
+				list = append(list, gin.H{
+					"id": id, "doc_no": no, "employee_id": eid, "emp_no": empNo, "name": name,
+					"leave_type": typ, "start_at": start, "end_at": end, "status": st, "remark": remark, "created_at": created,
+				})
 			}
 		}
 		api.OK(c, gin.H{"list": list, "total": len(list)})
@@ -519,6 +528,34 @@ func (s *Services) handleLeaveRequests(c *gin.Context, method, action string) bo
 		}
 		api.OK(c, gin.H{"id": id, "status": "cancelled"})
 		return true
+	case "action:approve":
+		id := paramID(c)
+		res, err := s.DB.Exec(`UPDATE hr_leave_request SET status='approved' WHERE id=? AND status IN ('draft','pending')`, id)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			api.FailJSON(c, "NOT_PENDING")
+			return true
+		}
+		api.OK(c, gin.H{"id": id, "status": "approved"})
+		return true
+	case "action:reject":
+		id := paramID(c)
+		res, err := s.DB.Exec(`UPDATE hr_leave_request SET status='rejected' WHERE id=? AND status IN ('draft','pending')`, id)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			api.FailJSON(c, "NOT_PENDING")
+			return true
+		}
+		api.OK(c, gin.H{"id": id, "status": "rejected"})
+		return true
 	}
 	return true
 }
@@ -527,22 +564,26 @@ func (s *Services) handleOvertimePatches(c *gin.Context, method, action, path st
 	if strings.HasSuffix(path, "/stats") || (action == "list" && strings.Contains(path, "/stats")) || (method == "GET" && strings.Contains(c.Request.URL.Path, "/stats")) {
 		return s.overtimeStats(c)
 	}
-	// also catch when gin path is /overtime-patches/stats with action list
 	if strings.Contains(path, "overtime-patches/stats") {
 		return s.overtimeStats(c)
 	}
 	switch action {
 	case "list":
-		rows, _ := s.DB.Query(`SELECT id, doc_no, employee_id, biz_type, biz_date, minutes, status, COALESCE(remark,''), created_at FROM hr_overtime_patch ORDER BY id DESC`)
+		rows, _ := s.DB.Query(`SELECT o.id, o.doc_no, o.employee_id, COALESCE(e.emp_no,''), COALESCE(e.name,''),
+			o.biz_type, o.biz_date, o.minutes, o.status, COALESCE(o.remark,''), o.created_at
+			FROM hr_overtime_patch o LEFT JOIN hr_employee e ON e.id=o.employee_id ORDER BY o.id DESC`)
 		list := []gin.H{}
 		if rows != nil {
 			defer rows.Close()
 			for rows.Next() {
 				var id, eid int64
-				var no, typ, date, st, remark, created string
+				var no, empNo, name, typ, date, st, remark, created string
 				var minutes int
-				_ = rows.Scan(&id, &no, &eid, &typ, &date, &minutes, &st, &remark, &created)
-				list = append(list, gin.H{"id": id, "doc_no": no, "employee_id": eid, "biz_type": typ, "biz_date": date, "minutes": minutes, "status": st, "remark": remark, "created_at": created})
+				_ = rows.Scan(&id, &no, &eid, &empNo, &name, &typ, &date, &minutes, &st, &remark, &created)
+				list = append(list, gin.H{
+					"id": id, "doc_no": no, "employee_id": eid, "emp_no": empNo, "name": name,
+					"biz_type": typ, "biz_date": date, "minutes": minutes, "status": st, "remark": remark, "created_at": created,
+				})
 			}
 		}
 		api.OK(c, gin.H{"list": list, "total": len(list)})
@@ -570,13 +611,46 @@ func (s *Services) handleOvertimePatches(c *gin.Context, method, action, path st
 		id, _ := res.LastInsertId()
 		api.OK(c, gin.H{"id": id, "doc_no": docNo, "employee_id": eid, "biz_type": bizType, "minutes": minutes, "status": "pending"})
 		return true
+	case "action:approve":
+		id := paramID(c)
+		res, err := s.DB.Exec(`UPDATE hr_overtime_patch SET status='approved' WHERE id=? AND status IN ('draft','pending')`, id)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			api.FailJSON(c, "NOT_PENDING")
+			return true
+		}
+		api.OK(c, gin.H{"id": id, "status": "approved"})
+		return true
+	case "action:reject":
+		id := paramID(c)
+		res, err := s.DB.Exec(`UPDATE hr_overtime_patch SET status='rejected' WHERE id=? AND status IN ('draft','pending')`, id)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return true
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			api.FailJSON(c, "NOT_PENDING")
+			return true
+		}
+		api.OK(c, gin.H{"id": id, "status": "rejected"})
+		return true
+	case "action:cancel":
+		id := paramID(c)
+		_, _ = s.DB.Exec(`UPDATE hr_overtime_patch SET status='cancelled' WHERE id=? AND status IN ('draft','pending')`, id)
+		api.OK(c, gin.H{"id": id, "status": "cancelled"})
+		return true
 	}
 	return true
 }
 
 func (s *Services) overtimeStats(c *gin.Context) bool {
 	from, to := c.Query("from"), c.Query("to")
-	q := `SELECT biz_type, COUNT(1), COALESCE(SUM(minutes),0) FROM hr_overtime_patch WHERE status!='cancelled'`
+	q := `SELECT biz_type, COUNT(1), COALESCE(SUM(minutes),0) FROM hr_overtime_patch WHERE status IN ('approved','pending')`
 	args := []interface{}{}
 	if from != "" {
 		q += ` AND biz_date>=?`
@@ -612,17 +686,18 @@ func (s *Services) handleMonthStats(c *gin.Context, method, action, path string)
 	}
 	year := c.Query("year")
 	month := c.Query("month")
-	q := `SELECT id, employee_id, year, month, work_days, late_times, ot_hours, leave_days FROM hr_attendance_month_stat WHERE 1=1`
+	q := `SELECT s.id, s.employee_id, COALESCE(e.emp_no,''), COALESCE(e.name,''), s.year, s.month, s.work_days, s.late_times, s.ot_hours, s.leave_days
+		FROM hr_attendance_month_stat s LEFT JOIN hr_employee e ON e.id=s.employee_id WHERE 1=1`
 	args := []interface{}{}
 	if year != "" {
-		q += ` AND year=?`
+		q += ` AND s.year=?`
 		args = append(args, year)
 	}
 	if month != "" {
-		q += ` AND month=?`
+		q += ` AND s.month=?`
 		args = append(args, month)
 	}
-	q += ` ORDER BY year DESC, month DESC, employee_id`
+	q += ` ORDER BY s.year DESC, s.month DESC, s.employee_id`
 	rows, err := s.DB.Query(q, args...)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -634,8 +709,12 @@ func (s *Services) handleMonthStats(c *gin.Context, method, action, path string)
 		var id, eid int64
 		var y, m, late int
 		var work, ot, leave float64
-		_ = rows.Scan(&id, &eid, &y, &m, &work, &late, &ot, &leave)
-		list = append(list, gin.H{"id": id, "employee_id": eid, "year": y, "month": m, "work_days": work, "late_times": late, "ot_hours": ot, "leave_days": leave})
+		var empNo, name string
+		_ = rows.Scan(&id, &eid, &empNo, &name, &y, &m, &work, &late, &ot, &leave)
+		list = append(list, gin.H{
+			"id": id, "employee_id": eid, "emp_no": empNo, "name": name,
+			"year": y, "month": m, "work_days": work, "late_times": late, "ot_hours": ot, "leave_days": leave,
+		})
 	}
 	api.OK(c, gin.H{"list": list, "total": len(list)})
 	return true
@@ -650,7 +729,20 @@ func (s *Services) recalcMonthStats(c *gin.Context) bool {
 		year, month = int64(now.Year()), int64(now.Month())
 	}
 	prefix := fmt.Sprintf("%04d-%02d", year, month)
-	empRows, err := s.DB.Query(`SELECT id FROM hr_employee WHERE COALESCE(is_deleted,0)=0 AND status IN ('active','pending','left')`)
+
+	// load default rule + shift for late threshold
+	var lateMin int = 10
+	var shiftStart = "08:00"
+	_ = s.DB.QueryRow(`SELECT COALESCE(r.late_minutes,10), COALESCE(sh.start_time,'08:00')
+		FROM hr_attendance_rule r LEFT JOIN hr_shift sh ON sh.id=r.shift_id
+		WHERE r.status='active' ORDER BY r.id LIMIT 1`).Scan(&lateMin, &shiftStart)
+	if len(shiftStart) >= 5 {
+		shiftStart = shiftStart[:5]
+	}
+	// late cutoff = shift start + late_minutes
+	cutoffHM := addMinutesHHMM(shiftStart, lateMin)
+
+	empRows, err := s.DB.Query(`SELECT id FROM hr_employee WHERE COALESCE(is_deleted,0)=0 AND status IN ('active','pending')`)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
 		return true
@@ -668,13 +760,13 @@ func (s *Services) recalcMonthStats(c *gin.Context) bool {
 		var otHours, leaveDays float64
 		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_attendance_record WHERE employee_id=? AND biz_date LIKE ? AND check_in_at IS NOT NULL AND check_in_at!=''`,
 			eid, prefix+"%").Scan(&workDays)
-		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_attendance_record WHERE employee_id=? AND biz_date LIKE ? AND check_in_at > (biz_date || ' 08:10:00')`,
-			eid, prefix+"%").Scan(&lateTimes)
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_attendance_record WHERE employee_id=? AND biz_date LIKE ? AND check_in_at > (biz_date || ' ' || ? || ':00')`,
+			eid, prefix+"%", cutoffHM).Scan(&lateTimes)
 		var otMin int64
-		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(minutes),0) FROM hr_overtime_patch WHERE employee_id=? AND biz_type='overtime' AND biz_date LIKE ? AND status!='cancelled'`,
+		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(minutes),0) FROM hr_overtime_patch WHERE employee_id=? AND biz_type='overtime' AND biz_date LIKE ? AND status='approved'`,
 			eid, prefix+"%").Scan(&otMin)
 		otHours = float64(otMin) / 60.0
-		_ = s.DB.QueryRow(`SELECT COUNT(1)*1.0 FROM hr_leave_request WHERE employee_id=? AND status IN ('pending','approved') AND start_at LIKE ?`,
+		_ = s.DB.QueryRow(`SELECT COUNT(1)*1.0 FROM hr_leave_request WHERE employee_id=? AND status='approved' AND start_at LIKE ?`,
 			eid, prefix+"%").Scan(&leaveDays)
 		var n int
 		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_attendance_month_stat WHERE employee_id=? AND year=? AND month=?`, eid, year, month).Scan(&n)
@@ -692,8 +784,23 @@ func (s *Services) recalcMonthStats(c *gin.Context) bool {
 		}
 		updated++
 	}
-	api.OK(c, gin.H{"year": year, "month": month, "updated": updated})
+	api.OK(c, gin.H{"year": year, "month": month, "updated": updated, "late_cutoff": cutoffHM, "late_minutes": lateMin})
 	return true
+}
+
+func addMinutesHHMM(hhmm string, add int) string {
+	parts := strings.Split(hhmm, ":")
+	if len(parts) < 2 {
+		return "08:10"
+	}
+	h, m := 8, 0
+	fmt.Sscanf(parts[0], "%d", &h)
+	fmt.Sscanf(parts[1], "%d", &m)
+	total := h*60 + m + add
+	if total < 0 {
+		total = 0
+	}
+	return fmt.Sprintf("%02d:%02d", total/60%24, total%60)
 }
 
 func (s *Services) handlePerfSchemes(c *gin.Context, method, action string) bool {
@@ -821,14 +928,19 @@ func (s *Services) handlePerfResults(c *gin.Context, method, action string) bool
 }
 
 func (s *Services) handleAttPerfSummaries(c *gin.Context, method, action string) bool {
+	if action == "action:recalc" || (method == "POST" && strings.Contains(c.Request.URL.Path, "recalc")) {
+		return s.recalcAttPerfSummaries(c)
+	}
 	period := c.Query("period")
-	q := `SELECT id, employee_id, period, COALESCE(attendance_score,0), COALESCE(perf_score,0), COALESCE(summary_json,'') FROM hr_attendance_perf_summary WHERE 1=1`
+	q := `SELECT s.id, s.employee_id, COALESCE(e.emp_no,''), COALESCE(e.name,''), s.period,
+		COALESCE(s.attendance_score,0), COALESCE(s.perf_score,0), COALESCE(s.summary_json,'')
+		FROM hr_attendance_perf_summary s LEFT JOIN hr_employee e ON e.id=s.employee_id WHERE 1=1`
 	args := []interface{}{}
 	if period != "" {
-		q += ` AND period=?`
+		q += ` AND s.period=?`
 		args = append(args, period)
 	}
-	q += ` ORDER BY period DESC, employee_id`
+	q += ` ORDER BY s.period DESC, s.employee_id`
 	rows, err := s.DB.Query(q, args...)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -838,48 +950,78 @@ func (s *Services) handleAttPerfSummaries(c *gin.Context, method, action string)
 	list := []gin.H{}
 	for rows.Next() {
 		var id, eid int64
-		var period, sj string
+		var period, empNo, name, sj string
 		var ascore, pscore float64
-		_ = rows.Scan(&id, &eid, &period, &ascore, &pscore, &sj)
-		list = append(list, gin.H{"id": id, "employee_id": eid, "period": period, "attendance_score": ascore, "perf_score": pscore, "summary_json": sj})
-	}
-	// auto-fill from month stats if empty and period like 2026-08
-	if len(list) == 0 && period != "" && len(period) >= 7 {
-		var y, m int
-		_, _ = fmt.Sscanf(period, "%d-%d", &y, &m)
-		if y > 0 && m > 0 {
-			srows, _ := s.DB.Query(`SELECT employee_id, work_days, late_times, ot_hours, leave_days FROM hr_attendance_month_stat WHERE year=? AND month=?`, y, m)
-			if srows != nil {
-				defer srows.Close()
-				for srows.Next() {
-					var eid int64
-					var work, ot, leave float64
-					var late int
-					_ = srows.Scan(&eid, &work, &late, &ot, &leave)
-					attScore := work*2 - float64(late) + ot
-					_, _ = s.DB.Exec(`INSERT OR IGNORE INTO hr_attendance_perf_summary(employee_id, period, attendance_score, perf_score, summary_json) VALUES(?,?,?,0,?)`,
-						eid, period, attScore, fmt.Sprintf(`{"work_days":%v,"late":%d,"ot":%v,"leave":%v}`, work, late, ot, leave))
-					list = append(list, gin.H{"employee_id": eid, "period": period, "attendance_score": attScore, "perf_score": 0})
-				}
-			}
-		}
+		_ = rows.Scan(&id, &eid, &empNo, &name, &period, &ascore, &pscore, &sj)
+		list = append(list, gin.H{
+			"id": id, "employee_id": eid, "emp_no": empNo, "name": name, "period": period,
+			"attendance_score": ascore, "perf_score": pscore, "summary_json": sj,
+		})
 	}
 	api.OK(c, gin.H{"list": list, "total": len(list)})
+	return true
+}
+
+func (s *Services) recalcAttPerfSummaries(c *gin.Context) bool {
+	body := bindBody(c)
+	period := strOr(body["period"])
+	if period == "" {
+		period = time.Now().Format("2006-01")
+	}
+	var y, m int
+	_, _ = fmt.Sscanf(period, "%d-%d", &y, &m)
+	if y == 0 || m == 0 {
+		api.FailJSON(c, "PERIOD_INVALID")
+		return true
+	}
+	srows, err := s.DB.Query(`SELECT employee_id, work_days, late_times, ot_hours, leave_days FROM hr_attendance_month_stat WHERE year=? AND month=?`, y, m)
+	if err != nil {
+		api.FailJSON(c, "DB_ERROR:"+err.Error())
+		return true
+	}
+	defer srows.Close()
+	n := 0
+	for srows.Next() {
+		var eid int64
+		var work, ot, leave float64
+		var late int
+		_ = srows.Scan(&eid, &work, &late, &ot, &leave)
+		attScore := work*2 - float64(late) + ot
+		var pscore float64
+		_ = s.DB.QueryRow(`SELECT COALESCE(AVG(score),0) FROM hr_performance_result WHERE employee_id=? AND period=?`, eid, period).Scan(&pscore)
+		sj := fmt.Sprintf(`{"work_days":%v,"late":%d,"ot":%v,"leave":%v}`, work, late, ot, leave)
+		var exists int
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_attendance_perf_summary WHERE employee_id=? AND period=?`, eid, period).Scan(&exists)
+		if exists == 0 {
+			_, _ = s.DB.Exec(`INSERT INTO hr_attendance_perf_summary(employee_id, period, attendance_score, perf_score, summary_json) VALUES(?,?,?,?,?)`,
+				eid, period, attScore, pscore, sj)
+		} else {
+			_, _ = s.DB.Exec(`UPDATE hr_attendance_perf_summary SET attendance_score=?, perf_score=?, summary_json=? WHERE employee_id=? AND period=?`,
+				attScore, pscore, sj, eid, period)
+		}
+		n++
+	}
+	api.OK(c, gin.H{"period": period, "updated": n})
 	return true
 }
 
 func (s *Services) handleVisits(c *gin.Context, method, action string) bool {
 	switch action {
 	case "list":
-		rows, _ := s.DB.Query(`SELECT id, employee_id, COALESCE(customer_id,0), visit_at, COALESCE(content,''), COALESCE(location,''), created_at FROM hr_visit_record ORDER BY visit_at DESC`)
+		rows, _ := s.DB.Query(`SELECT v.id, v.employee_id, COALESCE(e.emp_no,''), COALESCE(e.name,''), COALESCE(v.customer_id,0),
+			v.visit_at, COALESCE(v.content,''), COALESCE(v.location,''), v.created_at
+			FROM hr_visit_record v LEFT JOIN hr_employee e ON e.id=v.employee_id ORDER BY v.visit_at DESC`)
 		list := []gin.H{}
 		if rows != nil {
 			defer rows.Close()
 			for rows.Next() {
 				var id, eid, cid int64
-				var at, content, loc, created string
-				_ = rows.Scan(&id, &eid, &cid, &at, &content, &loc, &created)
-				list = append(list, gin.H{"id": id, "employee_id": eid, "customer_id": cid, "visit_at": at, "content": content, "location": loc, "created_at": created})
+				var empNo, name, at, content, loc, created string
+				_ = rows.Scan(&id, &eid, &empNo, &name, &cid, &at, &content, &loc, &created)
+				list = append(list, gin.H{
+					"id": id, "employee_id": eid, "emp_no": empNo, "name": name, "customer_id": cid,
+					"visit_at": at, "content": content, "location": loc, "created_at": created,
+				})
 			}
 		}
 		api.OK(c, gin.H{"list": list, "total": len(list)})
@@ -995,13 +1137,14 @@ func (s *Services) handleJournals(c *gin.Context, method, action string) bool {
 	switch action {
 	case "list":
 		eid := c.Query("employee_id")
-		q := `SELECT id, employee_id, biz_date, content, created_at FROM hr_employee_journal WHERE 1=1`
+		q := `SELECT j.id, j.employee_id, COALESCE(e.emp_no,''), COALESCE(e.name,''), j.biz_date, j.content, j.created_at
+			FROM hr_employee_journal j LEFT JOIN hr_employee e ON e.id=j.employee_id WHERE 1=1`
 		args := []interface{}{}
 		if eid != "" {
-			q += ` AND employee_id=?`
+			q += ` AND j.employee_id=?`
 			args = append(args, eid)
 		}
-		q += ` ORDER BY biz_date DESC, id DESC`
+		q += ` ORDER BY j.biz_date DESC, j.id DESC`
 		rows, err := s.DB.Query(q, args...)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -1011,9 +1154,9 @@ func (s *Services) handleJournals(c *gin.Context, method, action string) bool {
 		list := []gin.H{}
 		for rows.Next() {
 			var id, emp int64
-			var date, content, created string
-			_ = rows.Scan(&id, &emp, &date, &content, &created)
-			list = append(list, gin.H{"id": id, "employee_id": emp, "biz_date": date, "content": content, "created_at": created})
+			var empNo, name, date, content, created string
+			_ = rows.Scan(&id, &emp, &empNo, &name, &date, &content, &created)
+			list = append(list, gin.H{"id": id, "employee_id": emp, "emp_no": empNo, "name": name, "biz_date": date, "content": content, "created_at": created})
 		}
 		api.OK(c, gin.H{"list": list, "total": len(list)})
 		return true

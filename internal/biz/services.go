@@ -101,6 +101,10 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		return s.handleOperationLogs(c, method, action, openapiPath)
 	case strings.HasPrefix(openapiPath, "/api/v1/system/data-repairs"):
 		return s.handleDataRepair(c, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/system/"):
+		if s.handleSystemAdmin(c, method, openapiPath, resourceKey, action) {
+			return true
+		}
 	case strings.Contains(openapiPath, "/inventory/box-codes/trace/"):
 		return s.handleBoxTrace(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/payroll/"):

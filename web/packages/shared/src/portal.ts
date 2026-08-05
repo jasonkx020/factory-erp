@@ -2,14 +2,12 @@
 export const TERMINAL_DEV_PORTS = {
   portal: 5170,
   admin: 5173,
-  employee: 5174,
   boss: 5177,
 } as const
 
 export const TERMINAL_PROD_PATHS = {
   portal: '/',
   admin: '/admin/',
-  employee: '/front/',
   boss: '/front/boss/',
 } as const
 

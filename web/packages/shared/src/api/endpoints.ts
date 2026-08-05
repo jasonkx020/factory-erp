@@ -123,7 +123,8 @@ export const hrApi = {
   getOffboard: (id: number) => api.get(`/hr/offboards/${id}`),
   createOffboard: (body: Record<string, unknown>) => api.post('/hr/offboards', body),
   updateOffboard: (id: number, body: Record<string, unknown>) => api.put(`/hr/offboards/${id}`, body),
-  confirmOffboard: (id: number) => api.post(`/hr/offboards/${id}/confirm`, {}),
+  confirmOffboard: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/hr/offboards/${id}/confirm`, body || {}),
   shifts: () => api.get<PageData>('/hr/shifts'),
   createShift: (body: Record<string, unknown>) => api.post('/hr/shifts', body),
   updateShift: (id: number, body: Record<string, unknown>) => api.put(`/hr/shifts/${id}`, body),
@@ -138,8 +139,13 @@ export const hrApi = {
   leaveRequests: () => api.get<PageData>('/hr/leave-requests'),
   createLeave: (body: Record<string, unknown>) => api.post('/hr/leave-requests', body),
   cancelLeave: (id: number) => api.post(`/hr/leave-requests/${id}/cancel`, {}),
+  approveLeave: (id: number) => api.post(`/hr/leave-requests/${id}/approve`, {}),
+  rejectLeave: (id: number) => api.post(`/hr/leave-requests/${id}/reject`, {}),
   overtimePatches: () => api.get<PageData>('/hr/overtime-patches'),
   createOvertimePatch: (body: Record<string, unknown>) => api.post('/hr/overtime-patches', body),
+  approveOvertime: (id: number) => api.post(`/hr/overtime-patches/${id}/approve`, {}),
+  rejectOvertime: (id: number) => api.post(`/hr/overtime-patches/${id}/reject`, {}),
+  cancelOvertime: (id: number) => api.post(`/hr/overtime-patches/${id}/cancel`, {}),
   overtimeStats: (params?: string) =>
     api.get(`/hr/overtime-patches/stats${params ? `?${params}` : ''}`),
   monthStats: (params?: string) =>
@@ -152,8 +158,10 @@ export const hrApi = {
   createPerfResult: (body: Record<string, unknown>) => api.post('/hr/performance/results', body),
   attPerfSummaries: (params?: string) =>
     api.get<PageData>(`/hr/attendance-perf-summaries${params ? `?${params}` : ''}`),
+  recalcAttPerf: (body: Record<string, unknown>) => api.post('/hr/attendance-perf-summaries/recalc', body),
   visits: () => api.get<PageData>('/hr/visits'),
   createVisit: (body: Record<string, unknown>) => api.post('/hr/visits', body),
+  updateVisit: (id: number, body: Record<string, unknown>) => api.put(`/hr/visits/${id}`, body),
   memos: () => api.get<PageData>('/hr/memos'),
   createMemo: (body: Record<string, unknown>) => api.post('/hr/memos', body),
   updateMemo: (id: number, body: Record<string, unknown>) => api.put(`/hr/memos/${id}`, body),
@@ -167,8 +175,29 @@ export const payrollApi = {
   calcSheet: (body?: Record<string, unknown>) => api.post('/payroll/sheets/batch-generate', body || {}),
   createSheet: (body: Record<string, unknown>) => api.post('/payroll/sheets', body),
   listSheets: () => api.get<PageData>('/payroll/sheets'),
+  getSheet: (id: number) => api.get(`/payroll/sheets/${id}`),
+  adjustSheet: (id: number, body: Record<string, unknown>) => api.post(`/payroll/sheets/${id}/adjust`, body),
+  confirmSheet: (id: number) => api.post(`/payroll/sheets/${id}/confirm`, {}),
+  paySheet: (id: number) => api.post(`/payroll/sheets/${id}/pay`, {}),
   wageRates: () => api.get<PageData>('/payroll/wage-rates'),
   createWageRate: (body: Record<string, unknown>) => api.post('/payroll/wage-rates', body),
+  updateWageRate: (id: number, body: Record<string, unknown>) => api.put(`/payroll/wage-rates/${id}`, body),
+  removeWageRate: (id: number) => api.del(`/payroll/wage-rates/${id}`),
+  workerProfiles: () => api.get<PageData>('/payroll/worker-profiles'),
+  saveWorkerProfile: (body: Record<string, unknown>) => {
+    const id = Number(body.id || 0)
+    if (id > 0) return api.put(`/payroll/worker-profiles/${id}`, body)
+    return api.post('/payroll/worker-profiles', body)
+  },
+  calculations: () => api.get<PageData>('/payroll/calculations'),
+  createCalculation: (body: Record<string, unknown>) => api.post('/payroll/calculations', body),
+  commissionRules: () => api.get<PageData>('/payroll/commission-rules'),
+  createCommissionRule: (body: Record<string, unknown>) => api.post('/payroll/commission-rules', body),
+  updateCommissionRule: (id: number, body: Record<string, unknown>) =>
+    api.put(`/payroll/commission-rules/${id}`, body),
+  commissionCalcs: () => api.get<PageData>('/payroll/commission-calcs'),
+  createCommissionCalc: (body: Record<string, unknown>) => api.post('/payroll/commission-calcs', body),
+  runCommission: (body?: Record<string, unknown>) => api.post('/payroll/commission-calcs/run', body || {}),
 }
 
 export const approvalApi = {
@@ -349,4 +378,7 @@ export function moduleDelete(path: string, id: number) {
 export function moduleAction(path: string, id: number, action: string, body?: Record<string, unknown>) {
   const clean = path.replace(/\/\{id\}.*/, '').replace(/\/$/, '')
   return api.post(`${clean}/${id}/${action}`, body || {})
+}
+export function moduleReplace(path: string, body: Record<string, unknown>) {
+  return api.put(path, body)
 }

@@ -482,80 +482,6 @@ func (s *Services) handleRequisitions(c *gin.Context, method, action, path strin
 	return false
 }
 
-func (s *Services) handlePayroll(c *gin.Context, method, action, path string) bool {
-	if strings.Contains(path, "wage-rates") {
-		switch action {
-		case "list":
-			rows, err := s.DB.Query(`SELECT id, process_id, rate, effective_from, COALESCE(effective_to,''), status FROM pay_process_wage_rate ORDER BY id DESC`)
-			if err != nil {
-				api.FailJSON(c, "DB_ERROR")
-				return true
-			}
-			defer rows.Close()
-			list := []gin.H{}
-			for rows.Next() {
-				var id, pid int64
-				var rate float64
-				var from, to, status string
-				_ = rows.Scan(&id, &pid, &rate, &from, &to, &status)
-				list = append(list, gin.H{"id": id, "process_id": pid, "rate": rate, "effective_from": from, "effective_to": to, "status": status})
-			}
-			api.OK(c, gin.H{"list": list, "total": len(list)})
-			return true
-		case "create":
-			body := bindBody(c)
-			pid, _ := asInt64(body["process_id"])
-			rate, _ := asFloat(body["rate"])
-			from, _ := body["effective_from"].(string)
-			if from == "" {
-				from = time.Now().Format("2006-01-02")
-			}
-			res, err := s.DB.Exec(`INSERT INTO pay_process_wage_rate(process_id, rate, effective_from, status) VALUES(?,?,?,'active')`, pid, rate, from)
-			if err != nil {
-				api.FailJSON(c, "DB_ERROR")
-				return true
-			}
-			id, _ := res.LastInsertId()
-			api.OK(c, gin.H{"id": id, "process_id": pid, "rate": rate})
-			return true
-		case "get", "update", "delete":
-			id := paramID(c)
-			if action == "delete" {
-				_, _ = s.DB.Exec(`UPDATE pay_process_wage_rate SET status='inactive' WHERE id=?`, id)
-				api.OK(c, gin.H{})
-				return true
-			}
-			if action == "get" {
-				var pid int64
-				var rate float64
-				var from, to, status string
-				err := s.DB.QueryRow(`SELECT process_id, rate, effective_from, COALESCE(effective_to,''), status FROM pay_process_wage_rate WHERE id=?`, id).
-					Scan(&pid, &rate, &from, &to, &status)
-				if err != nil {
-					api.FailJSON(c, "NOT_FOUND")
-					return true
-				}
-				api.OK(c, gin.H{"id": id, "process_id": pid, "rate": rate, "effective_from": from, "effective_to": to, "status": status})
-				return true
-			}
-			body := bindBody(c)
-			if rate, ok := asFloat(body["rate"]); ok {
-				_, _ = s.DB.Exec(`UPDATE pay_process_wage_rate SET rate=? WHERE id=?`, rate, id)
-			}
-			api.OK(c, gin.H{"id": id})
-			return true
-		}
-	}
-	if strings.Contains(path, "sheets") || strings.Contains(path, "calculations") || strings.Contains(path, "commission") {
-		rk := resourceKeyFromPath(path)
-		return s.genericDoc(c, method, action, rk)
-	}
-	if strings.Contains(path, "worker-profiles") {
-		return s.genericDoc(c, method, action, "payroll/worker-profiles")
-	}
-	return false
-}
-
 func resourceKeyFromPath(path string) string {
 	p := strings.TrimPrefix(path, "/api/v1/")
 	parts := []string{}
@@ -1047,47 +973,82 @@ func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
 	case path == "/api/v1/iam/menus" && method == "PUT":
 		body := bindBody(c)
 		items, _ := body["items"].([]interface{})
+		roleCleared := map[int64]bool{}
 		for _, it := range items {
 			m, _ := it.(map[string]interface{})
 			if m == nil {
 				continue
 			}
 			rid, _ := asInt64(m["role_id"])
+			if rid > 0 && !roleCleared[rid] {
+				_, _ = s.DB.Exec(`DELETE FROM iam_menu_custom WHERE role_id=?`, rid)
+				roleCleared[rid] = true
+			}
 			domain, _ := m["domain"].(string)
 			module, _ := m["module"].(string)
 			key, _ := m["menu_key"].(string)
 			vis := 1
-			if v, ok := m["visible"].(bool); ok && !v {
-				vis = 0
+			switch v := m["visible"].(type) {
+			case bool:
+				if !v {
+					vis = 0
+				}
+			case float64:
+				if v == 0 {
+					vis = 0
+				}
+			case string:
+				if v == "0" || strings.EqualFold(v, "false") {
+					vis = 0
+				}
 			}
 			sortNo, _ := asInt64(m["sort_no"])
 			_, _ = s.DB.Exec(`INSERT INTO iam_menu_custom(role_id, domain, module, menu_key, visible, sort_no) VALUES(?,?,?,?,?,?)`,
 				rid, domain, module, key, vis, sortNo)
 		}
-		api.OK(c, gin.H{"ok": true})
+		api.OK(c, gin.H{"ok": true, "count": len(items)})
 		return true
 	case path == "/api/v1/iam/field-policies" && method == "PUT":
 		body := bindBody(c)
 		items, _ := body["items"].([]interface{})
+		roleCleared := map[int64]bool{}
 		for _, it := range items {
 			m, _ := it.(map[string]interface{})
 			if m == nil {
 				continue
 			}
 			rid, _ := asInt64(m["role_id"])
+			if rid > 0 && !roleCleared[rid] {
+				_, _ = s.DB.Exec(`DELETE FROM iam_field_policy WHERE role_id=?`, rid)
+				roleCleared[rid] = true
+			}
 			fk, _ := m["field_key"].(string)
 			fn, _ := m["field_name"].(string)
 			vis, edit := 1, 0
-			if v, ok := m["visible"].(bool); ok && !v {
-				vis = 0
+			switch v := m["visible"].(type) {
+			case bool:
+				if !v {
+					vis = 0
+				}
+			case float64:
+				if v == 0 {
+					vis = 0
+				}
 			}
-			if v, ok := m["editable"].(bool); ok && v {
-				edit = 1
+			switch v := m["editable"].(type) {
+			case bool:
+				if v {
+					edit = 1
+				}
+			case float64:
+				if v != 0 {
+					edit = 1
+				}
 			}
 			_, _ = s.DB.Exec(`INSERT INTO iam_field_policy(role_id, field_key, field_name, visible, editable) VALUES(?,?,?,?,?)`,
 				rid, fk, fn, vis, edit)
 		}
-		api.OK(c, gin.H{"ok": true})
+		api.OK(c, gin.H{"ok": true, "count": len(items)})
 		return true
 	case path == "/api/v1/iam/login-policy" && method == "PUT":
 		body := bindBody(c)

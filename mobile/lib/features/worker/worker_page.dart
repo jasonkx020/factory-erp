@@ -6,6 +6,14 @@ import '../../core/auth_state.dart';
 import '../../core/employee_modules.dart';
 import '../../core/notify_service.dart';
 
+const _scrapOptions = <MapEntry<String, String>>[
+  MapEntry('', '无次品'),
+  MapEntry('cut_defect', '切断次品'),
+  MapEntry('core_defect', '去芯次品'),
+  MapEntry('dice_defect', '切块次品'),
+  MapEntry('sieve_bag_defect', '过筛装袋次品'),
+];
+
 class WorkerPage extends StatefulWidget {
   const WorkerPage({super.key});
 
@@ -19,12 +27,18 @@ class _WorkerPageState extends State<WorkerPage> {
   final _box = TextEditingController();
   final _in = TextEditingController();
   final _out = TextEditingController();
+  final _bag = TextEditingController(text: '0');
+  String _scrapType = '';
   String _msg = '';
   Map<String, dynamic>? _daily;
   List<dynamic> _wages = [];
   Map<String, dynamic>? _last;
   int? _pendingReportId;
   List<Map<String, dynamic>> _notices = [];
+  List<Map<String, dynamic>> _issueLines = [];
+  List<Map<String, dynamic>> _tools = [];
+
+  static const _titles = ['双扫报工', '今日核对', '领料/工具', '提醒'];
 
   @override
   void initState() {
@@ -47,12 +61,11 @@ class _WorkerPageState extends State<WorkerPage> {
     _box.dispose();
     _in.dispose();
     _out.dispose();
+    _bag.dispose();
     super.dispose();
   }
 
-  void _onNotify() {
-    _applyNotices();
-  }
+  void _onNotify() => _applyNotices();
 
   void _applyNotices() {
     if (!mounted) return;
@@ -107,6 +120,45 @@ class _WorkerPageState extends State<WorkerPage> {
     });
   }
 
+  Future<void> _loadLedger() async {
+    final api = context.read<AuthState>().api;
+    final auth = context.read<AuthState>();
+    final me = auth.name ?? '';
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final sheetsRes = await api.get('/production/piece-issue-sheets');
+    final toolsRes = await api.get('/hr/tool-issues');
+    final sheetList = (sheetsRes.data is Map ? (sheetsRes.data as Map)['list'] as List? : null) ?? [];
+    final lines = <Map<String, dynamic>>[];
+    for (final raw in sheetList.take(5)) {
+      final sh = Map<String, dynamic>.from(raw as Map);
+      final biz = sh['biz_date']?.toString() ?? '';
+      if (biz.isNotEmpty && !biz.startsWith(today)) continue;
+      final id = (sh['id'] as num?)?.toInt();
+      if (id == null) continue;
+      final det = await api.get('/production/piece-issue-sheets/$id');
+      final arr = (det.data is Map ? (det.data as Map)['lines'] as List? : null) ?? [];
+      for (final lnRaw in arr) {
+        final ln = Map<String, dynamic>.from(lnRaw as Map);
+        final name = ln['employee_name']?.toString() ?? '';
+        if (me.isEmpty || name.isEmpty || name.contains(me)) {
+          lines.add({...ln, 'sheet_doc': sh['doc_no']});
+        }
+      }
+    }
+    final tools = ((toolsRes.data is Map ? (toolsRes.data as Map)['list'] as List? : null) ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .where((t) {
+          final name = t['employee_name']?.toString() ?? '';
+          return me.isEmpty || name.contains(me);
+        })
+        .toList();
+    if (!mounted) return;
+    setState(() {
+      _issueLines = lines.take(30).toList();
+      _tools = tools;
+    });
+  }
+
   Future<void> _scan({required bool resolveOnly}) async {
     final prefs = await SharedPreferences.getInstance();
     if (_badge.text.trim().isNotEmpty) {
@@ -155,11 +207,14 @@ class _WorkerPageState extends State<WorkerPage> {
     }
     final api = context.read<AuthState>().api;
     final outW = double.tryParse(_out.text) ?? 0;
-    final r = await api.post('/production/report-works/$id/confirm', {
+    final body = <String, dynamic>{
       'input_weight': double.tryParse(_in.text) ?? 0,
       'output_weight': outW,
       'process_qc_result': 'pass',
-    });
+      'bag_qty': double.tryParse(_bag.text) ?? 0,
+    };
+    if (_scrapType.isNotEmpty) body['scrap_type'] = _scrapType;
+    final r = await api.post('/production/report-works/$id/confirm', body);
     setState(() {
       if (r.ok) {
         final data = r.data is Map ? Map<String, dynamic>.from(r.data as Map) : <String, dynamic>{};
@@ -180,7 +235,7 @@ class _WorkerPageState extends State<WorkerPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(['双扫报工', '今日核对', '提醒'][_tab])),
+      appBar: AppBar(title: Text(_titles[_tab])),
       body: IndexedStack(
         index: _tab,
         children: [
@@ -191,6 +246,18 @@ class _WorkerPageState extends State<WorkerPage> {
               TextField(controller: _box, decoration: const InputDecoration(labelText: '箱码')),
               TextField(controller: _in, decoration: const InputDecoration(labelText: '投料重(kg)'), keyboardType: TextInputType.number),
               TextField(controller: _out, decoration: const InputDecoration(labelText: '完工重(kg)'), keyboardType: TextInputType.number),
+              TextField(controller: _bag, decoration: const InputDecoration(labelText: '袋数'), keyboardType: TextInputType.number),
+              const Text('次品类型', style: TextStyle(fontSize: 12, color: Colors.black54)),
+              Wrap(
+                spacing: 8,
+                children: _scrapOptions
+                    .map((e) => ChoiceChip(
+                          label: Text(e.value),
+                          selected: _scrapType == e.key,
+                          onSelected: (_) => setState(() => _scrapType = e.key),
+                        ))
+                    .toList(),
+              ),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -222,6 +289,26 @@ class _WorkerPageState extends State<WorkerPage> {
           ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              const Text('计件领料（只读）', style: TextStyle(fontWeight: FontWeight.bold)),
+              if (_issueLines.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('暂无')),
+              ..._issueLines.map((ln) => ListTile(
+                    title: Text('${ln['process_name'] ?? ln['process_kind'] ?? ''}'),
+                    subtitle: Text('${ln['employee_name'] ?? ''} · 数量${ln['qty_total'] ?? ln['qty']} · ¥${ln['amount'] ?? 0}'),
+                    trailing: Text('${ln['sheet_doc'] ?? ''}'),
+                  )),
+              const Divider(),
+              const Text('工具领还（只读）', style: TextStyle(fontWeight: FontWeight.bold)),
+              if (_tools.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('暂无')),
+              ..._tools.map((t) => ListTile(
+                    title: Text('${t['tool_name'] ?? ''}'),
+                    subtitle: Text('领${t['issue_qty']} / 还${t['return_qty']}'),
+                    trailing: Text('${t['status'] ?? ''}'),
+                  )),
+            ],
+          ),
+          ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
               Text('MQTT ${context.watch<NotifyService>().mqttStatus}', style: const TextStyle(color: Colors.black54, fontSize: 12)),
               const SizedBox(height: 8),
               if (_notices.isEmpty) const Text('暂无提醒（报工确认 / 劳动支付）'),
@@ -242,11 +329,13 @@ class _WorkerPageState extends State<WorkerPage> {
         onDestinationSelected: (i) {
           setState(() => _tab = i);
           if (i == 1) _loadWage();
-          if (i == 2) _applyNotices();
+          if (i == 2) _loadLedger();
+          if (i == 3) _applyNotices();
         },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.qr_code), label: '报工'),
           NavigationDestination(icon: Icon(Icons.payments), label: '核对'),
+          NavigationDestination(icon: Icon(Icons.inventory_2), label: '领料'),
           NavigationDestination(icon: Icon(Icons.notifications), label: '提醒'),
         ],
       ),

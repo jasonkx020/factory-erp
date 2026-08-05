@@ -377,18 +377,23 @@ func (s *Services) handleToolIssues(c *gin.Context, method, action string) bool 
 		if toolName == "" {
 			toolName = strOr(body["tool_name"])
 		}
+		empID := asInt64Or0(body["employee_id"])
+		ename := strOr(body["employee_name"])
+		if empID > 0 && ename == "" {
+			_ = s.DB.QueryRow(`SELECT name FROM hr_employee WHERE id=?`, empID).Scan(&ename)
+		}
 		issue := asFloatOr0(body["issue_qty"])
 		docNo := fmt.Sprintf("TI%s", time.Now().Format("20060102150405"))
 		res, err := s.DB.Exec(`INSERT INTO hr_tool_issue(doc_no, biz_date, seq_no, employee_id, employee_name, tool_item_id, tool_name,
 			issue_qty, return_qty, total_qty, status, remark) VALUES(?,?,?,?,?,?,?,?,0,?, 'open',?)`,
 			docNo, strOrDef(body["biz_date"], time.Now().Format("2006-01-02")), asInt64Or0(body["seq_no"])+1,
-			nullIf0(asInt64Or0(body["employee_id"])), strOr(body["employee_name"]), toolID, toolName, issue, issue, strOr(body["remark"]))
+			nullIf0(empID), ename, toolID, toolName, issue, issue, strOr(body["remark"]))
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
 		}
 		id, _ := res.LastInsertId()
-		api.OK(c, gin.H{"id": id, "doc_no": docNo, "issue_qty": issue, "total_qty": issue})
+		api.OK(c, gin.H{"id": id, "doc_no": docNo, "issue_qty": issue, "total_qty": issue, "employee_id": empID, "employee_name": ename})
 		return true
 	}
 	return false

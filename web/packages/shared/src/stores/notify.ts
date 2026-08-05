@@ -17,6 +17,12 @@ export const useNotifyStore = defineStore('notify', () => {
   let session: MqttSession | null = null
   let pollTimer: ReturnType<typeof setInterval> | undefined
   let started = false
+  let lastSig = ''
+
+  function inboxSig(list: NotifyInboxRow[], unreadCount: number) {
+    const ids = list.map((r) => `${r.id}:${r.read_at || ''}`).join(',')
+    return `${unreadCount}|${ids}`
+  }
 
   async function refresh() {
     loading.value = true
@@ -24,9 +30,16 @@ export const useNotifyStore = defineStore('notify', () => {
       const res = await notifyApi.inbox('page_num=1&page_size=30')
       if (res.code !== 1) return
       const data = res.data as { list?: NotifyInboxRow[]; unread?: number }
-      inbox.value = data?.list || []
-      unread.value = Number(data?.unread || 0)
-      tick.value += 1
+      const list = data?.list || []
+      const nextUnread = Number(data?.unread || 0)
+      inbox.value = list
+      unread.value = nextUnread
+      const sig = inboxSig(list, nextUnread)
+      // 内容未变不 bump tick，避免各模块 watch(tick) 无意义连刷
+      if (sig !== lastSig) {
+        lastSig = sig
+        tick.value += 1
+      }
     } finally {
       loading.value = false
     }
@@ -51,7 +64,7 @@ export const useNotifyStore = defineStore('notify', () => {
 
   async function start() {
     if (started) {
-      await refresh()
+      // 已启动：不强制 refresh，避免与 watch(tick) 形成自激
       return
     }
     started = true
@@ -71,6 +84,7 @@ export const useNotifyStore = defineStore('notify', () => {
 
   function stop() {
     started = false
+    lastSig = ''
     if (pollTimer) {
       clearInterval(pollTimer)
       pollTimer = undefined

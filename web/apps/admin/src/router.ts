@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { getAccessToken } from '@erp/shared'
+import { getAccessToken, adminSpecialPath } from '@erp/shared'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -25,6 +25,13 @@ const router = createRouter({
           path: 'm/:domain/:module',
           name: 'module',
           component: () => import('./views/ModuleCrudView.vue'),
+          beforeEnter(to) {
+            const domain = decodeURIComponent(String(to.params.domain || ''))
+            const module = decodeURIComponent(String(to.params.module || ''))
+            const special = adminSpecialPath(domain, module)
+            if (special) return special
+            return true
+          },
         },
       ],
     },

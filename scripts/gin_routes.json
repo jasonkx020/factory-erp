@@ -33,6 +33,26 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/production/piecework-summaries/recalc"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/piecework-summaries/:id/pay"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/piece-issue-sheets"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/piece-issue-sheets/generate"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/processes"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/production/task-merges"
   },
   {
@@ -82,18 +102,6 @@
   {
     "method": "POST",
     "path": "/api/v1/production/scraps"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/piecework-summaries/recalc"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/piecework-summaries/:id/pay"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/processes"
   },
   {
     "method": "POST",
@@ -269,18 +277,6 @@
   },
   {
     "method": "POST",
-    "path": "/api/v1/payroll/commission-calcs"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/payroll/commission-rules"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/payroll/calculations"
-  },
-  {
-    "method": "POST",
     "path": "/api/v1/payroll/sheets"
   },
   {
@@ -293,11 +289,63 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/payroll/sheets/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/payroll/sheets/:id/pay"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/payroll/commission-calcs"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/payroll/commission-calcs/run"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/payroll/commission-rules"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/payroll/calculations"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/payroll/wage-rates"
   },
   {
     "method": "POST",
     "path": "/api/v1/payroll/worker-profiles"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/orders"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/orders/:id/cancel"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/orders/:id/changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/orders/:id/rebuy"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/orders/:id/submit"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/outbound-settles"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/outbound-settles/:id/close"
   },
   {
     "method": "POST",
@@ -322,26 +370,6 @@
   {
     "method": "POST",
     "path": "/api/v1/sales/prints"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/orders"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/orders/:id/cancel"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/orders/:id/changes"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/orders/:id/rebuy"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/orders/:id/submit"
   },
   {
     "method": "POST",
@@ -501,18 +529,6 @@
   },
   {
     "method": "POST",
-    "path": "/api/v1/inventory/inbound-qcs"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/inbound-qcs/:id/fail"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/inbound-qcs/:id/pass"
-  },
-  {
-    "method": "POST",
     "path": "/api/v1/inventory/workshop-stocktakes"
   },
   {
@@ -522,6 +538,22 @@
   {
     "method": "POST",
     "path": "/api/v1/inventory/workshop-stocktakes/:id/submit"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/weighbridges"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/inbound-qcs"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/inbound-qcs/:id/fail"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/inbound-qcs/:id/pass"
   },
   {
     "method": "POST",
@@ -741,6 +773,126 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/hr/overtime-patches"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/overtime-patches/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/overtime-patches/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/overtime-patches/:id/cancel"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/onboards"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/onboards/:id/cancel"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/onboards/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/offboards"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/offboards/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/attendance/records"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/attendance/records/patch"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/attendance/records/punch"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/attendance/rules"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/attendance/month-stats/recalc"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/attendance-perf-summaries/recalc"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/employee-imports"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/employee-journals"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/employees"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/employees/:id/open-account"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/leave-requests"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/leave-requests/:id/cancel"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/leave-requests/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/leave-requests/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/performance/results"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/performance/schemes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/tool-issues"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/tool-issues/:id/return"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/memos"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/shifts"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/visits"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/approval/affairs/:id/approve"
   },
   {
@@ -842,94 +994,6 @@
   {
     "method": "POST",
     "path": "/api/v1/auth/refresh"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/onboards"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/onboards/:id/cancel"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/onboards/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/offboards"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/offboards/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/overtime-patches"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/attendance/records"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/attendance/records/patch"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/attendance/records/punch"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/attendance/rules"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/attendance/month-stats/recalc"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/employee-imports"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/employee-journals"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/employees"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/employees/:id/open-account"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/leave-requests"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/leave-requests/:id/cancel"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/performance/results"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/performance/schemes"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/memos"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/shifts"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/visits"
   },
   {
     "method": "POST",
@@ -1041,6 +1105,38 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/production/piecework-summaries"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/piecework-summaries/mine"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/piece-issue-sheets"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/piece-issue-sheets/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/processes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/processes/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/process-reports"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/progress"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/production/flow-events"
   },
   {
@@ -1058,26 +1154,6 @@
   {
     "method": "GET",
     "path": "/api/v1/production/flex-dispatches/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/processes"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/processes/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/progress"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/piecework-summaries"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/piecework-summaries/mine"
   },
   {
     "method": "GET",
@@ -1585,6 +1661,26 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/sales/orders"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/orders/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/orders/:id/changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/outbound-settles"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/outbound-settles/:id"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/sales/contracts"
   },
   {
@@ -1614,18 +1710,6 @@
   {
     "method": "GET",
     "path": "/api/v1/sales/self-orders"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/orders"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/orders/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/orders/:id/changes"
   },
   {
     "method": "GET",
@@ -1761,6 +1845,18 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/inventory/workshop-stocktakes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/workshop-stocktakes/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/weighbridges"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/inventory/consumes"
   },
   {
@@ -1782,14 +1878,6 @@
   {
     "method": "GET",
     "path": "/api/v1/inventory/transfers/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/workshop-stocktakes"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/workshop-stocktakes/:id"
   },
   {
     "method": "GET",
@@ -2126,6 +2214,14 @@
   {
     "method": "GET",
     "path": "/api/v1/hr/visits/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/tool-items"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/tool-issues"
   },
   {
     "method": "GET",
@@ -2653,6 +2749,14 @@
   },
   {
     "method": "PUT",
+    "path": "/api/v1/sales/orders/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/sales/outbound-settles/:id"
+  },
+  {
+    "method": "PUT",
     "path": "/api/v1/sales/contracts/:id"
   },
   {
@@ -2662,10 +2766,6 @@
   {
     "method": "PUT",
     "path": "/api/v1/sales/inquiries/:id"
-  },
-  {
-    "method": "PUT",
-    "path": "/api/v1/sales/orders/:id"
   },
   {
     "method": "PUT",
@@ -2753,6 +2853,14 @@
   },
   {
     "method": "PUT",
+    "path": "/api/v1/inventory/workshop-stocktakes/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/inventory/weighbridges/:id"
+  },
+  {
+    "method": "PUT",
     "path": "/api/v1/inventory/consumes/:id"
   },
   {
@@ -2770,10 +2878,6 @@
   {
     "method": "PUT",
     "path": "/api/v1/inventory/transfers/:id"
-  },
-  {
-    "method": "PUT",
-    "path": "/api/v1/inventory/workshop-stocktakes/:id"
   },
   {
     "method": "PUT",

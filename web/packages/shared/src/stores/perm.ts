@@ -42,11 +42,15 @@ export const usePermStore = defineStore('perm', () => {
   }
 
   function isFarmerInboundModule(module: string) {
-    return module === '农户档案' || module === '过磅收货' || module === '农户结算' || module === '原料溯源'
+    return module === '农户档案' || module === '过磅收货' || module === '农户结算'
   }
 
   function isOnboardModule(module: string) {
     return module === '入职登记'
+  }
+
+  function isEmployeeModule(module: string) {
+    return module === '员工档案'
   }
 
   function isHrOpsModule(module: string) {
@@ -56,5 +60,22 @@ export const usePermStore = defineStore('perm', () => {
     ].includes(module)
   }
 
-  return { visibleMenus, metaFor, isIamModule, isSupplierModule, isFarmerInboundModule, isOnboardModule, isHrOpsModule }
+  function isSystemAdminModule(module: string) {
+    return [
+      '基础设置', '自定义打印', '表格自定义', '公式设置', '销售设置', '生产设置',
+      '物流信息管理', '审批流程设定', '人事调动', '批量改价', '批量核算工资',
+      '单据审批', '单据锁定', '单据通知', '单据编辑', '单据删除', '事项提醒',
+      '多条件检索', '财审管控', '学堂管理', '知识库', '图纸管理', '文档管理',
+      '公告设置', '备忘录',
+    ].includes(module)
+  }
+
+  function isPayrollModule(module: string) {
+    return ['工人信息管理', '工资批量管理', '工序工资', '薪酬核算', '销售提成'].includes(module)
+  }
+
+  return {
+    visibleMenus, metaFor, isIamModule, isSupplierModule, isFarmerInboundModule,
+    isOnboardModule, isEmployeeModule, isHrOpsModule, isSystemAdminModule, isPayrollModule,
+  }
 })

@@ -3104,12 +3104,12 @@
     "path": "/api/v1/production/piece-issue-sheets"
   },
   {
-    "method": "POST",
-    "path": "/api/v1/production/piece-issue-sheets/generate"
-  },
-  {
     "method": "GET",
     "path": "/api/v1/production/piece-issue-sheets/{id}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/piece-issue-sheets/generate"
   },
   {
     "method": "GET",

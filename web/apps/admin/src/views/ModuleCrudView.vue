@@ -16,6 +16,9 @@ import SupplierView from './purchase/SupplierView.vue'
 import FarmerInboundView from './purchase/FarmerInboundView.vue'
 import OnboardView from './hr/OnboardView.vue'
 import HrOpsView from './hr/HrOpsView.vue'
+import EmployeeView from './hr/EmployeeView.vue'
+import SystemAdminView from './system/SystemAdminView.vue'
+import PayrollView from './payroll/PayrollView.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -44,7 +47,7 @@ function visibleColumns() {
 }
 
 async function load() {
-  if (perm.isIamModule(moduleName.value) || perm.isSupplierModule(moduleName.value) || perm.isFarmerInboundModule(moduleName.value) || perm.isOnboardModule(moduleName.value) || perm.isHrOpsModule(moduleName.value)) return
+  if (perm.isIamModule(moduleName.value) || perm.isSupplierModule(moduleName.value) || perm.isFarmerInboundModule(moduleName.value) || perm.isOnboardModule(moduleName.value) || perm.isEmployeeModule(moduleName.value) || perm.isHrOpsModule(moduleName.value) || perm.isSystemAdminModule(moduleName.value) || perm.isPayrollModule(moduleName.value)) return
   const m = meta.value
   if (!m?.list) {
     list.value = []
@@ -165,7 +168,15 @@ watch(() => route.fullPath, load)
   <SupplierView v-else-if="perm.isSupplierModule(moduleName)" />
   <FarmerInboundView v-else-if="perm.isFarmerInboundModule(moduleName)" />
   <OnboardView v-else-if="perm.isOnboardModule(moduleName)" />
+  <EmployeeView v-else-if="perm.isEmployeeModule(moduleName)" />
   <HrOpsView v-else-if="perm.isHrOpsModule(moduleName)" :module="moduleName" />
+  <SystemAdminView
+    v-else-if="perm.isSystemAdminModule(moduleName)"
+    :module="moduleName"
+    :list-path="meta?.list || ''"
+    :meta="meta"
+  />
+  <PayrollView v-else-if="perm.isPayrollModule(moduleName)" :module="moduleName" />
   <div v-else class="panel">
     <h2 class="title">{{ moduleName }}</h2>
     <p class="desc">{{ domain }} → {{ moduleName }} · {{ meta?.list || '无路径' }}</p>

@@ -18,6 +18,8 @@ class _WorkshopPageState extends State<WorkshopPage> with SingleTickerProviderSt
   final _badge = TextEditingController();
   final _box = TextEditingController();
   final _weight = TextEditingController();
+  final _bag = TextEditingController(text: '0');
+  String _scrapType = '';
   String _msg = '';
   Map<String, dynamic>? _last;
   int? _pendingId;
@@ -49,6 +51,7 @@ class _WorkshopPageState extends State<WorkshopPage> with SingleTickerProviderSt
     _badge.dispose();
     _box.dispose();
     _weight.dispose();
+    _bag.dispose();
     super.dispose();
   }
 
@@ -148,10 +151,13 @@ class _WorkshopPageState extends State<WorkshopPage> with SingleTickerProviderSt
     }
     final api = context.read<AuthState>().api;
     final net = double.tryParse(_weight.text) ?? 0;
-    final r = await api.post('/production/report-works/$id/confirm', {
+    final body = <String, dynamic>{
       'output_weight': net,
       'process_qc_result': 'pass',
-    });
+      'bag_qty': double.tryParse(_bag.text) ?? 0,
+    };
+    if (_scrapType.isNotEmpty) body['scrap_type'] = _scrapType;
+    final r = await api.post('/production/report-works/$id/confirm', body);
     setState(() {
       if (r.ok) {
         final data = r.data is Map ? Map<String, dynamic>.from(r.data as Map) : <String, dynamic>{};
@@ -222,6 +228,25 @@ class _WorkshopPageState extends State<WorkshopPage> with SingleTickerProviderSt
               TextField(controller: _badge, decoration: const InputDecoration(labelText: '工牌码')),
               TextField(controller: _box, decoration: const InputDecoration(labelText: '箱码')),
               TextField(controller: _weight, decoration: const InputDecoration(labelText: '净重(kg)'), keyboardType: TextInputType.number),
+              TextField(controller: _bag, decoration: const InputDecoration(labelText: '袋数'), keyboardType: TextInputType.number),
+              const Text('次品类型', style: TextStyle(fontSize: 12, color: Colors.black54)),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final e in const [
+                    MapEntry('', '无次品'),
+                    MapEntry('cut_defect', '切断次品'),
+                    MapEntry('core_defect', '去芯次品'),
+                    MapEntry('dice_defect', '切块次品'),
+                    MapEntry('sieve_bag_defect', '过筛装袋次品'),
+                  ])
+                    ChoiceChip(
+                      label: Text(e.value),
+                      selected: _scrapType == e.key,
+                      onSelected: (_) => setState(() => _scrapType = e.key),
+                    ),
+                ],
+              ),
               const SizedBox(height: 12),
               Row(
                 children: [

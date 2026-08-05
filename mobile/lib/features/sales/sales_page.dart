@@ -18,10 +18,20 @@ class _SalesPageState extends State<SalesPage> {
   final _product = TextEditingController();
   final _qty = TextEditingController(text: '1');
   final _remark = TextEditingController();
+  final _settleProduct = TextEditingController();
+  final _plate = TextEditingController();
+  final _weight = TextEditingController(text: '0');
+  final _unitPrice = TextEditingController(text: '0');
+  final _freight = TextEditingController(text: '0');
+  final _loading = TextEditingController(text: '0');
+  final _weighFee = TextEditingController(text: '0');
   List<dynamic> _orders = [];
   List<dynamic> _inquiries = [];
   List<dynamic> _customers = [];
+  List<dynamic> _settles = [];
   String _msg = '';
+
+  static const _titles = ['我的订单', '询价', '出厂结算', '客户跟进', '任务提醒'];
 
   @override
   void initState() {
@@ -35,6 +45,13 @@ class _SalesPageState extends State<SalesPage> {
     _product.dispose();
     _qty.dispose();
     _remark.dispose();
+    _settleProduct.dispose();
+    _plate.dispose();
+    _weight.dispose();
+    _unitPrice.dispose();
+    _freight.dispose();
+    _loading.dispose();
+    _weighFee.dispose();
     super.dispose();
   }
 
@@ -57,11 +74,14 @@ class _SalesPageState extends State<SalesPage> {
       api.get('/sales/orders'),
       api.get('/sales/inquiries'),
       api.get('/crm/customers'),
+      api.get('/sales/outbound-settles'),
     ]);
+    if (!mounted) return;
     setState(() {
       _orders = (results[0].data is Map ? (results[0].data as Map)['list'] as List? : null) ?? [];
       _inquiries = (results[1].data is Map ? (results[1].data as Map)['list'] as List? : null) ?? [];
       _customers = (results[2].data is Map ? (results[2].data as Map)['list'] as List? : null) ?? [];
+      _settles = (results[3].data is Map ? (results[3].data as Map)['list'] as List? : null) ?? [];
     });
   }
 
@@ -77,6 +97,21 @@ class _SalesPageState extends State<SalesPage> {
     if (r.ok) await _refresh();
   }
 
+  Future<void> _rebuy(Map<String, dynamic> row) async {
+    final api = context.read<AuthState>().api;
+    final r = await api.post('/sales/orders', {
+      'customer': row['customer'] ?? '复购客户',
+      'rebuy_from': row['id'],
+      'lines': row['lines'] is List
+          ? row['lines']
+          : [
+              {'product_id': 1, 'qty': 1},
+            ],
+    });
+    setState(() => _msg = r.ok ? '复购成功' : r.msg);
+    if (r.ok) await _refresh();
+  }
+
   Future<void> _createInquiry() async {
     final api = context.read<AuthState>().api;
     final r = await api.post('/sales/inquiries', {
@@ -89,10 +124,36 @@ class _SalesPageState extends State<SalesPage> {
     if (r.ok) await _refresh();
   }
 
+  Future<void> _createSettle() async {
+    final api = context.read<AuthState>().api;
+    final w = double.tryParse(_weight.text) ?? 0;
+    final r = await api.post('/sales/outbound-settles', {
+      'biz_date': DateTime.now().toIso8601String().substring(0, 10),
+      'product_name': _settleProduct.text.trim(),
+      'plate_no': _plate.text.trim(),
+      'weight': w,
+      'qty': w,
+      'unit': 'kg',
+      'unit_price': double.tryParse(_unitPrice.text) ?? 0,
+      'freight_fee': double.tryParse(_freight.text) ?? 0,
+      'loading_fee': double.tryParse(_loading.text) ?? 0,
+      'weigh_fee': double.tryParse(_weighFee.text) ?? 0,
+    });
+    setState(() {
+      if (r.ok) {
+        final amt = r.data is Map ? (r.data as Map)['amount'] : 0;
+        _msg = '出厂结算已录 ¥$amt';
+      } else {
+        _msg = r.msg;
+      }
+    });
+    if (r.ok) await _refresh();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(['我的订单', '询价', '客户跟进', '任务提醒'][_tab])),
+      appBar: AppBar(title: Text(_titles[_tab])),
       body: IndexedStack(
         index: _tab,
         children: [
@@ -108,7 +169,8 @@ class _SalesPageState extends State<SalesPage> {
                 final m = Map<String, dynamic>.from(e as Map);
                 return ListTile(
                   title: Text('#${m['id']} ${m['doc_no'] ?? ''}'),
-                  trailing: Text('${m['status'] ?? ''}'),
+                  subtitle: Text('${m['status'] ?? ''}'),
+                  trailing: TextButton(onPressed: () => _rebuy(m), child: const Text('复购')),
                 );
               }),
             ],
@@ -124,6 +186,30 @@ class _SalesPageState extends State<SalesPage> {
               ..._inquiries.map((e) {
                 final m = Map<String, dynamic>.from(e as Map);
                 return ListTile(title: Text('#${m['id']}'), subtitle: Text('${m['product'] ?? m['customer'] ?? ''}'));
+              }),
+            ],
+          ),
+          ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              const Text('补录出厂结算；金额=重量×单价+运/装/磅费', style: TextStyle(fontSize: 12, color: Colors.black54)),
+              TextField(controller: _settleProduct, decoration: const InputDecoration(labelText: '产品')),
+              TextField(controller: _plate, decoration: const InputDecoration(labelText: '车牌')),
+              TextField(controller: _weight, decoration: const InputDecoration(labelText: '重量'), keyboardType: TextInputType.number),
+              TextField(controller: _unitPrice, decoration: const InputDecoration(labelText: '单价'), keyboardType: TextInputType.number),
+              TextField(controller: _freight, decoration: const InputDecoration(labelText: '运费'), keyboardType: TextInputType.number),
+              TextField(controller: _loading, decoration: const InputDecoration(labelText: '装卸'), keyboardType: TextInputType.number),
+              TextField(controller: _weighFee, decoration: const InputDecoration(labelText: '过磅费'), keyboardType: TextInputType.number),
+              FilledButton(onPressed: _createSettle, child: const Text('保存补录')),
+              if (_msg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_msg)),
+              const Divider(),
+              ..._settles.map((e) {
+                final m = Map<String, dynamic>.from(e as Map);
+                return ListTile(
+                  title: Text('${m['doc_no'] ?? ''}'),
+                  subtitle: Text('${m['product_name'] ?? ''} · ${m['plate_no'] ?? ''}'),
+                  trailing: Text('¥${m['amount'] ?? 0}'),
+                );
               }),
             ],
           ),
@@ -165,11 +251,13 @@ class _SalesPageState extends State<SalesPage> {
         selectedIndex: _tab,
         onDestinationSelected: (i) {
           setState(() => _tab = i);
-          if (i == 3) context.read<NotifyService>().refresh();
+          if (i == 2 || i == 0) _refresh();
+          if (i == 4) context.read<NotifyService>().refresh();
         },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.receipt_long), label: '订单'),
           NavigationDestination(icon: Icon(Icons.request_quote), label: '询价'),
+          NavigationDestination(icon: Icon(Icons.local_shipping), label: '出厂'),
           NavigationDestination(icon: Icon(Icons.people), label: '跟进'),
           NavigationDestination(icon: Icon(Icons.alarm), label: '提醒'),
         ],

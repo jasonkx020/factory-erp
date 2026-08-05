@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { usePermStore, approvalApi, inventoryApi, productionApi } from '@erp/shared'
+import { usePermStore, approvalApi, inventoryApi, productionApi, adminSpecialPath } from '@erp/shared'
 
 const perm = usePermStore()
 const router = useRouter()
@@ -19,6 +19,11 @@ onMounted(async () => {
 })
 
 function open(domain: string, module: string) {
+  const special = adminSpecialPath(domain, module)
+  if (special) {
+    router.push(special)
+    return
+  }
   router.push(`/m/${encodeURIComponent(domain)}/${encodeURIComponent(module)}`)
 }
 </script>
@@ -26,12 +31,12 @@ function open(domain: string, module: string) {
 <template>
   <div>
     <h2>管理端工作台</h2>
-    <p class="desc">菜单与第 3 章核心功能表一一对应；权限中心落在人事/系统模块内。</p>
+    <p class="desc">菜单与第 3 章核心功能表对应；现场台账与运维页已挂入各域菜单。</p>
     <div class="stats">
       <div class="stat"><div class="label">生产任务</div><div class="value">{{ stats.tasks }}</div></div>
       <div class="stat"><div class="label">审批任务</div><div class="value">{{ stats.approval }}</div></div>
       <div class="stat"><div class="label">库存行</div><div class="value">{{ stats.balances }}</div></div>
-      <div class="stat click" @click="$router.push('/loops')"><div class="label">业务闭环</div><div class="value">4</div></div>
+      <div class="stat click" @click="open('系统管理','业务闭环')"><div class="label">业务闭环</div><div class="value">演示</div></div>
     </div>
     <el-card style="margin:16px 0">
       <template #header>权限中心快捷入口</template>

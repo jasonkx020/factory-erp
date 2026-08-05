@@ -3,7 +3,31 @@ package biz
 import (
 	"database/sql"
 	"log"
+	"strings"
 )
+
+// execSchemaRuns runs DDL; ignores idempotent "already exists" errors, logs real failures once.
+func execSchemaRuns(db *sql.DB, label string, stmts []string) {
+	for _, s := range stmts {
+		if _, err := db.Exec(s); err != nil && !isIdempotentSchemaErr(err) {
+			log.Printf("%s schema ensure: %v", label, err)
+		}
+	}
+}
+
+func isIdempotentSchemaErr(err error) bool {
+	if err == nil {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate column") ||
+		strings.Contains(msg, "already exists") ||
+		strings.Contains(msg, "duplicate key name") ||
+		// MySQL: Duplicate column name / Table already exists
+		strings.Contains(msg, "1050") ||
+		strings.Contains(msg, "1060") ||
+		strings.Contains(msg, "1061")
+}
 
 // EnsureAutomationSchema creates/alters tables needed for flow/scan/audit on existing DBs.
 func EnsureAutomationSchema(db *sql.DB) {
@@ -92,12 +116,7 @@ func EnsureAutomationSchema(db *sql.DB) {
 		`UPDATE inv_warehouse SET name='半成品库' WHERE code='WH-SEMI' AND name='半成品仓'`,
 		`UPDATE inv_warehouse SET name='成品冷库' WHERE code='WH-FG' AND name='成品仓'`,
 	}
-	for _, s := range stmts {
-		if _, err := db.Exec(s); err != nil {
-			// ignore duplicate column errors on sqlite
-			log.Printf("schema ensure note: %v", err)
-		}
-	}
+	execSchemaRuns(db, "automation", stmts)
 	seedAutomation(db)
 	EnsureFarmerSchema(db)
 	EnsureClosedLoopSchema(db)
@@ -177,11 +196,7 @@ func EnsureClosedLoopSchema(db *sql.DB) {
   status TEXT NOT NULL DEFAULT 'active'
 )`,
 	}
-	for _, s := range stmts {
-		if _, err := db.Exec(s); err != nil {
-			log.Printf("closed-loop schema note: %v", err)
-		}
-	}
+	execSchemaRuns(db, "closed-loop", stmts)
 	alters := []string{
 		`ALTER TABLE pur_farmer ADD COLUMN default_unit_price REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE pur_weigh_ticket ADD COLUMN arrival_id INTEGER`,
@@ -226,12 +241,7 @@ func EnsureClosedLoopSchema(db *sql.DB) {
 		`ALTER TABLE pd_piecework_summary ADD COLUMN status TEXT DEFAULT 'open'`,
 		`ALTER TABLE pay_process_wage_rate ADD COLUMN rate_unit TEXT DEFAULT 'kg'`,
 	}
-	for _, a := range alters {
-		if _, err := db.Exec(a); err != nil {
-			// column may already exist
-			_ = err
-		}
-	}
+	execSchemaRuns(db, "closed-loop-alter", alters)
 	_, _ = db.Exec(`INSERT OR IGNORE INTO pur_grade_price(grade, unit_price, status) VALUES
  ('A', 1.20, 'active'), ('B', 1.00, 'active'), ('C', 0.80, 'active')`)
 }
@@ -306,11 +316,7 @@ func EnsureFarmerSchema(db *sql.DB) {
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 )`,
 	}
-	for _, s := range stmts {
-		if _, err := db.Exec(s); err != nil {
-			log.Printf("farmer schema ensure note: %v", err)
-		}
-	}
+	execSchemaRuns(db, "farmer", stmts)
 	_, _ = db.Exec(`INSERT OR IGNORE INTO pur_farmer(id, code, name, mobile, origin, trace_code, trace_code_prefix, status, remark) VALUES
  (1, 'F-DEMO-01', '黄农户', '13900001111', '广西田东产地', 'TR-HUANG-DEMO', 'TR', 'active', '演示散户'),
  (2, 'F-DEMO-02', '李农户', '13900002222', '广西武鸣产地', 'TR-LI-DEMO', 'TR', 'active', '演示散户')`)
@@ -549,11 +555,7 @@ func EnsurePurchaseSchema(db *sql.DB) {
 		`ALTER TABLE pur_supplier ADD COLUMN updated_at TEXT`,
 		`ALTER TABLE pur_incoming_qc ADD COLUMN supplier_id INTEGER`,
 	}
-	for _, s := range stmts {
-		if _, err := db.Exec(s); err != nil {
-			log.Printf("purchase schema ensure note: %v", err)
-		}
-	}
+	execSchemaRuns(db, "purchase", stmts)
 	seedPurchase(db)
 }
 
@@ -660,11 +662,7 @@ func EnsureFieldLedgerSchema(db *sql.DB) {
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 )`,
 	}
-	for _, s := range stmts {
-		if _, err := db.Exec(s); err != nil {
-			log.Printf("field ledger schema note: %v", err)
-		}
-	}
+	execSchemaRuns(db, "field-ledger", stmts)
 	_, _ = db.Exec(`INSERT OR IGNORE INTO hr_tool_item(id, code, name, status) VALUES
  (1,'TOOL-SCRAPER','刮刀','active'),
  (2,'TOOL-KNIFE','小刀','active'),

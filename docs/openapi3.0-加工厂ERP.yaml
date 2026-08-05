@@ -18094,16 +18094,16 @@ paths:
       operationId: post_api_v1_production_piece_issue_sheets
       summary: 新建计件领料表
       responses: { '200': { description: ok } }
-  /api/v1/production/piece-issue-sheets/generate:
-    post:
-      operationId: post_api_v1_production_piece_issue_sheets_generate
-      summary: 从报工生成领料表草稿
-      responses: { '200': { description: ok } }
   /api/v1/production/piece-issue-sheets/{id}:
     get:
       operationId: get_api_v1_production_piece_issue_sheets_id
       summary: 计件领料表详情
       parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { '200': { description: ok } }
+  /api/v1/production/piece-issue-sheets/generate:
+    post:
+      operationId: post_api_v1_production_piece_issue_sheets_generate
+      summary: 从报工生成领料表草稿
       responses: { '200': { description: ok } }
   /api/v1/production/process-reports:
     get:
