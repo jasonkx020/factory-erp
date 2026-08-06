@@ -102,3 +102,78 @@ export function canAccessEmployeeModule(
 export function visibleEmployeeModules(permissions: string[], roles: string[] = []) {
   return EMPLOYEE_MODULES.filter((m) => canAccessEmployeeModule(m.key, permissions, roles))
 }
+
+/** 员工 App 主角色解析优先级（与 mobile/lib/core/role_codes.dart 对齐） */
+export const EMPLOYEE_ROLE_PRIORITY = [
+  'purchase',
+  '采购员',
+  'qc',
+  '质检',
+  'warehouse',
+  '仓管员',
+  'foreman',
+  '车间主任',
+  'piece',
+  '计件工',
+  'fixed',
+  '固定工',
+  'sales',
+  '销售员',
+  'finance',
+  '财务',
+  'sys_admin',
+  '系统管理员',
+] as const
+
+export type EmployeeWorkbenchRole =
+  | 'receiving'
+  | 'warehouse'
+  | 'workshop'
+  | 'worker'
+  | 'sales'
+  | 'collab'
+  | 'admin'
+  | 'none'
+
+export function workbenchRoleFromCode(code: string): EmployeeWorkbenchRole {
+  switch (code) {
+    case 'purchase':
+    case '采购员':
+    case 'qc':
+    case '质检':
+      return 'receiving'
+    case 'warehouse':
+    case '仓管员':
+      return 'warehouse'
+    case 'foreman':
+    case '车间主任':
+      return 'workshop'
+    case 'piece':
+    case '计件工':
+    case 'fixed':
+    case '固定工':
+      return 'worker'
+    case 'sales':
+    case '销售员':
+      return 'sales'
+    case 'finance':
+    case '财务':
+      return 'collab'
+    case 'sys_admin':
+    case '系统管理员':
+      return 'admin'
+    default:
+      return 'none'
+  }
+}
+
+/** 从 IAM roles 解析员工 App 主作业角色 */
+export function resolvePrimaryWorkbenchRole(roles: string[]): EmployeeWorkbenchRole {
+  for (const code of EMPLOYEE_ROLE_PRIORITY) {
+    if (roles.includes(code)) {
+      const wr = workbenchRoleFromCode(code)
+      if (wr !== 'none') return wr
+    }
+  }
+  return 'none'
+}

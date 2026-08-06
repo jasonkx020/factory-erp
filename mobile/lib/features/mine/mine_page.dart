@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
 import '../../core/notify_service.dart';
+import 'account_center_page.dart';
+import '../hr/hr_onboard_page.dart';
 
 /// 全员：打卡、请假、审批待办、工资只读、消息
 class MinePage extends StatefulWidget {
@@ -218,7 +220,18 @@ class _MinePageState extends State<MinePage> {
     final auth = context.watch<AuthState>();
     final notify = context.watch<NotifyService>();
     return Scaffold(
-      appBar: AppBar(title: Text('我的 · ${auth.name ?? auth.loginName ?? ''}')),
+      appBar: AppBar(
+        title: Text('我的 · ${auth.name ?? auth.loginName ?? ''}'),
+        actions: [
+          IconButton(
+            tooltip: '账户',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AccountCenterPage()),
+            ),
+            icon: const Icon(Icons.manage_accounts_outlined),
+          ),
+        ],
+      ),
       body: IndexedStack(
         index: _tab,
         children: [
@@ -229,6 +242,43 @@ class _MinePageState extends State<MinePage> {
                 child: ListTile(
                   title: Text(auth.name?.isNotEmpty == true ? auth.name! : (auth.loginName ?? '-')),
                   subtitle: Text('员工ID ${auth.employeeId} · 角色 ${auth.roles.join(', ')}'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AccountCenterPage()),
+                  ),
+                ),
+              ),
+              if (auth.canHrOnboard) ...[
+                const SizedBox(height: 8),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.person_add_alt_1),
+                    title: const Text('人事开户'),
+                    subtitle: const Text('新建员工档案并开登录账号'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const HrOnboardPage()),
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.handyman_outlined),
+                  title: const Text('物料工具'),
+                  subtitle: const Text('申请领取 / 归还'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).pushNamed('/tools'),
+                ),
+              ),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.assignment_outlined),
+                  title: const Text('工单'),
+                  subtitle: const Text('待我处理 / 我发起的'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).pushNamed('/tickets'),
                 ),
               ),
               const SizedBox(height: 12),

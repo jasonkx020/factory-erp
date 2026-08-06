@@ -1,0 +1,32 @@
+# 生产可部署示例（复制为 configs/erp.prod.yaml 并改密钥）
+# 必须通过环境变量覆盖 JWT：ERP_JWT_SECRET（长度≥16，非占位符）
+seed:
+  demo: false
+server:
+  addr: ":18080"
+database:
+  driver: sqlite
+  sqlite_path: data/erp.db
+  # 生产 MySQL 示例：
+  # driver: mysql
+  # mysql_dsn: "erp:erp@tcp(127.0.0.1:3306)/erp_factory?parseTime=true&charset=utf8mb4&loc=Local"
+jwt:
+  secret: "REPLACE_WITH_ENV_ERP_JWT_SECRET_32CHARS"
+  access_ttl_min: 120
+  refresh_ttl_min: 10080
+cors:
+  allow_origins:
+    - "https://erp.example.com"
+trace:
+  hmac_secret: "replace-trace-hmac-in-production-32"
+mqtt:
+  enabled: false
+  broker_url: "tcp://nanomq:1883"
+  ws_url: "ws://nanomq:8083/mqtt"
+  http_auth_enabled: true
+  server_username: "erp-hub"
+  server_password: "replace-hub-password"
+  client_prefix: "erp"
+  tenant: "default"
+  token_ttl_seconds: 43200
+  keep_alive_seconds: 60

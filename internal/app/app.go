@@ -47,23 +47,32 @@ func New(cfgPath string) (*App, error) {
 
 	permit := []string{
 		"/api/v1/health",
+		"/api/v1/ready",
+		"/api/v1/live",
+		"/api/v1/metrics",
 		"/api/v1/auth/login",
 		"/api/v1/auth/refresh",
+		"/api/v1/auth/oauth/token",
 		"/api/v1/mqtt/auth",
 		"/api/v1/mqtt/superuser",
 		"/api/v1/mqtt/acl",
 	}
+	eng.Use(middleware.Metrics())
 	eng.Use(middleware.JWT(cfg.JWT.Secret, permit))
 	eng.Use(middleware.Audit(db.SQL))
 
 	biz.EnsureAutomationSchema(db.SQL)
 	biz.EnsureSystemAdminSchema(db.SQL)
+	auth.EnsureAuthSchema(db.SQL)
+	biz.EnsureDomainPermissions(db.SQL)
 	biz.EnsureHRPermSchema(db.SQL)
 	biz.EnsureHROpsSchema(db.SQL)
 	biz.EnsurePayrollSchema(db.SQL)
 	notify.EnsureSchema(db.SQL)
+	biz.EnsureTicketSchema(db.SQL)
 	if cfg.Seed.DemoEnabled() {
 		biz.EnsureDemoData(db.SQL)
+		biz.EnsureDemoRoleUsers(db.SQL)
 	}
 
 	hub := erpmqtt.NewHub(cfg)
@@ -72,13 +81,16 @@ func New(cfgPath string) (*App, error) {
 	mqttAuth.Register(eng)
 
 	v1 := eng.Group("/api/v1")
-	health.Register(v1, db.Driver)
+	health.Register(v1, db.SQL, db.Driver)
+	middleware.RegisterMetrics(v1)
 	auth.Register(v1, &auth.Handler{DB: db.SQL, Cfg: cfg})
 
 	engine := apigen.NewEngine(db.SQL, db.Driver)
 	if cfg.Trace.HMACSecret != "" {
 		engine.Biz.TraceHMACSecret = cfg.Trace.HMACSecret
 	}
+	engine.Biz.OCREnabled = cfg.OCR.Enabled
+	engine.Biz.OCRProvider = cfg.OCR.Provider
 	engine.Biz.Notify = notifySvc
 	apigen.RegisterGenerated(v1, engine)
 	apigen.RegisterHRExtra(v1, engine)
@@ -87,16 +99,25 @@ func New(cfgPath string) (*App, error) {
 	apigen.RegisterPurchaseExtra(v1, engine)
 	apigen.RegisterProductionExtra(v1, engine)
 	apigen.RegisterInventoryExtra(v1, engine)
+	apigen.RegisterFinanceExtra(v1, engine)
+	apigen.RegisterWorkflowExtra(v1, engine)
 
 	stop := make(chan struct{})
 	go notifySvc.StartPublisher(stop)
 
-	v1.GET("/_debug/routes", func(c *gin.Context) {
-		routes := apigen.DumpRoutes(eng)
-		_ = writeRoutesJSON(routes)
-		apiOK := map[string]interface{}{"code": 1, "msg": "ok", "data": gin.H{"routes": routes, "count": len(routes)}}
-		c.JSON(200, apiOK)
-	})
+	// 生产关闭 debug；demo/开发仅 sys_admin 可访问
+	if cfg.Seed.DemoEnabled() {
+		v1.GET("/_debug/routes", func(c *gin.Context) {
+			claims := middleware.Claims(c)
+			if claims == nil || !biz.ClaimsIsSysAdmin(claims.Roles, claims.Permissions) {
+				c.AbortWithStatusJSON(403, gin.H{"code": 0, "msg": "PERM_DENIED"})
+				return
+			}
+			routes := apigen.DumpRoutes(eng)
+			_ = writeRoutesJSON(routes)
+			c.JSON(200, gin.H{"code": 1, "msg": "ok", "data": gin.H{"routes": routes, "count": len(routes)}})
+		})
+	}
 
 	return &App{Cfg: cfg, DB: db, Eng: eng, mqttHub: hub, notifyStop: stop}, nil
 }

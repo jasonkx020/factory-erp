@@ -93,6 +93,17 @@ const router = createRouter({
         { path: 'production/piece-issue', redirect: '/production/hub/piece-issue' },
         { path: 'automation/routing', redirect: '/production/hub/routings' },
         { path: 'hr/tool-issues', name: 'tool-issues', component: () => import('./views/hr/ToolIssueView.vue') },
+        { path: 'workflow/tickets', name: 'workflow-tickets', component: () => import('./views/workflow/TicketCenterView.vue') },
+        {
+          path: 'hr/:section?',
+          name: 'hr-hub',
+          component: () => import('./views/ModuleCrudView.vue'),
+        },
+        {
+          path: 'payroll/:section?',
+          name: 'payroll-hub',
+          component: () => import('./views/ModuleCrudView.vue'),
+        },
         { path: 'warehouse/inbound', redirect: '/inventory/hub/inbound' },
         { path: 'inventory/ledger', redirect: '/inventory/hub/ledger' },
         { path: 'inventory/balances', redirect: '/inventory/hub/balances' },
@@ -136,6 +147,7 @@ router.beforeEach(async (to) => {
   if (
     path.startsWith('/system/') ||
     path.startsWith('/iam/') ||
+    path.startsWith('/workflow/') ||
     path === '/automation/logs' ||
     path.startsWith('/automation/logs/') ||
     path === '/automation/repairs' ||

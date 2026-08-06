@@ -285,7 +285,7 @@ func (s *Services) handleOnboards(c *gin.Context, method, action string) bool {
 			       COALESCE(o.need_account,1), COALESCE(o.login_name,''), COALESCE(o.role_ids_json,'[]'), o.created_at,
 			       COALESCE(e.emp_no,''), COALESCE(e.name,''), COALESCE(e.emp_type,''), COALESCE(e.status,''),
 			       COALESCE(e.dept_id,0), COALESCE(e.workshop_id,0), COALESCE(e.team_id,0), COALESCE(e.job_title,''),
-			       COALESCE(e.mobile,''), COALESCE(e.badge_code,''), COALESCE(e.user_id,0)
+			       COALESCE(e.mobile,''), COALESCE(e.badge_code,''), COALESCE(e.user_id,0), COALESCE(e.id_card_no,'')
 			FROM hr_onboard o
 			LEFT JOIN hr_employee e ON e.id = o.employee_id
 			WHERE 1=1`
@@ -306,9 +306,9 @@ func (s *Services) handleOnboards(c *gin.Context, method, action string) bool {
 		for rows.Next() {
 			var id, empID, needAcc, dept, workshop, team, uid int64
 			var st, remark, onboardDate, login, roleJSON, created string
-			var empNo, empName, empType, empStatus, job, mobile, badge string
+			var empNo, empName, empType, empStatus, job, mobile, badge, idCard string
 			_ = rows.Scan(&id, &empID, &st, &remark, &onboardDate, &needAcc, &login, &roleJSON, &created,
-				&empNo, &empName, &empType, &empStatus, &dept, &workshop, &team, &job, &mobile, &badge, &uid)
+				&empNo, &empName, &empType, &empStatus, &dept, &workshop, &team, &job, &mobile, &badge, &uid, &idCard)
 			switch st {
 			case "confirmed":
 				confirmedN++
@@ -322,7 +322,7 @@ func (s *Services) handleOnboards(c *gin.Context, method, action string) bool {
 				"need_account": needAcc == 1, "login_name": login, "role_ids": parseJSONIntArr(roleJSON), "created_at": created,
 				"emp_no": empNo, "name": empName, "emp_type": empType, "emp_status": empStatus,
 				"dept_id": dept, "workshop_id": workshop, "team_id": team, "job_title": job,
-				"mobile": mobile, "badge_code": badge, "user_id": uid, "has_account": uid > 0,
+				"mobile": mobile, "badge_code": badge, "id_card_no": idCard, "user_id": uid, "has_account": uid > 0,
 			})
 		}
 		api.OK(c, gin.H{
@@ -518,18 +518,19 @@ func (s *Services) loadOnboardDetail(id int64) gin.H {
 }
 
 func (s *Services) loadEmployeeMap(id int64) gin.H {
-	var no, name, typ, status, job, mobile, badge string
+	var no, name, typ, status, job, mobile, badge, idCard string
 	var org, dept, workshop, team, uid int64
 	err := s.DB.QueryRow(`SELECT emp_no, name, COALESCE(org_id,0), COALESCE(dept_id,0), COALESCE(workshop_id,0), COALESCE(team_id,0),
-		COALESCE(job_title,''), COALESCE(emp_type,''), COALESCE(mobile,''), COALESCE(badge_code,''), COALESCE(status,''), COALESCE(user_id,0)
+		COALESCE(job_title,''), COALESCE(emp_type,''), COALESCE(mobile,''), COALESCE(badge_code,''), COALESCE(id_card_no,''),
+		COALESCE(status,''), COALESCE(user_id,0)
 		FROM hr_employee WHERE id=?`, id).
-		Scan(&no, &name, &org, &dept, &workshop, &team, &job, &typ, &mobile, &badge, &status, &uid)
+		Scan(&no, &name, &org, &dept, &workshop, &team, &job, &typ, &mobile, &badge, &idCard, &status, &uid)
 	if err != nil {
 		return gin.H{"id": id}
 	}
 	return gin.H{
 		"id": id, "emp_no": no, "name": name, "org_id": org, "dept_id": dept, "workshop_id": workshop, "team_id": team,
-		"job_title": job, "emp_type": typ, "mobile": mobile, "badge_code": badge, "status": status,
+		"job_title": job, "emp_type": typ, "mobile": mobile, "badge_code": badge, "id_card_no": idCard, "status": status,
 		"user_id": uid, "has_account": uid > 0,
 	}
 }
@@ -557,9 +558,10 @@ func (s *Services) createEmployeeFromBody(body map[string]interface{}, status st
 	job := strOr(body["job_title"])
 	mobile := strOr(body["mobile"])
 	badge := strOr(body["badge_code"])
-	res, err := s.DB.Exec(`INSERT INTO hr_employee(emp_no, name, org_id, dept_id, workshop_id, team_id, job_title, emp_type, mobile, badge_code, status)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-		no, name, orgID, nullIf0(deptID), nullIf0(workshopID), nullIf0(teamID), job, typ, mobile, badge, status)
+	idCard := strOr(body["id_card_no"])
+	res, err := s.DB.Exec(`INSERT INTO hr_employee(emp_no, name, org_id, dept_id, workshop_id, team_id, job_title, emp_type, mobile, badge_code, id_card_no, status)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		no, name, orgID, nullIf0(deptID), nullIf0(workshopID), nullIf0(teamID), job, typ, mobile, badge, idCard, status)
 	if err != nil {
 		return 0, "DB_ERROR:" + err.Error()
 	}
@@ -580,6 +582,7 @@ func (s *Services) updateEmployeeFromBody(id int64, body map[string]interface{})
 	job := strOrDef(body["job_title"], fmt.Sprint(cur["job_title"]))
 	mobile := strOrDef(body["mobile"], fmt.Sprint(cur["mobile"]))
 	badge := strOrDef(body["badge_code"], fmt.Sprint(cur["badge_code"]))
+	idCard := strOrDef(body["id_card_no"], fmt.Sprint(cur["id_card_no"]))
 	deptID, ok := asInt64(body["dept_id"])
 	if !ok {
 		deptID, _ = asInt64(cur["dept_id"])
@@ -592,9 +595,9 @@ func (s *Services) updateEmployeeFromBody(id int64, body map[string]interface{})
 	if !ok {
 		teamID, _ = asInt64(cur["team_id"])
 	}
-	_, err := s.DB.Exec(`UPDATE hr_employee SET name=?, emp_type=?, job_title=?, mobile=?, badge_code=?,
+	_, err := s.DB.Exec(`UPDATE hr_employee SET name=?, emp_type=?, job_title=?, mobile=?, badge_code=?, id_card_no=?,
 		dept_id=?, workshop_id=?, team_id=?, updated_at=datetime('now') WHERE id=?`,
-		name, typ, job, mobile, badge, nullIf0(deptID), nullIf0(workshopID), nullIf0(teamID), id)
+		name, typ, job, mobile, badge, idCard, nullIf0(deptID), nullIf0(workshopID), nullIf0(teamID), id)
 	return "", err
 }
 
@@ -778,7 +781,7 @@ func (s *Services) handleOffboards(c *gin.Context, method, action string) bool {
 		body := bindBody(c)
 		force, _ := body["force"].(bool)
 		var openTools int
-		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_tool_issue WHERE (employee_id=? OR employee_id IN (SELECT id FROM hr_employee WHERE id=?)) AND status='open'`, empID, empID).Scan(&openTools)
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_tool_issue WHERE (employee_id=? OR employee_id IN (SELECT id FROM hr_employee WHERE id=?)) AND status IN ('open','pending_return','pending')`, empID, empID).Scan(&openTools)
 		// also match by employee name if issues only stored name
 		if openTools == 0 {
 			var ename string
@@ -867,6 +870,8 @@ func ensureHRPermTables(db *sql.DB) {
 		`ALTER TABLE hr_onboard ADD COLUMN need_account INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE hr_onboard ADD COLUMN login_name TEXT`,
 		`ALTER TABLE hr_offboard ADD COLUMN revoke_permission INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE hr_employee ADD COLUMN id_card_no TEXT`,
+		`ALTER TABLE hr_employee ADD COLUMN badge_code TEXT`,
 	}
 	for _, q := range stmts {
 		_, _ = db.Exec(q)

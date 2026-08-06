@@ -17,7 +17,7 @@ var systemModules = []string{
 	"销售设置", "生产设置", "物流信息管理", "审批流程设定", "人事调动", "登录控制",
 	"批量改价", "批量核算工资", "单据审批", "单据锁定", "单据通知", "单据编辑", "单据删除",
 	"事项提醒", "多条件检索", "账户冻结", "财审管控", "学堂管理", "知识库", "图纸管理",
-	"文档管理", "员工日志", "操作日志", "数据修复", "业务闭环", "公告设置", "备忘录",
+	"文档管理", "员工日志", "操作日志", "数据修复", "业务闭环", "公告设置", "备忘录", "工单中心",
 }
 
 // resourceKey → 系统管理中文模块
@@ -55,6 +55,7 @@ var systemResourceModule = map[string]string{
 	"system/data-repairs":           "数据修复",
 	"system/announcements":          "公告设置",
 	"system/memos":                  "备忘录",
+	"workflow/ticket-categories":    "工单中心",
 }
 
 func isSystemProtectedResource(resourceKey string) bool {
@@ -76,6 +77,11 @@ func claimsIsSysAdmin(roles, perms []string) bool {
 		}
 	}
 	return false
+}
+
+// ClaimsIsSysAdmin 供路由层判断系统管理员。
+func ClaimsIsSysAdmin(roles, perms []string) bool {
+	return claimsIsSysAdmin(roles, perms)
 }
 
 func claimsHasCode(perms []string, codes ...string) bool {

@@ -20,6 +20,11 @@ type Handler struct {
 func Register(r *gin.RouterGroup, h *Handler) {
 	r.POST("/auth/login", h.Login)
 	r.POST("/auth/refresh", h.Refresh)
+	r.POST("/auth/oauth/token", h.OAuthToken)
+	r.POST("/auth/password/change", h.ChangePassword)
+	r.GET("/auth/oauth/bindings", h.ListOAuthBindings)
+	r.POST("/auth/oauth/bind", h.BindOAuth)
+	r.DELETE("/auth/oauth/bind/:provider", h.UnbindOAuth)
 	r.GET("/auth/me", h.Me)
 }
 
@@ -120,6 +125,31 @@ func (h *Handler) Refresh(c *gin.Context) {
 		"roles":         claims.Roles,
 		"permissions":   claims.Permissions,
 	})
+}
+
+type oauthTokenReq struct {
+	Provider   string `json:"provider"`
+	Code       string `json:"code"`
+	ClientType string `json:"client_type"`
+}
+
+// OAuthToken 第三方登录 code 交换（默认未开通，返回 OAUTH_NOT_CONFIGURED）。
+func (h *Handler) OAuthToken(c *gin.Context) {
+	var req oauthTokenReq
+	if err := c.ShouldBindJSON(&req); err != nil || req.Provider == "" || req.Code == "" {
+		api.FailJSON(c, "INVALID_REQUEST")
+		return
+	}
+	if h.Cfg == nil || !h.Cfg.OAuth.Enabled {
+		api.FailJSON(c, "OAUTH_NOT_CONFIGURED")
+		return
+	}
+	if len(h.Cfg.OAuth.Providers) == 0 || h.Cfg.OAuth.Providers[req.Provider] == "" {
+		api.FailJSON(c, "OAUTH_PROVIDER_UNKNOWN")
+		return
+	}
+	// 真实 provider 交换后续接入；启用配置后仍需实现，避免误放行。
+	api.FailJSON(c, "OAUTH_NOT_IMPLEMENTED")
 }
 
 func (h *Handler) Me(c *gin.Context) {

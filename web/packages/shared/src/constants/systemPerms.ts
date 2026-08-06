@@ -33,6 +33,7 @@ export const SYSTEM_ADMIN_MODULES: string[] = [
   '业务闭环',
   '公告设置',
   '备忘录',
+  '工单中心',
 ]
 
 /** API resourceKey → 系统管理中文模块名 */
@@ -70,6 +71,7 @@ export const SYSTEM_RESOURCE_MODULE: Record<string, string> = {
   'system/data-repairs': '数据修复',
   'system/announcements': '公告设置',
   'system/memos': '备忘录',
+  'workflow/ticket-categories': '工单中心',
 }
 
 export function systemPermCode(module: string, action: '查看' | '编辑'): string {

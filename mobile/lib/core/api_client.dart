@@ -88,6 +88,31 @@ class ApiClient {
     return _parse(res);
   }
 
+  Future<ApiEnvelope> delete(String path, {bool auth = true}) async {
+    final res = await http.delete(
+      Uri.parse('$baseUrl$path'),
+      headers: _headers(auth: auth),
+    );
+    return _parse(res);
+  }
+
+  Future<ApiEnvelope> postMultipart(
+    String path,
+    List<int> bytes, {
+    String filename = 'upload.bin',
+    String fieldName = 'file',
+    bool auth = true,
+  }) async {
+    final req = http.MultipartRequest('POST', Uri.parse('$baseUrl$path'));
+    if (auth && accessToken != null && accessToken!.isNotEmpty) {
+      req.headers['Authorization'] = 'Bearer $accessToken';
+    }
+    req.files.add(http.MultipartFile.fromBytes(fieldName, bytes, filename: filename));
+    final streamed = await req.send();
+    final res = await http.Response.fromStream(streamed);
+    return _parse(res);
+  }
+
   ApiEnvelope _parse(http.Response res) {
     try {
       final j = jsonDecode(res.body);

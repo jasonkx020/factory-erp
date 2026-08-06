@@ -8,7 +8,12 @@ import 'features/assets/assets_page.dart';
 import 'features/auth/login_page.dart';
 import 'features/collab/collab_finance_page.dart';
 import 'features/home/home_page.dart';
+import 'features/hr/hr_onboard_page.dart';
+import 'features/hr/ticket_create_page.dart';
+import 'features/hr/tickets_page.dart';
+import 'features/hr/tool_issue_page.dart';
 import 'features/knowledge/knowledge_page.dart';
+import 'features/mine/account_center_page.dart';
 import 'features/mine/mine_page.dart';
 import 'features/notify/inbox_page.dart';
 import 'features/receiving/receiving_page.dart';
@@ -65,6 +70,11 @@ class ErpEmployeeApp extends StatelessWidget {
           '/collab': (_) => const CollabFinancePage(),
           '/knowledge': (_) => const KnowledgePage(),
           '/mine': (_) => const MinePage(),
+          '/account': (_) => const AccountCenterPage(),
+          '/hr-onboard': (_) => const HrOnboardPage(),
+          '/tools': (_) => const ToolIssuePage(),
+          '/tickets': (_) => const TicketsPage(),
+          '/ticket-create': (_) => const TicketCreatePage(),
           '/inbox': (_) => const InboxPage(),
         },
       ),

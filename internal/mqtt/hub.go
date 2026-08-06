@@ -8,6 +8,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 
+	"erp/internal/alert"
 	"erp/internal/config"
 )
 
@@ -54,6 +55,7 @@ func (h *Hub) ensureConnected() error {
 			err = errConnectTimeout
 		}
 		log.Printf("mqtt hub connect: %v", err)
+		alert.Default.Warn("mqtt", err.Error())
 		return err
 	}
 	h.client = client

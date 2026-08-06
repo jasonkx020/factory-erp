@@ -225,6 +225,26 @@ export const notifyApi = {
   claimTask: (id: number) => api.post(`/workflow/tasks/${id}/claim`, {}),
 }
 
+export const ticketApi = {
+  categories: () => api.get('/workflow/ticket-categories'),
+  getCategory: (id: number) => api.get(`/workflow/ticket-categories/${id}`),
+  createCategory: (body: Record<string, unknown>) => api.post('/workflow/ticket-categories', body),
+  updateCategory: (id: number, body: Record<string, unknown>) =>
+    api.put(`/workflow/ticket-categories/${id}`, body),
+  getHandlers: (id: number) => api.get(`/workflow/ticket-categories/${id}/handlers`),
+  putHandlers: (id: number, handlers: unknown[]) =>
+    api.put(`/workflow/ticket-categories/${id}/handlers`, { handlers }),
+  handlerPool: (params?: string) =>
+    api.get(`/workflow/ticket-handler-pool${params ? `?${params}` : ''}`),
+  tickets: (params?: string) => api.get<PageData>(`/workflow/tickets${params ? `?${params}` : ''}`),
+  getTicket: (id: number) => api.get(`/workflow/tickets/${id}`),
+  createTicket: (body: Record<string, unknown>) => api.post('/workflow/tickets', body),
+  assignTicket: (id: number, body: Record<string, unknown>) =>
+    api.post(`/workflow/tickets/${id}/assign`, body),
+  actionTicket: (id: number, body: Record<string, unknown>) =>
+    api.post(`/workflow/tickets/${id}/action`, body),
+}
+
 export const systemApi = {
   settings: () => api.get('/system/settings'),
   logs: () => api.get<PageData>('/system/operation-logs'),
@@ -555,10 +575,18 @@ export const fieldLedgerApi = {
   processReports: (params?: string) =>
     api.get<PageData>(`/production/process-reports${params ? `?${params}` : ''}`),
   toolItems: () => api.get<PageData>('/hr/tool-items'),
-  toolIssues: () => api.get<PageData>('/hr/tool-issues'),
+  toolIssues: (params?: string) => api.get<PageData>(`/hr/tool-issues${params ? `?${params}` : ''}`),
   createToolIssue: (body: Record<string, unknown>) => api.post('/hr/tool-issues', body),
   returnToolIssue: (id: number, body: Record<string, unknown>) =>
     api.post(`/hr/tool-issues/${id}/return`, body),
+  approveToolIssue: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/hr/tool-issues/${id}/approve`, body || {}),
+  rejectToolIssue: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/hr/tool-issues/${id}/reject`, body || {}),
+  returnRequestToolIssue: (id: number, body: Record<string, unknown>) =>
+    api.post(`/hr/tool-issues/${id}/return-request`, body),
+  returnConfirmToolIssue: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/hr/tool-issues/${id}/return-confirm`, body || {}),
   weighbridges: () => api.get<PageData>('/inventory/weighbridges'),
   createWeighbridge: (body: Record<string, unknown>) => api.post('/inventory/weighbridges', body),
   updateWeighbridge: (id: number, body: Record<string, unknown>) =>
@@ -672,6 +700,7 @@ export const financeApi = {
   createVoucher: (body: Record<string, unknown>) => api.post('/finance/vouchers', body),
   getVoucher: (id: number) => api.get(`/finance/vouchers/${id}`),
   approveVoucher: (id: number) => api.post(`/finance/vouchers/${id}/approve`, {}),
+  postVoucher: (id: number) => api.post(`/finance/vouchers/${id}/post`, {}),
   invoices: () => api.get<PageData>('/finance/invoices'),
   createInvoice: (body: Record<string, unknown>) => api.post('/finance/invoices', body),
   removeInvoice: (id: number) => api.del(`/finance/invoices/${id}`),

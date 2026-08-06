@@ -138,6 +138,7 @@ CREATE TABLE IF NOT EXISTS hr_employee (
   emp_type TEXT NOT NULL DEFAULT 'office',
   mobile TEXT,
   badge_code TEXT,
+  id_card_no TEXT,
   status TEXT NOT NULL DEFAULT 'active',
   user_id INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -381,6 +382,18 @@ CREATE TABLE IF NOT EXISTS iam_password_history (
   user_id INTEGER NOT NULL,
   password_hash TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY(user_id) REFERENCES iam_user(id)
+);
+
+CREATE TABLE IF NOT EXISTS iam_user_oauth (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  provider TEXT NOT NULL,
+  open_id TEXT NOT NULL,
+  union_id TEXT,
+  bound_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(provider, open_id),
+  UNIQUE(user_id, provider),
   FOREIGN KEY(user_id) REFERENCES iam_user(id)
 );
 

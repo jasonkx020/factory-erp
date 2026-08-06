@@ -10,4 +10,9 @@ func RegisterHRExtra(r *gin.RouterGroup, h Handler) {
 	r.POST("/hr/overtime-patches/:id/reject", h.Dispatch("POST", "/api/v1/hr/overtime-patches/{id}/reject", "/hr/overtime-patches/:id/reject", "hr/overtime-patches", "action:reject"))
 	r.POST("/hr/overtime-patches/:id/cancel", h.Dispatch("POST", "/api/v1/hr/overtime-patches/{id}/cancel", "/hr/overtime-patches/:id/cancel", "hr/overtime-patches", "action:cancel"))
 	r.POST("/hr/attendance-perf-summaries/recalc", h.Dispatch("POST", "/api/v1/hr/attendance-perf-summaries/recalc", "/hr/attendance-perf-summaries/recalc", "hr/attendance-perf-summaries", "action:recalc"))
+	r.POST("/hr/id-card/ocr", h.Dispatch("POST", "/api/v1/hr/id-card/ocr", "/hr/id-card/ocr", "hr/employees", "create"))
+	r.POST("/hr/tool-issues/:id/approve", h.Dispatch("POST", "/api/v1/hr/tool-issues/{id}/approve", "/hr/tool-issues/:id/approve", "hr/tool-issues", "action:approve"))
+	r.POST("/hr/tool-issues/:id/reject", h.Dispatch("POST", "/api/v1/hr/tool-issues/{id}/reject", "/hr/tool-issues/:id/reject", "hr/tool-issues", "action:reject"))
+	r.POST("/hr/tool-issues/:id/return-request", h.Dispatch("POST", "/api/v1/hr/tool-issues/{id}/return-request", "/hr/tool-issues/:id/return-request", "hr/tool-issues", "action:return-request"))
+	r.POST("/hr/tool-issues/:id/return-confirm", h.Dispatch("POST", "/api/v1/hr/tool-issues/{id}/return-confirm", "/hr/tool-issues/:id/return-confirm", "hr/tool-issues", "action:return-confirm"))
 }

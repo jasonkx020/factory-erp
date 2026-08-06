@@ -198,15 +198,31 @@ func (s *Service) renderTemplate(eventKey, docNo, traceCode string) (title, body
 func (s *Service) resolveReceivers(roles []string, payload map[string]interface{}) []int64 {
 	ids := []int64{}
 	seen := map[int64]bool{}
-	if v, ok := payload["notify_user_ids"].([]int64); ok {
-		for _, id := range v {
-			if id > 0 && !seen[id] {
-				seen[id] = true
-				ids = append(ids, id)
+	explicitUsers := false
+	if raw, ok := payload["notify_user_ids"]; ok {
+		explicitUsers = true
+		switch v := raw.(type) {
+		case []int64:
+			for _, id := range v {
+				if id > 0 && !seen[id] {
+					seen[id] = true
+					ids = append(ids, id)
+				}
+			}
+		case []interface{}:
+			for _, x := range v {
+				id, _ := toInt64(x)
+				if id > 0 && !seen[id] {
+					seen[id] = true
+					ids = append(ids, id)
+				}
 			}
 		}
 	}
 	for _, role := range roles {
+		if role == "" || strings.HasPrefix(role, "_") {
+			continue
+		}
 		rows, err := s.DB.Query(`SELECT DISTINCT u.id FROM iam_user u
 			JOIN iam_user_role ur ON ur.user_id=u.id
 			JOIN iam_role r ON r.id=ur.role_id
@@ -224,8 +240,8 @@ func (s *Service) resolveReceivers(roles []string, payload map[string]interface{
 		}
 		rows.Close()
 	}
-	// fallback: admin users so inbox is never empty in seed DB
-	if len(ids) == 0 {
+	// fallback: admin users so inbox is never empty in seed DB (skip when callers target explicit users)
+	if len(ids) == 0 && !explicitUsers {
 		rows, err := s.DB.Query(`SELECT id FROM iam_user WHERE COALESCE(status,'active')='active' ORDER BY id LIMIT 5`)
 		if err == nil {
 			defer rows.Close()
@@ -237,6 +253,22 @@ func (s *Service) resolveReceivers(roles []string, payload map[string]interface{
 		}
 	}
 	return ids
+}
+
+func toInt64(v interface{}) (int64, bool) {
+	switch n := v.(type) {
+	case int64:
+		return n, true
+	case int:
+		return int64(n), true
+	case float64:
+		return int64(n), true
+	case json.Number:
+		i, err := n.Int64()
+		return i, err == nil
+	default:
+		return 0, false
+	}
 }
 
 func (s *Service) enqueueOutbox(topic string, payload interface{}, dedupe string) {

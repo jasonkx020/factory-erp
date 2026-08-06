@@ -491,6 +491,10 @@ func (s *Services) handleFinVouchers(c *gin.Context, method, action string) bool
 		docNo := strOrDef(body["doc_no"], finDocNo("VCH"))
 		bizDate := strOrDef(body["biz_date"], time.Now().Format("2006-01-02"))
 		period := strOrDef(body["period"], time.Now().Format("2006-01"))
+		if s.finPeriodClosed(period) {
+			api.FailJSON(c, "PERIOD_CLOSED")
+			return true
+		}
 		res, err := s.DB.Exec(`INSERT INTO fin_voucher(doc_no, period, biz_date, status, summary) VALUES(?,?,?,'draft',?)`,
 			docNo, period, bizDate, strOr(body["summary"]))
 		if err != nil {
@@ -538,16 +542,46 @@ func (s *Services) handleFinVouchers(c *gin.Context, method, action string) bool
 		return s.handleFinVouchers(c, "GET", "get")
 	case "action:approve":
 		id := paramID(c)
+		if s.finPeriodClosedForVoucher(id) {
+			api.FailJSON(c, "PERIOD_CLOSED")
+			return true
+		}
 		var debit, credit float64
 		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(debit),0), COALESCE(SUM(credit),0) FROM fin_voucher_line WHERE voucher_id=?`, id).Scan(&debit, &credit)
 		if debit-credit > 0.01 || credit-debit > 0.01 {
 			api.FailJSON(c, "VOUCHER_UNBALANCED")
 			return true
 		}
-		_, _ = s.DB.Exec(`UPDATE fin_voucher SET status='approved' WHERE id=?`, id)
+		_, _ = s.DB.Exec(`UPDATE fin_voucher SET status='approved' WHERE id=? AND status='draft'`, id)
 		_, _ = s.DB.Exec(`INSERT INTO fin_approval_item(biz_type, biz_id, doc_no, title, amount, status)
 			SELECT 'voucher', id, doc_no, COALESCE(summary,''), ?, 'approved' FROM fin_voucher WHERE id=?`, debit, id)
 		api.OK(c, gin.H{"id": id, "status": "approved", "debit": debit, "credit": credit})
+		return true
+	case "action:post":
+		id := paramID(c)
+		if s.finPeriodClosedForVoucher(id) {
+			api.FailJSON(c, "PERIOD_CLOSED")
+			return true
+		}
+		var status string
+		_ = s.DB.QueryRow(`SELECT status FROM fin_voucher WHERE id=?`, id).Scan(&status)
+		if status != "approved" && status != "draft" {
+			api.FailJSON(c, "INVALID_STATUS")
+			return true
+		}
+		var debit, credit float64
+		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(debit),0), COALESCE(SUM(credit),0) FROM fin_voucher_line WHERE voucher_id=?`, id).Scan(&debit, &credit)
+		if debit-credit > 0.01 || credit-debit > 0.01 {
+			api.FailJSON(c, "VOUCHER_UNBALANCED")
+			return true
+		}
+		if debit <= 0 {
+			api.FailJSON(c, "VOUCHER_EMPTY")
+			return true
+		}
+		_, _ = s.DB.Exec(`UPDATE fin_voucher SET status='posted' WHERE id=?`, id)
+		s.writeAuditCtx(c, "fin_voucher", id, "post", "", gin.H{"status": status}, gin.H{"status": "posted", "debit": debit, "credit": credit})
+		api.OK(c, gin.H{"id": id, "status": "posted", "debit": debit, "credit": credit})
 		return true
 	}
 	return true
@@ -643,6 +677,10 @@ func (s *Services) handleFinWriteoffs(c *gin.Context, method, action string) boo
 			lineAmt = amt
 		}
 		if oid > 0 {
+			if lineAmt-amt > 0.01 {
+				api.FailJSON(c, "WRITEOFF_LINE_EXCEEDS")
+				return true
+			}
 			_, _ = s.DB.Exec(`INSERT INTO fin_receipt_writeoff_line(writeoff_id, sales_order_id, amount) VALUES(?,?,?)`, id, oid, lineAmt)
 		}
 		api.OK(c, gin.H{"id": id, "doc_no": docNo, "status": "draft"})
@@ -666,12 +704,19 @@ func (s *Services) handleFinWriteoffs(c *gin.Context, method, action string) boo
 		if status == "confirmed" {
 			return s.handleFinWriteoffs(c, "GET", "get")
 		}
+		var lineSum float64
+		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM fin_receipt_writeoff_line WHERE writeoff_id=?`, id).Scan(&lineSum)
+		if lineSum > 0 && lineSum-amt > 0.01 {
+			api.FailJSON(c, "WRITEOFF_OVER_AMOUNT")
+			return true
+		}
 		now := time.Now().Format("2006-01-02 15:04:05")
 		if fundID.Valid && fundID.Int64 > 0 {
 			_ = s.adjustFundBalance(fundID.Int64, amt)
 			_, _ = s.insertLedger(fundID.Int64, 0, "in", amt, fmt.Sprintf("customer:%d", cid.Int64), "receipt_writeoff", id, "收款核单")
 		}
 		_, _ = s.DB.Exec(`UPDATE fin_receipt_writeoff SET status='confirmed', received_at=? WHERE id=?`, now, id)
+		s.writeAuditCtx(c, "fin_receipt_writeoff", id, "confirm", "", gin.H{"status": status}, gin.H{"status": "confirmed", "amount": amt})
 		return s.handleFinWriteoffs(c, "GET", "get")
 	}
 	return true
@@ -1269,16 +1314,41 @@ func (s *Services) handleFinStatements(c *gin.Context, method, openapiPath, acti
 	if strings.Contains(openapiPath, "/generate") || (method == "POST" && strings.Contains(openapiPath, "generate")) {
 		body := bindBody(c)
 		period := strOrDef(body["period"], time.Now().Format("2006-01"))
-		var income, expense, cashIn, cashOut float64
-		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM fin_ledger_entry WHERE direction='in'`).Scan(&income)
-		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM fin_ledger_entry WHERE direction='out'`).Scan(&expense)
-		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(balance),0) FROM fin_fund_account`).Scan(&cashIn)
-		cashOut = expense
+		var income, expense, assetDebit, assetCredit, liabCredit, cashDebit, cashCredit float64
+		// 已过账凭证 + 科目类型汇总（三表由凭证生成）
+		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(l.credit),0) FROM fin_voucher_line l
+			JOIN fin_voucher v ON v.id=l.voucher_id JOIN fin_account_subject s ON s.id=l.subject_id
+			WHERE v.status='posted' AND v.period=? AND s.subject_type='income'`, period).Scan(&income)
+		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(l.debit),0) FROM fin_voucher_line l
+			JOIN fin_voucher v ON v.id=l.voucher_id JOIN fin_account_subject s ON s.id=l.subject_id
+			WHERE v.status='posted' AND v.period=? AND s.subject_type='expense'`, period).Scan(&expense)
+		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(l.debit),0), COALESCE(SUM(l.credit),0) FROM fin_voucher_line l
+			JOIN fin_voucher v ON v.id=l.voucher_id JOIN fin_account_subject s ON s.id=l.subject_id
+			WHERE v.status='posted' AND v.period=? AND s.subject_type='asset'`, period).Scan(&assetDebit, &assetCredit)
+		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(l.credit),0) FROM fin_voucher_line l
+			JOIN fin_voucher v ON v.id=l.voucher_id JOIN fin_account_subject s ON s.id=l.subject_id
+			WHERE v.status='posted' AND v.period=? AND s.subject_type='liability'`, period).Scan(&liabCredit)
+		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(l.debit),0), COALESCE(SUM(l.credit),0) FROM fin_voucher_line l
+			JOIN fin_voucher v ON v.id=l.voucher_id JOIN fin_account_subject s ON s.id=l.subject_id
+			WHERE v.status='posted' AND v.period=? AND (s.code LIKE '1001%' OR s.code LIKE '1002%')`, period).Scan(&cashDebit, &cashCredit)
+		// 无凭证时回退流水账
+		if income == 0 && expense == 0 {
+			_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM fin_ledger_entry WHERE direction='in' AND biz_date LIKE ?`, period+"%").Scan(&income)
+			_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM fin_ledger_entry WHERE direction='out' AND biz_date LIKE ?`, period+"%").Scan(&expense)
+		}
+		var fundBal float64
+		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(balance),0) FROM fin_fund_account`).Scan(&fundBal)
 		payload := gin.H{
 			"period": period,
+			"source": "posted_vouchers",
 			"profit_loss": gin.H{"income": income, "expense": expense, "profit": income - expense},
-			"cash_flow":   gin.H{"in": income, "out": cashOut, "net": income - cashOut},
-			"balance_sheet": gin.H{"cash": cashIn, "receivable_hint": "见认款/核销", "payable_hint": "见往来调整"},
+			"cash_flow":   gin.H{"in": cashDebit, "out": cashCredit, "net": cashDebit - cashCredit, "fund_balance": fundBal},
+			"balance_sheet": gin.H{
+				"assets":      assetDebit - assetCredit,
+				"liabilities": liabCredit,
+				"equity":      (assetDebit - assetCredit) - liabCredit,
+				"cash":        fundBal,
+			},
 		}
 		b, _ := json.Marshal(payload)
 		for _, code := range []string{"profit", "cashflow", "balance"} {
@@ -1302,6 +1372,7 @@ func (s *Services) handleFinStatements(c *gin.Context, method, openapiPath, acti
 		api.OK(c, gin.H{"code": code, "hint": "请先生成报表"})
 		return true
 	}
+	_ = action
 	return s.listDocTable(c, `SELECT * FROM fin_statement_cache`)
 }
 
@@ -1389,13 +1460,12 @@ func (s *Services) handleFinMiniprogram(c *gin.Context, method, openapiPath, act
 }
 
 func (s *Services) handleFinOrders(c *gin.Context, action string) bool {
-	// finance view of sales orders if table exists, else empty-friendly list from store-like query
+	// 财务侧销售订单视图：只读真实表 sl_sales_order
 	if action == "get" {
 		id := paramID(c)
-		rows, err := s.DB.Query(`SELECT id, doc_no, status, created_at FROM sl_sales_order WHERE id=?`, id)
+		rows, err := s.DB.Query(`SELECT id, doc_no, status, created_at FROM sl_sales_order WHERE id=? AND COALESCE(is_deleted,0)=0`, id)
 		if err != nil {
-			// fallback erp_doc
-			api.OK(c, gin.H{"id": id, "hint": "销售订单详情请到销售管理查看"})
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
 		}
 		defer rows.Close()
@@ -1409,11 +1479,31 @@ func (s *Services) handleFinOrders(c *gin.Context, action string) bool {
 	}
 	rows, err := s.DB.Query(`SELECT id, doc_no, status, created_at FROM sl_sales_order WHERE COALESCE(is_deleted,0)=0 ORDER BY id DESC LIMIT 200`)
 	if err != nil {
-		api.OK(c, gin.H{"list": []gin.H{}, "total": 0, "hint": "暂无销售订单表或为空"})
+		api.OK(c, gin.H{"list": []gin.H{}, "total": 0})
 		return true
 	}
 	defer rows.Close()
 	list, _ := rowsToMaps(rows)
 	api.OK(c, gin.H{"list": list, "total": len(list)})
 	return true
+}
+
+func (s *Services) finPeriodClosed(period string) bool {
+	if period == "" || len(period) < 7 {
+		return false
+	}
+	var y, m int
+	_, _ = fmt.Sscanf(period[:7], "%d-%d", &y, &m)
+	if y == 0 || m == 0 {
+		return false
+	}
+	var st string
+	err := s.DB.QueryRow(`SELECT status FROM fin_month_close WHERE year=? AND month=?`, y, m).Scan(&st)
+	return err == nil && st == "closed"
+}
+
+func (s *Services) finPeriodClosedForVoucher(id int64) bool {
+	var period string
+	_ = s.DB.QueryRow(`SELECT period FROM fin_voucher WHERE id=?`, id).Scan(&period)
+	return s.finPeriodClosed(period)
 }

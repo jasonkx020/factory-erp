@@ -9,7 +9,10 @@ import {
   adminModuleForPath,
   isAdminModuleActive,
   buildSidebarGroups,
+  isDeliveryOnlineModule,
+  OFFLINE_MENU_BADGE,
 } from '@erp/shared'
+import { ElMessage } from 'element-plus'
 import NotifyBell from '../components/NotifyBell.vue'
 
 const auth = useAuthStore()
@@ -108,12 +111,19 @@ function goHome() {
 
 function goModule(domain: string, module: string) {
   activeDomain.value = domain
+  if (!isDeliveryOnlineModule(domain, module)) {
+    ElMessage.warning(`${module} 尚未纳入本版本交付范围（${OFFLINE_MENU_BADGE}）`)
+  }
   const special = adminSpecialPath(domain, module)
   if (special) {
     router.push(special)
     return
   }
   router.push(`/m/${encodeURIComponent(domain)}/${encodeURIComponent(module)}`)
+}
+
+function moduleOffline(domain: string, module: string) {
+  return !isDeliveryOnlineModule(domain, module)
 }
 
 function moduleActive(domain: string, module: string) {
@@ -194,9 +204,16 @@ function logout() {
               :key="m"
               href="#"
               class="side-link"
-              :class="{ active: moduleActive(currentDomain, m), iam: perm.isIamModule(m) }"
+              :class="{
+                active: moduleActive(currentDomain, m),
+                iam: perm.isIamModule(m),
+                offline: moduleOffline(currentDomain, m),
+              }"
               @click.prevent="goModule(currentDomain, m)"
-            >{{ m }}</a>
+            >
+              <span class="side-link-text">{{ m }}</span>
+              <span v-if="moduleOffline(currentDomain, m)" class="offline-badge">{{ OFFLINE_MENU_BADGE }}</span>
+            </a>
           </div>
           <div v-if="!sidebarGroups.length" class="side-empty">无匹配菜单</div>
         </nav>
@@ -387,13 +404,38 @@ function logout() {
   flex-shrink: 0;
 }
 .side-link {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
   padding: 6px 14px 6px 26px;
   color: #5c6b75;
   text-decoration: none;
   font-size: 13px;
   border-radius: 0;
   line-height: 1.4;
+}
+.side-link.offline {
+  color: #8a969e;
+}
+.side-link-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.offline-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 2px;
+  background: #e8ebef;
+  color: #6b7780;
+}
+.side-link.active .offline-badge {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
 }
 .side-link:hover {
   background: #eef1f4;

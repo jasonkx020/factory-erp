@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -16,6 +17,20 @@ type Config struct {
 	Trace    TraceConfig    `yaml:"trace"`
 	Mqtt     MqttConfig     `yaml:"mqtt"`
 	Seed     SeedConfig     `yaml:"seed"`
+	OAuth    OAuthConfig    `yaml:"oauth"`
+	OCR      OCRConfig      `yaml:"ocr"`
+}
+
+// OAuthConfig 第三方登录（默认关闭；启用后按 provider 交换 code）。
+type OAuthConfig struct {
+	Enabled   bool              `yaml:"enabled"`
+	Providers map[string]string `yaml:"providers"` // provider -> secret/appid placeholder
+}
+
+// OCRConfig 身份证 OCR（默认关闭）。
+type OCRConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Provider string `yaml:"provider"`
 }
 
 type SeedConfig struct {
@@ -120,7 +135,43 @@ func Load(path string) (*Config, error) {
 	if c.Mqtt.KeepAliveSeconds <= 0 {
 		c.Mqtt.KeepAliveSeconds = 60
 	}
+	c.WarnInsecureIfNeeded()
 	return &c, nil
+}
+
+var weakJWTSecrets = map[string]bool{
+	"": true, "dev-only-change-me": true, "CHANGE_ME_IN_PRODUCTION": true,
+	"secret": true, "jwt-secret": true, "change-me": true,
+	"REPLACE_WITH_ENV_ERP_JWT_SECRET_32CHARS": true,
+}
+
+// IsProductionLike 非 demo 且非默认弱密钥开发配置时视为生产倾向。
+func (c *Config) IsProductionLike() bool {
+	return !c.Seed.DemoEnabled()
+}
+
+// WarnInsecureIfNeeded 生产倾向配置下对弱 JWT / 开放 CORS 打告警；致命弱密钥直接 Fatal。
+func (c *Config) WarnInsecureIfNeeded() {
+	demo := c.Seed.DemoEnabled()
+	weakJWT := weakJWTSecrets[c.JWT.Secret] || len(c.JWT.Secret) < 16
+	openCORS := len(c.CORS.AllowOrigins) == 0 ||
+		(len(c.CORS.AllowOrigins) == 1 && (c.CORS.AllowOrigins[0] == "*" || strings.TrimSpace(c.CORS.AllowOrigins[0]) == ""))
+
+	if demo {
+		if weakJWT {
+			log.Printf("[config] WARN demo mode: weak JWT secret (ok for local)")
+		}
+		if openCORS {
+			log.Printf("[config] WARN demo mode: CORS allow_origins is open")
+		}
+		return
+	}
+	if weakJWT {
+		log.Fatalf("[config] FATAL: production (seed.demo=false) requires a strong jwt.secret (len>=16, not a known placeholder)")
+	}
+	if openCORS {
+		log.Printf("[config] WARN production: CORS allow_origins is open (*); tighten to explicit origins")
+	}
 }
 
 func applyEnv(c *Config) {
@@ -164,5 +215,14 @@ func applyEnv(c *Config) {
 	}
 	if v := os.Getenv("ERP_MQTT_HUB_PASS"); v != "" {
 		c.Mqtt.ServerPassword = v
+	}
+	if v := os.Getenv("ERP_OAUTH_ENABLED"); v != "" {
+		c.OAuth.Enabled = v == "1" || strings.EqualFold(v, "true")
+	}
+	if v := os.Getenv("ERP_OCR_ENABLED"); v != "" {
+		c.OCR.Enabled = v == "1" || strings.EqualFold(v, "true")
+	}
+	if v := os.Getenv("ERP_OCR_PROVIDER"); v != "" {
+		c.OCR.Provider = v
 	}
 }

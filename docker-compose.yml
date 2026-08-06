@@ -1,0 +1,35 @@
+services:
+  api:
+    build: .
+    image: factory-erp-api:local
+    ports:
+      - "18080:18080"
+    environment:
+      # 生产必须覆盖为随机强密钥（≥16）
+      ERP_JWT_SECRET: "${ERP_JWT_SECRET:-please-change-this-long-secret}"
+      ERP_DATABASE_DRIVER: "${ERP_DATABASE_DRIVER:-sqlite}"
+      ERP_DATABASE_SQLITE_PATH: /app/data/erp.db
+      ERP_DATABASE_MYSQL_DSN: "${ERP_DATABASE_MYSQL_DSN:-}"
+      ERP_CORS_ALLOW_ORIGINS: "${ERP_CORS_ALLOW_ORIGINS:-http://localhost:5173}"
+    volumes:
+      - erp-data:/app/data
+      - ./configs/erp.prod.yaml.example:/app/configs/erp.yaml:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:18080/api/v1/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+
+  # 可选：docker compose --profile mqtt up -d
+  nanomq:
+    image: emqx/nanomq:0.21.10
+    profiles: ["mqtt"]
+    ports:
+      - "1883:1883"
+      - "8083:8083"
+    restart: unless-stopped
+
+volumes:
+  erp-data:

@@ -75,6 +75,26 @@ func EnsureAutomationSchema(db *sql.DB) {
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 )`,
+		`CREATE TABLE IF NOT EXISTS pd_material_requisition (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc_no TEXT NOT NULL UNIQUE,
+  work_order_id INTEGER,
+  dispatch_id INTEGER,
+  warehouse_id INTEGER,
+  status TEXT NOT NULL DEFAULT 'draft',
+  created_by INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  is_deleted INTEGER NOT NULL DEFAULT 0
+)`,
+		`CREATE TABLE IF NOT EXISTS pd_material_requisition_line (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  requisition_id INTEGER NOT NULL,
+  product_id INTEGER NOT NULL,
+  qty REAL NOT NULL,
+  base_qty REAL NOT NULL,
+  batch_no TEXT
+)`,
 		`CREATE TABLE IF NOT EXISTS sys_data_repair (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   doc_no TEXT NOT NULL UNIQUE,

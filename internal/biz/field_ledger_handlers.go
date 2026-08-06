@@ -1,6 +1,7 @@
 package biz
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"erp/internal/api"
+	"erp/internal/middleware"
 	"erp/internal/persistence/sqlutil"
 )
 
@@ -336,89 +338,339 @@ func (s *Services) handleToolItems(c *gin.Context, method, action string) bool {
 }
 
 func (s *Services) handleToolIssues(c *gin.Context, method, action string) bool {
+	EnsureTicketSchema(s.DB)
+	path := c.Request.URL.Path
 	if action == "delete" {
 		return s.refuseDelete(c)
 	}
-	if strings.Contains(c.Request.URL.Path, "/return") || strings.HasSuffix(action, "return") {
-		return s.returnToolIssue(c)
-	}
 	switch {
+	case strings.Contains(path, "/approve") || strings.HasSuffix(action, "approve"):
+		return s.approveToolIssue(c)
+	case strings.Contains(path, "/reject") || strings.HasSuffix(action, "reject"):
+		return s.rejectToolIssue(c)
+	case strings.Contains(path, "/return-request") || strings.HasSuffix(action, "return-request"):
+		return s.returnRequestToolIssue(c)
+	case strings.Contains(path, "/return-confirm") || strings.HasSuffix(action, "return-confirm"):
+		return s.returnConfirmToolIssue(c)
+	case strings.Contains(path, "/return") || strings.HasSuffix(action, "return"):
+		return s.returnToolIssue(c)
 	case action == "list" || (method == "GET" && action != "get"):
-		pageNum, pageSize := sqlutil.Page(c)
-		var total int
-		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_tool_issue`).Scan(&total)
-		rows, err := s.DB.Query(`SELECT id, doc_no, biz_date, seq_no, COALESCE(employee_id,0), COALESCE(employee_name,''),
-			tool_item_id, COALESCE(tool_name,''), issue_qty, return_qty, total_qty, status, COALESCE(remark,''), created_at
-			FROM hr_tool_issue ORDER BY id DESC LIMIT ? OFFSET ?`, pageSize, (pageNum-1)*pageSize)
-		if err != nil {
-			api.FailJSON(c, "DB_ERROR:"+err.Error())
-			return true
-		}
-		defer rows.Close()
-		list := []gin.H{}
-		for rows.Next() {
-			var id, seq, empID, toolID int64
-			var docNo, bizDate, ename, tname, status, remark, created string
-			var issue, ret, totalQty float64
-			_ = rows.Scan(&id, &docNo, &bizDate, &seq, &empID, &ename, &toolID, &tname, &issue, &ret, &totalQty, &status, &remark, &created)
-			list = append(list, gin.H{
-				"id": id, "doc_no": docNo, "biz_date": bizDate, "seq_no": seq, "employee_id": empID, "employee_name": ename,
-				"tool_item_id": toolID, "tool_name": tname, "issue_qty": issue, "return_qty": ret, "total_qty": totalQty,
-				"status": status, "remark": remark, "created_at": created,
-			})
-		}
-		api.PageOK(c, list, total, pageNum, pageSize)
-		return true
+		return s.listToolIssues(c)
+	case action == "get":
+		return s.getToolIssue(c)
 	case action == "create":
-		body := bindBody(c)
-		toolID, _ := asInt64(body["tool_item_id"])
-		var toolName string
-		_ = s.DB.QueryRow(`SELECT name FROM hr_tool_item WHERE id=?`, toolID).Scan(&toolName)
-		if toolName == "" {
-			toolName = strOr(body["tool_name"])
-		}
-		empID := asInt64Or0(body["employee_id"])
-		ename := strOr(body["employee_name"])
-		if empID > 0 && ename == "" {
-			_ = s.DB.QueryRow(`SELECT name FROM hr_employee WHERE id=?`, empID).Scan(&ename)
-		}
-		issue := asFloatOr0(body["issue_qty"])
-		docNo := fmt.Sprintf("TI%s", time.Now().Format("20060102150405"))
-		res, err := s.DB.Exec(`INSERT INTO hr_tool_issue(doc_no, biz_date, seq_no, employee_id, employee_name, tool_item_id, tool_name,
-			issue_qty, return_qty, total_qty, status, remark) VALUES(?,?,?,?,?,?,?,?,0,?, 'open',?)`,
-			docNo, strOrDef(body["biz_date"], time.Now().Format("2006-01-02")), asInt64Or0(body["seq_no"])+1,
-			nullIf0(empID), ename, toolID, toolName, issue, issue, strOr(body["remark"]))
-		if err != nil {
-			api.FailJSON(c, "DB_ERROR:"+err.Error())
-			return true
-		}
-		id, _ := res.LastInsertId()
-		api.OK(c, gin.H{"id": id, "doc_no": docNo, "issue_qty": issue, "total_qty": issue, "employee_id": empID, "employee_name": ename})
-		return true
+		return s.createToolIssue(c)
 	}
 	return false
+}
+
+func (s *Services) listToolIssues(c *gin.Context) bool {
+	pageNum, pageSize := sqlutil.Page(c)
+	where := `WHERE 1=1`
+	args := []interface{}{}
+	if emp := c.Query("employee_id"); emp != "" {
+		where += ` AND employee_id=?`
+		args = append(args, emp)
+	}
+	if st := c.Query("status"); st != "" {
+		where += ` AND status=?`
+		args = append(args, st)
+	}
+	if c.Query("mine") == "1" {
+		if cl := middleware.Claims(c); cl != nil {
+			var empID int64
+			_ = s.DB.QueryRow(`SELECT COALESCE(employee_id,0) FROM iam_user WHERE id=?`, cl.UserID).Scan(&empID)
+			if empID > 0 {
+				where += ` AND employee_id=?`
+				args = append(args, empID)
+			}
+		}
+	}
+	var total int
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_tool_issue `+where, args...).Scan(&total)
+	args2 := append(append([]interface{}{}, args...), pageSize, (pageNum-1)*pageSize)
+	rows, err := s.DB.Query(`SELECT id, doc_no, biz_date, seq_no, COALESCE(employee_id,0), COALESCE(employee_name,''),
+		tool_item_id, COALESCE(tool_name,''), issue_qty, return_qty, total_qty, status, COALESCE(remark,''), created_at,
+		COALESCE(pending_return_qty,0), COALESCE(ticket_id,0)
+		FROM hr_tool_issue `+where+` ORDER BY id DESC LIMIT ? OFFSET ?`, args2...)
+	if err != nil {
+		api.FailJSON(c, "DB_ERROR:"+err.Error())
+		return true
+	}
+	defer rows.Close()
+	list := []gin.H{}
+	for rows.Next() {
+		var id, seq, empID, toolID, ticketID int64
+		var docNo, bizDate, ename, tname, status, remark, created string
+		var issue, ret, totalQty, pending float64
+		_ = rows.Scan(&id, &docNo, &bizDate, &seq, &empID, &ename, &toolID, &tname, &issue, &ret, &totalQty, &status, &remark, &created, &pending, &ticketID)
+		list = append(list, gin.H{
+			"id": id, "doc_no": docNo, "biz_date": bizDate, "seq_no": seq, "employee_id": empID, "employee_name": ename,
+			"tool_item_id": toolID, "tool_name": tname, "issue_qty": issue, "return_qty": ret, "total_qty": totalQty,
+			"status": status, "remark": remark, "created_at": created, "pending_return_qty": pending, "ticket_id": ticketID,
+		})
+	}
+	api.PageOK(c, list, total, pageNum, pageSize)
+	return true
+}
+
+func (s *Services) getToolIssue(c *gin.Context) bool {
+	id := paramID(c)
+	m := s.loadToolIssue(id)
+	if m == nil {
+		api.FailJSON(c, "NOT_FOUND")
+		return true
+	}
+	api.OK(c, m)
+	return true
+}
+
+func (s *Services) loadToolIssue(id int64) gin.H {
+	var seq, empID, toolID, ticketID int64
+	var docNo, bizDate, ename, tname, status, remark, created string
+	var issue, ret, totalQty, pending float64
+	err := s.DB.QueryRow(`SELECT doc_no, biz_date, seq_no, COALESCE(employee_id,0), COALESCE(employee_name,''),
+		tool_item_id, COALESCE(tool_name,''), issue_qty, return_qty, total_qty, status, COALESCE(remark,''), created_at,
+		COALESCE(pending_return_qty,0), COALESCE(ticket_id,0) FROM hr_tool_issue WHERE id=?`, id).
+		Scan(&docNo, &bizDate, &seq, &empID, &ename, &toolID, &tname, &issue, &ret, &totalQty, &status, &remark, &created, &pending, &ticketID)
+	if err != nil {
+		return nil
+	}
+	return gin.H{
+		"id": id, "doc_no": docNo, "biz_date": bizDate, "seq_no": seq, "employee_id": empID, "employee_name": ename,
+		"tool_item_id": toolID, "tool_name": tname, "issue_qty": issue, "return_qty": ret, "total_qty": totalQty,
+		"status": status, "remark": remark, "created_at": created, "pending_return_qty": pending, "ticket_id": ticketID,
+	}
+}
+
+func (s *Services) nextToolSeq(bizDate string) int64 {
+	var n int64
+	_ = s.DB.QueryRow(`SELECT COALESCE(MAX(seq_no),0)+1 FROM hr_tool_issue WHERE biz_date=?`, bizDate).Scan(&n)
+	if n <= 0 {
+		n = 1
+	}
+	return n
+}
+
+func (s *Services) createToolIssue(c *gin.Context) bool {
+	cl := middleware.Claims(c)
+	body := bindBody(c)
+	toolID, _ := asInt64(body["tool_item_id"])
+	var toolName string
+	_ = s.DB.QueryRow(`SELECT name FROM hr_tool_item WHERE id=?`, toolID).Scan(&toolName)
+	if toolName == "" {
+		toolName = strOr(body["tool_name"])
+	}
+	empID := asInt64Or0(body["employee_id"])
+	ename := strOr(body["employee_name"])
+	if cl != nil && empID == 0 {
+		_ = s.DB.QueryRow(`SELECT COALESCE(employee_id,0) FROM iam_user WHERE id=?`, cl.UserID).Scan(&empID)
+	}
+	if empID > 0 && ename == "" {
+		_ = s.DB.QueryRow(`SELECT name FROM hr_employee WHERE id=?`, empID).Scan(&ename)
+	}
+	issue := asFloatOr0(body["issue_qty"])
+	if issue <= 0 {
+		api.FailJSON(c, "ISSUE_QTY_REQUIRED")
+		return true
+	}
+	next, _ := asInt64(body["next_assignee_user_id"])
+	if next <= 0 {
+		api.FailJSON(c, "NEXT_ASSIGNEE_REQUIRED")
+		return true
+	}
+	bizDate := strOrDef(body["biz_date"], time.Now().Format("2006-01-02"))
+	seq := s.nextToolSeq(bizDate)
+	docNo := fmt.Sprintf("TI%s%03d", time.Now().Format("20060102150405"), seq%1000)
+	res, err := s.DB.Exec(`INSERT INTO hr_tool_issue(doc_no, biz_date, seq_no, employee_id, employee_name, tool_item_id, tool_name,
+		issue_qty, return_qty, total_qty, status, remark, pending_return_qty) VALUES(?,?,?,?,?,?,?,?,0,?, 'pending',?,0)`,
+		docNo, bizDate, seq, nullIf0(empID), ename, toolID, toolName, issue, issue, strOr(body["remark"]))
+	if err != nil {
+		api.FailJSON(c, "DB_ERROR:"+err.Error())
+		return true
+	}
+	id, _ := res.LastInsertId()
+	applicant := int64(0)
+	if cl != nil {
+		applicant = cl.UserID
+	}
+	if applicant == 0 && empID > 0 {
+		_ = s.DB.QueryRow(`SELECT COALESCE(user_id,0) FROM hr_employee WHERE id=?`, empID).Scan(&applicant)
+	}
+	catID := s.categoryIDByCode("tool_issue")
+	if catID == 0 || !s.assigneeInPool(catID, next) {
+		_, _ = s.DB.Exec(`DELETE FROM hr_tool_issue WHERE id=?`, id)
+		api.FailJSON(c, "ASSIGNEE_NOT_IN_POOL")
+		return true
+	}
+	payloadB, _ := json.Marshal(gin.H{
+		"tool_name": toolName, "issue_qty": issue, "employee_name": ename, "biz_date": bizDate, "seq_no": seq,
+	})
+	title := fmt.Sprintf("工具领取 %s x%.0f (%s)", toolName, issue, ename)
+	tid, _, err := s.createTicket(c, catID, title, applicant, next, "hr_tool_issue", id, string(payloadB), strOr(body["remark"]))
+	if err != nil {
+		_, _ = s.DB.Exec(`DELETE FROM hr_tool_issue WHERE id=?`, id)
+		api.FailJSON(c, err.Error())
+		return true
+	}
+	_, _ = s.DB.Exec(`UPDATE hr_tool_issue SET ticket_id=? WHERE id=?`, tid, id)
+	out := s.loadToolIssue(id)
+	out["ticket"] = s.loadTicket(tid)
+	api.OK(c, out)
+	return true
+}
+
+func (s *Services) approveToolIssue(c *gin.Context) bool {
+	id := paramID(c)
+	body := bindBody(c)
+	m := s.loadToolIssue(id)
+	if m == nil {
+		api.FailJSON(c, "NOT_FOUND")
+		return true
+	}
+	if strOr(m["status"]) != "pending" {
+		api.FailJSON(c, "INVALID_STATUS")
+		return true
+	}
+	ticketID := asInt64Or0(m["ticket_id"])
+	if ticketID > 0 {
+		body["action"] = "approve"
+		if !s.actionTicketBody(c, ticketID, body) {
+			return true
+		}
+		out := s.loadToolIssue(id)
+		out["ticket"] = s.loadTicket(ticketID)
+		api.OK(c, out)
+		return true
+	}
+	_, _ = s.DB.Exec(`UPDATE hr_tool_issue SET status='open' WHERE id=?`, id)
+	api.OK(c, s.loadToolIssue(id))
+	return true
+}
+
+func (s *Services) rejectToolIssue(c *gin.Context) bool {
+	id := paramID(c)
+	body := bindBody(c)
+	m := s.loadToolIssue(id)
+	if m == nil {
+		api.FailJSON(c, "NOT_FOUND")
+		return true
+	}
+	ticketID := asInt64Or0(m["ticket_id"])
+	if ticketID > 0 {
+		body["action"] = "reject"
+		if !s.actionTicketBody(c, ticketID, body) {
+			return true
+		}
+		api.OK(c, s.loadToolIssue(id))
+		return true
+	}
+	_, _ = s.DB.Exec(`UPDATE hr_tool_issue SET status='rejected' WHERE id=?`, id)
+	api.OK(c, s.loadToolIssue(id))
+	return true
+}
+
+func (s *Services) returnRequestToolIssue(c *gin.Context) bool {
+	cl := middleware.Claims(c)
+	body := bindBody(c)
+	id := paramID(c)
+	m := s.loadToolIssue(id)
+	if m == nil {
+		api.FailJSON(c, "NOT_FOUND")
+		return true
+	}
+	if strOr(m["status"]) != "open" {
+		api.FailJSON(c, "INVALID_STATUS")
+		return true
+	}
+	ret := asFloatOr0(body["return_qty"])
+	if ret <= 0 {
+		ret = asFloatOr0(m["total_qty"])
+	}
+	next, _ := asInt64(body["next_assignee_user_id"])
+	if next <= 0 {
+		api.FailJSON(c, "NEXT_ASSIGNEE_REQUIRED")
+		return true
+	}
+	catID := s.categoryIDByCode("tool_return")
+	if !s.assigneeInPool(catID, next) {
+		api.FailJSON(c, "ASSIGNEE_NOT_IN_POOL")
+		return true
+	}
+	_, _ = s.DB.Exec(`UPDATE hr_tool_issue SET status='pending_return', pending_return_qty=? WHERE id=?`, ret, id)
+	applicant := int64(0)
+	if cl != nil {
+		applicant = cl.UserID
+	}
+	payloadB, _ := json.Marshal(gin.H{
+		"tool_name": m["tool_name"], "return_qty": ret, "employee_name": m["employee_name"],
+	})
+	title := fmt.Sprintf("工具归还 %v x%.0f (%v)", m["tool_name"], ret, m["employee_name"])
+	tid, _, err := s.createTicket(c, catID, title, applicant, next, "hr_tool_issue", id, string(payloadB), strOr(body["remark"]))
+	if err != nil {
+		_, _ = s.DB.Exec(`UPDATE hr_tool_issue SET status='open', pending_return_qty=0 WHERE id=?`, id)
+		api.FailJSON(c, err.Error())
+		return true
+	}
+	_, _ = s.DB.Exec(`UPDATE hr_tool_issue SET ticket_id=? WHERE id=?`, tid, id)
+	out := s.loadToolIssue(id)
+	out["ticket_id"] = tid
+	api.OK(c, out)
+	return true
+}
+
+func (s *Services) returnConfirmToolIssue(c *gin.Context) bool {
+	id := paramID(c)
+	body := bindBody(c)
+	m := s.loadToolIssue(id)
+	if m == nil {
+		api.FailJSON(c, "NOT_FOUND")
+		return true
+	}
+	ticketID := asInt64Or0(m["ticket_id"])
+	if ticketID > 0 {
+		body["action"] = "return_confirm"
+		if !s.actionTicketBody(c, ticketID, body) {
+			return true
+		}
+		out := s.loadToolIssue(id)
+		out["ticket"] = s.loadTicket(ticketID)
+		api.OK(c, out)
+		return true
+	}
+	return s.returnToolIssue(c)
 }
 
 func (s *Services) returnToolIssue(c *gin.Context) bool {
 	id := paramID(c)
 	body := bindBody(c)
 	ret := asFloatOr0(body["return_qty"])
-	var issue float64
-	_ = s.DB.QueryRow(`SELECT issue_qty FROM hr_tool_issue WHERE id=?`, id).Scan(&issue)
-	total := issue - ret
-	if total < 0 {
+	var issue, curRet float64
+	var status string
+	err := s.DB.QueryRow(`SELECT issue_qty, return_qty, status FROM hr_tool_issue WHERE id=?`, id).Scan(&issue, &curRet, &status)
+	if err != nil {
+		api.FailJSON(c, "NOT_FOUND")
+		return true
+	}
+	if ret <= 0 {
+		ret = issue - curRet
+	}
+	newRet := curRet + ret
+	if newRet > issue {
+		newRet = issue
+	}
+	total := issue - newRet
+	st := "open"
+	if total <= 0 {
 		total = 0
+		st = "returned"
 	}
-	status := "open"
-	if total == 0 {
-		status = "returned"
-	}
-	_, err := s.DB.Exec(`UPDATE hr_tool_issue SET return_qty=?, total_qty=?, status=? WHERE id=?`, ret, total, status, id)
+	_, err = s.DB.Exec(`UPDATE hr_tool_issue SET return_qty=?, total_qty=?, status=?, pending_return_qty=0 WHERE id=?`, newRet, total, st, id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
 		return true
 	}
-	api.OK(c, gin.H{"id": id, "return_qty": ret, "total_qty": total, "status": status})
+	api.OK(c, gin.H{"id": id, "return_qty": newRet, "total_qty": total, "status": st})
 	return true
 }
 

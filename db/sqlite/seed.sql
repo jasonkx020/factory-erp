@@ -110,6 +110,34 @@ UPDATE hr_employee SET user_id = 1 WHERE id = 1;
 INSERT OR IGNORE INTO iam_user_role(user_id, role_id) VALUES (1, 1);
 INSERT OR IGNORE INTO iam_admin_group_user(group_id, user_id) VALUES (1, 1);
 
+-- 各角色演示账号（密码均为 admin123，与 admin 相同 bcrypt）
+INSERT OR IGNORE INTO hr_employee(id, emp_no, name, org_id, dept_id, workshop_id, emp_type, status) VALUES
+ (10, 'E-PUR', '演示采购', 1, 1, 1, 'office', 'active'),
+ (11, 'E-QC', '演示质检', 1, 1, 1, 'office', 'active'),
+ (12, 'E-WH', '演示仓管', 1, 1, 1, 'warehouse', 'active'),
+ (13, 'E-FM', '演示车间主任', 1, 1, 1, 'office', 'active'),
+ (14, 'E-PC', '演示计件工', 1, 1, 1, 'piece', 'active'),
+ (15, 'E-FX', '演示固定工', 1, 1, 1, 'fixed', 'active'),
+ (16, 'E-SL', '演示销售', 1, 1, NULL, 'sales', 'active'),
+ (17, 'E-FN', '演示财务', 1, 1, NULL, 'office', 'active'),
+ (18, 'E-BS', '演示老板', 1, 1, NULL, 'office', 'active');
+
+INSERT OR IGNORE INTO iam_user(id, login_name, password_hash, employee_id, user_type, status) VALUES
+ (10, 'u_purchase', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 10, 'biz', 'active'),
+ (11, 'u_qc', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 11, 'biz', 'active'),
+ (12, 'u_warehouse', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 12, 'biz', 'active'),
+ (13, 'u_foreman', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 13, 'biz', 'active'),
+ (14, 'u_piece', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 14, 'biz', 'active'),
+ (15, 'u_fixed', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 15, 'biz', 'active'),
+ (16, 'u_sales', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 16, 'biz', 'active'),
+ (17, 'u_finance', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 17, 'biz', 'active'),
+ (18, 'u_boss', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 18, 'biz', 'active');
+
+UPDATE hr_employee SET user_id = id WHERE id BETWEEN 10 AND 18;
+
+INSERT OR IGNORE INTO iam_user_role(user_id, role_id) VALUES
+ (10, 4), (11, 10), (12, 5), (13, 7), (14, 8), (15, 9), (16, 3), (17, 13), (18, 2);
+
 INSERT OR IGNORE INTO prd_product(id, code, name, product_type, cost_price, sale_price, status) VALUES
  (1, 'RM-CASSAVA', '鲜木薯', 'raw', 1.2, NULL, 'active'),
  (2, 'SF-COREOUT', '去芯薯肉', 'semi', 2.5, 3.0, 'active'),

@@ -60,7 +60,7 @@ const ledgerForm = reactive({
   category: '经营收支',
   remark: '',
 })
-const voucherForm = reactive({ summary: '', subject_id: 1, debit: 100, credit: 0 })
+const voucherForm = reactive({ summary: '', subject_id: 1, debit: 100, credit: 0, period: new Date().toISOString().slice(0, 7) })
 const invoiceForm = reactive({
   direction: 'out',
   invoice_no: '',
@@ -332,6 +332,7 @@ watch([active, fundTab], refresh)
       <el-card class="mb" header="新建凭证（借贷需平衡后可审批）">
         <el-form inline size="small">
           <el-form-item label="摘要"><el-input v-model="voucherForm.summary" style="width:180px" /></el-form-item>
+          <el-form-item label="期间"><el-date-picker v-model="voucherForm.period" type="month" value-format="YYYY-MM" style="width:130px" /></el-form-item>
           <el-form-item label="科目">
             <el-select v-model="voucherForm.subject_id" style="width:140px">
               <el-option v-for="s in subjects" :key="String(s.id)" :label="`${s.code} ${s.name}`" :value="Number(s.id)" />
@@ -349,9 +350,10 @@ watch([active, fundTab], refresh)
         <el-table-column prop="doc_no" label="凭证号" width="150" /><el-table-column prop="period" label="期间" width="100" />
         <el-table-column prop="biz_date" label="日期" width="110" /><el-table-column prop="summary" label="摘要" />
         <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column label="操作" width="100">
+        <el-table-column label="操作" width="160">
           <template #default="{ row }">
             <el-button v-if="row.status==='draft'" link type="success" @click="run(() => financeApi.approveVoucher(Number(row.id)), '已审批')">审批</el-button>
+            <el-button v-if="row.status==='approved' || row.status==='draft'" link type="primary" @click="run(() => financeApi.postVoucher(Number(row.id)), '已过账')">过账</el-button>
           </template>
         </el-table-column>
       </el-table>

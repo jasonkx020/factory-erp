@@ -208,6 +208,8 @@ CREATE TABLE IF NOT EXISTS hr_employee (
   job_title     VARCHAR(64) NULL,
   emp_type      VARCHAR(16) NOT NULL DEFAULT 'office' COMMENT 'piece计件工/temp临时工/fixed固定工/office职能内勤',
   mobile        VARCHAR(32) NULL,
+  badge_code    VARCHAR(64) NULL,
+  id_card_no    VARCHAR(32) NULL COMMENT '身份证号',
   status        VARCHAR(16) NOT NULL DEFAULT 'active' COMMENT 'active/inactive/left',
   user_id       BIGINT NULL COMMENT '关联登录用户，循环引用用应用层维护',
   created_by    BIGINT NULL,
@@ -482,6 +484,19 @@ CREATE TABLE IF NOT EXISTS iam_password_history (
   KEY idx_pwd_hist_user (user_id),
   CONSTRAINT fk_pwd_hist_user FOREIGN KEY (user_id) REFERENCES iam_user(id)
 ) ENGINE=InnoDB COMMENT='历史密码';
+
+CREATE TABLE IF NOT EXISTS iam_user_oauth (
+  id            BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id       BIGINT NOT NULL,
+  provider      VARCHAR(32) NOT NULL,
+  open_id       VARCHAR(128) NOT NULL,
+  union_id      VARCHAR(128) NULL,
+  bound_at      DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uk_oauth_provider_open (provider, open_id),
+  UNIQUE KEY uk_oauth_user_provider (user_id, provider),
+  KEY idx_oauth_user (user_id),
+  CONSTRAINT fk_oauth_user FOREIGN KEY (user_id) REFERENCES iam_user(id)
+) ENGINE=InnoDB COMMENT='用户第三方绑定';
 
 -- 入职赋权模板（角色列表）
 CREATE TABLE IF NOT EXISTS iam_onboard_role_template (

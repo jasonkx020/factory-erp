@@ -146,13 +146,8 @@ func (s *Services) handleScan(c *gin.Context, resolveOnly bool) bool {
 		"wage_amount": amount, "rate": rate, "scan_code": box, "badge_code": badge,
 		"status": "confirm_pending", "needs_confirm": true,
 		"hint": "请对照实物确认投料/完工/损耗后调用 confirm；未确认不过账出入库",
+		"trace_id": middleware.TraceID(c),
 	}
-	d, _ := s.Store.Create("production/report-works", body, "confirm_pending")
-	if d != nil {
-		body = d.Payload
-		body["needs_confirm"] = true
-	}
-	body["trace_id"] = middleware.TraceID(c)
 	api.OK(c, body)
 	return true
 }

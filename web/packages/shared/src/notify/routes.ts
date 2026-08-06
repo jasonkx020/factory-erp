@@ -5,6 +5,7 @@ export function employeeRouteForEvent(eventKey: string | undefined | null): stri
   if (k === 'production.report_confirmed') return '/m/workshop'
   if (k === 'payroll.labor_paid') return '/m/worker'
   if (k === 'purchase.stocked' || k === 'purchase.settle_paid') return '/'
+  if (k.startsWith('workflow.ticket')) return '/tickets'
   return null
 }
 
@@ -12,6 +13,7 @@ export function employeeRouteForEvent(eventKey: string | undefined | null): stri
 export function adminRouteForEvent(eventKey: string | undefined | null): string | null {
   const k = String(eventKey || '')
   if (k === 'purchase.weigh_confirmed') return '/warehouse/inbound'
+  if (k.startsWith('workflow.ticket')) return '/workflow/tickets'
   return null
 }
 

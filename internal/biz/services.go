@@ -22,6 +22,8 @@ type Services struct {
 	Store           *store.Store
 	TraceHMACSecret string
 	Notify          *notify.Service
+	OCREnabled      bool
+	OCRProvider     string
 }
 
 func New(db *sql.DB, driver string, st *store.Store) *Services {
@@ -32,6 +34,9 @@ func New(db *sql.DB, driver string, st *store.Store) *Services {
 func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, action string) bool {
 	switch {
 	case strings.HasPrefix(openapiPath, "/api/v1/notify/") || strings.HasPrefix(openapiPath, "/api/v1/workflow/"):
+		if strings.Contains(openapiPath, "/workflow/ticket") {
+			return s.handleTicketDomain(c, method, openapiPath, action)
+		}
 		if s.Notify != nil {
 			return s.Notify.HandleAPI(c, method, openapiPath, action)
 		}
@@ -119,6 +124,8 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		return s.handleBoxTrace(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/payroll/"):
 		return s.handlePayroll(c, method, action, openapiPath)
+	case strings.Contains(openapiPath, "/hr/id-card/ocr"):
+		return s.handleIdCardOCR(c)
 	case strings.Contains(openapiPath, "/hr/employees/{id}/badge"):
 		return s.handleBadge(c)
 	case strings.Contains(openapiPath, "/hr/employees") && strings.Contains(openapiPath, "/open-account"):

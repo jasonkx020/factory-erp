@@ -26,6 +26,7 @@ const form = reactive({
   job_title: '',
   mobile: '',
   badge_code: '',
+  id_card_no: '',
   onboard_date: '',
   need_account: true,
   login_name: '',
@@ -62,6 +63,7 @@ function resetForm() {
     job_title: '',
     mobile: '',
     badge_code: '',
+    id_card_no: '',
     onboard_date: today(),
     need_account: true,
     login_name: '',
@@ -112,6 +114,7 @@ async function openEdit(row: Row) {
     job_title: String(emp.job_title || ''),
     mobile: String(emp.mobile || ''),
     badge_code: String(emp.badge_code || ''),
+    id_card_no: String(emp.id_card_no || d.id_card_no || ''),
     onboard_date: String(d.onboard_date || today()),
     need_account: d.need_account !== false,
     login_name: String(d.login_name || ''),
@@ -217,6 +220,7 @@ onMounted(load)
       <el-table-column prop="job_title" label="岗位" width="100" />
       <el-table-column prop="workshop_id" label="车间" width="70" />
       <el-table-column prop="mobile" label="手机" width="120" />
+      <el-table-column prop="id_card_no" label="身份证号" width="160" show-overflow-tooltip />
       <el-table-column label="开户" width="80">
         <template #default="{ row }">
           <el-tag size="small" :type="row.has_account ? 'success' : row.need_account ? 'warning' : 'info'">
@@ -282,6 +286,11 @@ onMounted(load)
           <el-col :span="12">
             <el-form-item label="手机">
               <el-input v-model="form.mobile" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="身份证号">
+              <el-input v-model="form.id_card_no" placeholder="可手填；App 支持 OCR" maxlength="18" />
             </el-form-item>
           </el-col>
           <el-col :span="8">

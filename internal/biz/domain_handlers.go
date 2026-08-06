@@ -350,98 +350,68 @@ func (s *Services) handleProdTasks(c *gin.Context, method, action, path string) 
 }
 
 func (s *Services) handleDispatches(c *gin.Context, method, action, path string) bool {
-	// Use erp_doc + optional pd_work_order/pd_dispatch bridge
-	rk := "production/dispatches"
+	_ = method
+	_ = path
 	switch action {
 	case "list":
-		list, total, err := s.Store.List(rk, 1, 100)
-		if err != nil {
-			api.FailJSON(c, "DB_ERROR")
-			return true
-		}
-		out := []map[string]interface{}{}
-		for _, d := range list {
-			out = append(out, d.Payload)
-		}
-		api.OK(c, gin.H{"list": out, "total": total})
-		return true
+		return s.listDocTable(c, `SELECT * FROM pd_dispatch`)
 	case "create":
 		body := bindBody(c)
 		taskID, _ := asInt64(body["task_id"])
 		procID, _ := asInt64(body["process_id"])
 		workerID, _ := asInt64(body["worker_id"])
 		qty, _ := asFloat(body["qty"])
+		if qty <= 0 {
+			qty = 1
+		}
 		docNo := fmt.Sprintf("DP%d", time.Now().UnixNano()%1e12)
-		// ensure work order
 		woNo := fmt.Sprintf("WO%d", time.Now().UnixNano()%1e12)
 		woRes, err := s.DB.Exec(`INSERT INTO pd_work_order(doc_no, task_id, process_id, status, plan_qty) VALUES(?,?,?,'pending',?)`, woNo, taskID, procID, qty)
-		var woID int64
-		if err == nil {
-			woID, _ = woRes.LastInsertId()
-			_, _ = s.DB.Exec(`INSERT INTO pd_dispatch(doc_no, work_order_id, worker_id, plan_qty, status) VALUES(?,?,?,?,'dispatched')`, docNo, woID, workerID, qty)
-		}
-		body["doc_no"] = docNo
-		body["work_order_id"] = woID
-		body["status"] = "dispatched"
-		d, err := s.Store.Create(rk, body, "dispatched")
 		if err != nil {
-			api.FailJSON(c, "DB_ERROR")
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
 		}
-		api.OK(c, d.Payload)
+		woID, _ := woRes.LastInsertId()
+		res, err := s.DB.Exec(`INSERT INTO pd_dispatch(doc_no, work_order_id, worker_id, plan_qty, status) VALUES(?,?,?,?,'dispatched')`, docNo, woID, workerID, qty)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
+			return true
+		}
+		id, _ := res.LastInsertId()
+		api.OK(c, gin.H{"id": id, "doc_no": docNo, "work_order_id": woID, "worker_id": workerID, "plan_qty": qty, "status": "dispatched"})
 		return true
-	case "get", "update":
+	case "get":
+		return s.getSimpleRow(c, `SELECT * FROM pd_dispatch WHERE id=?`, paramID(c))
+	case "update", "replace":
 		id := paramID(c)
-		if action == "get" {
-			d, _ := s.Store.Get(id)
-			if d == nil {
-				api.FailJSON(c, "NOT_FOUND")
-				return true
-			}
-			api.OK(c, d.Payload)
-			return true
-		}
-		d, err := s.Store.Update(id, bindBody(c), "")
-		if err != nil || d == nil {
-			api.FailJSON(c, "NOT_FOUND")
-			return true
-		}
-		api.OK(c, d.Payload)
-		return true
+		body := bindBody(c)
+		_, _ = s.DB.Exec(`UPDATE pd_dispatch SET worker_id=COALESCE(NULLIF(?,0),worker_id), plan_qty=COALESCE(NULLIF(?,0),plan_qty),
+			status=COALESCE(NULLIF(?,''),status) WHERE id=?`,
+			nullInt64Or(body["worker_id"]), nullFloat(body["qty"]), strOr(body["status"]), id)
+		return s.getSimpleRow(c, `SELECT * FROM pd_dispatch WHERE id=?`, id)
 	case "action:confirm", "action:cancel", "action:receive":
+		id := paramID(c)
+		st := "confirmed"
 		name := strings.TrimPrefix(action, "action:")
+		if name == "cancel" {
+			st = "cancelled"
+		}
 		if name == "receive" {
-			id := paramID(c)
-			_, _ = s.DB.Exec(`UPDATE pd_dispatch SET status='received' WHERE id=?`, id)
-			api.OK(c, gin.H{"id": id, "status": "received"})
-			return true
+			st = "received"
 		}
-		d, err := s.ApplyDocAction(paramID(c), name, bindBody(c))
-		if err != nil {
-			api.FailJSON(c, err.Error())
-			return true
-		}
-		api.OK(c, d)
+		_, _ = s.DB.Exec(`UPDATE pd_dispatch SET status=? WHERE id=?`, st, id)
+		api.OK(c, gin.H{"id": id, "status": st})
 		return true
 	}
 	return false
 }
 
 func (s *Services) handleReportWorks(c *gin.Context, method, action, path string) bool {
-	rk := "production/report-works"
+	_ = method
+	_ = path
 	switch action {
 	case "list":
-		list, total, err := s.Store.List(rk, 1, 100)
-		if err != nil {
-			api.FailJSON(c, "DB_ERROR")
-			return true
-		}
-		out := []map[string]interface{}{}
-		for _, d := range list {
-			out = append(out, d.Payload)
-		}
-		api.OK(c, gin.H{"list": out, "total": total})
-		return true
+		return s.listDocTable(c, `SELECT * FROM pd_report_work`)
 	case "create":
 		body := bindBody(c)
 		did, _ := asInt64(body["dispatch_id"])
@@ -454,114 +424,146 @@ func (s *Services) handleReportWorks(c *gin.Context, method, action, path string
 		}
 		docNo := fmt.Sprintf("RW%d", time.Now().UnixNano()%1e12)
 		now := time.Now().Format("2006-01-02 15:04:05")
-		res, err := s.DB.Exec(`INSERT INTO pd_report_work(doc_no, dispatch_id, process_id, worker_id, qty, status, reported_at) VALUES(?,?,?,?,?,'submitted',?)`,
-			docNo, did, pid, wid, qty, now)
-		var rid int64
-		if err == nil {
-			rid, _ = res.LastInsertId()
+		res, err := s.DB.Exec(`INSERT INTO pd_report_work(doc_no, dispatch_id, process_id, worker_id, qty, weight, status, reported_at) VALUES(?,?,?,?,?,?,'submitted',?)`,
+			docNo, did, pid, wid, qty, nullFloat(body["weight"]), now)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
+			return true
 		}
+		rid, _ := res.LastInsertId()
 		var rate float64
 		_ = s.DB.QueryRow(`SELECT rate FROM pay_process_wage_rate WHERE process_id=? AND status='active' ORDER BY id DESC LIMIT 1`, pid).Scan(&rate)
 		amount := qty * rate
-		body["id"] = rid
-		body["doc_no"] = docNo
-		body["wage_amount"] = amount
-		body["rate"] = rate
-		d, err := s.Store.Create(rk, body, "submitted")
-		if err != nil {
-			api.FailJSON(c, "DB_ERROR")
-			return true
-		}
-		_, _ = s.Store.Create("payroll/piecework-lines", map[string]interface{}{
-			"report_work_id": rid, "worker_id": wid, "process_id": pid, "qty": qty, "rate": rate, "amount": amount,
-		}, "open")
-		api.OK(c, d.Payload)
+		bizDate := time.Now().Format("2006-01-02")
+		_, _ = s.DB.Exec(`INSERT INTO pd_piecework_summary(worker_id, process_id, biz_date, qty, amount, status)
+			VALUES(?,?,?,?,?,'open')`, wid, pid, bizDate, qty, amount)
+		api.OK(c, gin.H{"id": rid, "doc_no": docNo, "dispatch_id": did, "process_id": pid, "worker_id": wid,
+			"qty": qty, "wage_amount": amount, "rate": rate, "status": "submitted"})
 		return true
-	case "get", "update":
+	case "get":
+		return s.getSimpleRow(c, `SELECT * FROM pd_report_work WHERE id=?`, paramID(c))
+	case "update", "replace":
 		id := paramID(c)
-		if action == "get" {
-			d, _ := s.Store.Get(id)
-			if d == nil {
-				api.FailJSON(c, "NOT_FOUND")
-				return true
-			}
-			api.OK(c, d.Payload)
-			return true
-		}
-		d, err := s.Store.Update(id, bindBody(c), "")
-		if err != nil || d == nil {
-			api.FailJSON(c, "NOT_FOUND")
-			return true
-		}
-		api.OK(c, d.Payload)
-		return true
+		body := bindBody(c)
+		_, _ = s.DB.Exec(`UPDATE pd_report_work SET qty=COALESCE(NULLIF(?,0),qty), status=COALESCE(NULLIF(?,''),status) WHERE id=? AND status IN ('submitted','draft','confirm_pending')`,
+			nullFloat(body["qty"]), strOr(body["status"]), id)
+		return s.getSimpleRow(c, `SELECT * FROM pd_report_work WHERE id=?`, id)
 	case "action:confirm", "action:cancel":
-		d, err := s.ApplyDocAction(paramID(c), strings.TrimPrefix(action, "action:"), bindBody(c))
-		if err != nil {
-			api.FailJSON(c, err.Error())
-			return true
+		id := paramID(c)
+		st := "confirmed"
+		if strings.Contains(action, "cancel") {
+			st = "cancelled"
 		}
-		api.OK(c, d)
+		_, _ = s.DB.Exec(`UPDATE pd_report_work SET status=? WHERE id=?`, st, id)
+		api.OK(c, gin.H{"id": id, "status": st})
 		return true
 	}
 	return false
 }
 
 func (s *Services) handleRequisitions(c *gin.Context, method, action, path string) bool {
-	// store as erp_doc under production/requisitions + optional stock out draft
-	rk := "production/requisitions"
+	_ = method
+	_ = path
 	switch action {
 	case "list":
-		list, total, err := s.Store.List(rk, 1, 100)
-		if err != nil {
-			api.FailJSON(c, "DB_ERROR")
-			return true
-		}
-		out := []map[string]interface{}{}
-		for _, d := range list {
-			out = append(out, d.Payload)
-		}
-		api.OK(c, gin.H{"list": out, "total": total})
-		return true
+		return s.listDocTable(c, `SELECT * FROM pd_material_requisition WHERE COALESCE(is_deleted,0)=0`)
 	case "create":
 		body := bindBody(c)
-		body["doc_type"] = "requisition"
-		d, err := s.Store.Create(rk, body, "open")
+		docNo := strOrDef(body["doc_no"], fmt.Sprintf("MR%d", time.Now().UnixNano()%1e12))
+		res, err := s.DB.Exec(`INSERT INTO pd_material_requisition(doc_no, work_order_id, dispatch_id, warehouse_id, status)
+			VALUES(?,?,?,?,'draft')`,
+			docNo, nullInt64Or(body["work_order_id"]), nullInt64Or(body["dispatch_id"]), nullInt64Or(body["warehouse_id"]))
 		if err != nil {
-			api.FailJSON(c, "DB_ERROR")
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
 		}
-		api.OK(c, d.Payload)
-		return true
-	case "get", "update":
-		id := paramID(c)
-		if action == "get" {
-			d, _ := s.Store.Get(id)
-			if d == nil {
-				api.FailJSON(c, "NOT_FOUND")
-				return true
+		id, _ := res.LastInsertId()
+		lines, _ := body["lines"].([]interface{})
+		for _, ln := range lines {
+			m, _ := ln.(map[string]interface{})
+			if m == nil {
+				continue
 			}
-			api.OK(c, d.Payload)
-			return true
+			pid, _ := asInt64(m["product_id"])
+			qty, _ := asFloat(m["qty"])
+			if pid <= 0 || qty <= 0 {
+				continue
+			}
+			_, _ = s.DB.Exec(`INSERT INTO pd_material_requisition_line(requisition_id, product_id, qty, base_qty, batch_no) VALUES(?,?,?,?,?)`,
+				id, pid, qty, qty, strOr(m["batch_no"]))
 		}
-		d, err := s.Store.Update(id, bindBody(c), "")
-		if err != nil || d == nil {
+		if pid, _ := asInt64(body["product_id"]); pid > 0 {
+			qty, _ := asFloat(body["qty"])
+			if qty <= 0 {
+				qty = 1
+			}
+			_, _ = s.DB.Exec(`INSERT INTO pd_material_requisition_line(requisition_id, product_id, qty, base_qty) VALUES(?,?,?,?)`, id, pid, qty, qty)
+		}
+		api.OK(c, gin.H{"id": id, "doc_no": docNo, "status": "draft"})
+		return true
+	case "get":
+		id := paramID(c)
+		rows, err := s.DB.Query(`SELECT * FROM pd_material_requisition WHERE id=? AND COALESCE(is_deleted,0)=0`, id)
+		if err != nil {
 			api.FailJSON(c, "NOT_FOUND")
 			return true
 		}
-		api.OK(c, d.Payload)
+		defer rows.Close()
+		list, _ := rowsToMaps(rows)
+		if len(list) == 0 {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		m := gin.H(list[0])
+		lrows, _ := s.DB.Query(`SELECT * FROM pd_material_requisition_line WHERE requisition_id=?`, id)
+		lines := []map[string]interface{}{}
+		if lrows != nil {
+			defer lrows.Close()
+			lines, _ = rowsToMaps(lrows)
+		}
+		m["lines"] = lines
+		api.OK(c, m)
 		return true
+	case "update", "replace":
+		id := paramID(c)
+		body := bindBody(c)
+		_, _ = s.DB.Exec(`UPDATE pd_material_requisition SET warehouse_id=COALESCE(NULLIF(?,0),warehouse_id) WHERE id=? AND status='draft'`,
+			nullInt64Or(body["warehouse_id"]), id)
+		return s.handleRequisitions(c, "GET", "get", path)
 	case "action:post", "action:confirm":
 		id := paramID(c)
-		d, _ := s.Store.Get(id)
-		if d == nil {
+		var status string
+		var wh sql.NullInt64
+		err := s.DB.QueryRow(`SELECT status, warehouse_id FROM pd_material_requisition WHERE id=? AND COALESCE(is_deleted,0)=0`, id).Scan(&status, &wh)
+		if err != nil {
 			api.FailJSON(c, "NOT_FOUND")
 			return true
 		}
-		d.Payload["txn_type"] = "consume"
-		_ = s.applyPayloadStock(d)
-		nd, _ := s.Store.SetStatus(id, "posted")
-		api.OK(c, nd.Payload)
+		if status == "posted" {
+			api.OK(c, gin.H{"id": id, "status": "posted"})
+			return true
+		}
+		lrows, _ := s.DB.Query(`SELECT product_id, qty FROM pd_material_requisition_line WHERE requisition_id=?`, id)
+		txnLines := []txnLine{}
+		if lrows != nil {
+			defer lrows.Close()
+			for lrows.Next() {
+				var pid int64
+				var qty float64
+				if lrows.Scan(&pid, &qty) == nil && pid > 0 && qty > 0 {
+					txnLines = append(txnLines, txnLine{pid: pid, qty: qty, dir: "out"})
+				}
+			}
+		}
+		whID := int64(1)
+		if wh.Valid && wh.Int64 > 0 {
+			whID = wh.Int64
+		}
+		if len(txnLines) > 0 {
+			_, _ = s.insertPostedStockTxn("consume", whID, time.Now().Format("2006-01-02"), "", txnLines, fmt.Sprintf("requisition:%d", id))
+		}
+		_, _ = s.DB.Exec(`UPDATE pd_material_requisition SET status='posted', updated_at=datetime('now') WHERE id=?`, id)
+		api.OK(c, gin.H{"id": id, "status": "posted"})
 		return true
 	}
 	return false

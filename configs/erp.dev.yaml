@@ -27,3 +27,8 @@ mqtt:
   tenant: "default"
   token_ttl_seconds: 43200
   keep_alive_seconds: 60
+oauth:
+  enabled: false
+ocr:
+  enabled: false
+  provider: ""

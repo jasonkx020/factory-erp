@@ -39,7 +39,7 @@ func NewEngine(db *sql.DB, driver string) *Engine {
 
 func (e *Engine) Dispatch(method, openapiPath, ginPath, resourceKey, action string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !biz.CheckSystemAPIPerm(c, resourceKey, action, method) {
+		if !biz.CheckAPIPerm(c, resourceKey, action, method) {
 			return
 		}
 		// Prefer dedicated business handlers when available.
