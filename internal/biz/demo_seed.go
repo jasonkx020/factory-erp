@@ -133,6 +133,7 @@ func clearDemoShowcase(db *sql.DB) {
 		`DELETE FROM appr_task WHERE doc_no LIKE 'DEMO-%'`,
 		`DELETE FROM hr_leave_request WHERE doc_no LIKE 'DEMO-%'`,
 		`DELETE FROM hr_overtime_patch WHERE doc_no LIKE 'DEMO-%'`,
+		`DELETE FROM hr_tool_issue_line WHERE issue_id IN (SELECT id FROM hr_tool_issue WHERE doc_no LIKE 'DEMO-%')`,
 		`DELETE FROM hr_tool_issue WHERE doc_no LIKE 'DEMO-%'`,
 		`DELETE FROM pay_payroll_sheet_line WHERE sheet_id IN (SELECT id FROM pay_payroll_sheet WHERE doc_no LIKE 'DEMO-%')`,
 		`DELETE FROM pay_payroll_adjust WHERE sheet_id IN (SELECT id FROM pay_payroll_sheet WHERE doc_no LIKE 'DEMO-%')`,
@@ -220,10 +221,10 @@ func seedDemoSales(db *sql.DB, today, now string) {
 	so2 := demoID(db, `SELECT id FROM sl_sales_order WHERE doc_no='DEMO-SO-002'`)
 	so3 := demoID(db, `SELECT id FROM sl_sales_order WHERE doc_no='DEMO-SO-003'`)
 	for _, row := range []struct {
-		oid            int64
-		pid            int64
+		oid             int64
+		pid             int64
 		qty, price, amt float64
-		delivered      float64
+		delivered       float64
 	}{
 		{so1, 3, 2000, 6.8, 13600, 500},
 		{so2, 3, 1000, 6.5, 6500, 0},
@@ -670,9 +671,20 @@ func seedDemoHR(db *sql.DB, today, now, period string) {
  (2, ?, ?, 21, 1, 6, 1),
  (3, ?, ?, 20, 3, 2, 0)`, y, m, y, m)
 
-	_, _ = db.Exec(`INSERT OR IGNORE INTO hr_tool_issue(doc_no, biz_date, employee_id, employee_name, tool_item_id, tool_name, issue_qty, status, remark) VALUES
- ('DEMO-TI-001', ?, 2, '陈某', 1, '刮刀', 1, 'open', '工具领用演示'),
- ('DEMO-TI-002', ?, 3, '固定工甲', 2, '小刀', 1, 'closed', '已归还')`, today, today)
+	_, _ = db.Exec(`INSERT OR IGNORE INTO hr_tool_issue(doc_no, biz_date, employee_id, employee_name, status, remark) VALUES
+ ('DEMO-TI-001', ?, 2, '陈某', 'open', '工具领用演示'),
+ ('DEMO-TI-002', ?, 3, '固定工甲', 'returned', '已归还')`, today, today)
+	var demoTI1, demoTI2 int64
+	_ = db.QueryRow(`SELECT id FROM hr_tool_issue WHERE doc_no='DEMO-TI-001'`).Scan(&demoTI1)
+	_ = db.QueryRow(`SELECT id FROM hr_tool_issue WHERE doc_no='DEMO-TI-002'`).Scan(&demoTI2)
+	if demoTI1 > 0 {
+		_, _ = db.Exec(`INSERT OR IGNORE INTO hr_tool_issue_line(issue_id, tool_item_id, tool_name, issue_qty, return_qty) VALUES
+ (?,1,'刮刀',1,0), (?,3,'厚手套',2,0)`, demoTI1, demoTI1)
+	}
+	if demoTI2 > 0 {
+		_, _ = db.Exec(`INSERT OR IGNORE INTO hr_tool_issue_line(issue_id, tool_item_id, tool_name, issue_qty, return_qty) VALUES
+ (?,2,'小刀',1,1)`, demoTI2)
+	}
 
 	eSales := demoID(db, `SELECT id FROM hr_employee WHERE emp_no='E1102'`)
 	_, _ = db.Exec(`INSERT INTO hr_visit_record(employee_id, customer_id, visit_at, content, location)

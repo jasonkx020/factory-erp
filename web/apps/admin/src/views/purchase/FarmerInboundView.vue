@@ -46,23 +46,42 @@ const arrivalForm = reactive({
   weigh_fee: 0,
 })
 const weighForm = reactive({
+  receive_kind: 'gate' as 'gate' | 'stockin',
   arrival_id: 0,
   farmer_id: 0,
   channel: 'internal',
   gross_weight: 1000,
   deduct_rate: 0.05,
+  reject_weight: 0,
+  unit_price: 1.2,
+  net_weight: 100,
+  bag_qty: 0,
+  cold_store_type: 'fresh',
   variety: '鲜木薯',
+  variety_id: 0,
+  product_id: 1,
   source_type: 'self',
+  batch_no: '',
   image_url: '',
+  image_urls: [] as string[],
   ocr_draft_json: '',
   plate_no: '',
   receive_address: '',
+  origin: '',
+  party_name: '',
+  party_mobile: '',
   pass_rate: 100,
-  reject_weight: 0,
   freight_fee: 0,
   loading_fee: 0,
   weigh_fee: 0,
 })
+const batchValid = ref(false)
+const batchInputMode = ref<'scan' | 'manual'>('manual')
+const farmerOptions = ref<Row[]>([])
+const farmerSearchLoading = ref(false)
+const onsiteFarmerDlg = ref(false)
+const onsiteFarmer = reactive({ name: '', mobile: '', origin: '' })
+const varieties = ref<Row[]>([])
 const confirmDlg = ref(false)
 const confirmTicket = ref<Row | null>(null)
 const confirmModel = reactive<Record<string, unknown>>({
@@ -93,19 +112,24 @@ const ocrDraft = computed(() => {
 async function refresh() {
   loading.value = true
   try {
-    const [f, a, t, s] = await Promise.all([
+    const [f, a, t, s, v] = await Promise.all([
       purchaseApi.farmers(),
       purchaseApi.arrivals(),
       purchaseApi.weighTickets(),
       purchaseApi.farmerSettlements(),
+      purchaseApi.weighVarieties('status=active'),
     ])
     farmers.value = ((f.data as { list?: Row[] })?.list) || []
+    farmerOptions.value = farmers.value.slice(0, 30)
     arrivals.value = ((a.data as { list?: Row[] })?.list) || []
     tickets.value = ((t.data as { list?: Row[] })?.list) || []
     settlements.value = ((s.data as { list?: Row[] })?.list) || []
+    varieties.value = ((v.data as { list?: Row[] })?.list) || []
     if (farmers.value.length) {
       if (!arrivalForm.farmer_id) arrivalForm.farmer_id = Number(farmers.value[0].id)
-      if (!weighForm.farmer_id) weighForm.farmer_id = Number(farmers.value[0].id)
+    }
+    if (varieties.value.length && !weighForm.variety_id) {
+      onVarietyChange(Number(varieties.value[0].id))
     }
   } finally {
     loading.value = false
@@ -145,10 +169,139 @@ async function qcArrival(id: number, pass: boolean) {
   await refresh()
 }
 
+async function searchFarmers(q: string) {
+  const kw = String(q || '').trim()
+  if (!kw) {
+    farmerOptions.value = farmers.value.slice(0, 30)
+    return
+  }
+  farmerSearchLoading.value = true
+  try {
+    let params = `page_size=30&keyword=${encodeURIComponent(kw)}`
+    if (/^\d+$/.test(kw) && kw.length <= 6) params = `page_size=30&id=${encodeURIComponent(kw)}`
+    else if (/^1\d{10}$/.test(kw) || /^\d{7,}$/.test(kw)) params = `page_size=30&mobile=${encodeURIComponent(kw)}`
+    const res = await purchaseApi.farmers(params)
+    farmerOptions.value = ((res.data as { list?: Row[] })?.list) || []
+  } finally {
+    farmerSearchLoading.value = false
+  }
+}
+
+function applyFarmer(row: Row | undefined) {
+  if (!row) {
+    weighForm.farmer_id = 0
+    return
+  }
+  weighForm.farmer_id = Number(row.id || 0)
+  weighForm.party_name = String(row.name || '')
+  weighForm.party_mobile = String(row.mobile || '')
+  weighForm.origin = String(row.origin || weighForm.origin || '')
+  const price = Number(row.default_unit_price || 0)
+  if (price > 0) weighForm.unit_price = price
+}
+
+function onFarmerSelect(id: number) {
+  const row = farmerOptions.value.find((x) => Number(x.id) === id) || farmers.value.find((x) => Number(x.id) === id)
+  applyFarmer(row)
+}
+
+function openOnsiteFarmer() {
+  onsiteFarmer.name = weighForm.party_name || ''
+  onsiteFarmer.mobile = weighForm.party_mobile || ''
+  onsiteFarmer.origin = weighForm.origin || ''
+  onsiteFarmerDlg.value = true
+}
+
+async function saveOnsiteFarmer() {
+  if (!onsiteFarmer.name.trim()) return ElMessage.warning('请填写农户姓名')
+  const res = await purchaseApi.createFarmer({
+    name: onsiteFarmer.name.trim(),
+    mobile: onsiteFarmer.mobile.trim(),
+    origin: onsiteFarmer.origin.trim(),
+  })
+  if (res.code !== 1) return ElMessage.error(res.msg)
+  const row = (res.data as Row) || {}
+  farmerOptions.value = [row, ...farmerOptions.value]
+  farmers.value = [row, ...farmers.value]
+  applyFarmer(row)
+  onsiteFarmerDlg.value = false
+  ElMessage.success(`已现场建档并关联 #${row.id}`)
+}
+
+async function validateBatch() {
+  const code = String(weighForm.batch_no || '').trim().toUpperCase()
+  weighForm.batch_no = code
+  if (!code) {
+    batchValid.value = false
+    return ElMessage.warning('请填写溯源批号')
+  }
+  const res = await purchaseApi.validateTraceBatchCode({ code })
+  batchValid.value = res.code === 1
+  if (res.code !== 1) return ElMessage.error(res.msg)
+  ElMessage.success('批号校验通过')
+}
+
+function onBatchScanEnter() {
+  void validateBatch()
+}
+
+async function uploadSitePhoto(file: File) {
+  const res = await bizApi.upload(file)
+  if (res.code !== 1) {
+    ElMessage.error(res.msg)
+    return false
+  }
+  const url = String((res.data as Row)?.url || (res.data as Row)?.file_url || '')
+  if (!url) {
+    ElMessage.error('上传无返回地址')
+    return false
+  }
+  weighForm.image_urls = [...weighForm.image_urls, url].slice(0, 3)
+  weighForm.image_url = weighForm.image_urls[0] || ''
+  ElMessage.success('照片已上传')
+  return false
+}
+
 async function createWeigh() {
-  if (!weighForm.image_url) return ElMessage.warning('过磅图必填')
-  const body: Record<string, unknown> = { ...weighForm }
+  if (!weighForm.batch_no) return ElMessage.warning('溯源批号必填')
+  if (!batchValid.value) {
+    await validateBatch()
+    if (!batchValid.value) return
+  }
+  if (!weighForm.image_url) return ElMessage.warning('请上传现场照片')
+  if (!weighForm.variety_id && !weighForm.variety) return ElMessage.warning('请选择过磅品种')
+  const body: Record<string, unknown> = {
+    receive_kind: weighForm.receive_kind,
+    batch_no: weighForm.batch_no,
+    farmer_id: weighForm.farmer_id || 0,
+    party_name: weighForm.party_name,
+    party_mobile: weighForm.party_mobile,
+    channel: weighForm.channel,
+    product_id: weighForm.product_id,
+    variety_id: weighForm.variety_id || undefined,
+    variety: weighForm.variety,
+    origin: weighForm.origin,
+    source_type: weighForm.source_type,
+    image_url: weighForm.image_url,
+    image_urls: weighForm.image_urls,
+    plate_no: weighForm.plate_no,
+    receive_address: weighForm.receive_address,
+    pass_rate: weighForm.pass_rate,
+    reject_weight: weighForm.reject_weight,
+    freight_fee: weighForm.freight_fee,
+    loading_fee: weighForm.loading_fee,
+    weigh_fee: weighForm.weigh_fee,
+  }
   if (weighForm.arrival_id) body.arrival_id = weighForm.arrival_id
+  if (weighForm.receive_kind === 'gate') {
+    body.gross_weight = weighForm.gross_weight
+    body.deduct_rate = weighForm.deduct_rate
+    body.unit_price = weighForm.unit_price
+  } else {
+    body.net_weight = weighForm.net_weight
+    body.bag_qty = weighForm.bag_qty
+    body.cold_store_type = weighForm.cold_store_type
+  }
   if (weighForm.ocr_draft_json) {
     try {
       body.ocr_draft_json = JSON.parse(weighForm.ocr_draft_json)
@@ -158,8 +311,21 @@ async function createWeigh() {
   }
   const res = await purchaseApi.createWeighTicket(body)
   if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success(`过磅草稿已建，净重预估 ${(res.data as Row)?.net_weight}，请对照原图确认`)
+  ElMessage.success(`草稿已建 ${weighForm.receive_kind === 'gate' ? '入厂' : '入库'}，净重 ${(res.data as Row)?.net_weight}`)
+  weighForm.batch_no = ''
+  weighForm.image_url = ''
+  weighForm.image_urls = []
+  batchValid.value = false
   await refresh()
+}
+
+function onVarietyChange(id: number) {
+  weighForm.variety_id = id
+  const row = varieties.value.find((x) => Number(x.id) === id)
+  if (!row) return
+  weighForm.variety = String(row.name || '')
+  const pid = Number(row.default_product_id || 0)
+  weighForm.product_id = pid > 0 ? pid : 1
 }
 
 function openConfirm(row: Row) {
@@ -288,10 +454,34 @@ onMounted(refresh)
           </el-card>
         </el-col>
         <el-col :span="showFarmers ? 8 : 12">
-          <el-card header="过磅草稿（图必填）">
-            <el-form label-width="90px" size="small">
+          <el-card header="过磅草稿（入厂/入库）">
+            <el-form label-width="100px" size="small">
+              <el-form-item label="模式">
+                <el-radio-group v-model="weighForm.receive_kind" @change="batchValid = false">
+                  <el-radio-button value="gate">入厂</el-radio-button>
+                  <el-radio-button value="stockin">入库</el-radio-button>
+                </el-radio-group>
+              </el-form-item>
+              <el-form-item label="溯源批号">
+                <div style="width:100%">
+                  <el-radio-group v-model="batchInputMode" size="small" style="margin-bottom:8px" @change="batchValid = false">
+                    <el-radio-button value="scan">扫描输入</el-radio-button>
+                    <el-radio-button value="manual">手动输入</el-radio-button>
+                  </el-radio-group>
+                  <div style="display:flex;gap:8px;width:100%">
+                    <el-input
+                      v-model="weighForm.batch_no"
+                      :placeholder="batchInputMode === 'scan' ? '扫码枪扫入后回车校验' : '手输批号后点校验'"
+                      @change="batchValid = false"
+                      @keyup.enter="onBatchScanEnter"
+                    />
+                    <el-button @click="validateBatch">校验</el-button>
+                  </div>
+                  <div v-if="batchInputMode === 'scan'" class="hint">扫描模式：光标在输入框内，扫码枪楔入后回车自动校验</div>
+                </div>
+              </el-form-item>
               <el-form-item label="到货单">
-                <el-select v-model="weighForm.arrival_id" clearable style="width:100%" placeholder="优先选已 QC 通过单">
+                <el-select v-model="weighForm.arrival_id" clearable style="width:100%" placeholder="可选">
                   <el-option
                     v-for="a in arrivals.filter((x) => x.status === 'qc_pass')"
                     :key="String(a.id)"
@@ -300,17 +490,83 @@ onMounted(refresh)
                   />
                 </el-select>
               </el-form-item>
-              <el-form-item label="入场重量"><el-input-number v-model="weighForm.gross_weight" :min="0" /></el-form-item>
-              <el-form-item label="扣损率"><el-input-number v-model="weighForm.deduct_rate" :min="0" :max="1" :step="0.01" /></el-form-item>
-              <el-form-item label="车牌"><el-input v-model="weighForm.plate_no" /></el-form-item>
-              <el-form-item label="收货地址"><el-input v-model="weighForm.receive_address" /></el-form-item>
-              <el-form-item label="合格率%"><el-input-number v-model="weighForm.pass_rate" :min="0" :max="100" /></el-form-item>
-              <el-form-item label="不合格重"><el-input-number v-model="weighForm.reject_weight" :min="0" /></el-form-item>
-              <el-form-item label="运费"><el-input-number v-model="weighForm.freight_fee" :min="0" /></el-form-item>
-              <el-form-item label="装卸费"><el-input-number v-model="weighForm.loading_fee" :min="0" /></el-form-item>
-              <el-form-item label="过磅费"><el-input-number v-model="weighForm.weigh_fee" :min="0" /></el-form-item>
-              <el-form-item label="过磅图"><el-input v-model="weighForm.image_url" placeholder="必填" /></el-form-item>
-              <el-form-item label="OCR草稿"><el-input v-model="weighForm.ocr_draft_json" type="textarea" :rows="2" placeholder='可选 {"gross_weight":1000}' /></el-form-item>
+              <el-form-item label="农户搜索">
+                <div style="display:flex;gap:8px;width:100%">
+                  <el-select
+                    v-model="weighForm.farmer_id"
+                    filterable
+                    remote
+                    clearable
+                    reserve-keyword
+                    placeholder="手机号 / 姓名 / ID"
+                    :remote-method="searchFarmers"
+                    :loading="farmerSearchLoading"
+                    style="flex:1"
+                    @change="onFarmerSelect"
+                  >
+                    <el-option
+                      v-for="f in farmerOptions"
+                      :key="String(f.id)"
+                      :label="`${f.name} ${f.mobile || ''} (#${f.id})`"
+                      :value="Number(f.id)"
+                    />
+                  </el-select>
+                  <el-button @click="openOnsiteFarmer">现场录入</el-button>
+                </div>
+              </el-form-item>
+              <el-form-item label="姓名"><el-input v-model="weighForm.party_name" /></el-form-item>
+              <el-form-item label="电话"><el-input v-model="weighForm.party_mobile" /></el-form-item>
+              <el-form-item :label="weighForm.receive_kind === 'stockin' ? '产地地址' : '产地'">
+                <el-input v-model="weighForm.origin" />
+              </el-form-item>
+              <el-form-item label="品种">
+                <el-select
+                  :model-value="weighForm.variety_id || undefined"
+                  style="width:100%"
+                  placeholder="请选择过磅品种"
+                  @update:model-value="(v: number) => onVarietyChange(v)"
+                >
+                  <el-option v-for="x in varieties" :key="String(x.id)" :label="String(x.name)" :value="Number(x.id)" />
+                </el-select>
+              </el-form-item>
+              <template v-if="weighForm.receive_kind === 'gate'">
+                <el-form-item label="入场重量"><el-input-number v-model="weighForm.gross_weight" :min="0" /></el-form-item>
+                <el-form-item label="扣损率"><el-input-number v-model="weighForm.deduct_rate" :min="0" :max="1" :step="0.01" /></el-form-item>
+                <el-form-item label="不合格重"><el-input-number v-model="weighForm.reject_weight" :min="0" /></el-form-item>
+                <el-form-item label="单价"><el-input-number v-model="weighForm.unit_price" :min="0" :step="0.1" /></el-form-item>
+                <el-form-item label="车牌"><el-input v-model="weighForm.plate_no" /></el-form-item>
+                <el-form-item label="收货地址"><el-input v-model="weighForm.receive_address" /></el-form-item>
+                <el-form-item label="运费"><el-input-number v-model="weighForm.freight_fee" :min="0" /></el-form-item>
+                <el-form-item label="装卸费"><el-input-number v-model="weighForm.loading_fee" :min="0" /></el-form-item>
+                <el-form-item label="过磅费"><el-input-number v-model="weighForm.weigh_fee" :min="0" /></el-form-item>
+              </template>
+              <template v-else>
+                <el-form-item label="重量kg"><el-input-number v-model="weighForm.net_weight" :min="0" /></el-form-item>
+                <el-form-item label="袋数"><el-input-number v-model="weighForm.bag_qty" :min="0" /></el-form-item>
+                <el-form-item label="冷库">
+                  <el-radio-group v-model="weighForm.cold_store_type">
+                    <el-radio-button value="fresh">保鲜库</el-radio-button>
+                    <el-radio-button value="semi">半成品库</el-radio-button>
+                    <el-radio-button value="fg">成品库</el-radio-button>
+                  </el-radio-group>
+                </el-form-item>
+              </template>
+              <el-form-item label="现场照片">
+                <el-upload :show-file-list="false" :before-upload="uploadSitePhoto" accept="image/*">
+                  <el-button>上传照片</el-button>
+                </el-upload>
+                <div v-if="weighForm.image_urls.length" class="photos">
+                  <el-image
+                    v-for="(u, i) in weighForm.image_urls"
+                    :key="u"
+                    :src="u"
+                    style="width: 56px; height: 56px; margin-right: 6px"
+                    fit="cover"
+                    :preview-src-list="weighForm.image_urls"
+                    :initial-index="i"
+                  />
+                </div>
+              </el-form-item>
               <el-button type="primary" @click="createWeigh">创建过磅草稿</el-button>
             </el-form>
           </el-card>
@@ -350,12 +606,21 @@ onMounted(refresh)
       <p class="hint">确认出码后系统将溯源码与单号推送给仓管；仓管确认后方为采购完成。</p>
       <el-table :data="tickets" size="small">
         <el-table-column prop="doc_no" label="单号" width="150" />
+        <el-table-column prop="receive_kind" label="模式" width="70">
+          <template #default="{ row }">{{ row.receive_kind === 'stockin' ? '入库' : '入厂' }}</template>
+        </el-table-column>
+        <el-table-column prop="batch_no" label="溯源批号" min-width="160" />
+        <el-table-column prop="party_name" label="姓名" width="90" />
         <el-table-column prop="farmer_name" label="农户" width="90" />
         <el-table-column prop="gross_weight" label="入场重量" width="90" />
         <el-table-column prop="net_weight" label="净重" width="70" />
-        <el-table-column prop="plate_no" label="车牌" width="90" />
-        <el-table-column prop="pass_rate" label="合格率%" width="80" />
-        <el-table-column prop="freight_fee" label="运费" width="70" />
+        <el-table-column prop="settle_amount" label="结算" width="80" />
+        <el-table-column prop="cold_store_type" label="冷库" width="80" />
+        <el-table-column prop="image_url" label="照片" width="70">
+          <template #default="{ row }">
+            <el-image v-if="row.image_url" :src="String(row.image_url)" style="width:36px;height:36px" fit="cover" :preview-src-list="[String(row.image_url)]" />
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="90" />
         <el-table-column prop="trace_code" label="溯源码" min-width="160" />
         <el-table-column prop="box_code" label="箱码" min-width="120" />
@@ -449,6 +714,17 @@ onMounted(refresh)
       <template #footer>
         <el-button @click="correctDlg = false">取消</el-button>
         <el-button type="warning" @click="doCorrect">提交纠错</el-button>
+      </template>
+    </el-dialog>
+    <el-dialog v-model="onsiteFarmerDlg" title="现场录入农户（平台共享）" width="480px">
+      <el-form label-width="90px">
+        <el-form-item label="姓名" required><el-input v-model="onsiteFarmer.name" /></el-form-item>
+        <el-form-item label="手机号"><el-input v-model="onsiteFarmer.mobile" /></el-form-item>
+        <el-form-item label="产地地址"><el-input v-model="onsiteFarmer.origin" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="onsiteFarmerDlg = false">取消</el-button>
+        <el-button type="primary" @click="saveOnsiteFarmer">保存并关联</el-button>
       </template>
     </el-dialog>
   </div>

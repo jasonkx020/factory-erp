@@ -1,5 +1,5 @@
-import { api } from './client'
-import type { LoginData, MeData, PageData } from '../types'
+import { api, getAccessToken, getApiBase } from './client'
+import type { ApiEnvelope, LoginData, MeData, PageData } from '../types'
 
 export const authApi = {
   login: (login_name: string, password: string, client_type = 'admin') =>
@@ -215,6 +215,15 @@ export const bizApi = {
     api.get(`/biz/evidences?biz_type=${encodeURIComponent(bizType)}&biz_id=${bizId}`),
   addEvidence: (body: Record<string, unknown>) => api.post('/biz/evidences', body),
   correct: (body: Record<string, unknown>) => api.post('/biz/corrections', body),
+  upload: async (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    const headers: Record<string, string> = {}
+    const t = getAccessToken()
+    if (t) headers.Authorization = `Bearer ${t}`
+    const res = await fetch(`${getApiBase()}/biz/uploads`, { method: 'POST', headers, body: fd })
+    return (await res.json()) as ApiEnvelope<{ url?: string; file_url?: string }>
+  },
 }
 
 export const notifyApi = {
@@ -615,6 +624,20 @@ export const purchaseApi = {
   warehouseConfirmWeigh: (id: number, body?: Record<string, unknown>) =>
     api.post(`/purchase/weigh-tickets/${id}/warehouse-confirm`, body || {}),
   stockInWeighTicket: (id: number) => api.post(`/purchase/weigh-tickets/${id}/stock-in`, {}),
+  weighVarieties: (params?: string) =>
+    api.get<PageData>(`/purchase/weigh-varieties${params ? `?${params}` : ''}`),
+  createWeighVariety: (body: Record<string, unknown>) => api.post('/purchase/weigh-varieties', body),
+  updateWeighVariety: (id: number, body: Record<string, unknown>) =>
+    api.put(`/purchase/weigh-varieties/${id}`, body),
+  removeWeighVariety: (id: number) => api.del(`/purchase/weigh-varieties/${id}`),
+  traceBatchCodes: (params?: string) =>
+    api.get<PageData>(`/purchase/trace-batch-codes${params ? `?${params}` : ''}`),
+  generateTraceBatchCodes: (body: Record<string, unknown>) =>
+    api.post('/purchase/trace-batch-codes/generate', body),
+  validateTraceBatchCode: (body: Record<string, unknown>) =>
+    api.post('/purchase/trace-batch-codes/validate', body),
+  voidTraceBatchCode: (body: Record<string, unknown>) =>
+    api.post('/purchase/trace-batch-codes/void', body),
   farmerSettlements: () => api.get<PageData>('/purchase/farmer-settlements'),
   farmerSettlementSummary: () => api.get('/purchase/farmer-settlements/summary'),
   settleFarmer: (body: Record<string, unknown>) => api.post('/purchase/farmer-settlements', body),

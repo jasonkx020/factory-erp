@@ -12,6 +12,8 @@ import {
 } from '../../components/select'
 import SupplierView from './SupplierView.vue'
 import FarmerInboundView from './FarmerInboundView.vue'
+import WeighVarietyView from './WeighVarietyView.vue'
+import TraceBatchView from './TraceBatchView.vue'
 
 type Row = Record<string, unknown>
 
@@ -21,6 +23,8 @@ const TITLE_MAP: Record<string, string> = {
   suppliers: '供应商管理',
   farmers: '农户档案',
   weigh: '过磅收货',
+  varieties: '过磅品种',
+  'trace-batches': '溯源批号',
   settlements: '农户结算',
   trace: '原料溯源',
   requests: '采购申请',
@@ -36,6 +40,8 @@ const TITLE_MAP: Record<string, string> = {
 const active = computed(() => String(route.params.section || 'suppliers'))
 const title = computed(() => TITLE_MAP[active.value] || '采购管理')
 const isFarmerSection = computed(() => ['farmers', 'weigh', 'settlements', 'trace'].includes(active.value))
+const isVarietySection = computed(() => active.value === 'varieties')
+const isTraceBatchSection = computed(() => active.value === 'trace-batches')
 const isSupplierSection = computed(() => active.value === 'suppliers')
 
 const loading = ref(false)
@@ -119,7 +125,7 @@ async function loadMeta() {
 }
 
 async function refresh() {
-  if (isSupplierSection.value || isFarmerSection.value) return
+  if (isSupplierSection.value || isFarmerSection.value || isVarietySection.value || isTraceBatchSection.value) return
   loading.value = true
   detail.value = null
   try {
@@ -337,6 +343,8 @@ onMounted(async () => {
 <template>
   <div>
     <SupplierView v-if="isSupplierSection" />
+    <WeighVarietyView v-else-if="isVarietySection" />
+    <TraceBatchView v-else-if="isTraceBatchSection" />
     <FarmerInboundView v-else-if="isFarmerSection" :section="active" />
 
     <div v-else class="page" v-loading="loading">

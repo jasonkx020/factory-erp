@@ -17,6 +17,9 @@ class _TicketsPageState extends State<TicketsPage> {
   int _tab = 0;
   List<dynamic> _list = [];
   String _msg = '';
+  int? _deepTicketId;
+  String? _deepEventKey;
+  bool _deepHandled = false;
 
   static const _statusLabel = {
     'open': '待处理',
@@ -29,7 +32,30 @@ class _TicketsPageState extends State<TicketsPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _readDeepLinkArgs();
+      _load();
+    });
+  }
+
+  void _readDeepLinkArgs() {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is! Map) return;
+    final m = Map<String, dynamic>.from(args);
+    final tid = m['ticket_id'];
+    if (tid is num) {
+      _deepTicketId = tid.toInt();
+    } else if (tid != null) {
+      _deepTicketId = int.tryParse(tid.toString());
+    }
+    _deepEventKey = m['event_key']?.toString();
+    // assigned → 待我处理; done/rejected → 我发起的
+    final ek = _deepEventKey ?? '';
+    if (ek.contains('done') || ek.contains('rejected')) {
+      _tab = 1;
+    } else {
+      _tab = 0;
+    }
   }
 
   Future<void> _load() async {
@@ -40,6 +66,45 @@ class _TicketsPageState extends State<TicketsPage> {
       _list = ApiClient.listOf(r.data);
       if (!r.ok) _msg = r.msg;
     });
+    await _maybeOpenDeepLink();
+  }
+
+  Future<void> _maybeOpenDeepLink() async {
+    if (_deepHandled || _deepTicketId == null) return;
+    _deepHandled = true;
+    final id = _deepTicketId!;
+    // Prefer list row when present so action menu still works; else fetch by id.
+    Map<String, dynamic>? row;
+    for (final e in _list) {
+      final m = Map<String, dynamic>.from(e as Map);
+      if ((m['id'] as num?)?.toInt() == id) {
+        row = m;
+        break;
+      }
+    }
+    if (row == null) {
+      // Try the other tab once if not found.
+      final otherScope = _tab == 0 ? 'mine_applicant' : 'mine_assignee';
+      final r = await context.read<AuthState>().api.get('/workflow/tickets?scope=$otherScope');
+      if (!mounted) return;
+      if (r.ok) {
+        final other = ApiClient.listOf(r.data);
+        for (final e in other) {
+          final m = Map<String, dynamic>.from(e as Map);
+          if ((m['id'] as num?)?.toInt() == id) {
+            setState(() {
+              _tab = _tab == 0 ? 1 : 0;
+              _list = other;
+            });
+            row = m;
+            break;
+          }
+        }
+      }
+    }
+    row ??= {'id': id};
+    if (!mounted) return;
+    await _openDetail(row);
   }
 
   Future<void> _act(Map<String, dynamic> row, String action) async {
@@ -72,12 +137,19 @@ class _TicketsPageState extends State<TicketsPage> {
     final d = Map<String, dynamic>.from(r.data as Map);
     final schema = (d['form_schema'] as List?) ?? [];
     final payload = d['payload'] is Map ? Map<String, dynamic>.from(d['payload'] as Map) : <String, dynamic>{};
+    final st = '${d['status'] ?? ''}';
+    final canAct = st == 'open' || st == 'in_progress';
     if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+        ),
         child: ListView(
           shrinkWrap: true,
           children: [
@@ -93,6 +165,32 @@ class _TicketsPageState extends State<TicketsPage> {
                 trailing: Text('${payload[key] ?? '-'}'),
               );
             }),
+            if (canAct) ...[
+              const SizedBox(height: 8),
+              FilledButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  await _act(d, 'approve');
+                },
+                child: const Text('通过/办结'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  await _act(d, 'return_confirm');
+                },
+                child: const Text('确认归还'),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  await _act(d, 'reject');
+                },
+                child: const Text('驳回'),
+              ),
+            ],
           ],
         ),
       ),

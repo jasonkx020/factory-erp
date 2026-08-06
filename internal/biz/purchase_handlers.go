@@ -28,6 +28,10 @@ func (s *Services) handlePurchase(c *gin.Context, method, openapiPath, resourceK
 		return s.handleInboundArrivals(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/farmers"):
 		return s.handleFarmers(c, method, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/purchase/weigh-varieties"):
+		return s.handleWeighVarieties(c, method, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/purchase/trace-batch-codes"):
+		return s.handleTraceBatchCodes(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/weigh-tickets"):
 		return s.handleWeighTickets(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/farmer-settlements"):

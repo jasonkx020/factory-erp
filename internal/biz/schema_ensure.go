@@ -243,6 +243,13 @@ func EnsureClosedLoopSchema(db *sql.DB) {
 		`ALTER TABLE pur_weigh_ticket ADD COLUMN loading_fee REAL DEFAULT 0`,
 		`ALTER TABLE pur_weigh_ticket ADD COLUMN weigh_fee REAL DEFAULT 0`,
 		`ALTER TABLE pur_weigh_ticket ADD COLUMN weighbridge_id INTEGER`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN receive_kind TEXT`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN unit_price REAL DEFAULT 0`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN settle_amount REAL DEFAULT 0`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN bag_qty REAL DEFAULT 0`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN cold_store_type TEXT`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN party_name TEXT`,
+		`ALTER TABLE pur_weigh_ticket ADD COLUMN party_mobile TEXT`,
 		`ALTER TABLE pur_inbound_arrival ADD COLUMN plate_no TEXT`,
 		`ALTER TABLE pur_inbound_arrival ADD COLUMN receive_address TEXT`,
 		`ALTER TABLE pur_inbound_arrival ADD COLUMN pass_rate REAL DEFAULT 0`,
@@ -272,6 +279,36 @@ func EnsureClosedLoopSchema(db *sql.DB) {
 	execSchemaRuns(db, "closed-loop-alter", alters)
 	_, _ = db.Exec(`INSERT OR IGNORE INTO pur_grade_price(grade, unit_price, status) VALUES
  ('A', 1.20, 'active'), ('B', 1.00, 'active'), ('C', 0.80, 'active')`)
+
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS pur_weigh_variety (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  sort_no INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active',
+  default_product_id INTEGER,
+  remark TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  is_deleted INTEGER NOT NULL DEFAULT 0
+)`)
+	_, _ = db.Exec(`INSERT OR IGNORE INTO pur_weigh_variety(code, name, sort_no, status, default_product_id, remark) VALUES
+ ('fresh_cassava', '鲜木薯', 10, 'active', 1, '原料过磅默认'),
+ ('semi', '半成品', 20, 'active', NULL, '半成品入库过磅'),
+ ('fg_in', '成品入库', 30, 'active', NULL, '成品入库过磅')`)
+
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS pur_trace_batch_code (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  biz_date TEXT NOT NULL,
+  seq_no INTEGER NOT NULL,
+  lot_no TEXT NOT NULL DEFAULT '01',
+  status TEXT NOT NULL DEFAULT 'available',
+  weigh_ticket_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  used_at TEXT
+)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_trace_batch_biz ON pur_trace_batch_code(biz_date, lot_no)`)
 }
 
 // EnsureFarmerSchema creates farmer inbound / weigh / settlement tables.
@@ -674,14 +711,21 @@ func EnsureFieldLedgerSchema(db *sql.DB) {
   seq_no INTEGER DEFAULT 1,
   employee_id INTEGER,
   employee_name TEXT,
+  status TEXT NOT NULL DEFAULT 'open',
+  remark TEXT,
+  pending_return_qty REAL NOT NULL DEFAULT 0,
+  ticket_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+)`,
+		`CREATE TABLE IF NOT EXISTS hr_tool_issue_line (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  issue_id INTEGER NOT NULL,
   tool_item_id INTEGER NOT NULL,
   tool_name TEXT,
   issue_qty REAL DEFAULT 0,
   return_qty REAL DEFAULT 0,
-  total_qty REAL DEFAULT 0,
-  status TEXT NOT NULL DEFAULT 'open',
-  remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  pending_return_qty REAL DEFAULT 0,
+  UNIQUE(issue_id, tool_item_id)
 )`,
 		`CREATE TABLE IF NOT EXISTS inv_weighbridge (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -709,5 +753,51 @@ func EnsureFieldLedgerSchema(db *sql.DB) {
  SELECT id, '袋', 0, 25, 1, 1, 1 FROM prd_product WHERE product_type IN ('semi','finished') AND id NOT IN (
   SELECT product_id FROM prd_product_unit WHERE unit_name='袋'
  )`)
+	migrateToolIssueToLines(db)
 }
 
+// migrateToolIssueToLines moves legacy single-tool header columns into hr_tool_issue_line.
+func migrateToolIssueToLines(db *sql.DB) {
+	if db == nil {
+		return
+	}
+	_, _ = db.Exec(`ALTER TABLE hr_tool_issue ADD COLUMN pending_return_qty REAL NOT NULL DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE hr_tool_issue ADD COLUMN ticket_id INTEGER`)
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS hr_tool_issue_line (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  issue_id INTEGER NOT NULL,
+  tool_item_id INTEGER NOT NULL,
+  tool_name TEXT,
+  issue_qty REAL DEFAULT 0,
+  return_qty REAL DEFAULT 0,
+  pending_return_qty REAL DEFAULT 0,
+  UNIQUE(issue_id, tool_item_id)
+)`)
+	var legacyCols int
+	_ = db.QueryRow(`SELECT COUNT(1) FROM pragma_table_info('hr_tool_issue') WHERE name='tool_item_id'`).Scan(&legacyCols)
+	if legacyCols == 0 {
+		return
+	}
+	_, _ = db.Exec(`INSERT OR IGNORE INTO hr_tool_issue_line(issue_id, tool_item_id, tool_name, issue_qty, return_qty, pending_return_qty)
+ SELECT id, tool_item_id, COALESCE(tool_name,''), COALESCE(issue_qty,0), COALESCE(return_qty,0), COALESCE(pending_return_qty,0)
+ FROM hr_tool_issue WHERE COALESCE(tool_item_id,0) > 0`)
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS hr_tool_issue__hdr (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc_no TEXT NOT NULL UNIQUE,
+  biz_date TEXT NOT NULL,
+  seq_no INTEGER DEFAULT 1,
+  employee_id INTEGER,
+  employee_name TEXT,
+  status TEXT NOT NULL DEFAULT 'open',
+  remark TEXT,
+  pending_return_qty REAL NOT NULL DEFAULT 0,
+  ticket_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+)`)
+	_, _ = db.Exec(`INSERT OR IGNORE INTO hr_tool_issue__hdr(id, doc_no, biz_date, seq_no, employee_id, employee_name, status, remark, pending_return_qty, ticket_id, created_at)
+ SELECT id, doc_no, biz_date, COALESCE(seq_no,1), employee_id, employee_name, status, remark,
+  COALESCE(pending_return_qty,0), ticket_id, COALESCE(created_at, datetime('now'))
+ FROM hr_tool_issue`)
+	_, _ = db.Exec(`DROP TABLE hr_tool_issue`)
+	_, _ = db.Exec(`ALTER TABLE hr_tool_issue__hdr RENAME TO hr_tool_issue`)
+}

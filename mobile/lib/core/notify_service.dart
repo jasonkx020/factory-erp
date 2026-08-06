@@ -3,11 +3,23 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 
 import 'api_client.dart';
+
+/// Global navigator for local-notification deep links (cold / background tap).
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
+/// Resolved deep-link target from inbox / push payload.
+class NotifyTarget {
+  const NotifyTarget({required this.route, this.arguments = const {}});
+
+  final String route;
+  final Map<String, dynamic> arguments;
+}
 
 /// Inbox + MQTT (TCP) + local notifications. Falls back to HTTP poll.
 class NotifyService extends ChangeNotifier {
@@ -25,10 +37,13 @@ class NotifyService extends ChangeNotifier {
   int tick = 0;
   bool _started = false;
   bool _notifReady = false;
+  bool _launchHandled = false;
+  Map<String, dynamic>? _pendingLaunchArgs;
 
   Future<void> start() async {
     if (_started) {
       await refresh();
+      await consumePendingLaunch();
       return;
     }
     _started = true;
@@ -37,6 +52,7 @@ class NotifyService extends ChangeNotifier {
     await _connectMqtt();
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 15), (_) => refresh());
+    await consumePendingLaunch();
   }
 
   Future<void> stop() async {
@@ -59,16 +75,64 @@ class NotifyService extends ChangeNotifier {
     const ios = DarwinInitializationSettings();
     await _local.initialize(
       settings: const InitializationSettings(android: android, iOS: ios),
+      onDidReceiveNotificationResponse: _onLocalNotificationResponse,
     );
     if (Platform.isAndroid) {
       await _local
           .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
           ?.requestNotificationsPermission();
     }
+    final launch = await _local.getNotificationAppLaunchDetails();
+    if (launch?.didNotificationLaunchApp == true) {
+      final payload = launch!.notificationResponse?.payload;
+      if (payload != null && payload.isNotEmpty) {
+        _pendingLaunchArgs = _decodeNotifyPayload(payload);
+      }
+    }
     _notifReady = true;
   }
 
-  Future<void> _showLocal(String title, String body) async {
+  void _onLocalNotificationResponse(NotificationResponse response) {
+    final raw = response.payload;
+    if (raw == null || raw.isEmpty) return;
+    final data = _decodeNotifyPayload(raw);
+    if (data == null) return;
+    final ctx = appNavigatorKey.currentContext;
+    if (ctx == null) {
+      _pendingLaunchArgs = data;
+      return;
+    }
+    navigateFromPayload(ctx, data);
+  }
+
+  /// After login / start, apply cold-start notification deep link once.
+  Future<void> consumePendingLaunch() async {
+    if (_launchHandled) return;
+    final data = _pendingLaunchArgs;
+    if (data == null) return;
+    _pendingLaunchArgs = null;
+    // Wait a frame so MaterialApp / home are mounted.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    final nav = appNavigatorKey.currentState;
+    if (nav == null || !nav.mounted) {
+      _pendingLaunchArgs = data;
+      return;
+    }
+    _launchHandled = true;
+    final target = resolveNotifyTarget(data['event_key']?.toString(), Map<String, dynamic>.from(data));
+    if (target == null) return;
+    nav.pushNamed(target.route, arguments: target.arguments);
+  }
+
+  Map<String, dynamic>? _decodeNotifyPayload(String raw) {
+    try {
+      final v = jsonDecode(raw);
+      if (v is Map) return Map<String, dynamic>.from(v);
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _showLocal(String title, String body, {Map<String, dynamic>? payload}) async {
     if (!_notifReady) return;
     const android = AndroidNotificationDetails(
       'erp_workflow',
@@ -78,11 +142,13 @@ class NotifyService extends ChangeNotifier {
       priority: Priority.high,
     );
     const details = NotificationDetails(android: android, iOS: DarwinNotificationDetails());
+    final payloadStr = payload == null || payload.isEmpty ? null : jsonEncode(payload);
     await _local.show(
       id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
       title: title,
       body: body,
       notificationDetails: details,
+      payload: payloadStr,
     );
   }
 
@@ -164,14 +230,25 @@ class NotifyService extends ChangeNotifier {
         final raw = MqttPublishPayload.bytesToStringAsString(rec.payload.message);
         String title = '工作流通知';
         String body = raw;
+        Map<String, dynamic> pushPayload = {};
         try {
           final j = jsonDecode(raw);
           if (j is Map) {
-            title = j['title']?.toString() ?? j['event_key']?.toString() ?? title;
-            body = j['body']?.toString() ?? body;
+            final m = Map<String, dynamic>.from(j);
+            title = m['title']?.toString() ?? m['event_key']?.toString() ?? title;
+            body = m['body']?.toString() ?? body;
+            final inner = parsePayload(m['payload'] ?? m['payload_json']);
+            pushPayload = {
+              'event_key': m['event_key']?.toString() ?? '',
+              ...inner,
+            };
+            if (m['ticket_id'] != null) pushPayload['ticket_id'] = m['ticket_id'];
+            if (m['task_id'] != null) pushPayload['task_id'] = m['task_id'];
+            if (inner['ticket_id'] != null) pushPayload['ticket_id'] = inner['ticket_id'];
+            if (inner['employee_route'] != null) pushPayload['employee_route'] = inner['employee_route'];
           }
         } catch (_) {}
-        await _showLocal(title, body);
+        await _showLocal(title, body, payload: pushPayload.isEmpty ? null : pushPayload);
       }
       await refresh();
     });
@@ -205,15 +282,76 @@ class NotifyService extends ChangeNotifier {
     await refresh();
   }
 
+  /// Mark read (if any) then navigate to the pending page for this inbox row.
+  Future<void> openInboxItem(BuildContext context, Map<String, dynamic> row) async {
+    final id = (row['id'] as num?)?.toInt();
+    if (id != null) await markRead(id);
+    if (!context.mounted) return;
+    final eventKey = row['event_key']?.toString();
+    final payload = parsePayload(row['payload_json'] ?? row['payload']);
+    final target = resolveNotifyTarget(eventKey, payload);
+    if (target == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('暂无可跳转页面')),
+        );
+      }
+      return;
+    }
+    navigateToTarget(context, target);
+  }
+
+  void navigateFromPayload(BuildContext context, Map<String, dynamic> data) {
+    final eventKey = data['event_key']?.toString();
+    final payload = Map<String, dynamic>.from(data);
+    final target = resolveNotifyTarget(eventKey, payload);
+    if (target == null) return;
+    navigateToTarget(context, target);
+  }
+
+  void navigateToTarget(BuildContext context, NotifyTarget target) {
+    Navigator.of(context).pushNamed(target.route, arguments: target.arguments);
+  }
+
+  static NotifyTarget? resolveNotifyTarget(String? eventKey, Map<String, dynamic> payload) {
+    final ek = (eventKey ?? payload['event_key']?.toString() ?? '').trim();
+    var route = payload['employee_route']?.toString().trim();
+    if (route != null && route.isEmpty) route = null;
+    // Normalize Web /m/* paths if present in payload.
+    if (route != null && route.startsWith('/m/')) {
+      route = route.substring(2);
+    }
+    route ??= routeForEvent(ek);
+    if (route == null || route.isEmpty) return null;
+
+    final args = <String, dynamic>{
+      'event_key': ek,
+      'payload': payload,
+    };
+    final ticketId = payload['ticket_id'];
+    if (ticketId is num) {
+      args['ticket_id'] = ticketId.toInt();
+    } else if (ticketId != null) {
+      final n = int.tryParse(ticketId.toString());
+      if (n != null) args['ticket_id'] = n;
+    }
+    return NotifyTarget(route: route, arguments: args);
+  }
+
   static String? routeForEvent(String? eventKey) {
-    switch (eventKey) {
+    final k = (eventKey ?? '').trim();
+    switch (k) {
       case 'purchase.weigh_confirmed':
         return '/warehouse';
       case 'production.report_confirmed':
         return '/workshop';
       case 'payroll.labor_paid':
         return '/worker';
+      case 'purchase.stocked':
+      case 'purchase.settle_paid':
+        return '/receiving';
       default:
+        if (k.startsWith('workflow.ticket')) return '/tickets';
         return null;
     }
   }

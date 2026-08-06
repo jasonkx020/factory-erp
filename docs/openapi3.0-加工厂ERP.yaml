@@ -13157,6 +13157,128 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkAnyResponse"
 
+  /api/v1/purchase/weigh-varieties:
+    get:
+      tags: [采购管理]
+      summary: 过磅品种-列表
+      operationId: get_api_v1_purchase_weigh_varieties
+      description: |
+        功能模块：过磅品种；分期：2
+      x-erp-phase: 2
+      x-erp-module: 过磅品种
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [采购管理]
+      summary: 过磅品种-新建
+      operationId: post_api_v1_purchase_weigh_varieties
+      description: |
+        功能模块：过磅品种；分期：2
+      x-erp-phase: 2
+      x-erp-module: 过磅品种
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/weigh-varieties/{id}:
+    get:
+      tags: [采购管理]
+      summary: 过磅品种-详情
+      operationId: get_api_v1_purchase_weigh_varieties_id
+      description: |
+        功能模块：过磅品种；分期：2
+      x-erp-phase: 2
+      x-erp-module: 过磅品种
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    put:
+      tags: [采购管理]
+      summary: 过磅品种-更新
+      operationId: put_api_v1_purchase_weigh_varieties_id
+      description: |
+        功能模块：过磅品种；分期：2
+      x-erp-phase: 2
+      x-erp-module: 过磅品种
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    delete:
+      tags: [采购管理]
+      summary: 过磅品种-删除
+      operationId: delete_api_v1_purchase_weigh_varieties_id
+      description: |
+        功能模块：过磅品种；分期：2
+      x-erp-phase: 2
+      x-erp-module: 过磅品种
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
   /api/v1/purchase/weigh-tickets:
     get:
       tags: [采购管理]

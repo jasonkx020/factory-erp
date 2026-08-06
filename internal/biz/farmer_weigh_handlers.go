@@ -33,21 +33,60 @@ func (s *Services) handleFarmers(c *gin.Context, method, action string) bool {
 func (s *Services) listFarmers(c *gin.Context) bool {
 	pageNum, pageSize := sqlutil.Page(c)
 	kw := strings.TrimSpace(c.Query("keyword"))
+	mobileQ := strings.TrimSpace(c.Query("mobile"))
+	nameQ := strings.TrimSpace(c.Query("name"))
+	idQ := strings.TrimSpace(c.Query("id"))
 	where := `WHERE COALESCE(is_deleted,0)=0`
 	args := []interface{}{}
+	searching := idQ != "" || mobileQ != "" || nameQ != "" || kw != ""
+	if searching {
+		where += ` AND status='active'`
+	}
+	if idQ != "" {
+		where += ` AND id=?`
+		args = append(args, idQ)
+	}
+	if mobileQ != "" {
+		// 手机号：精确或后缀/前缀模糊
+		where += ` AND mobile LIKE ?`
+		args = append(args, "%"+mobileQ+"%")
+	}
+	if nameQ != "" {
+		where += ` AND name LIKE ?`
+		args = append(args, "%"+nameQ+"%")
+	}
 	if kw != "" {
-		where += ` AND (name LIKE ? OR mobile LIKE ? OR code LIKE ? OR origin LIKE ? OR trace_code LIKE ?)`
+		where += ` AND (name LIKE ? OR mobile LIKE ? OR code LIKE ? OR origin LIKE ? OR CAST(id AS TEXT)=?)`
 		like := "%" + kw + "%"
-		args = append(args, like, like, like, like, like)
+		args = append(args, like, like, like, like, kw)
 	}
 	var total int
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pur_farmer `+where, args...).Scan(&total)
 	args = append(args, pageSize, (pageNum-1)*pageSize)
 	rows, err := s.DB.Query(`SELECT id, code, name, COALESCE(mobile,''), COALESCE(origin,''), COALESCE(trace_code,''),
-		COALESCE(trace_code_prefix,''), status, COALESCE(remark,''), created_at
+		COALESCE(trace_code_prefix,''), status, COALESCE(remark,''), created_at, COALESCE(default_unit_price,0)
 		FROM pur_farmer `+where+` ORDER BY id DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
-		api.FailJSON(c, "DB_ERROR:"+err.Error())
+		// fallback without default_unit_price
+		rows, err = s.DB.Query(`SELECT id, code, name, COALESCE(mobile,''), COALESCE(origin,''), COALESCE(trace_code,''),
+			COALESCE(trace_code_prefix,''), status, COALESCE(remark,''), created_at
+			FROM pur_farmer `+where+` ORDER BY id DESC LIMIT ? OFFSET ?`, args...)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
+			return true
+		}
+		defer rows.Close()
+		list := []gin.H{}
+		for rows.Next() {
+			var id int64
+			var code, name, mobile, origin, trace, prefix, status, remark, created string
+			_ = rows.Scan(&id, &code, &name, &mobile, &origin, &trace, &prefix, &status, &remark, &created)
+			list = append(list, gin.H{
+				"id": id, "code": code, "name": name, "mobile": mobile, "origin": origin,
+				"trace_code": trace, "trace_code_prefix": prefix, "status": status, "remark": remark, "created_at": created,
+			})
+		}
+		api.PageOK(c, list, total, pageNum, pageSize)
 		return true
 	}
 	defer rows.Close()
@@ -55,10 +94,12 @@ func (s *Services) listFarmers(c *gin.Context) bool {
 	for rows.Next() {
 		var id int64
 		var code, name, mobile, origin, trace, prefix, status, remark, created string
-		_ = rows.Scan(&id, &code, &name, &mobile, &origin, &trace, &prefix, &status, &remark, &created)
+		var price float64
+		_ = rows.Scan(&id, &code, &name, &mobile, &origin, &trace, &prefix, &status, &remark, &created, &price)
 		list = append(list, gin.H{
 			"id": id, "code": code, "name": name, "mobile": mobile, "origin": origin,
 			"trace_code": trace, "trace_code_prefix": prefix, "status": status, "remark": remark, "created_at": created,
+			"default_unit_price": price,
 		})
 	}
 	api.PageOK(c, list, total, pageNum, pageSize)
@@ -131,15 +172,28 @@ func (s *Services) updateFarmer(c *gin.Context) bool {
 
 func (s *Services) loadFarmer(id int64) gin.H {
 	var code, name, mobile, origin, trace, prefix, status, remark, created string
+	var price float64
 	err := s.DB.QueryRow(`SELECT code, name, COALESCE(mobile,''), COALESCE(origin,''), COALESCE(trace_code,''),
-		COALESCE(trace_code_prefix,''), status, COALESCE(remark,''), created_at FROM pur_farmer WHERE id=? AND COALESCE(is_deleted,0)=0`, id).
-		Scan(&code, &name, &mobile, &origin, &trace, &prefix, &status, &remark, &created)
+		COALESCE(trace_code_prefix,''), status, COALESCE(remark,''), created_at, COALESCE(default_unit_price,0)
+		FROM pur_farmer WHERE id=? AND COALESCE(is_deleted,0)=0`, id).
+		Scan(&code, &name, &mobile, &origin, &trace, &prefix, &status, &remark, &created, &price)
 	if err != nil {
-		return gin.H{}
+		err = s.DB.QueryRow(`SELECT code, name, COALESCE(mobile,''), COALESCE(origin,''), COALESCE(trace_code,''),
+			COALESCE(trace_code_prefix,''), status, COALESCE(remark,''), created_at
+			FROM pur_farmer WHERE id=? AND COALESCE(is_deleted,0)=0`, id).
+			Scan(&code, &name, &mobile, &origin, &trace, &prefix, &status, &remark, &created)
+		if err != nil {
+			return gin.H{}
+		}
+		return gin.H{
+			"id": id, "code": code, "name": name, "mobile": mobile, "origin": origin,
+			"trace_code": trace, "trace_code_prefix": prefix, "status": status, "remark": remark, "created_at": created,
+		}
 	}
 	return gin.H{
 		"id": id, "code": code, "name": name, "mobile": mobile, "origin": origin,
 		"trace_code": trace, "trace_code_prefix": prefix, "status": status, "remark": remark, "created_at": created,
+		"default_unit_price": price,
 	}
 }
 
@@ -186,8 +240,13 @@ func (s *Services) listWeighTickets(c *gin.Context) bool {
 	rows, err := s.DB.Query(`SELECT w.id, w.doc_no, w.farmer_id, COALESCE(f.name,''), w.channel, w.product_id,
 		w.variety, w.gross_weight, w.deduct_rate, w.deduct_weight, w.net_weight, w.qc_result, w.status,
 		COALESCE(w.trace_code,''), COALESCE(w.origin,''), w.biz_date, COALESCE(w.source_type,'self'),
-		COALESCE(w.image_url,''), COALESCE(w.box_code,''), w.created_at
-		FROM pur_weigh_ticket w LEFT JOIN pur_farmer f ON f.id=w.farmer_id
+		COALESCE(w.image_url,''), COALESCE(w.box_code,''), w.created_at,
+		COALESCE(w.receive_kind,''), COALESCE(w.batch_no,''), COALESCE(w.unit_price,0), COALESCE(w.settle_amount,0),
+		COALESCE(w.bag_qty,0), COALESCE(w.cold_store_type,''), COALESCE(w.party_name,''), COALESCE(w.party_mobile,''),
+		COALESCE(p.name,'')
+		FROM pur_weigh_ticket w
+		LEFT JOIN pur_farmer f ON f.id=w.farmer_id
+		LEFT JOIN prd_product p ON p.id=w.product_id
 		WHERE COALESCE(w.is_deleted,0)=0 ORDER BY w.id DESC LIMIT ? OFFSET ?`, pageSize, (pageNum-1)*pageSize)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -198,15 +257,19 @@ func (s *Services) listWeighTickets(c *gin.Context) bool {
 	for rows.Next() {
 		var id, farmerID, productID int64
 		var docNo, farmerName, channel, variety, qc, status, trace, origin, bizDate, source, image, box, created string
-		var gross, deductRate, deductWeight, net float64
+		var kind, batch, cold, partyName, partyMobile, productName string
+		var gross, deductRate, deductWeight, net, unitPrice, settle, bagQty float64
 		_ = rows.Scan(&id, &docNo, &farmerID, &farmerName, &channel, &productID, &variety, &gross, &deductRate,
-			&deductWeight, &net, &qc, &status, &trace, &origin, &bizDate, &source, &image, &box, &created)
+			&deductWeight, &net, &qc, &status, &trace, &origin, &bizDate, &source, &image, &box, &created,
+			&kind, &batch, &unitPrice, &settle, &bagQty, &cold, &partyName, &partyMobile, &productName)
 		list = append(list, gin.H{
 			"id": id, "doc_no": docNo, "farmer_id": farmerID, "farmer_name": farmerName, "channel": channel,
-			"product_id": productID, "variety": variety, "gross_weight": gross, "deduct_rate": deductRate,
-			"deduct_weight": deductWeight, "net_weight": net, "qc_result": qc, "status": status,
-			"trace_code": trace, "origin": origin, "biz_date": bizDate, "source_type": source,
-			"image_url": image, "box_code": box, "created_at": created,
+			"product_id": productID, "product_name": productName, "variety": variety,
+			"gross_weight": gross, "deduct_rate": deductRate, "deduct_weight": deductWeight, "net_weight": net,
+			"qc_result": qc, "status": status, "trace_code": trace, "origin": origin, "biz_date": bizDate,
+			"source_type": source, "image_url": image, "box_code": box, "created_at": created,
+			"receive_kind": kind, "batch_no": batch, "unit_price": unitPrice, "settle_amount": settle,
+			"bag_qty": bagQty, "cold_store_type": cold, "party_name": partyName, "party_mobile": partyMobile,
 		})
 	}
 	api.PageOK(c, list, total, pageNum, pageSize)
@@ -215,9 +278,39 @@ func (s *Services) listWeighTickets(c *gin.Context) bool {
 
 func (s *Services) createWeighTicket(c *gin.Context) bool {
 	body := bindBody(c)
+	kind := strings.ToLower(strings.TrimSpace(strOr(body["receive_kind"])))
+	if kind != "gate" && kind != "stockin" {
+		api.FailJSON(c, "RECEIVE_KIND_REQUIRED")
+		return true
+	}
+	batchNo := strings.ToUpper(strings.TrimSpace(strOr(body["batch_no"])))
+	if batchNo == "" {
+		api.FailJSON(c, "BATCH_NO_REQUIRED")
+		return true
+	}
+	if ok, errCode := s.validateTraceBatchCode(batchNo, 0); !ok {
+		api.FailJSON(c, errCode)
+		return true
+	}
+	imgs := collectImageURLs(body)
+	if len(imgs) == 0 {
+		api.FailJSON(c, "EVIDENCE_INCOMPLETE:site_photo")
+		return true
+	}
+	for _, u := range imgs {
+		if !isValidSitePhotoURL(u) {
+			api.FailJSON(c, "EVIDENCE_INVALID:site_photo")
+			return true
+		}
+	}
+	imageURL := imgs[0]
+
 	arrivalID, _ := asInt64(body["arrival_id"])
 	var farmerID int64
 	var grade, origin, sourceType, channel, variety, bizDate string
+	partyName := strOr(body["party_name"])
+	partyMobile := strOr(body["party_mobile"])
+
 	if arrivalID > 0 {
 		var status, qc string
 		err := s.DB.QueryRow(`SELECT farmer_id, status, COALESCE(qc_result,''), COALESCE(grade,''), COALESCE(origin,''),
@@ -236,12 +329,7 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 			return true
 		}
 	} else {
-		// legacy path: still require image; QC must be done before confirm (not stock-in)
 		farmerID, _ = asInt64(body["farmer_id"])
-		if farmerID <= 0 {
-			api.FailJSON(c, "FARMER_REQUIRED")
-			return true
-		}
 		grade = strings.ToUpper(strOr(body["grade"]))
 		origin = strOr(body["origin"])
 		sourceType = strOrDef(body["source_type"], "self")
@@ -249,15 +337,27 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 		variety = strOrDef(body["variety"], "鲜木薯")
 		bizDate = strOrDef(body["biz_date"], time.Now().Format("2006-01-02"))
 	}
-	var farmerName, farmerOrigin string
-	err := s.DB.QueryRow(`SELECT name, COALESCE(origin,'') FROM pur_farmer WHERE id=? AND status='active' AND COALESCE(is_deleted,0)=0`, farmerID).
-		Scan(&farmerName, &farmerOrigin)
-	if err != nil {
-		api.FailJSON(c, "FARMER_NOT_FOUND")
+
+	if farmerID > 0 {
+		var farmerName, farmerOrigin, farmerMobile string
+		err := s.DB.QueryRow(`SELECT name, COALESCE(origin,''), COALESCE(mobile,'') FROM pur_farmer WHERE id=? AND status='active' AND COALESCE(is_deleted,0)=0`, farmerID).
+			Scan(&farmerName, &farmerOrigin, &farmerMobile)
+		if err != nil {
+			api.FailJSON(c, "FARMER_NOT_FOUND")
+			return true
+		}
+		if origin == "" {
+			origin = farmerOrigin
+		}
+		if partyName == "" {
+			partyName = farmerName
+		}
+		if partyMobile == "" {
+			partyMobile = farmerMobile
+		}
+	} else if partyName == "" {
+		api.FailJSON(c, "PARTY_REQUIRED")
 		return true
-	}
-	if origin == "" {
-		origin = farmerOrigin
 	}
 	if channel != "external" && channel != "internal" {
 		channel = "internal"
@@ -269,77 +369,126 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 	if variety == "" {
 		variety = strOrDef(body["variety"], "鲜木薯")
 	}
-	gross, _ := asFloat(body["gross_weight"])
-	if gross <= 0 {
-		api.FailJSON(c, "GROSS_WEIGHT_REQUIRED")
-		return true
-	}
-	deductRate, hasRate := asFloat(body["deduct_rate"])
-	deductWeight, hasDeduct := asFloat(body["deduct_weight"])
-	if hasRate && deductRate > 0 {
-		if deductRate > 1 {
-			deductRate = deductRate / 100
-		}
-		deductWeight = gross * deductRate
-	} else if hasDeduct && deductWeight > 0 && gross > 0 {
-		deductRate = deductWeight / gross
-	}
-	net, hasNet := asFloat(body["net_weight"])
-	if !hasNet || net <= 0 {
-		net = gross - deductWeight
-	}
-	if net < 0 {
-		net = 0
+	s.resolveWeighVariety(body, &variety, &productID)
+	if productID <= 0 {
+		productID = 1
 	}
 	if bizDate == "" {
-		bizDate = strOrDef(body["biz_date"], time.Now().Format("2006-01-02"))
+		bizDate = time.Now().Format("2006-01-02")
 	}
-	imageURL := strOr(body["image_url"])
-	if imageURL == "" {
-		api.FailJSON(c, "EVIDENCE_INCOMPLETE:weigh_photo")
-		return true
+
+	var gross, deductRate, deductWeight, net, unitPrice, settle, bagQty float64
+	var coldStore string
+	var warehouseID int64
+	freight, loading, weighFee, passRate, reject, plate, recvAddr := feeFieldsFromBody(body)
+
+	if kind == "gate" {
+		if bizDate == "" {
+			api.FailJSON(c, "BIZ_DATE_REQUIRED")
+			return true
+		}
+		gross, _ = asFloat(body["gross_weight"])
+		if gross <= 0 {
+			api.FailJSON(c, "GROSS_WEIGHT_REQUIRED")
+			return true
+		}
+		deductRate, hasRate := asFloat(body["deduct_rate"])
+		deductWeight, hasDeduct := asFloat(body["deduct_weight"])
+		if hasRate && deductRate > 0 {
+			if deductRate > 1 {
+				deductRate = deductRate / 100
+			}
+			deductWeight = gross * deductRate
+		} else if hasDeduct && deductWeight > 0 && gross > 0 {
+			deductRate = deductWeight / gross
+		}
+		rejectW := reject
+		net = gross - deductWeight - rejectW
+		if n, ok := asFloat(body["net_weight"]); ok && n > 0 {
+			net = n
+		}
+		if net < 0 {
+			net = 0
+		}
+		unitPrice, _ = asFloat(body["unit_price"])
+		_, settle = settleAmount(net, unitPrice, freight, loading, weighFee)
+		if sa, ok := asFloat(body["settle_amount"]); ok && sa > 0 {
+			settle = sa
+		}
+	} else {
+		net, _ = asFloat(body["net_weight"])
+		if net <= 0 {
+			if g, ok := asFloat(body["gross_weight"]); ok && g > 0 {
+				net = g
+				gross = g
+			}
+		} else {
+			gross = net
+		}
+		if net <= 0 {
+			api.FailJSON(c, "NET_WEIGHT_REQUIRED")
+			return true
+		}
+		bagQty, _ = asFloat(body["bag_qty"])
+		coldStore = strings.ToLower(strOr(body["cold_store_type"]))
+		if coldStore != "fresh" && coldStore != "semi" && coldStore != "fg" {
+			api.FailJSON(c, "COLD_STORE_TYPE_REQUIRED")
+			return true
+		}
+		warehouseID = ColdStoreWarehouse(coldStore)
+		if wid, ok := asInt64(body["warehouse_id"]); ok && wid > 0 {
+			warehouseID = wid
+		}
 	}
-	// OCR draft optional
+
 	ocrDraft := "{}"
 	if body["ocr_draft"] != nil {
 		b, _ := json.Marshal(body["ocr_draft"])
 		ocrDraft = string(b)
-	} else if s := strOr(body["ocr_draft_json"]); s != "" {
-		ocrDraft = s
+	} else if draftJSON := strOr(body["ocr_draft_json"]); draftJSON != "" {
+		ocrDraft = draftJSON
 	}
 	template := strOrDef(body["ticket_template"], channel)
-	docNo := fmt.Sprintf("WT%s", time.Now().Format("20060102150405"))
+	docNo := fmt.Sprintf("WT%d", time.Now().UnixNano())
 	qcResult := ""
 	status := "draft"
 	if arrivalID > 0 {
 		qcResult = "pass"
 		status = "pending_confirm"
 	}
-	freight, loading, weighFee, passRate, reject, plate, recvAddr := feeFieldsFromBody(body)
 	res, err := s.DB.Exec(`INSERT INTO pur_weigh_ticket(doc_no, farmer_id, channel, ticket_template, product_id, variety,
 		gross_weight, deduct_rate, deduct_weight, net_weight, qc_result, status, trace_code, origin, biz_date,
-		source_type, image_url, remark, arrival_id, grade, ocr_draft_json,
-		plate_no, receive_address, pass_rate, reject_weight, freight_fee, loading_fee, weigh_fee)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		source_type, image_url, remark, arrival_id, grade, ocr_draft_json, batch_no,
+		plate_no, receive_address, pass_rate, reject_weight, freight_fee, loading_fee, weigh_fee,
+		receive_kind, unit_price, settle_amount, bag_qty, cold_store_type, party_name, party_mobile, warehouse_id)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		docNo, farmerID, channel, template, productID, variety, gross, deductRate, deductWeight, net,
 		qcResult, status, "",
-		origin, bizDate, sourceType, imageURL, strOr(body["remark"]), nullIf0(arrivalID), grade, ocrDraft,
-		plate, recvAddr, passRate, reject, freight, loading, weighFee)
+		origin, bizDate, sourceType, imageURL, strOr(body["remark"]), nullIf0(arrivalID), grade, ocrDraft, batchNo,
+		plate, recvAddr, passRate, reject, freight, loading, weighFee,
+		kind, unitPrice, settle, bagQty, coldStore, partyName, partyMobile, nullIf0(warehouseID))
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
 		return true
 	}
 	id, _ := res.LastInsertId()
-	_, _ = s.addEvidence(c, "weigh_ticket", id, "weigh_photo", imageURL, nil)
-	s.writeAuditCtx(c, "weigh_ticket", id, "create", "weigh_draft", nil, gin.H{"net_weight": net, "arrival_id": arrivalID})
+	if err := s.occupyTraceBatchCode(batchNo, id); err != nil {
+		_, _ = s.DB.Exec(`DELETE FROM pur_weigh_ticket WHERE id=?`, id)
+		api.FailJSON(c, err.Error())
+		return true
+	}
+	for _, u := range imgs {
+		_, _ = s.addEvidence(c, "weigh_ticket", id, "site_photo", u, nil)
+	}
+	s.writeAuditCtx(c, "weigh_ticket", id, "create", "weigh_draft", nil, gin.H{"net_weight": net, "receive_kind": kind, "batch_no": batchNo})
 	api.OK(c, s.loadWeighTicket(id))
 	return true
 }
 
 func (s *Services) updateWeighTicket(c *gin.Context) bool {
 	id := paramID(c)
-	var status string
-	if err := s.DB.QueryRow(`SELECT status FROM pur_weigh_ticket WHERE id=?`, id).Scan(&status); err != nil {
+	var status, curBatch string
+	if err := s.DB.QueryRow(`SELECT status, COALESCE(batch_no,'') FROM pur_weigh_ticket WHERE id=?`, id).Scan(&status, &curBatch); err != nil {
 		api.FailJSON(c, "NOT_FOUND")
 		return true
 	}
@@ -348,18 +497,42 @@ func (s *Services) updateWeighTicket(c *gin.Context) bool {
 		return true
 	}
 	body := bindBody(c)
+	if bn := strings.ToUpper(strings.TrimSpace(strOr(body["batch_no"]))); bn != "" && bn != strings.ToUpper(curBatch) {
+		api.FailJSON(c, "BATCH_NO_LOCKED")
+		return true
+	}
 	gross, _ := asFloat(body["gross_weight"])
 	deductRate, _ := asFloat(body["deduct_rate"])
 	deductWeight, _ := asFloat(body["deduct_weight"])
 	if deductRate > 1 {
 		deductRate = deductRate / 100
 	}
+	rejectW := asFloatOr0(body["reject_weight"])
 	if deductRate > 0 && gross > 0 {
 		deductWeight = gross * deductRate
 	}
-	net := gross - deductWeight
+	net := gross - deductWeight - rejectW
 	if n, ok := asFloat(body["net_weight"]); ok && n > 0 {
 		net = n
+	}
+	unitPrice := asFloatOr0(body["unit_price"])
+	freight, loading, weighFee, passRate, reject, plate, recvAddr := feeFieldsFromBody(body)
+	_, settle := settleAmount(net, unitPrice, freight, loading, weighFee)
+	if sa, ok := asFloat(body["settle_amount"]); ok && sa > 0 {
+		settle = sa
+	}
+	bagQty := asFloatOr0(body["bag_qty"])
+	cold := strOr(body["cold_store_type"])
+	imgs := collectImageURLs(body)
+	imageURL := strOr(body["image_url"])
+	if len(imgs) > 0 {
+		for _, u := range imgs {
+			if !isValidSitePhotoURL(u) {
+				api.FailJSON(c, "EVIDENCE_INVALID:site_photo")
+				return true
+			}
+		}
+		imageURL = imgs[0]
 	}
 	_, err := s.DB.Exec(`UPDATE pur_weigh_ticket SET gross_weight=COALESCE(NULLIF(?,0),gross_weight),
 		deduct_rate=?, deduct_weight=?, net_weight=?, variety=COALESCE(NULLIF(?,''),variety),
@@ -368,14 +541,24 @@ func (s *Services) updateWeighTicket(c *gin.Context) bool {
 		pass_rate=COALESCE(NULLIF(?,0),pass_rate), reject_weight=COALESCE(NULLIF(?,0),reject_weight),
 		freight_fee=COALESCE(NULLIF(?,0),freight_fee), loading_fee=COALESCE(NULLIF(?,0),loading_fee),
 		weigh_fee=COALESCE(NULLIF(?,0),weigh_fee),
+		unit_price=COALESCE(NULLIF(?,0),unit_price), settle_amount=COALESCE(NULLIF(?,0),settle_amount),
+		bag_qty=COALESCE(NULLIF(?,0),bag_qty), cold_store_type=COALESCE(NULLIF(?,''),cold_store_type),
+		party_name=COALESCE(NULLIF(?,''),party_name), party_mobile=COALESCE(NULLIF(?,''),party_mobile),
+		origin=COALESCE(NULLIF(?,''),origin),
 		updated_at=datetime('now') WHERE id=?`,
-		gross, deductRate, deductWeight, net, strOr(body["variety"]), strOr(body["image_url"]), strOr(body["remark"]),
-		strOr(body["plate_no"]), strOr(body["receive_address"]),
-		asFloatOr0(body["pass_rate"]), asFloatOr0(body["reject_weight"]),
-		asFloatOr0(body["freight_fee"]), asFloatOr0(body["loading_fee"]), asFloatOr0(body["weigh_fee"]), id)
+		gross, deductRate, deductWeight, net, strOr(body["variety"]), imageURL, strOr(body["remark"]),
+		plate, recvAddr, passRate, reject, freight, loading, weighFee,
+		unitPrice, settle, bagQty, cold, strOr(body["party_name"]), strOr(body["party_mobile"]),
+		strOr(body["origin"]), id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
 		return true
+	}
+	if len(imgs) > 0 {
+		_, _ = s.DB.Exec(`UPDATE biz_evidence SET voided_at=datetime('now') WHERE biz_type='weigh_ticket' AND biz_id=? AND evidence_type='site_photo' AND COALESCE(voided_at,'')=''`, id)
+		for _, u := range imgs {
+			_, _ = s.addEvidence(c, "weigh_ticket", id, "site_photo", u, nil)
+		}
 	}
 	api.OK(c, s.loadWeighTicket(id))
 	return true
@@ -502,7 +685,7 @@ func (s *Services) confirmWeighTicket(c *gin.Context) bool {
 		api.FailJSON(c, "QC_PASS_REQUIRED")
 		return true
 	}
-	if err := s.requireEvidence("weigh_ticket", id, "weigh_photo"); err != nil {
+	if err := s.requireEvidence("weigh_ticket", id, "site_photo"); err != nil {
 		api.FailJSON(c, err.Error())
 		return true
 	}
@@ -531,9 +714,10 @@ func (s *Services) confirmWeighTicket(c *gin.Context) bool {
 		return true
 	}
 	bizDate := strOr(m["biz_date"])
-	batch, err := NextBatchNo(s, bizDate)
-	if err != nil {
-		batch = fmt.Sprintf("%06d", time.Now().Unix()%1e6)
+	batch := strings.TrimSpace(strOr(m["batch_no"]))
+	if batch == "" {
+		api.FailJSON(c, "BATCH_NO_REQUIRED")
+		return true
 	}
 	farmerID, _ := asInt64(m["farmer_id"])
 	arrivalID, _ := asInt64(m["arrival_id"])
@@ -548,12 +732,12 @@ func (s *Services) confirmWeighTicket(c *gin.Context) bool {
 		uid = cl.UserID
 	}
 	snap := nowSnap(map[string]interface{}{
-		"gross_weight": gross, "deduct_rate": deductRate, "deduct_weight": deductWeight, "net_weight": net, "grade": grade, "trace_code": trace,
+		"gross_weight": gross, "deduct_rate": deductRate, "deduct_weight": deductWeight, "net_weight": net, "grade": grade, "trace_code": trace, "batch_no": batch,
 	})
-	_, err = s.DB.Exec(`UPDATE pur_weigh_ticket SET gross_weight=?, deduct_rate=?, deduct_weight=?, net_weight=?, grade=?,
-		batch_no=?, trace_code=?, status='weighed', confirmed_by=?, confirmed_at=datetime('now'), confirmed_snapshot_json=?,
+	_, err := s.DB.Exec(`UPDATE pur_weigh_ticket SET gross_weight=?, deduct_rate=?, deduct_weight=?, net_weight=?, grade=?,
+		trace_code=?, status='weighed', confirmed_by=?, confirmed_at=datetime('now'), confirmed_snapshot_json=?,
 		updated_at=datetime('now') WHERE id=?`,
-		gross, deductRate, deductWeight, net, grade, batch, trace, uid, snap, id)
+		gross, deductRate, deductWeight, net, grade, trace, uid, snap, id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
 		return true
@@ -713,8 +897,8 @@ func (s *Services) doWeighStockIn(id int64) (bool, string) {
 func (s *Services) loadWeighTicket(id int64) gin.H {
 	var farmerID, productID, warehouseID, arrivalID int64
 	var docNo, channel, template, variety, qc, status, trace, origin, bizDate, source, image, box, remark, created, grade, batch string
-	var plate, recvAddr string
-	var gross, deductRate, deductWeight, net, passRate, reject, freight, loading, weighFee float64
+	var plate, recvAddr, kind, cold, partyName, partyMobile, productName string
+	var gross, deductRate, deductWeight, net, passRate, reject, freight, loading, weighFee, unitPrice, settle, bagQty float64
 	var farmerName string
 	err := s.DB.QueryRow(`SELECT w.doc_no, w.farmer_id, COALESCE(f.name,''), w.channel, COALESCE(w.ticket_template,''), w.product_id, w.variety,
 		w.gross_weight, w.deduct_rate, w.deduct_weight, w.net_weight, COALESCE(w.qc_result,''), w.status,
@@ -722,21 +906,29 @@ func (s *Services) loadWeighTicket(id int64) gin.H {
 		COALESCE(w.image_url,''), COALESCE(w.box_code,''), COALESCE(w.warehouse_id,0), COALESCE(w.remark,''), w.created_at,
 		COALESCE(w.arrival_id,0), COALESCE(w.grade,''), COALESCE(w.batch_no,''),
 		COALESCE(w.plate_no,''), COALESCE(w.receive_address,''), COALESCE(w.pass_rate,0), COALESCE(w.reject_weight,0),
-		COALESCE(w.freight_fee,0), COALESCE(w.loading_fee,0), COALESCE(w.weigh_fee,0)
-		FROM pur_weigh_ticket w LEFT JOIN pur_farmer f ON f.id=w.farmer_id WHERE w.id=?`, id).
+		COALESCE(w.freight_fee,0), COALESCE(w.loading_fee,0), COALESCE(w.weigh_fee,0),
+		COALESCE(w.receive_kind,''), COALESCE(w.unit_price,0), COALESCE(w.settle_amount,0), COALESCE(w.bag_qty,0),
+		COALESCE(w.cold_store_type,''), COALESCE(w.party_name,''), COALESCE(w.party_mobile,''), COALESCE(p.name,'')
+		FROM pur_weigh_ticket w
+		LEFT JOIN pur_farmer f ON f.id=w.farmer_id
+		LEFT JOIN prd_product p ON p.id=w.product_id
+		WHERE w.id=?`, id).
 		Scan(&docNo, &farmerID, &farmerName, &channel, &template, &productID, &variety, &gross, &deductRate, &deductWeight, &net,
 			&qc, &status, &trace, &origin, &bizDate, &source, &image, &box, &warehouseID, &remark, &created,
-			&arrivalID, &grade, &batch, &plate, &recvAddr, &passRate, &reject, &freight, &loading, &weighFee)
+			&arrivalID, &grade, &batch, &plate, &recvAddr, &passRate, &reject, &freight, &loading, &weighFee,
+			&kind, &unitPrice, &settle, &bagQty, &cold, &partyName, &partyMobile, &productName)
 	if err != nil {
 		return gin.H{}
 	}
 	out := gin.H{
 		"id": id, "doc_no": docNo, "farmer_id": farmerID, "farmer_name": farmerName, "channel": channel,
-		"ticket_template": template, "product_id": productID, "variety": variety,
+		"ticket_template": template, "product_id": productID, "product_name": productName, "variety": variety,
 		"gross_weight": gross, "deduct_rate": deductRate, "deduct_weight": deductWeight, "net_weight": net,
 		"qc_result": qc, "status": status, "trace_code": trace, "origin": origin, "biz_date": bizDate,
 		"source_type": source, "image_url": image, "box_code": box, "warehouse_id": warehouseID,
 		"remark": remark, "created_at": created, "arrival_id": arrivalID, "grade": grade, "batch_no": batch,
+		"receive_kind": kind, "unit_price": unitPrice, "settle_amount": settle, "bag_qty": bagQty,
+		"cold_store_type": cold, "party_name": partyName, "party_mobile": partyMobile,
 		"evidences": s.listEvidence("weigh_ticket", id),
 	}
 	for k, v := range feeMap(freight, loading, weighFee, passRate, reject, plate, recvAddr) {

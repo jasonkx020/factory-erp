@@ -62,17 +62,7 @@ func ensureOneDemoRoleUser(db *sql.DB, u demoRoleUser) {
 
 	// bind domain permissions (查看+编辑) so API CheckAPIPerm passes
 	if u.Domain != "" {
-		rows, err := db.Query(`SELECT id FROM iam_permission WHERE domain=? AND COALESCE(is_deleted,0)=0`, u.Domain)
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var pid int64
-				if rows.Scan(&pid) == nil {
-					_, _ = db.Exec(`INSERT OR IGNORE INTO iam_role_permission(role_id, permission_id) VALUES(?,?)`, roleID, pid)
-				}
-			}
-		}
-		// piece/fixed also need 工资管理 for wage rates; sales need 客户管理; warehouse 采购退货等
+		bindDomainPerms(db, roleID, u.Domain)
 		extraDomains := []string{}
 		switch u.RoleCode {
 		case "piece", "fixed", "foreman":
@@ -89,17 +79,21 @@ func ensureOneDemoRoleUser(db *sql.DB, u demoRoleUser) {
 			extraDomains = []string{"财务管理", "销售管理", "生产管理", "库存管理"}
 		}
 		for _, d := range extraDomains {
-			erows, err := db.Query(`SELECT id FROM iam_permission WHERE domain=? AND COALESCE(is_deleted,0)=0`, d)
-			if err != nil {
-				continue
-			}
-			for erows.Next() {
-				var pid int64
-				if erows.Scan(&pid) == nil {
-					_, _ = db.Exec(`INSERT OR IGNORE INTO iam_role_permission(role_id, permission_id) VALUES(?,?)`, roleID, pid)
-				}
-			}
-			_ = erows.Close()
+			bindDomainPerms(db, roleID, d)
+		}
+	}
+}
+
+func bindDomainPerms(db *sql.DB, roleID int64, domain string) {
+	rows, err := db.Query(`SELECT id FROM iam_permission WHERE domain=? AND COALESCE(is_deleted,0)=0`, domain)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var pid int64
+		if rows.Scan(&pid) == nil {
+			_, _ = db.Exec(`INSERT OR IGNORE INTO iam_role_permission(role_id, permission_id) VALUES(?,?)`, roleID, pid)
 		}
 	}
 }

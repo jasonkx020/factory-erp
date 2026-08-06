@@ -39,14 +39,8 @@ class InboxPage extends StatelessWidget {
                         ),
                         subtitle: Text('${row['body'] ?? ''}\n${row['created_at'] ?? ''} · ${row['event_key'] ?? ''}'),
                         isThreeLine: true,
-                        onTap: () async {
-                          final id = (row['id'] as num?)?.toInt();
-                          if (id != null) await notify.markRead(id);
-                          final route = NotifyService.routeForEvent(row['event_key']?.toString());
-                          if (route != null && context.mounted) {
-                            Navigator.of(context).pushNamed(route);
-                          }
-                        },
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => notify.openInboxItem(context, row),
                       );
                     },
                   ),

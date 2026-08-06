@@ -56,10 +56,13 @@ func New(cfgPath string) (*App, error) {
 		"/api/v1/mqtt/auth",
 		"/api/v1/mqtt/superuser",
 		"/api/v1/mqtt/acl",
+		"/files",
 	}
 	eng.Use(middleware.Metrics())
 	eng.Use(middleware.JWT(cfg.JWT.Secret, permit))
 	eng.Use(middleware.Audit(db.SQL))
+	_ = os.MkdirAll(filepath.Join("data", "uploads"), 0o755)
+	eng.Static("/files", "data")
 
 	biz.EnsureAutomationSchema(db.SQL)
 	biz.EnsureSystemAdminSchema(db.SQL)

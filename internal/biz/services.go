@@ -90,6 +90,8 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 			return s.handleCorrectionsWithBody(c, body)
 		}
 		return s.handleReportWorks(c, method, action, openapiPath)
+	case openapiPath == "/api/v1/biz/uploads" || strings.HasPrefix(openapiPath, "/api/v1/biz/uploads"):
+		return s.handleUploads(c, method)
 	case openapiPath == "/api/v1/biz/evidences" || strings.HasPrefix(openapiPath, "/api/v1/biz/evidences"):
 		return s.handleEvidenceAPI(c, method)
 	case openapiPath == "/api/v1/biz/corrections" && method == "POST":

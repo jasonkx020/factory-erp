@@ -432,10 +432,8 @@ class _MinePageState extends State<MinePage> {
                 return ListTile(
                   title: Text(m['title']?.toString() ?? m['event_key']?.toString() ?? ''),
                   subtitle: Text(m['body']?.toString() ?? ''),
-                  onTap: () {
-                    final id = (m['id'] as num?)?.toInt();
-                    if (id != null) notify.markRead(id);
-                  },
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => notify.openInboxItem(context, m),
                 );
               }),
             ],

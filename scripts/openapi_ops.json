@@ -1177,6 +1177,10 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/inventory/warehouses"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/inventory/box-codes"
   },
   {
@@ -2218,6 +2222,26 @@
   {
     "method": "GET",
     "path": "/api/v1/purchase/trace-lots/{code}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/weigh-varieties"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-varieties"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/weigh-varieties/{id}"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/purchase/weigh-varieties/{id}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/purchase/weigh-varieties/{id}"
   },
   {
     "method": "GET",

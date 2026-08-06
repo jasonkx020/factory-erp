@@ -3,11 +3,15 @@
  * 不在此集合内的侧栏项标「未上线」，避免客户误点非试点空壳。
  * 对齐 docs/ADMIN_DELIVERY.md：产线试点 + 财务全量 + 系统管理 + 人事工资。
  */
+import { ADMIN_SPECIAL_MODULE_PATHS } from './adminSpecialRoutes'
+
 const ONLINE: Array<[string, string]> = [
   // 采购试点
   ['采购管理', '供应商管理'],
   ['采购管理', '农户档案'],
   ['采购管理', '过磅收货'],
+  ['采购管理', '过磅品种'],
+  ['采购管理', '溯源批号'],
   ['采购管理', '农户结算'],
   ['采购管理', '原料溯源'],
   ['采购管理', '采购入库'],
@@ -149,7 +153,9 @@ const onlineSet = new Set(ONLINE.map(([d, m]) => `${d}/${m}`))
 
 /** 是否在对外交付上线范围内 */
 export function isDeliveryOnlineModule(domain: string, module: string): boolean {
-  return onlineSet.has(`${domain}/${module}`)
+  if (onlineSet.has(`${domain}/${module}`)) return true
+  // 已挂专用页的模块视为上线，避免白名单漏登导致侧栏误标「未上线」
+  return Boolean(ADMIN_SPECIAL_MODULE_PATHS[`${domain}/${module}`])
 }
 
 /** 侧栏展示用：未上线模块后缀 */

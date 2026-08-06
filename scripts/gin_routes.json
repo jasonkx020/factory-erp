@@ -1,5 +1,1489 @@
 [
   {
+    "method": "GET",
+    "path": "/api/v1/production/report-works"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/report-works/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/requisitions"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/requisitions/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/reworks"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/reworks/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/routings"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/routings/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/routings/:id/steps"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/piecework-summaries"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/piecework-summaries/mine"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/piece-issue-sheets"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/piece-issue-sheets/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/processes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/processes/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/process-reports"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/progress"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/flow-events"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/flow-events/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/flow-rules"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/flex-dispatches"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/flex-dispatches/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/tasks"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/tasks/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/tasks/:id/items"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/task-merges"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/task-merges/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/consignments"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/consignments/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/consignments/:id/progress"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/cost-hide-policies"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/workshop-workbench/overview"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/workshop-workbench/today-tasks"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/workshops"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/workshops/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/dispatches"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/dispatches/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/drawing-links"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/drawing-links/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/boms"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/boms/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/mrp-runs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/mrp-runs/:id/results"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/outsources"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/outsources/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/qc-orders"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/qc-orders/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/scraps"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/scraps/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/product/products"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/product/products/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/product/products/:id/units"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/product/specs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/product/specs/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/product/app-sorts"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/inbounds"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/inbounds/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/inbound-arrivals"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/inbound-arrivals/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/incoming-qcs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/incoming-qcs/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/suppliers"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/suppliers/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/suppliers/:id/licenses"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/suppliers/:id/performance"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/suppliers/:id/supply-items"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/weigh-tickets"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/weigh-tickets/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/weigh-tickets/:id/label"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/weigh-varieties"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/weigh-varieties/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/requests"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/requests/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/returns"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/returns/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/farmers"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/farmers/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/farmer-settlements"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/farmer-settlements/summary"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/tasks"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/tasks/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/trace-lots/:code"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/trace-batch-codes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/plans"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/plans/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/price-histories"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/analytics/supplier-performance"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/analytics/volume-price"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/certificate-alerts"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/payroll/commission-rules"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/payroll/commission-rules/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/payroll/commission-calcs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/payroll/calculations"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/payroll/calculations/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/payroll/wage-rates"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/payroll/wage-rates/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/payroll/worker-profiles"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/payroll/worker-profiles/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/payroll/sheets"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/payroll/sheets/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/doc-approve-switches"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/doc-delete-rules"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/doc-edit-rules"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/doc-lock-rules"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/documents"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/documents/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/data-repairs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/data-repairs/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/drawings"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/drawings/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/approval-flows"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/approval-flows/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/approval-flows/:id/nodes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/announcements"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/announcements/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/print-templates"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/print-templates/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/production-settings"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/personnel-transfers"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/personnel-transfers/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/logistics/carriers"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/logistics/carriers/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/logistics/tracks"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/logistics/tracks/:tracking_no"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/batch-price-jobs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/batch-price-jobs/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/batch-payroll-jobs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/formulas"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/formulas/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/finance-audit-controls"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/operation-logs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/operation-logs/trace/:trace_id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/operation-logs/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/search-configs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/settings"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/sales-settings"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/courses"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/courses/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/knowledge"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/knowledge/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/memos"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/memos/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/reminders"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/reminders/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/notify-rules"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/system/table-customs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/price-locks"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/price-locks/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/prints"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/prints/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/pre-shipments"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/pre-shipments/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/orders"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/orders/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/orders/:id/changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/outbound-settles"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/outbound-settles/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/contracts"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/contracts/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/cost-budgets"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/cost-budgets/:order_id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/sales-boms"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/sales-boms/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/sales-boms/:id/lines"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/self-orders"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/deliveries"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/deliveries/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/inquiries"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/inquiries/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/my-orders"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/my-orders/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/quote-calculator"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/quote-histories"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/rankings"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/rankings/configs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/stocktake-records"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/stocktake-records/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/stocktakes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/stocktakes/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/stock-txns"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/stock-txns/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/sales-peel-returns"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/sales-peel-returns/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/alert-rules/excess"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/alert-rules/shortage"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/assemble-splits"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/assemble-splits/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/availability"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/box-codes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/box-codes/trace/:code"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/box-codes/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/balances"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/workshop-stocktakes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/workshop-stocktakes/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/warehouses"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/weighbridges"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/inbound-qcs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/inbound-qcs/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/in-transits"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/price-adjusts"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/price-adjusts/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/purchase-returns"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/consumes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/consumes/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/material-to-payables"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/material-to-payables/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/transfers"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/transfers/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/openings"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/inventory/reservations"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/iam/users"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/iam/users/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/iam/users/:id/data-scope"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/iam/admin-groups"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/iam/admin-groups/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/iam/roles"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/iam/roles/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/iam/field-policies"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/iam/hr-perm-overview"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/iam/login-policy"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/iam/menus"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/iam/permissions"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/iam/sessions"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/cost-accountings"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/cost-accountings/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/cost-allocations"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/cost-allocations/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/cost-traces"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/cost-traces/:cost_id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/contract-profits"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/cashier-reconciles"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/cashier-reconciles/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/fund-accounts"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/fund-accounts/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/fund-transfers"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/fund-transfers/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/fx-settlements"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/fx-settlements/query"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/fx-settlements/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/account-subjects"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/account-subjects/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/arap-adjusts"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/arap-adjusts/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/approvals"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/payment-recognitions"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/payment-recognitions/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/prepay-prepaids"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/prepay-prepaids/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/sales-return-finances"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/sales-return-finances/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/statements"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/statements/:code/export"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/invoices"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/invoices/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/income-expenses"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/receipt-writeoffs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/receipt-writeoffs/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/receipt-alerts"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/ledger-entries"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/ledger-entries/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/miniprogram-bills"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/month-closes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/orders"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/orders/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/vouchers"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/finance/vouchers/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/offboards"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/offboards/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/onboards"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/onboards/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/overtime-patches"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/overtime-patches/stats"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/attendance/rules"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/attendance/rules/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/attendance/records"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/attendance/month-stats"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/attendance-perf-summaries"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/employee-journals"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/employee-journals/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/employees"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/employees/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/performance/schemes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/performance/schemes/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/performance/results"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/leave-requests"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/leave-requests/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/memos"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/memos/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/shifts"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/shifts/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/visits"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/visits/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/tool-items"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/tool-issues"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/health"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/dashboards/boss"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/dashboards/boss/widgets"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/dashboards/live"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/dashboards/production"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/daily"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/cash-flow"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/cost-profit"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/crm-stats"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/stock-ledger"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/stock-txns"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/sales-weight"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/enterprise"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/enterprise/:code"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/income-statement"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/inquiry-queries"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/accounts"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/balance-sheet"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/follow-ups"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/gross-profit"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/logistics"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/product-sales"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/qc"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/ready"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/approval/expense-requests"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/approval/expense-requests/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/approval/expense-finance"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/approval/affairs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/approval/attendance"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/approval/inquiry-finance"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/approval/inquiry-lines"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/approval/purchase-plans"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/approval/purchases"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/approval/tasks"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/approval/tasks/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/approval/doc-reviews"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/asset/categories"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/asset/categories/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/asset/fixed-assets"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/asset/fixed-assets/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/asset/transfers"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/asset/transfers/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/asset/stats"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/auth/oauth/bindings"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/auth/me"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/crm/customers"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/crm/customers/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/crm/customers/:id/profile"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/crm/imports"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/crm/imports/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/crm/inquiries"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/crm/follow-ups"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/crm/follow-ups/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/crm/opportunities"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/crm/opportunities/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/crm/protect-rules"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/crm/protect-rules/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/crm/task-reminders"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/crm/task-reminders/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/crm/lead-assigns"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/crm/releases"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/workflow/ticket-categories"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/workflow/ticket-categories/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/workflow/ticket-categories/:id/handlers"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/workflow/ticket-handler-pool"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/workflow/tickets"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/workflow/tickets/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/workflow/tickets/:id/handlers-pool"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/workflow/tasks"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/notify/mqtt-connect"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/notify/inbox"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/live"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/metrics"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/biz/evidences"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/_debug/routes"
+  },
+  {
+    "method": "GET",
+    "path": "/files/*filepath"
+  },
+  {
+    "method": "HEAD",
+    "path": "/files/*filepath"
+  },
+  {
     "method": "POST",
     "path": "/api/v1/production/report-works"
   },
@@ -221,23 +1705,31 @@
   },
   {
     "method": "POST",
-    "path": "/api/v1/purchase/suppliers"
+    "path": "/api/v1/purchase/trace-batch-codes/validate"
   },
   {
     "method": "POST",
-    "path": "/api/v1/purchase/suppliers/:id/activate"
+    "path": "/api/v1/purchase/trace-batch-codes/void"
   },
   {
     "method": "POST",
-    "path": "/api/v1/purchase/suppliers/:id/blacklist"
+    "path": "/api/v1/purchase/trace-batch-codes/generate"
   },
   {
     "method": "POST",
-    "path": "/api/v1/purchase/suppliers/:id/freeze"
+    "path": "/api/v1/purchase/trace-lots/verify"
   },
   {
     "method": "POST",
-    "path": "/api/v1/purchase/suppliers/:id/qualify"
+    "path": "/api/v1/purchase/tasks"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/tasks/:id/assign"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/tasks/:id/complete"
   },
   {
     "method": "POST",
@@ -261,19 +1753,27 @@
   },
   {
     "method": "POST",
-    "path": "/api/v1/purchase/tasks"
+    "path": "/api/v1/purchase/weigh-varieties"
   },
   {
     "method": "POST",
-    "path": "/api/v1/purchase/tasks/:id/assign"
+    "path": "/api/v1/purchase/suppliers"
   },
   {
     "method": "POST",
-    "path": "/api/v1/purchase/tasks/:id/complete"
+    "path": "/api/v1/purchase/suppliers/:id/activate"
   },
   {
     "method": "POST",
-    "path": "/api/v1/purchase/trace-lots/verify"
+    "path": "/api/v1/purchase/suppliers/:id/blacklist"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/suppliers/:id/freeze"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/suppliers/:id/qualify"
   },
   {
     "method": "POST",
@@ -1181,1473 +2681,13 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/biz/uploads"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/notify/inbox/:id/read"
   },
   {
-    "method": "GET",
-    "path": "/api/v1/production/report-works"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/report-works/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/requisitions"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/requisitions/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/reworks"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/reworks/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/routings"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/routings/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/routings/:id/steps"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/piecework-summaries"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/piecework-summaries/mine"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/piece-issue-sheets"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/piece-issue-sheets/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/processes"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/processes/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/process-reports"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/progress"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/flow-events"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/flow-events/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/flow-rules"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/flex-dispatches"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/flex-dispatches/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/tasks"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/tasks/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/tasks/:id/items"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/task-merges"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/task-merges/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/consignments"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/consignments/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/consignments/:id/progress"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/cost-hide-policies"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/workshop-workbench/overview"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/workshop-workbench/today-tasks"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/workshops"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/workshops/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/dispatches"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/dispatches/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/drawing-links"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/drawing-links/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/boms"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/boms/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/mrp-runs"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/mrp-runs/:id/results"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/outsources"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/outsources/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/qc-orders"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/qc-orders/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/scraps"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/scraps/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/product/products"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/product/products/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/product/products/:id/units"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/product/specs"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/product/specs/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/product/app-sorts"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/inbounds"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/inbounds/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/inbound-arrivals"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/inbound-arrivals/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/incoming-qcs"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/incoming-qcs/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/suppliers"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/suppliers/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/suppliers/:id/licenses"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/suppliers/:id/performance"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/suppliers/:id/supply-items"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/requests"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/requests/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/returns"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/returns/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/farmers"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/farmers/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/farmer-settlements"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/farmer-settlements/summary"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/plans"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/plans/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/price-histories"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/tasks"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/tasks/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/trace-lots/:code"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/weigh-tickets"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/weigh-tickets/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/weigh-tickets/:id/label"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/analytics/supplier-performance"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/analytics/volume-price"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/certificate-alerts"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/payroll/commission-rules"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/payroll/commission-rules/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/payroll/commission-calcs"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/payroll/calculations"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/payroll/calculations/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/payroll/wage-rates"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/payroll/wage-rates/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/payroll/worker-profiles"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/payroll/worker-profiles/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/payroll/sheets"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/payroll/sheets/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/doc-approve-switches"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/doc-delete-rules"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/doc-edit-rules"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/doc-lock-rules"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/documents"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/documents/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/data-repairs"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/data-repairs/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/drawings"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/drawings/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/approval-flows"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/approval-flows/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/approval-flows/:id/nodes"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/announcements"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/announcements/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/print-templates"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/print-templates/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/production-settings"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/personnel-transfers"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/personnel-transfers/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/logistics/carriers"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/logistics/carriers/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/logistics/tracks"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/logistics/tracks/:tracking_no"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/batch-price-jobs"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/batch-price-jobs/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/batch-payroll-jobs"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/formulas"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/formulas/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/finance-audit-controls"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/operation-logs"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/operation-logs/trace/:trace_id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/operation-logs/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/search-configs"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/settings"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/sales-settings"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/courses"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/courses/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/knowledge"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/knowledge/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/memos"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/memos/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/reminders"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/reminders/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/notify-rules"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/system/table-customs"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/price-locks"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/price-locks/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/prints"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/prints/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/pre-shipments"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/pre-shipments/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/orders"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/orders/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/orders/:id/changes"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/outbound-settles"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/outbound-settles/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/contracts"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/contracts/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/cost-budgets"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/cost-budgets/:order_id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/sales-boms"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/sales-boms/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/sales-boms/:id/lines"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/self-orders"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/deliveries"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/deliveries/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/inquiries"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/inquiries/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/my-orders"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/my-orders/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/quote-calculator"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/quote-histories"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/rankings"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/rankings/configs"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/stocktake-records"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/stocktake-records/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/stocktakes"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/stocktakes/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/stock-txns"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/stock-txns/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/sales-peel-returns"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/sales-peel-returns/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/alert-rules/excess"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/alert-rules/shortage"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/assemble-splits"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/assemble-splits/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/availability"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/box-codes"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/box-codes/trace/:code"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/box-codes/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/balances"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/workshop-stocktakes"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/workshop-stocktakes/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/weighbridges"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/warehouses"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/inbound-qcs"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/inbound-qcs/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/in-transits"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/price-adjusts"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/price-adjusts/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/purchase-returns"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/consumes"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/consumes/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/material-to-payables"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/material-to-payables/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/transfers"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/transfers/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/openings"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/inventory/reservations"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/iam/users"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/iam/users/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/iam/users/:id/data-scope"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/iam/admin-groups"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/iam/admin-groups/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/iam/roles"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/iam/roles/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/iam/field-policies"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/iam/hr-perm-overview"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/iam/login-policy"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/iam/menus"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/iam/permissions"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/iam/sessions"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/cost-accountings"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/cost-accountings/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/cost-allocations"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/cost-allocations/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/cost-traces"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/cost-traces/:cost_id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/contract-profits"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/cashier-reconciles"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/cashier-reconciles/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/fund-accounts"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/fund-accounts/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/fund-transfers"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/fund-transfers/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/fx-settlements"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/fx-settlements/query"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/fx-settlements/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/account-subjects"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/account-subjects/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/arap-adjusts"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/arap-adjusts/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/approvals"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/payment-recognitions"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/payment-recognitions/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/prepay-prepaids"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/prepay-prepaids/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/sales-return-finances"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/sales-return-finances/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/statements"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/statements/:code/export"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/invoices"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/invoices/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/income-expenses"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/receipt-writeoffs"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/receipt-writeoffs/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/receipt-alerts"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/ledger-entries"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/ledger-entries/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/miniprogram-bills"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/month-closes"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/orders"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/orders/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/vouchers"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/finance/vouchers/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/offboards"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/offboards/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/onboards"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/onboards/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/overtime-patches"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/overtime-patches/stats"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/attendance/rules"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/attendance/rules/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/attendance/records"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/attendance/month-stats"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/attendance-perf-summaries"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/employee-journals"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/employee-journals/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/employees"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/employees/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/performance/schemes"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/performance/schemes/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/performance/results"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/leave-requests"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/leave-requests/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/memos"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/memos/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/shifts"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/shifts/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/visits"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/visits/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/tool-items"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/tool-issues"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/health"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/dashboards/boss"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/dashboards/boss/widgets"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/dashboards/live"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/dashboards/production"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/daily"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/cash-flow"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/cost-profit"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/crm-stats"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/stock-ledger"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/stock-txns"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/sales-weight"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/enterprise"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/enterprise/:code"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/income-statement"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/inquiry-queries"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/accounts"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/balance-sheet"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/follow-ups"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/gross-profit"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/logistics"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/product-sales"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/qc"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/ready"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/approval/expense-requests"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/approval/expense-requests/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/approval/expense-finance"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/approval/affairs"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/approval/attendance"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/approval/inquiry-finance"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/approval/inquiry-lines"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/approval/purchase-plans"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/approval/purchases"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/approval/tasks"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/approval/tasks/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/approval/doc-reviews"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/asset/categories"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/asset/categories/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/asset/fixed-assets"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/asset/fixed-assets/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/asset/transfers"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/asset/transfers/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/asset/stats"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/auth/oauth/bindings"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/auth/me"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/crm/customers"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/crm/customers/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/crm/customers/:id/profile"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/crm/imports"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/crm/imports/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/crm/inquiries"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/crm/follow-ups"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/crm/follow-ups/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/crm/opportunities"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/crm/opportunities/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/crm/protect-rules"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/crm/protect-rules/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/crm/task-reminders"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/crm/task-reminders/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/crm/lead-assigns"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/crm/releases"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/workflow/ticket-categories"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/workflow/ticket-categories/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/workflow/ticket-categories/:id/handlers"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/workflow/ticket-handler-pool"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/workflow/tickets"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/workflow/tickets/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/workflow/tickets/:id/handlers-pool"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/workflow/tasks"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/notify/mqtt-connect"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/notify/inbox"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/live"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/metrics"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/biz/evidences"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/_debug/routes"
-  },
-  {
     "method": "DELETE",
     "path": "/api/v1/system/announcements/:id"
   },
@@ -2729,19 +2769,23 @@
   },
   {
     "method": "DELETE",
-    "path": "/api/v1/payroll/commission-rules/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/payroll/wage-rates/:id"
-  },
-  {
-    "method": "DELETE",
     "path": "/api/v1/purchase/farmers/:id"
   },
   {
     "method": "DELETE",
     "path": "/api/v1/purchase/suppliers/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/purchase/weigh-varieties/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/payroll/commission-rules/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/payroll/wage-rates/:id"
   },
   {
     "method": "DELETE",
@@ -2933,6 +2977,14 @@
   },
   {
     "method": "PUT",
+    "path": "/api/v1/purchase/weigh-varieties/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/purchase/weigh-tickets/:id"
+  },
+  {
+    "method": "PUT",
     "path": "/api/v1/purchase/farmers/:id"
   },
   {
@@ -2942,10 +2994,6 @@
   {
     "method": "PUT",
     "path": "/api/v1/purchase/tasks/:id"
-  },
-  {
-    "method": "PUT",
-    "path": "/api/v1/purchase/weigh-tickets/:id"
   },
   {
     "method": "PUT",

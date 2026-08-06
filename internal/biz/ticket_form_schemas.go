@@ -38,7 +38,6 @@ type ticketCategorySeed struct {
 }
 
 func defaultTicketCategorySeeds() []ticketCategorySeed {
-	tools := []string{"刮刀", "小刀", "厚手套", "薄手套", "帽子", "工服", "鞋子"}
 	return []ticketCategorySeed{
 		{
 			Code: "farm_inbound", Name: "原料半成品收购入厂", Remark: "农户/供应商收购入厂申报",
@@ -120,10 +119,8 @@ func defaultTicketCategorySeeds() []ticketCategorySeed {
 				fieldDate("biz_date", "日期", true),
 				fieldNum("seq_no", "序号", false, ""),
 				fieldText("employee_name", "员工姓名", true),
-				fieldSelect("tool_name", "工具名称", true, tools...),
-				fieldNum("issue_qty", "领取数量", true, ""),
-				fieldNum("return_qty", "交还数量", false, ""),
-				fieldNum("total_qty", "合计数量", false, ""),
+				fieldText("items_summary", "工具明细", true),
+				fieldNum("issue_qty", "领取合计", true, ""),
 			},
 		},
 		{
@@ -133,10 +130,8 @@ func defaultTicketCategorySeeds() []ticketCategorySeed {
 				fieldDate("biz_date", "日期", true),
 				fieldNum("seq_no", "序号", false, ""),
 				fieldText("employee_name", "员工姓名", true),
-				fieldSelect("tool_name", "工具名称", true, tools...),
-				fieldNum("issue_qty", "领取数量", false, ""),
-				fieldNum("return_qty", "交还数量", true, ""),
-				fieldNum("total_qty", "合计数量", false, ""),
+				fieldText("items_summary", "工具明细", true),
+				fieldNum("return_qty", "交还合计", true, ""),
 			},
 		},
 		{

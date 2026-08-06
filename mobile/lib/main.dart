@@ -50,6 +50,7 @@ class ErpEmployeeApp extends StatelessWidget {
       ],
       child: MaterialApp(
         title: '加工厂员工端',
+        navigatorKey: appNavigatorKey,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0D7A6F)),
           useMaterial3: true,
@@ -57,7 +58,7 @@ class ErpEmployeeApp extends StatelessWidget {
         home: Consumer<AuthState>(
           builder: (context, a, _) {
             if (!a.isLoggedIn) return const LoginPage();
-            return const HomePage();
+            return const _HomeWithLaunchLink();
           },
         ),
         routes: {
@@ -80,4 +81,25 @@ class ErpEmployeeApp extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Home shell that applies cold-start notification deep link once after mount.
+class _HomeWithLaunchLink extends StatefulWidget {
+  const _HomeWithLaunchLink();
+
+  @override
+  State<_HomeWithLaunchLink> createState() => _HomeWithLaunchLinkState();
+}
+
+class _HomeWithLaunchLinkState extends State<_HomeWithLaunchLink> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<NotifyService>().consumePendingLaunch();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const HomePage();
 }

@@ -83,16 +83,25 @@ CREATE TABLE IF NOT EXISTS hr_tool_issue (
   seq_no INT NOT NULL DEFAULT 1,
   employee_id BIGINT NULL,
   employee_name VARCHAR(64) NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'open',
+  remark VARCHAR(256) NULL,
+  pending_return_qty DECIMAL(18,4) NOT NULL DEFAULT 0,
+  ticket_id BIGINT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uk_hr_tool_issue_doc (doc_no)
+) ENGINE=InnoDB COMMENT='工具领还单头';
+
+CREATE TABLE IF NOT EXISTS hr_tool_issue_line (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  issue_id BIGINT NOT NULL,
   tool_item_id BIGINT NOT NULL,
   tool_name VARCHAR(64) NULL,
   issue_qty DECIMAL(18,4) NOT NULL DEFAULT 0,
   return_qty DECIMAL(18,4) NOT NULL DEFAULT 0,
-  total_qty DECIMAL(18,4) NOT NULL DEFAULT 0,
-  status VARCHAR(16) NOT NULL DEFAULT 'open',
-  remark VARCHAR(256) NULL,
-  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  UNIQUE KEY uk_hr_tool_issue_doc (doc_no)
-) ENGINE=InnoDB COMMENT='工具领还';
+  pending_return_qty DECIMAL(18,4) NOT NULL DEFAULT 0,
+  UNIQUE KEY uk_hr_tool_issue_line (issue_id, tool_item_id),
+  KEY idx_hr_tool_issue_line_issue (issue_id)
+) ENGINE=InnoDB COMMENT='工具领还明细';
 
 CREATE TABLE IF NOT EXISTS inv_weighbridge (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,

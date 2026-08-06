@@ -81,6 +81,11 @@ func seedTicketCategories(db *sql.DB) {
 		_, _ = db.Exec(`UPDATE wf_ticket_category SET form_schema_json=?, biz_hint=COALESCE(NULLIF(biz_hint,''), ?), name=?, remark=?
 			WHERE code=? AND (form_schema_json IS NULL OR form_schema_json='' OR form_schema_json='[]' OR form_schema_json='null')`,
 			schema, seed.BizHint, seed.Name, seed.Remark, seed.Code)
+		// force-refresh tool multi-line form schemas
+		if seed.Code == "tool_issue" || seed.Code == "tool_return" {
+			_, _ = db.Exec(`UPDATE wf_ticket_category SET form_schema_json=?, biz_hint=?, name=?, remark=? WHERE code=?`,
+				schema, seed.BizHint, seed.Name, seed.Remark, seed.Code)
+		}
 		var catID int64
 		_ = db.QueryRow(`SELECT id FROM wf_ticket_category WHERE code=?`, seed.Code).Scan(&catID)
 		if catID <= 0 {
@@ -305,7 +310,10 @@ func (s *Services) resolveHandlerPool(catID int64) []gin.H {
 		return out
 	}
 	defer rows.Close()
-	type pair struct{ ht string; ref int64 }
+	type pair struct {
+		ht  string
+		ref int64
+	}
 	pairs := []pair{}
 	for rows.Next() {
 		var ht string
@@ -486,7 +494,7 @@ func (s *Services) loadTicket(id int64) gin.H {
 		"applicant_name": s.userDisplayName(applicant), "assignee_name": s.userDisplayName(assignee),
 		"biz_type": bizType, "biz_id": bizID, "payload_json": payload, "payload": parsePayloadMap(payload),
 		"form_schema": s.categoryFormSchema(catID),
-		"created_at": created, "updated_at": updated, "closed_at": closed,
+		"created_at":  created, "updated_at": updated, "closed_at": closed,
 	}
 }
 
@@ -714,6 +722,7 @@ func (s *Services) actionTicketBody(c *gin.Context, id int64, body map[string]in
 			var curSt string
 			_ = s.DB.QueryRow(`SELECT status FROM hr_tool_issue WHERE id=?`, bizID).Scan(&curSt)
 			if curSt == "pending_return" {
+				_, _ = s.DB.Exec(`UPDATE hr_tool_issue_line SET pending_return_qty=0 WHERE issue_id=?`, bizID)
 				_, _ = s.DB.Exec(`UPDATE hr_tool_issue SET status='open', pending_return_qty=0 WHERE id=?`, bizID)
 			} else {
 				_, _ = s.DB.Exec(`UPDATE hr_tool_issue SET status='rejected' WHERE id=? AND status='pending'`, bizID)
@@ -733,28 +742,7 @@ func (s *Services) applyToolBizFromTicketAction(c *gin.Context, action string, b
 	case "approve":
 		_, _ = s.DB.Exec(`UPDATE hr_tool_issue SET status='open' WHERE id=? AND status='pending'`, bizID)
 	case "return_confirm":
-		var issue, pending float64
-		_ = s.DB.QueryRow(`SELECT issue_qty, COALESCE(pending_return_qty,0) FROM hr_tool_issue WHERE id=?`, bizID).Scan(&issue, &pending)
-		ret := asFloatOr0(body["return_qty"])
-		if ret <= 0 {
-			ret = pending
-		}
-		if ret <= 0 {
-			ret = issue
-		}
-		var curRet float64
-		_ = s.DB.QueryRow(`SELECT return_qty FROM hr_tool_issue WHERE id=?`, bizID).Scan(&curRet)
-		newRet := curRet + ret
-		if newRet > issue {
-			newRet = issue
-		}
-		total := issue - newRet
-		st := "open"
-		if total <= 0 {
-			total = 0
-			st = "returned"
-		}
-		_, _ = s.DB.Exec(`UPDATE hr_tool_issue SET return_qty=?, total_qty=?, status=?, pending_return_qty=0 WHERE id=?`, newRet, total, st, bizID)
+		_ = s.applyToolIssueReturn(bizID, body)
 	}
 }
 

@@ -339,6 +339,7 @@ func (s *Services) handleToolItems(c *gin.Context, method, action string) bool {
 
 func (s *Services) handleToolIssues(c *gin.Context, method, action string) bool {
 	EnsureTicketSchema(s.DB)
+	migrateToolIssueToLines(s.DB)
 	path := c.Request.URL.Path
 	if action == "delete" {
 		return s.refuseDelete(c)
@@ -390,8 +391,7 @@ func (s *Services) listToolIssues(c *gin.Context) bool {
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_tool_issue `+where, args...).Scan(&total)
 	args2 := append(append([]interface{}{}, args...), pageSize, (pageNum-1)*pageSize)
 	rows, err := s.DB.Query(`SELECT id, doc_no, biz_date, seq_no, COALESCE(employee_id,0), COALESCE(employee_name,''),
-		tool_item_id, COALESCE(tool_name,''), issue_qty, return_qty, total_qty, status, COALESCE(remark,''), created_at,
-		COALESCE(pending_return_qty,0), COALESCE(ticket_id,0)
+		status, COALESCE(remark,''), created_at, COALESCE(pending_return_qty,0), COALESCE(ticket_id,0)
 		FROM hr_tool_issue `+where+` ORDER BY id DESC LIMIT ? OFFSET ?`, args2...)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -399,16 +399,31 @@ func (s *Services) listToolIssues(c *gin.Context) bool {
 	}
 	defer rows.Close()
 	list := []gin.H{}
+	ids := []int64{}
 	for rows.Next() {
-		var id, seq, empID, toolID, ticketID int64
-		var docNo, bizDate, ename, tname, status, remark, created string
-		var issue, ret, totalQty, pending float64
-		_ = rows.Scan(&id, &docNo, &bizDate, &seq, &empID, &ename, &toolID, &tname, &issue, &ret, &totalQty, &status, &remark, &created, &pending, &ticketID)
+		var id, seq, empID, ticketID int64
+		var docNo, bizDate, ename, status, remark, created string
+		var pending float64
+		_ = rows.Scan(&id, &docNo, &bizDate, &seq, &empID, &ename, &status, &remark, &created, &pending, &ticketID)
+		ids = append(ids, id)
 		list = append(list, gin.H{
 			"id": id, "doc_no": docNo, "biz_date": bizDate, "seq_no": seq, "employee_id": empID, "employee_name": ename,
-			"tool_item_id": toolID, "tool_name": tname, "issue_qty": issue, "return_qty": ret, "total_qty": totalQty,
 			"status": status, "remark": remark, "created_at": created, "pending_return_qty": pending, "ticket_id": ticketID,
 		})
+	}
+	lineMap := s.loadToolIssueLinesMap(ids)
+	for i := range list {
+		id := asInt64Or0(list[i]["id"])
+		lines := lineMap[id]
+		if lines == nil {
+			lines = []gin.H{}
+		}
+		list[i]["items"] = lines
+		list[i]["items_summary"] = toolIssueItemsSummary(lines)
+		issueQty, returnQty, totalQty := toolIssueQtyTotals(lines)
+		list[i]["issue_qty"] = issueQty
+		list[i]["return_qty"] = returnQty
+		list[i]["total_qty"] = totalQty
 	}
 	api.PageOK(c, list, total, pageNum, pageSize)
 	return true
@@ -426,21 +441,85 @@ func (s *Services) getToolIssue(c *gin.Context) bool {
 }
 
 func (s *Services) loadToolIssue(id int64) gin.H {
-	var seq, empID, toolID, ticketID int64
-	var docNo, bizDate, ename, tname, status, remark, created string
-	var issue, ret, totalQty, pending float64
+	var seq, empID, ticketID int64
+	var docNo, bizDate, ename, status, remark, created string
+	var pending float64
 	err := s.DB.QueryRow(`SELECT doc_no, biz_date, seq_no, COALESCE(employee_id,0), COALESCE(employee_name,''),
-		tool_item_id, COALESCE(tool_name,''), issue_qty, return_qty, total_qty, status, COALESCE(remark,''), created_at,
-		COALESCE(pending_return_qty,0), COALESCE(ticket_id,0) FROM hr_tool_issue WHERE id=?`, id).
-		Scan(&docNo, &bizDate, &seq, &empID, &ename, &toolID, &tname, &issue, &ret, &totalQty, &status, &remark, &created, &pending, &ticketID)
+		status, COALESCE(remark,''), created_at, COALESCE(pending_return_qty,0), COALESCE(ticket_id,0)
+		FROM hr_tool_issue WHERE id=?`, id).
+		Scan(&docNo, &bizDate, &seq, &empID, &ename, &status, &remark, &created, &pending, &ticketID)
 	if err != nil {
 		return nil
 	}
+	lines := s.loadToolIssueLines(id)
+	issueQty, returnQty, totalQty := toolIssueQtyTotals(lines)
 	return gin.H{
 		"id": id, "doc_no": docNo, "biz_date": bizDate, "seq_no": seq, "employee_id": empID, "employee_name": ename,
-		"tool_item_id": toolID, "tool_name": tname, "issue_qty": issue, "return_qty": ret, "total_qty": totalQty,
 		"status": status, "remark": remark, "created_at": created, "pending_return_qty": pending, "ticket_id": ticketID,
+		"items": lines, "items_summary": toolIssueItemsSummary(lines),
+		"issue_qty": issueQty, "return_qty": returnQty, "total_qty": totalQty,
 	}
+}
+
+func (s *Services) loadToolIssueLines(issueID int64) []gin.H {
+	m := s.loadToolIssueLinesMap([]int64{issueID})
+	if lines := m[issueID]; lines != nil {
+		return lines
+	}
+	return []gin.H{}
+}
+
+func (s *Services) loadToolIssueLinesMap(issueIDs []int64) map[int64][]gin.H {
+	out := map[int64][]gin.H{}
+	if len(issueIDs) == 0 {
+		return out
+	}
+	placeholders := make([]string, len(issueIDs))
+	args := make([]interface{}, len(issueIDs))
+	for i, id := range issueIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	rows, err := s.DB.Query(`SELECT id, issue_id, tool_item_id, COALESCE(tool_name,''), issue_qty, return_qty, COALESCE(pending_return_qty,0)
+		FROM hr_tool_issue_line WHERE issue_id IN (`+strings.Join(placeholders, ",")+`) ORDER BY id`, args...)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var lid, issueID, toolID int64
+		var tname string
+		var issue, ret, pending float64
+		_ = rows.Scan(&lid, &issueID, &toolID, &tname, &issue, &ret, &pending)
+		out[issueID] = append(out[issueID], gin.H{
+			"id": lid, "line_id": lid, "issue_id": issueID, "tool_item_id": toolID, "tool_name": tname,
+			"issue_qty": issue, "return_qty": ret, "pending_return_qty": pending,
+			"total_qty": issue - ret,
+		})
+	}
+	return out
+}
+
+func toolIssueItemsSummary(lines []gin.H) string {
+	parts := make([]string, 0, len(lines))
+	for _, ln := range lines {
+		name := strOr(ln["tool_name"])
+		qty := asFloatOr0(ln["issue_qty"])
+		parts = append(parts, fmt.Sprintf("%s×%.0f", name, qty))
+	}
+	return strings.Join(parts, "、")
+}
+
+func toolIssueQtyTotals(lines []gin.H) (issueQty, returnQty, totalQty float64) {
+	for _, ln := range lines {
+		issueQty += asFloatOr0(ln["issue_qty"])
+		returnQty += asFloatOr0(ln["return_qty"])
+	}
+	totalQty = issueQty - returnQty
+	if totalQty < 0 {
+		totalQty = 0
+	}
+	return
 }
 
 func (s *Services) nextToolSeq(bizDate string) int64 {
@@ -452,14 +531,90 @@ func (s *Services) nextToolSeq(bizDate string) int64 {
 	return n
 }
 
+type toolIssueLineInput struct {
+	ToolItemID int64
+	ToolName   string
+	IssueQty   float64
+}
+
+func (s *Services) parseToolIssueItems(body map[string]interface{}) ([]toolIssueLineInput, string) {
+	raw := coerceInterfaceSlice(body["items"])
+	if len(raw) == 0 {
+		// legacy single-tool body
+		toolID := asInt64Or0(body["tool_item_id"])
+		qty := asFloatOr0(body["issue_qty"])
+		if toolID > 0 && qty > 0 {
+			raw = []interface{}{map[string]interface{}{"tool_item_id": toolID, "issue_qty": qty, "tool_name": body["tool_name"]}}
+		}
+	}
+	if len(raw) == 0 {
+		return nil, "ITEMS_REQUIRED"
+	}
+	seen := map[int64]bool{}
+	out := make([]toolIssueLineInput, 0, len(raw))
+	for _, it := range raw {
+		m := coerceStringMap(it)
+		if m == nil {
+			continue
+		}
+		toolID := asInt64Or0(m["tool_item_id"])
+		qty := asFloatOr0(m["issue_qty"])
+		if toolID <= 0 || qty <= 0 {
+			return nil, "INVALID_ITEM"
+		}
+		if seen[toolID] {
+			return nil, "DUPLICATE_TOOL"
+		}
+		seen[toolID] = true
+		var toolName string
+		_ = s.DB.QueryRow(`SELECT name FROM hr_tool_item WHERE id=?`, toolID).Scan(&toolName)
+		if toolName == "" {
+			toolName = strOr(m["tool_name"])
+		}
+		if toolName == "" {
+			return nil, "TOOL_NOT_FOUND"
+		}
+		out = append(out, toolIssueLineInput{ToolItemID: toolID, ToolName: toolName, IssueQty: qty})
+	}
+	if len(out) == 0 {
+		return nil, "ITEMS_REQUIRED"
+	}
+	return out, ""
+}
+
+func coerceInterfaceSlice(v interface{}) []interface{} {
+	switch t := v.(type) {
+	case []interface{}:
+		return t
+	case []map[string]interface{}:
+		out := make([]interface{}, len(t))
+		for i := range t {
+			out[i] = t[i]
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func coerceStringMap(v interface{}) map[string]interface{} {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		return t
+	case gin.H:
+		return map[string]interface{}(t)
+	default:
+		return nil
+	}
+}
+
 func (s *Services) createToolIssue(c *gin.Context) bool {
 	cl := middleware.Claims(c)
 	body := bindBody(c)
-	toolID, _ := asInt64(body["tool_item_id"])
-	var toolName string
-	_ = s.DB.QueryRow(`SELECT name FROM hr_tool_item WHERE id=?`, toolID).Scan(&toolName)
-	if toolName == "" {
-		toolName = strOr(body["tool_name"])
+	items, errCode := s.parseToolIssueItems(body)
+	if errCode != "" {
+		api.FailJSON(c, errCode)
+		return true
 	}
 	empID := asInt64Or0(body["employee_id"])
 	ename := strOr(body["employee_name"])
@@ -469,11 +624,6 @@ func (s *Services) createToolIssue(c *gin.Context) bool {
 	if empID > 0 && ename == "" {
 		_ = s.DB.QueryRow(`SELECT name FROM hr_employee WHERE id=?`, empID).Scan(&ename)
 	}
-	issue := asFloatOr0(body["issue_qty"])
-	if issue <= 0 {
-		api.FailJSON(c, "ISSUE_QTY_REQUIRED")
-		return true
-	}
 	next, _ := asInt64(body["next_assignee_user_id"])
 	if next <= 0 {
 		api.FailJSON(c, "NEXT_ASSIGNEE_REQUIRED")
@@ -482,14 +632,23 @@ func (s *Services) createToolIssue(c *gin.Context) bool {
 	bizDate := strOrDef(body["biz_date"], time.Now().Format("2006-01-02"))
 	seq := s.nextToolSeq(bizDate)
 	docNo := fmt.Sprintf("TI%s%03d", time.Now().Format("20060102150405"), seq%1000)
-	res, err := s.DB.Exec(`INSERT INTO hr_tool_issue(doc_no, biz_date, seq_no, employee_id, employee_name, tool_item_id, tool_name,
-		issue_qty, return_qty, total_qty, status, remark, pending_return_qty) VALUES(?,?,?,?,?,?,?,?,0,?, 'pending',?,0)`,
-		docNo, bizDate, seq, nullIf0(empID), ename, toolID, toolName, issue, issue, strOr(body["remark"]))
+	res, err := s.DB.Exec(`INSERT INTO hr_tool_issue(doc_no, biz_date, seq_no, employee_id, employee_name, status, remark, pending_return_qty)
+		VALUES(?,?,?,?,?, 'pending',?,0)`,
+		docNo, bizDate, seq, nullIf0(empID), ename, strOr(body["remark"]))
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
 		return true
 	}
 	id, _ := res.LastInsertId()
+	for _, it := range items {
+		if _, err := s.DB.Exec(`INSERT INTO hr_tool_issue_line(issue_id, tool_item_id, tool_name, issue_qty, return_qty, pending_return_qty)
+			VALUES(?,?,?,?,0,0)`, id, it.ToolItemID, it.ToolName, it.IssueQty); err != nil {
+			_, _ = s.DB.Exec(`DELETE FROM hr_tool_issue_line WHERE issue_id=?`, id)
+			_, _ = s.DB.Exec(`DELETE FROM hr_tool_issue WHERE id=?`, id)
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
+			return true
+		}
+	}
 	applicant := int64(0)
 	if cl != nil {
 		applicant = cl.UserID
@@ -499,16 +658,25 @@ func (s *Services) createToolIssue(c *gin.Context) bool {
 	}
 	catID := s.categoryIDByCode("tool_issue")
 	if catID == 0 || !s.assigneeInPool(catID, next) {
+		_, _ = s.DB.Exec(`DELETE FROM hr_tool_issue_line WHERE issue_id=?`, id)
 		_, _ = s.DB.Exec(`DELETE FROM hr_tool_issue WHERE id=?`, id)
 		api.FailJSON(c, "ASSIGNEE_NOT_IN_POOL")
 		return true
 	}
+	lines := s.loadToolIssueLines(id)
+	summary := toolIssueItemsSummary(lines)
+	issueTotal, _, _ := toolIssueQtyTotals(lines)
 	payloadB, _ := json.Marshal(gin.H{
-		"tool_name": toolName, "issue_qty": issue, "employee_name": ename, "biz_date": bizDate, "seq_no": seq,
+		"items": lines, "items_summary": summary, "employee_name": ename, "biz_date": bizDate, "seq_no": seq,
+		"issue_qty": issueTotal,
 	})
-	title := fmt.Sprintf("工具领取 %s x%.0f (%s)", toolName, issue, ename)
+	title := fmt.Sprintf("工具领取申请 · %s · %d种", ename, len(items))
+	if ename == "" {
+		title = fmt.Sprintf("工具领取申请 · %d种", len(items))
+	}
 	tid, _, err := s.createTicket(c, catID, title, applicant, next, "hr_tool_issue", id, string(payloadB), strOr(body["remark"]))
 	if err != nil {
+		_, _ = s.DB.Exec(`DELETE FROM hr_tool_issue_line WHERE issue_id=?`, id)
 		_, _ = s.DB.Exec(`DELETE FROM hr_tool_issue WHERE id=?`, id)
 		api.FailJSON(c, err.Error())
 		return true
@@ -583,10 +751,6 @@ func (s *Services) returnRequestToolIssue(c *gin.Context) bool {
 		api.FailJSON(c, "INVALID_STATUS")
 		return true
 	}
-	ret := asFloatOr0(body["return_qty"])
-	if ret <= 0 {
-		ret = asFloatOr0(m["total_qty"])
-	}
 	next, _ := asInt64(body["next_assignee_user_id"])
 	if next <= 0 {
 		api.FailJSON(c, "NEXT_ASSIGNEE_REQUIRED")
@@ -597,17 +761,91 @@ func (s *Services) returnRequestToolIssue(c *gin.Context) bool {
 		api.FailJSON(c, "ASSIGNEE_NOT_IN_POOL")
 		return true
 	}
-	_, _ = s.DB.Exec(`UPDATE hr_tool_issue SET status='pending_return', pending_return_qty=? WHERE id=?`, ret, id)
+	lines := s.loadToolIssueLines(id)
+	retItems, _ := body["items"].([]interface{})
+	pendingByLine := map[int64]float64{}
+	var headerPending float64
+	_, _ = s.DB.Exec(`UPDATE hr_tool_issue_line SET pending_return_qty=0 WHERE issue_id=?`, id)
+	if len(retItems) > 0 {
+		for _, it := range retItems {
+			rm, _ := it.(map[string]interface{})
+			if rm == nil {
+				continue
+			}
+			lineID := asInt64Or0(rm["line_id"])
+			if lineID == 0 {
+				lineID = asInt64Or0(rm["id"])
+			}
+			qty := asFloatOr0(rm["return_qty"])
+			if lineID <= 0 || qty <= 0 {
+				api.FailJSON(c, "INVALID_RETURN_ITEM")
+				return true
+			}
+			pendingByLine[lineID] = qty
+		}
+		for _, ln := range lines {
+			lid := asInt64Or0(ln["id"])
+			qty, ok := pendingByLine[lid]
+			if !ok {
+				continue
+			}
+			remain := asFloatOr0(ln["issue_qty"]) - asFloatOr0(ln["return_qty"])
+			if qty > remain {
+				qty = remain
+			}
+			if qty <= 0 {
+				continue
+			}
+			pendingByLine[lid] = qty
+			headerPending += qty
+			_, _ = s.DB.Exec(`UPDATE hr_tool_issue_line SET pending_return_qty=? WHERE id=? AND issue_id=?`, qty, lid, id)
+		}
+		if headerPending <= 0 {
+			api.FailJSON(c, "RETURN_QTY_REQUIRED")
+			return true
+		}
+	} else {
+		// legacy: single return_qty or full remain
+		legacyRet := asFloatOr0(body["return_qty"])
+		remainTotal := asFloatOr0(m["total_qty"])
+		if legacyRet <= 0 {
+			legacyRet = remainTotal
+		}
+		if legacyRet <= 0 {
+			api.FailJSON(c, "RETURN_QTY_REQUIRED")
+			return true
+		}
+		left := legacyRet
+		for _, ln := range lines {
+			remain := asFloatOr0(ln["issue_qty"]) - asFloatOr0(ln["return_qty"])
+			if remain <= 0 || left <= 0 {
+				_, _ = s.DB.Exec(`UPDATE hr_tool_issue_line SET pending_return_qty=0 WHERE id=?`, asInt64Or0(ln["id"]))
+				continue
+			}
+			qty := remain
+			if qty > left {
+				qty = left
+			}
+			left -= qty
+			headerPending += qty
+			_, _ = s.DB.Exec(`UPDATE hr_tool_issue_line SET pending_return_qty=? WHERE id=?`, qty, asInt64Or0(ln["id"]))
+		}
+	}
+	_, _ = s.DB.Exec(`UPDATE hr_tool_issue SET status='pending_return', pending_return_qty=? WHERE id=?`, headerPending, id)
 	applicant := int64(0)
 	if cl != nil {
 		applicant = cl.UserID
 	}
+	linesAfter := s.loadToolIssueLines(id)
+	summary := toolIssueItemsSummary(linesAfter)
 	payloadB, _ := json.Marshal(gin.H{
-		"tool_name": m["tool_name"], "return_qty": ret, "employee_name": m["employee_name"],
+		"items": linesAfter, "items_summary": summary, "return_qty": headerPending,
+		"employee_name": m["employee_name"], "biz_date": m["biz_date"], "seq_no": m["seq_no"],
 	})
-	title := fmt.Sprintf("工具归还 %v x%.0f (%v)", m["tool_name"], ret, m["employee_name"])
+	title := fmt.Sprintf("工具归还 · %v · %.0f件", m["employee_name"], headerPending)
 	tid, _, err := s.createTicket(c, catID, title, applicant, next, "hr_tool_issue", id, string(payloadB), strOr(body["remark"]))
 	if err != nil {
+		_, _ = s.DB.Exec(`UPDATE hr_tool_issue_line SET pending_return_qty=0 WHERE issue_id=?`, id)
 		_, _ = s.DB.Exec(`UPDATE hr_tool_issue SET status='open', pending_return_qty=0 WHERE id=?`, id)
 		api.FailJSON(c, err.Error())
 		return true
@@ -644,34 +882,108 @@ func (s *Services) returnConfirmToolIssue(c *gin.Context) bool {
 func (s *Services) returnToolIssue(c *gin.Context) bool {
 	id := paramID(c)
 	body := bindBody(c)
-	ret := asFloatOr0(body["return_qty"])
-	var issue, curRet float64
-	var status string
-	err := s.DB.QueryRow(`SELECT issue_qty, return_qty, status FROM hr_tool_issue WHERE id=?`, id).Scan(&issue, &curRet, &status)
-	if err != nil {
+	m := s.loadToolIssue(id)
+	if m == nil {
 		api.FailJSON(c, "NOT_FOUND")
 		return true
 	}
-	if ret <= 0 {
-		ret = issue - curRet
-	}
-	newRet := curRet + ret
-	if newRet > issue {
-		newRet = issue
-	}
-	total := issue - newRet
-	st := "open"
-	if total <= 0 {
-		total = 0
-		st = "returned"
-	}
-	_, err = s.DB.Exec(`UPDATE hr_tool_issue SET return_qty=?, total_qty=?, status=?, pending_return_qty=0 WHERE id=?`, newRet, total, st, id)
-	if err != nil {
-		api.FailJSON(c, "DB_ERROR:"+err.Error())
+	if err := s.applyToolIssueReturn(id, body); err != "" {
+		api.FailJSON(c, err)
 		return true
 	}
-	api.OK(c, gin.H{"id": id, "return_qty": newRet, "total_qty": total, "status": st})
+	api.OK(c, s.loadToolIssue(id))
 	return true
+}
+
+// applyToolIssueReturn confirms pending line returns (or full remain / explicit items).
+func (s *Services) applyToolIssueReturn(id int64, body map[string]interface{}) string {
+	lines := s.loadToolIssueLines(id)
+	if len(lines) == 0 {
+		return "NOT_FOUND"
+	}
+	retItems, _ := body["items"].([]interface{})
+	qtyByLine := map[int64]float64{}
+	if len(retItems) > 0 {
+		for _, it := range retItems {
+			rm, _ := it.(map[string]interface{})
+			if rm == nil {
+				continue
+			}
+			lineID := asInt64Or0(rm["line_id"])
+			if lineID == 0 {
+				lineID = asInt64Or0(rm["id"])
+			}
+			qty := asFloatOr0(rm["return_qty"])
+			if lineID > 0 && qty > 0 {
+				qtyByLine[lineID] = qty
+			}
+		}
+	} else {
+		usePending := false
+		for _, ln := range lines {
+			if asFloatOr0(ln["pending_return_qty"]) > 0 {
+				usePending = true
+				break
+			}
+		}
+		legacyRet := asFloatOr0(body["return_qty"])
+		if usePending {
+			for _, ln := range lines {
+				qtyByLine[asInt64Or0(ln["id"])] = asFloatOr0(ln["pending_return_qty"])
+			}
+		} else if legacyRet > 0 {
+			left := legacyRet
+			for _, ln := range lines {
+				remain := asFloatOr0(ln["issue_qty"]) - asFloatOr0(ln["return_qty"])
+				if remain <= 0 || left <= 0 {
+					continue
+				}
+				qty := remain
+				if qty > left {
+					qty = left
+				}
+				left -= qty
+				qtyByLine[asInt64Or0(ln["id"])] = qty
+			}
+		} else {
+			// full return remaining
+			for _, ln := range lines {
+				remain := asFloatOr0(ln["issue_qty"]) - asFloatOr0(ln["return_qty"])
+				if remain > 0 {
+					qtyByLine[asInt64Or0(ln["id"])] = remain
+				}
+			}
+		}
+	}
+	allReturned := true
+	var headerReturn, headerIssue float64
+	for _, ln := range lines {
+		lid := asInt64Or0(ln["id"])
+		issue := asFloatOr0(ln["issue_qty"])
+		curRet := asFloatOr0(ln["return_qty"])
+		add := qtyByLine[lid]
+		if add < 0 {
+			add = 0
+		}
+		newRet := curRet + add
+		if newRet > issue {
+			newRet = issue
+		}
+		_, _ = s.DB.Exec(`UPDATE hr_tool_issue_line SET return_qty=?, pending_return_qty=0 WHERE id=?`, newRet, lid)
+		headerIssue += issue
+		headerReturn += newRet
+		if newRet < issue {
+			allReturned = false
+		}
+	}
+	st := "open"
+	if allReturned {
+		st = "returned"
+	}
+	_, _ = s.DB.Exec(`UPDATE hr_tool_issue SET status=?, pending_return_qty=0 WHERE id=?`, st, id)
+	_ = headerIssue
+	_ = headerReturn
+	return ""
 }
 
 // --- weighbridge ---

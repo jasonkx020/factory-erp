@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -35,6 +37,7 @@ func main() {
 		{"me", "GET", "/auth/me", nil, false},
 		{"farmers", "GET", "/purchase/farmers?page_size=5", nil, false},
 		{"weigh_list", "GET", "/purchase/weigh-tickets?page_size=5", nil, false},
+		{"weigh_varieties", "GET", "/purchase/weigh-varieties?status=active", nil, false},
 		{"purchase_tasks", "GET", "/purchase/tasks?page_size=5", nil, false},
 		{"balances", "GET", "/inventory/balances?page_size=5", nil, false},
 		{"box_codes", "GET", "/inventory/box-codes?page_size=5", nil, false},
@@ -91,22 +94,65 @@ func main() {
 		ok(c.name)
 	}
 
-	// closed-loop sample: weigh create → qc → (confirm may need purchase role; admin ok)
+	// closed-loop: generate batch → upload → gate + stockin create → qc → confirm
 	farmerID := firstID(base, token, "/purchase/farmers?page_size=1", "id")
-	if farmerID > 0 {
-		img := fmt.Sprintf("mobile://delivery_smoke/%d", time.Now().Unix())
-		var created map[string]any
-		if err := callJSON(base, token, "POST", "/purchase/weigh-tickets", map[string]any{
-			"farmer_id": farmerID, "channel": "internal", "product_id": 1, "variety": "鲜木薯",
-			"gross_weight": 1000, "deduct_rate": 5, "grade": "A", "image_url": img,
-			"biz_date": time.Now().Format("2006-01-02"), "source_type": "self",
-		}, &created); err != nil {
-			fail("weigh_create", err)
+	bizDate := time.Now().Format("2006-01-02")
+	var gen map[string]any
+	if err := callJSON(base, token, "POST", "/purchase/trace-batch-codes/generate", map[string]any{
+		"biz_date": bizDate, "lot_no": "01", "qty": 3,
+	}, &gen); err != nil {
+		fail("trace_batch_generate", err)
+		failed++
+	} else {
+		ok("trace_batch_generate")
+	}
+	codes := listCodes(gen)
+	if len(codes) < 2 {
+		warn("trace_batch_generate", fmt.Errorf("need >=2 codes, got %d", len(codes)))
+	} else {
+		// bad checksum
+		bad := codes[0][:len(codes[0])-1] + "0"
+		if bad == codes[0] {
+			bad = codes[0][:len(codes[0])-1] + "1"
+		}
+		if err := call(base, token, "POST", "/purchase/trace-batch-codes/validate", map[string]any{"code": bad}); err == nil {
+			fail("trace_batch_bad_chk", fmt.Errorf("expected reject"))
 			failed++
 		} else {
-			ok("weigh_create")
+			ok("trace_batch_bad_chk")
+		}
+	}
+
+	imgURL, err := uploadSmokeImage(base, token)
+	if err != nil {
+		fail("upload", err)
+		failed++
+	} else {
+		ok("upload")
+	}
+
+	if farmerID > 0 && len(codes) >= 2 && imgURL != "" {
+		var created map[string]any
+		if err := callJSON(base, token, "POST", "/purchase/weigh-tickets", map[string]any{
+			"receive_kind": "gate", "batch_no": codes[0], "farmer_id": farmerID,
+			"channel": "internal", "product_id": 1, "variety": "鲜木薯",
+			"gross_weight": 1000, "deduct_rate": 5, "unit_price": 1.2, "grade": "A",
+			"image_url": imgURL, "biz_date": bizDate, "source_type": "self",
+		}, &created); err != nil {
+			fail("weigh_create_gate", err)
+			failed++
+		} else {
+			ok("weigh_create_gate")
 			id := asInt(created["id"])
 			if id > 0 {
+				if err := call(base, token, "PUT", fmt.Sprintf("/purchase/weigh-tickets/%d", id), map[string]any{
+					"batch_no": codes[1], "gross_weight": 1000,
+				}); err == nil {
+					fail("batch_locked", fmt.Errorf("expected BATCH_NO_LOCKED"))
+					failed++
+				} else {
+					ok("batch_locked")
+				}
 				if err := call(base, token, "POST", fmt.Sprintf("/purchase/weigh-tickets/%d/qc", id), map[string]any{
 					"qc_result": "pass", "grade": "A",
 				}); err != nil {
@@ -118,14 +164,36 @@ func main() {
 				if err := call(base, token, "POST", fmt.Sprintf("/purchase/weigh-tickets/%d/confirm", id), map[string]any{
 					"confirmed": true, "grade": "A",
 				}); err != nil {
-					warn("weigh_confirm", err) // may fail on evidence edge-cases; report but don't hard-fail whole suite
+					warn("weigh_confirm", err)
 				} else {
 					ok("weigh_confirm")
 				}
 			}
 		}
+		var stockin map[string]any
+		if err := callJSON(base, token, "POST", "/purchase/weigh-tickets", map[string]any{
+			"receive_kind": "stockin", "batch_no": codes[1], "farmer_id": farmerID,
+			"product_id": 1, "variety": "鲜木薯", "net_weight": 200, "bag_qty": 10,
+			"cold_store_type": "fresh", "origin": "广西田东", "image_url": imgURL,
+			"biz_date": bizDate, "source_type": "self",
+		}, &stockin); err != nil {
+			fail("weigh_create_stockin", err)
+			failed++
+		} else {
+			ok("weigh_create_stockin")
+		}
+		// missing photo
+		if err := call(base, token, "POST", "/purchase/weigh-tickets", map[string]any{
+			"receive_kind": "gate", "batch_no": codes[2], "farmer_id": farmerID,
+			"gross_weight": 100, "image_url": "mobile://fake",
+		}); err == nil {
+			fail("reject_fake_photo", fmt.Errorf("expected reject"))
+			failed++
+		} else {
+			ok("reject_fake_photo")
+		}
 	} else {
-		warn("weigh_create", fmt.Errorf("no farmer"))
+		warn("weigh_create", fmt.Errorf("farmer=%d codes=%d img=%s", farmerID, len(codes), imgURL))
 	}
 
 	if failed > 0 {
@@ -222,6 +290,68 @@ func firstID(base, token, path, key string) int64 {
 	}
 	row, _ := list[0].(map[string]any)
 	return asInt(row[key])
+}
+
+func listCodes(gen map[string]any) []string {
+	out := []string{}
+	list, _ := gen["list"].([]any)
+	for _, it := range list {
+		m, _ := it.(map[string]any)
+		if c, _ := m["code"].(string); c != "" {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func uploadSmokeImage(base, token string) (string, error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	part, err := w.CreateFormFile("file", "smoke.jpg")
+	if err != nil {
+		return "", err
+	}
+	// minimal valid-ish JPEG header + padding
+	_, _ = part.Write([]byte{0xff, 0xd8, 0xff, 0xd9})
+	_, _ = part.Write([]byte("smoke-photo"))
+	_ = w.Close()
+	apiRoot := strings.TrimSuffix(base, "/api/v1")
+	if apiRoot == base {
+		apiRoot = strings.TrimSuffix(base, "/api/v1/")
+	}
+	url := base + "/biz/uploads"
+	req, err := http.NewRequest("POST", url, &buf)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	raw, _ := io.ReadAll(res.Body)
+	var env envelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return "", fmt.Errorf("parse: %s", truncate(string(raw)))
+	}
+	if env.Code != 1 {
+		return "", fmt.Errorf("%s", env.Msg)
+	}
+	var data map[string]any
+	_ = json.Unmarshal(env.Data, &data)
+	u, _ := data["url"].(string)
+	if u == "" {
+		u, _ = data["file_url"].(string)
+	}
+	if u == "" {
+		return "", fmt.Errorf("empty url")
+	}
+	_ = apiRoot
+	return u, nil
 }
 
 func asInt(v any) int64 {
