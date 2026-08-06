@@ -2,41 +2,180 @@
 
 Android / iOS **唯一**员工现场端。与管理端共用 `/api/v1` 与 IAM；登录 `client_type=mobile`。
 
+后端 API 用 Go 启动；Go 国内安装与代理的精简说明也见仓库根目录 [README.md](../README.md)。
+
 ## 环境要求
 
-- Flutter SDK（本仓库常用路径示例：`D:\flutter`）
-- Android SDK / JDK 17（Android Studio 自带 JBR 即可）
-- 真机或模拟器；API 默认端口 `:18080`
-
-## 开发
-
-```powershell
-cd mobile
-flutter pub get
-
-# 国内网络强烈建议先设镜像（新开终端也会继承 User 级环境变量）
-$env:FLUTTER_STORAGE_BASE_URL = "https://storage.flutter-io.cn"
-$env:PUB_HOSTED_URL = "https://pub.flutter-io.cn"
-
-flutter run -d <设备ID> --dart-define=API_BASE=http://192.168.x.x:18080/api/v1
-```
+| 组件 | 说明 |
+|------|------|
+| Go | 与仓库根 `go.mod` 一致（当前 `1.26.x`），用于跑 `erp-api` |
+| Flutter SDK | 建议单独目录，如 Windows `D:\flutter`、Linux `~/flutter` |
+| Android Studio | 含 Android SDK、平台工具；JDK 17（可用 Studio 自带 JBR） |
+| 设备 | 真机 USB 调试或模拟器；电脑与手机同一局域网 |
+| API | 默认 `:18080`，前缀 `/api/v1` |
 
 演示账号：`admin` / `admin123`
 
-持久化镜像（PowerShell，只需执行一次）：
+---
+
+## Go 安装与国内代理
+
+跑员工 App 前需本机可访问 API。国内安装后**务必**改 `GOPROXY`，否则 `go mod download` 很慢或失败。
+
+### Windows
+
+1. 从 [golang.google.cn/dl](https://golang.google.cn/dl/) 或 [go.dev/dl](https://go.dev/dl/) 下载 `.msi` 安装。
+2. 新开 PowerShell：
+
+```powershell
+go version
+
+# 安装后立刻改为国内模块代理（永久）
+go env -w GOPROXY=https://goproxy.cn,direct
+go env -w GOSUMDB=sum.golang.google.cn
+go env GOPROXY GOSUMDB
+```
+
+3. 启动 API（仓库根目录）：
+
+```powershell
+cd D:\workplace\ycwl-erp-master
+go mod download
+go run ./cmd/erp-api
+```
+
+健康检查：浏览器打开 `http://127.0.0.1:18080/api/v1/health`。
+
+### Linux
+
+```bash
+# 示例版本按官网调整
+curl -fsSL -o go.tgz https://golang.google.cn/dl/go1.26.3.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go.tgz
+echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc && source ~/.bashrc
+go version
+
+go env -w GOPROXY=https://goproxy.cn,direct
+go env -w GOSUMDB=sum.golang.google.cn
+
+cd /path/to/ycwl-erp-master
+go mod download
+go run ./cmd/erp-api
+```
+
+备选 `GOPROXY`：`https://proxy.golang.com.cn,direct`、`https://mirrors.aliyun.com/goproxy/,direct`。
+
+---
+
+## Flutter 安装与收尾配置
+
+### Windows：安装 Flutter
+
+1. 安装 **Git for Windows**、**Android Studio**（SDK Manager 勾选 Android SDK、平台工具、至少一个较新 Platform）。
+2. 克隆 SDK（建议与工程**同一盘符**，避免 Kotlin 跨盘符问题）：
+
+```powershell
+cd D:\
+git clone https://github.com/flutter/flutter.git -b stable
+# 国内可改用镜像站 clone，或配置 git 代理后再拉
+```
+
+3. 将 `D:\flutter\bin` 加入用户 **PATH**（系统设置 → 环境变量），**新开**终端：
+
+```powershell
+flutter --version
+```
+
+4. **国内镜像（必配，永久）**：
 
 ```powershell
 [Environment]::SetEnvironmentVariable("FLUTTER_STORAGE_BASE_URL", "https://storage.flutter-io.cn", "User")
 [Environment]::SetEnvironmentVariable("PUB_HOSTED_URL", "https://pub.flutter-io.cn", "User")
+# 可选：pub 缓存与工程同盘
+[Environment]::SetEnvironmentVariable("PUB_CACHE", "D:\flutter\pub-cache", "User")
+# 可选：Gradle 缓存集中存放
+[Environment]::SetEnvironmentVariable("GRADLE_USER_HOME", "D:\flutter\gradle-cache", "User")
+```
+
+新开 PowerShell 后确认：
+
+```powershell
+echo $env:FLUTTER_STORAGE_BASE_URL
+echo $env:PUB_HOSTED_URL
+```
+
+5. 接受 Android 许可并体检：
+
+```powershell
+flutter doctor --android-licenses
+flutter doctor -v
+```
+
+按提示补齐：Android toolchain、设备/`chrome`（本项目不做 Flutter Web 亦可忽略 Web）。
+
+### Linux：安装 Flutter
+
+```bash
+# 依赖（Debian/Ubuntu 示例）
+sudo apt update
+sudo apt install -y curl git unzip xz-utils zip libglu1-mesa
+
+cd ~
+git clone https://github.com/flutter/flutter.git -b stable
+echo 'export PATH="$PATH:$HOME/flutter/bin"' >> ~/.bashrc
+
+# 国内镜像（写入 shell 配置，长期生效）
+cat >> ~/.bashrc <<'EOF'
+export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
+export PUB_HOSTED_URL=https://pub.flutter-io.cn
+export PUB_CACHE=$HOME/flutter/pub-cache
+EOF
+source ~/.bashrc
+
+flutter doctor --android-licenses
+flutter doctor -v
+```
+
+Android SDK 可用 Android Studio 或命令行 `cmdline-tools`；设置 `ANDROID_HOME` / `ANDROID_SDK_ROOT` 指向 SDK 根目录。
+
+### 收尾配置清单（装完必做）
+
+| 步骤 | Windows | Linux |
+|------|---------|-------|
+| Go 代理 | `go env -w GOPROXY=https://goproxy.cn,direct` | 同左 |
+| Flutter 存储/Pub 镜像 | User 环境变量见上 | `~/.bashrc` 见上 |
+| `flutter doctor` 无红色阻塞项 | 是 | 是 |
+| 真机 USB 调试 / 无线调试 | 开启开发者选项 | 同左 |
+| 本仓库 Android 已预置 | 腾讯云 Gradle、阿里云 Maven、desugaring | 同左 |
+| API 已启动且手机能访问电脑 IP | `go run ./cmd/erp-api` | 同左 |
+| 防火墙放行 18080 | Windows 防火墙入站 | `ufw`/安全组按需 |
+
+可选：Clash 等代理仅给浏览器用时，**不要**假设 Gradle/Java 自动走代理；优先靠 `FLUTTER_STORAGE_BASE_URL`，详见下文踩坑 §5。
+
+### 运行本 App
+
+```powershell
+# Windows 示例；先确认 API 已监听 :18080
+cd D:\workplace\ycwl-erp-master\mobile
+flutter pub get
+flutter devices
+flutter run -d <设备ID> --dart-define=API_BASE=http://192.168.x.x:18080/api/v1
+```
+
+```bash
+# Linux
+cd /path/to/ycwl-erp-master/mobile
+flutter pub get
+flutter run -d <设备ID> --dart-define=API_BASE=http://192.168.x.x:18080/api/v1
 ```
 
 查看完整编译过程：
 
 ```powershell
 flutter run -d <设备ID> -v --dart-define=API_BASE=http://192.168.x.x:18080/api/v1
-# 或单独看 Gradle：
+# 或
 cd android
-.\gradlew.bat assembleDebug --info --stacktrace
+.\gradlew.bat assembleDebug --info --stacktrace   # Linux: ./gradlew
 ```
 
 ## 模块（一二三期已齐，可交付）

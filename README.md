@@ -16,12 +16,112 @@
 
 ## 环境要求
 
-- Go（与 `go.mod` 一致）
+- Go（与 [`go.mod`](go.mod) 一致，当前 `go 1.26.x`）
 - Python 3（可选；契约工具已改为 Go：`cmd/erp-tools`）
 - Node.js + npm（Web monorepo：portal / admin / boss）
 - Flutter（员工现场 App Android/iOS，必选现场端）
 
 无需本机预装数据库即可开发：默认使用仓库内 SQLite 文件库。
+
+## 国内环境安装（Go / Flutter）
+
+国内网络请务必配置模块代理与 Flutter 镜像，否则 `go mod` / `flutter pub` / 引擎包下载极易超时。
+
+### Go 安装与代理（Windows）
+
+1. 打开 [https://go.dev/dl/](https://go.dev/dl/) 或国内镜像（如 [https://golang.google.cn/dl/](https://golang.google.cn/dl/)）下载 Windows 安装包（`.msi`），按向导安装。
+2. 新开 **PowerShell**，确认版本：
+
+```powershell
+go version
+```
+
+3. **安装后立刻改国内模块代理**（推荐七牛 / 官方中国代理）：
+
+```powershell
+# 当前用户永久生效
+go env -w GOPROXY=https://goproxy.cn,direct
+go env -w GOSUMDB=sum.golang.google.cn
+# 若公司有私有库再按需设置：
+# go env -w GOPRIVATE=git.example.com
+
+go env GOPROXY GOSUMDB
+```
+
+4. 拉本仓库依赖并启动 API：
+
+```powershell
+cd D:\workplace\ycwl-erp-master
+go mod download
+go run ./cmd/erp-api
+```
+
+可选：若仍走系统错误代理，可临时清空再编：
+
+```powershell
+$env:HTTP_PROXY=""; $env:HTTPS_PROXY=""; $env:ALL_PROXY=""
+go env -w GOPROXY=https://goproxy.cn,direct
+```
+
+### Go 安装与代理（Linux）
+
+1. 下载并解压（版本号按 [go.dev/dl](https://go.dev/dl/) 调整，示例 `1.26.3`）：
+
+```bash
+# 官方中国站通常更快
+curl -fsSL -o go.tgz https://golang.google.cn/dl/go1.26.3.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go
+sudo tar -C /usr/local -xzf go.tgz
+echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+source ~/.bashrc
+go version
+```
+
+也可使用发行版包管理器（版本可能偏旧，需满足 `go.mod`）：
+
+```bash
+# Debian/Ubuntu 示例（确认版本够新再用）
+# sudo apt update && sudo apt install golang-go
+```
+
+2. **安装后设置国内代理**：
+
+```bash
+go env -w GOPROXY=https://goproxy.cn,direct
+go env -w GOSUMDB=sum.golang.google.cn
+go env GOPROXY GOSUMDB
+```
+
+备选代理：`https://proxy.golang.com.cn,direct` 或 `https://mirrors.aliyun.com/goproxy/,direct`。
+
+3. 启动：
+
+```bash
+cd /path/to/ycwl-erp-master
+go mod download
+go run ./cmd/erp-api
+```
+
+### Flutter 安装与收尾配置
+
+员工 App 完整步骤（Windows/Linux、镜像、Android 编译踩坑）见：
+
+**[mobile/README.md](mobile/README.md)** →「Flutter 安装与收尾配置」+「Android 编译踩坑」。
+
+摘要（两台系统通用）：
+
+```bash
+# 1) 克隆 Flutter SDK 后把 bin 加入 PATH
+# 2) 国内镜像（必配）
+export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
+export PUB_HOSTED_URL=https://pub.flutter-io.cn
+# 3) 收尾
+flutter doctor
+cd mobile && flutter pub get
+flutter run --dart-define=API_BASE=http://<电脑局域网IP>:18080/api/v1
+```
+
+Windows 持久化环境变量示例见 mobile README。
 
 ## 快速启动（API）
 
