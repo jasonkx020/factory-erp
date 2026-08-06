@@ -3,6 +3,13 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { inventoryApi, productApi } from '@erp/shared'
+import {
+  WarehouseSelect,
+  SupplierSelect,
+  SalesOrderSelect,
+  StockTxnSelect,
+  WorkshopSelect,
+} from '../../components/select'
 import WarehouseInboundView from '../warehouse/WarehouseInboundView.vue'
 import StockLedgerView from './StockLedgerView.vue'
 
@@ -483,7 +490,7 @@ watch([active, transferTab, assembleTab], refresh)
                 <el-option label="领料出库" value="requisition_out" />
               </el-select>
             </el-form-item>
-            <el-form-item label="仓"><el-input-number v-model="txnForm.warehouse_id" :min="1" /></el-form-item>
+            <el-form-item label="仓库"><WarehouseSelect v-model="txnForm.warehouse_id" /></el-form-item>
             <el-form-item label="物料">
               <el-select v-model="txnForm.product_id" style="width:160px" filterable>
                 <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
@@ -519,9 +526,9 @@ watch([active, transferTab, assembleTab], refresh)
       <template v-else-if="active === 'stocktakes' || active === 'workshop-stocktakes'">
         <el-card :header="active === 'workshop-stocktakes' ? '新建车间盘点' : '新建仓库盘点'" class="mb">
           <el-form inline size="small">
-            <el-form-item label="仓"><el-input-number v-model="stocktakeForm.warehouse_id" :min="1" /></el-form-item>
+            <el-form-item label="仓库"><WarehouseSelect v-model="stocktakeForm.warehouse_id" /></el-form-item>
             <el-form-item v-if="active==='workshop-stocktakes'" label="车间">
-              <el-input-number v-model="stocktakeForm.workshop_id" :min="1" />
+              <WorkshopSelect v-model="stocktakeForm.workshop_id" />
             </el-form-item>
             <el-form-item label="物料">
               <el-select v-model="stocktakeForm.product_id" style="width:160px" filterable>
@@ -571,8 +578,8 @@ watch([active, transferTab, assembleTab], refresh)
         </el-radio-group>
         <el-card v-if="transferTab==='transfer'" header="新建调拨（过账：出原仓 + 入目标仓）" class="mb">
           <el-form inline size="small">
-            <el-form-item label="出仓"><el-input-number v-model="transferForm.from_warehouse_id" :min="1" /></el-form-item>
-            <el-form-item label="入仓"><el-input-number v-model="transferForm.to_warehouse_id" :min="1" /></el-form-item>
+            <el-form-item label="出仓库"><WarehouseSelect v-model="transferForm.from_warehouse_id" /></el-form-item>
+            <el-form-item label="入仓库"><WarehouseSelect v-model="transferForm.to_warehouse_id" /></el-form-item>
             <el-form-item label="物料">
               <el-select v-model="transferForm.product_id" style="width:160px" filterable>
                 <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
@@ -584,7 +591,7 @@ watch([active, transferTab, assembleTab], refresh)
         </el-card>
         <el-card v-else header="新建耗用（过账出库）" class="mb">
           <el-form inline size="small">
-            <el-form-item label="仓"><el-input-number v-model="consumeForm.warehouse_id" :min="1" /></el-form-item>
+            <el-form-item label="仓库"><WarehouseSelect v-model="consumeForm.warehouse_id" /></el-form-item>
             <el-form-item label="物料">
               <el-select v-model="consumeForm.product_id" style="width:160px" filterable>
                 <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
@@ -623,7 +630,9 @@ watch([active, transferTab, assembleTab], refresh)
                 <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
               </el-select>
             </el-form-item>
-            <el-form-item label="仓"><el-input-number v-model="alertForm.warehouse_id" :min="0" /></el-form-item>
+            <el-form-item label="仓库">
+              <WarehouseSelect v-model="alertForm.warehouse_id" allow-zero zero-label="全部" />
+            </el-form-item>
             <el-form-item v-if="active==='shortage'" label="下限"><el-input-number v-model="alertForm.min_qty" :min="0" /></el-form-item>
             <el-form-item v-else label="上限"><el-input-number v-model="alertForm.max_qty" :min="0" /></el-form-item>
             <el-button type="primary" @click="saveAlert">保存规则</el-button>
@@ -658,7 +667,7 @@ watch([active, transferTab, assembleTab], refresh)
               </el-select>
             </el-form-item>
             <el-form-item label="抽检量"><el-input-number v-model="qcForm.qty_check" :min="0" /></el-form-item>
-            <el-form-item label="流水ID"><el-input-number v-model="qcForm.stock_txn_id" :min="0" /></el-form-item>
+            <el-form-item label="库存流水"><StockTxnSelect v-model="qcForm.stock_txn_id" /></el-form-item>
             <el-button type="primary" @click="createQc">新建</el-button>
           </el-form>
         </el-card>
@@ -714,7 +723,7 @@ watch([active, transferTab, assembleTab], refresh)
       <template v-else-if="active === 'openings'">
         <el-card header="期初入库（过账写结存）" class="mb">
           <el-form inline size="small">
-            <el-form-item label="仓"><el-input-number v-model="openingForm.warehouse_id" :min="1" /></el-form-item>
+            <el-form-item label="仓库"><WarehouseSelect v-model="openingForm.warehouse_id" /></el-form-item>
             <el-form-item label="物料">
               <el-select v-model="openingForm.product_id" style="width:160px" filterable>
                 <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
@@ -741,14 +750,14 @@ watch([active, transferTab, assembleTab], refresh)
       <template v-else-if="active === 'peels'">
         <el-card header="销售退皮入库" class="mb">
           <el-form inline size="small">
-            <el-form-item label="仓"><el-input-number v-model="peelForm.warehouse_id" :min="1" /></el-form-item>
+            <el-form-item label="仓库"><WarehouseSelect v-model="peelForm.warehouse_id" /></el-form-item>
             <el-form-item label="物料">
               <el-select v-model="peelForm.product_id" style="width:160px" filterable>
                 <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
               </el-select>
             </el-form-item>
             <el-form-item label="退皮量"><el-input-number v-model="peelForm.peel_qty" :min="0.01" /></el-form-item>
-            <el-form-item label="订单ID"><el-input-number v-model="peelForm.sales_order_id" :min="0" /></el-form-item>
+            <el-form-item label="销售订单"><SalesOrderSelect v-model="peelForm.sales_order_id" /></el-form-item>
             <el-button type="primary" @click="createPeel">新建</el-button>
           </el-form>
         </el-card>
@@ -779,7 +788,7 @@ watch([active, transferTab, assembleTab], refresh)
                 <el-option label="拆分" value="split" />
               </el-select>
             </el-form-item>
-            <el-form-item label="仓"><el-input-number v-model="assembleForm.warehouse_id" :min="1" /></el-form-item>
+            <el-form-item label="仓库"><WarehouseSelect v-model="assembleForm.warehouse_id" /></el-form-item>
             <el-form-item label="母料">
               <el-select v-model="assembleForm.parent_product_id" style="width:140px" filterable>
                 <el-option v-for="p in products" :key="'p'+p.id" :label="String(p.name)" :value="Number(p.id)" />
@@ -831,7 +840,7 @@ watch([active, transferTab, assembleTab], refresh)
       <template v-else-if="active === 'to-payable'">
         <el-card header="物料转应付" class="mb">
           <el-form inline size="small">
-            <el-form-item label="供应商ID"><el-input-number v-model="payableForm.supplier_id" :min="1" /></el-form-item>
+            <el-form-item label="供应商"><SupplierSelect v-model="payableForm.supplier_id" /></el-form-item>
             <el-form-item label="物料">
               <el-select v-model="payableForm.product_id" style="width:160px" filterable>
                 <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
@@ -884,7 +893,7 @@ watch([active, transferTab, assembleTab], refresh)
                 <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
               </el-select>
             </el-form-item>
-            <el-form-item label="仓"><el-input-number v-model="boxForm.warehouse_id" :min="1" /></el-form-item>
+            <el-form-item label="仓库"><WarehouseSelect v-model="boxForm.warehouse_id" /></el-form-item>
             <el-form-item label="重量"><el-input-number v-model="boxForm.weight" :min="0" /></el-form-item>
             <el-button type="primary" @click="createBox">新建</el-button>
           </el-form>

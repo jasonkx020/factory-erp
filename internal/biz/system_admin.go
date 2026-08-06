@@ -167,6 +167,7 @@ func EnsureSystemAdminSchema(db *sql.DB) {
 		_, _ = db.Exec(`INSERT OR IGNORE INTO sys_setting(setting_key, value_json, updated_at) VALUES(?,?,?)`,
 			k, string(b), time.Now().Format("2006-01-02 15:04:05"))
 	}
+	EnsureSystemAdminPermissions(db)
 }
 
 func (s *Services) handleSystemAdmin(c *gin.Context, method, openapiPath, resourceKey, action string) bool {

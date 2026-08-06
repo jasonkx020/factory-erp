@@ -8,10 +8,33 @@ import {
   moduleDelete,
   moduleAction,
   moduleReplace,
+  CURRENCY_OPTIONS,
+  TIMEZONE_OPTIONS,
+  DATE_FORMAT_OPTIONS,
+  STATUS_ACTIVE_OPTIONS,
+  APPROVAL_DOC_TYPE_OPTIONS,
+  type FormOption,
 } from '@erp/shared'
+import {
+  WarehouseSelect,
+  WorkshopSelect,
+  EmployeeSelect,
+  UserSelect,
+  ProductSelect,
+  CustomerSelect,
+  RoleSelect,
+  EnumSelect,
+} from '../../components/select'
 
 type Row = Record<string, unknown>
-type FieldDef = { key: string; label: string; type?: 'text' | 'number' | 'switch' | 'textarea' }
+type RefKind = 'warehouse' | 'workshop' | 'employee' | 'user' | 'product' | 'customer' | 'role'
+type FieldDef = {
+  key: string
+  label: string
+  type?: 'text' | 'number' | 'switch' | 'textarea' | 'select' | 'date' | 'month' | 'datetime' | 'ref'
+  options?: FormOption[]
+  ref?: RefKind
+}
 
 const props = defineProps<{ module: string; listPath: string; meta?: {
   create?: string
@@ -22,14 +45,19 @@ const props = defineProps<{ module: string; listPath: string; meta?: {
   readOnly?: boolean
 } | null }>()
 
+const LOGIC_OPTIONS: FormOption[] = [
+  { value: 'AND', label: 'AND' },
+  { value: 'OR', label: 'OR' },
+]
+
 const SETTINGS: Record<string, { title: string; fields: FieldDef[] }> = {
   基础设置: {
     title: '基础设置',
     fields: [
       { key: 'company_name', label: '公司名称' },
-      { key: 'timezone', label: '时区' },
-      { key: 'currency', label: '币种' },
-      { key: 'date_format', label: '日期格式' },
+      { key: 'timezone', label: '时区', type: 'select', options: TIMEZONE_OPTIONS },
+      { key: 'currency', label: '币种', type: 'select', options: CURRENCY_OPTIONS },
+      { key: 'date_format', label: '日期格式', type: 'select', options: DATE_FORMAT_OPTIONS },
       { key: 'default_page_size', label: '默认分页', type: 'number' },
       { key: 'enable_mqtt_notify', label: 'MQTT 通知', type: 'switch' },
     ],
@@ -40,7 +68,7 @@ const SETTINGS: Record<string, { title: string; fields: FieldDef[] }> = {
       { key: 'default_tax_rate', label: '默认税率', type: 'number' },
       { key: 'allow_negative_stock', label: '允许负库存', type: 'switch' },
       { key: 'require_pre_ship', label: '必须预发货', type: 'switch' },
-      { key: 'default_warehouse_id', label: '默认成品仓ID', type: 'number' },
+      { key: 'default_warehouse_id', label: '默认成品仓', type: 'ref', ref: 'warehouse' },
       { key: 'price_precision', label: '价格小数位', type: 'number' },
     ],
   },
@@ -49,7 +77,7 @@ const SETTINGS: Record<string, { title: string; fields: FieldDef[] }> = {
     fields: [
       { key: 'auto_inbound_on_qc', label: '质检后自动入库', type: 'switch' },
       { key: 'require_box_code', label: '强制箱码', type: 'switch' },
-      { key: 'default_workshop_id', label: '默认车间ID', type: 'number' },
+      { key: 'default_workshop_id', label: '默认车间', type: 'ref', ref: 'workshop' },
       { key: 'piecework_confirm_required', label: '计件需确认', type: 'switch' },
     ],
   },
@@ -107,7 +135,7 @@ const SETTINGS: Record<string, { title: string; fields: FieldDef[] }> = {
     fields: [
       { key: 'enable_advanced', label: '启用高级检索', type: 'switch' },
       { key: 'max_conditions', label: '最大条件数', type: 'number' },
-      { key: 'default_operator', label: '默认逻辑' },
+      { key: 'default_operator', label: '默认逻辑', type: 'select', options: LOGIC_OPTIONS },
     ],
   },
   财审管控: {
@@ -122,66 +150,83 @@ const SETTINGS: Record<string, { title: string; fields: FieldDef[] }> = {
 const CRUD_FIELDS: Record<string, FieldDef[]> = {
   自定义打印: [
     { key: 'code', label: '编码' }, { key: 'name', label: '名称' },
-    { key: 'doc_type', label: '单据类型' }, { key: 'content', label: '模板内容', type: 'textarea' },
-    { key: 'status', label: '状态' },
+    { key: 'doc_type', label: '单据类型', type: 'select', options: APPROVAL_DOC_TYPE_OPTIONS },
+    { key: 'content', label: '模板内容', type: 'textarea' },
+    { key: 'status', label: '状态', type: 'select', options: STATUS_ACTIVE_OPTIONS },
   ],
   公式设置: [
     { key: 'code', label: '编码' }, { key: 'name', label: '名称' }, { key: 'scope', label: '作用域' },
-    { key: 'expression', label: '表达式', type: 'textarea' }, { key: 'remark', label: '备注' }, { key: 'status', label: '状态' },
+    { key: 'expression', label: '表达式', type: 'textarea' }, { key: 'remark', label: '备注' },
+    { key: 'status', label: '状态', type: 'select', options: STATUS_ACTIVE_OPTIONS },
   ],
   物流信息管理: [
     { key: 'code', label: '编码' }, { key: 'name', label: '承运商' }, { key: 'contact', label: '联系人' },
-    { key: 'phone', label: '电话' }, { key: 'remark', label: '备注' }, { key: 'status', label: '状态' },
+    { key: 'phone', label: '电话' }, { key: 'remark', label: '备注' },
+    { key: 'status', label: '状态', type: 'select', options: STATUS_ACTIVE_OPTIONS },
   ],
   审批流程设定: [
-    { key: 'code', label: '编码' }, { key: 'name', label: '名称' }, { key: 'doc_type', label: '单据类型' }, { key: 'status', label: '状态' },
+    { key: 'code', label: '编码' }, { key: 'name', label: '名称' },
+    { key: 'doc_type', label: '单据类型', type: 'select', options: APPROVAL_DOC_TYPE_OPTIONS },
+    { key: 'status', label: '状态', type: 'select', options: STATUS_ACTIVE_OPTIONS },
   ],
   人事调动: [
-    { key: 'employee_id', label: '员工ID', type: 'number' },
+    { key: 'employee_id', label: '员工', type: 'ref', ref: 'employee' },
     { key: 'from_dept_id', label: '原部门ID', type: 'number' }, { key: 'to_dept_id', label: '新部门ID', type: 'number' },
-    { key: 'from_workshop_id', label: '原车间ID', type: 'number' }, { key: 'to_workshop_id', label: '新车间ID', type: 'number' },
-    { key: 'reason', label: '原因', type: 'textarea' }, { key: 'effective_date', label: '生效日' },
+    { key: 'from_workshop_id', label: '原车间', type: 'ref', ref: 'workshop' },
+    { key: 'to_workshop_id', label: '新车间', type: 'ref', ref: 'workshop' },
+    { key: 'reason', label: '原因', type: 'textarea' }, { key: 'effective_date', label: '生效日', type: 'date' },
   ],
   批量改价: [
     { key: 'target_type', label: '目标类型' }, { key: 'adjust_type', label: '调整方式' },
     { key: 'adjust_value', label: '调整值', type: 'number' }, { key: 'scope_json', label: '范围说明', type: 'textarea' },
   ],
   批量核算工资: [
-    { key: 'period_ym', label: '期间(YYYY-MM)' }, { key: 'workshop_id', label: '车间ID', type: 'number' },
+    { key: 'period_ym', label: '期间', type: 'month' },
+    { key: 'workshop_id', label: '车间', type: 'ref', ref: 'workshop' },
   ],
   事项提醒: [
     { key: 'title', label: '标题' }, { key: 'content', label: '内容', type: 'textarea' },
-    { key: 'remind_at', label: '提醒时间' }, { key: 'target_user_id', label: '用户ID', type: 'number' },
-    { key: 'target_role', label: '角色' }, { key: 'status', label: '状态' },
+    { key: 'remind_at', label: '提醒时间', type: 'datetime' },
+    { key: 'target_user_id', label: '用户', type: 'ref', ref: 'user' },
+    { key: 'target_role', label: '角色' },
+    { key: 'status', label: '状态', type: 'select', options: STATUS_ACTIVE_OPTIONS },
   ],
   学堂管理: [
     { key: 'code', label: '编码' }, { key: 'title', label: '标题' }, { key: 'category', label: '分类' },
-    { key: 'content', label: '内容', type: 'textarea' }, { key: 'duration_min', label: '时长(分)', type: 'number' }, { key: 'status', label: '状态' },
+    { key: 'content', label: '内容', type: 'textarea' }, { key: 'duration_min', label: '时长(分)', type: 'number' },
+    { key: 'status', label: '状态', type: 'select', options: STATUS_ACTIVE_OPTIONS },
   ],
   知识库: [
     { key: 'code', label: '编码' }, { key: 'title', label: '标题' }, { key: 'category', label: '分类' },
-    { key: 'content', label: '内容', type: 'textarea' }, { key: 'status', label: '状态' },
+    { key: 'content', label: '内容', type: 'textarea' },
+    { key: 'status', label: '状态', type: 'select', options: STATUS_ACTIVE_OPTIONS },
   ],
   图纸管理: [
-    { key: 'code', label: '编码' }, { key: 'title', label: '标题' }, { key: 'product_id', label: '产品ID', type: 'number' },
-    { key: 'version_no', label: '版本' }, { key: 'file_url', label: '文件URL' }, { key: 'status', label: '状态' },
+    { key: 'code', label: '编码' }, { key: 'title', label: '标题' },
+    { key: 'product_id', label: '产品', type: 'ref', ref: 'product' },
+    { key: 'version_no', label: '版本' }, { key: 'file_url', label: '文件URL' },
+    { key: 'status', label: '状态', type: 'select', options: STATUS_ACTIVE_OPTIONS },
   ],
   文档管理: [
     { key: 'code', label: '编码' }, { key: 'title', label: '标题' }, { key: 'category', label: '分类' },
-    { key: 'content', label: '内容', type: 'textarea' }, { key: 'file_url', label: '文件URL' }, { key: 'status', label: '状态' },
+    { key: 'content', label: '内容', type: 'textarea' }, { key: 'file_url', label: '文件URL' },
+    { key: 'status', label: '状态', type: 'select', options: STATUS_ACTIVE_OPTIONS },
   ],
   公告设置: [
-    { key: 'title', label: '标题' }, { key: 'content', label: '内容', type: 'textarea' }, { key: 'status', label: '状态' },
+    { key: 'title', label: '标题' }, { key: 'content', label: '内容', type: 'textarea' },
+    { key: 'status', label: '状态', type: 'select', options: STATUS_ACTIVE_OPTIONS },
   ],
   备忘录: [
     { key: 'title', label: '标题' }, { key: 'content', label: '内容', type: 'textarea' },
-    { key: 'owner_id', label: '所有者ID', type: 'number' }, { key: 'status', label: '状态' },
+    { key: 'owner_id', label: '所有者', type: 'ref', ref: 'user' },
+    { key: 'status', label: '状态', type: 'select', options: STATUS_ACTIVE_OPTIONS },
   ],
 }
 
 const isSetting = computed(() => !!SETTINGS[props.module])
 const formFields = computed(() => CRUD_FIELDS[props.module] || [
-  { key: 'name', label: '名称' }, { key: 'code', label: '编码' }, { key: 'remark', label: '备注' }, { key: 'status', label: '状态' },
+  { key: 'name', label: '名称' }, { key: 'code', label: '编码' }, { key: 'remark', label: '备注' },
+  { key: 'status', label: '状态', type: 'select', options: STATUS_ACTIVE_OPTIONS },
 ])
 
 const loading = ref(false)
@@ -214,7 +259,7 @@ async function load() {
       Object.assign(settingForm, row)
       for (const f of SETTINGS[props.module].fields) {
         if (settingForm[f.key] === undefined) {
-          settingForm[f.key] = f.type === 'switch' ? false : f.type === 'number' ? 0 : ''
+          settingForm[f.key] = f.type === 'switch' ? false : (f.type === 'number' || f.type === 'ref') ? 0 : ''
         }
       }
     }
@@ -237,7 +282,7 @@ function openCreate() {
   editingId.value = null
   Object.keys(form).forEach((k) => delete form[k])
   for (const f of formFields.value) {
-    form[f.key] = f.type === 'number' ? null : f.type === 'switch' ? false : ''
+    form[f.key] = f.type === 'number' || f.type === 'ref' ? null : f.type === 'switch' ? false : ''
   }
   if (props.module === '批量核算工资') {
     const d = new Date()
@@ -317,6 +362,9 @@ onMounted(load)
           <el-switch v-if="f.type === 'switch'" v-model="settingForm[f.key]" />
           <el-input-number v-else-if="f.type === 'number'" v-model="settingForm[f.key]" :controls="true" style="width:100%" />
           <el-input v-else-if="f.type === 'textarea'" v-model="settingForm[f.key]" type="textarea" :rows="3" />
+          <EnumSelect v-else-if="f.type === 'select'" v-model="settingForm[f.key] as string" :options="f.options || []" style="width:100%" />
+          <WarehouseSelect v-else-if="f.type === 'ref' && f.ref === 'warehouse'" v-model="settingForm[f.key] as number" style="width:100%" />
+          <WorkshopSelect v-else-if="f.type === 'ref' && f.ref === 'workshop'" v-model="settingForm[f.key] as number" style="width:100%" />
           <el-input v-else v-model="settingForm[f.key]" />
         </el-form-item>
         <el-form-item>
@@ -364,6 +412,17 @@ onMounted(load)
           <el-switch v-if="f.type === 'switch'" v-model="form[f.key]" />
           <el-input-number v-else-if="f.type === 'number'" v-model="form[f.key]" style="width:100%" />
           <el-input v-else-if="f.type === 'textarea'" v-model="form[f.key]" type="textarea" :rows="4" />
+          <EnumSelect v-else-if="f.type === 'select'" v-model="form[f.key] as string" :options="f.options || []" style="width:100%" />
+          <el-date-picker v-else-if="f.type === 'date'" v-model="form[f.key]" type="date" value-format="YYYY-MM-DD" style="width:100%" />
+          <el-date-picker v-else-if="f.type === 'month'" v-model="form[f.key]" type="month" value-format="YYYY-MM" style="width:100%" />
+          <el-date-picker v-else-if="f.type === 'datetime'" v-model="form[f.key]" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" style="width:100%" />
+          <WarehouseSelect v-else-if="f.type === 'ref' && f.ref === 'warehouse'" v-model="form[f.key] as number" style="width:100%" />
+          <WorkshopSelect v-else-if="f.type === 'ref' && f.ref === 'workshop'" v-model="form[f.key] as number" style="width:100%" />
+          <EmployeeSelect v-else-if="f.type === 'ref' && f.ref === 'employee'" v-model="form[f.key] as number" style="width:100%" />
+          <UserSelect v-else-if="f.type === 'ref' && f.ref === 'user'" v-model="form[f.key] as number" style="width:100%" />
+          <ProductSelect v-else-if="f.type === 'ref' && f.ref === 'product'" v-model="form[f.key] as number" style="width:100%" />
+          <CustomerSelect v-else-if="f.type === 'ref' && f.ref === 'customer'" v-model="form[f.key] as number" style="width:100%" />
+          <RoleSelect v-else-if="f.type === 'ref' && f.ref === 'role'" v-model="form[f.key] as number" style="width:100%" />
           <el-input v-else v-model="form[f.key]" />
         </el-form-item>
       </el-form>

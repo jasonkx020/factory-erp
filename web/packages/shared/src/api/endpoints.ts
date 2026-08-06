@@ -48,6 +48,7 @@ export const assetApi = {
 }
 
 export const inventoryApi = {
+  warehouses: () => api.get<PageData>('/inventory/warehouses'),
   balances: () => api.get<PageData>('/inventory/balances'),
   availability: () => api.get<{ list: Record<string, unknown>[] }>('/inventory/availability'),
   listTxns: () => api.get<PageData>('/inventory/stock-txns'),

@@ -2,7 +2,13 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { approvalApi } from '@erp/shared'
+import {
+  approvalApi,
+  APPROVAL_DOC_TYPE_OPTIONS,
+  LEAVE_TYPE_OPTIONS,
+  OVERTIME_BIZ_OPTIONS,
+} from '@erp/shared'
+import { EmployeeSelect, EnumSelect, SalesOrderSelect } from '../../components/select'
 
 type Row = Record<string, unknown>
 
@@ -68,7 +74,7 @@ const affairForm = reactive({
 
 const attForm = reactive({
   kind: 'leave' as 'leave' | 'overtime_patch',
-  employee_id: 1,
+  employee_id: null as number | null,
   leave_type: 'annual',
   start_at: '',
   end_at: '',
@@ -224,6 +230,7 @@ async function createAffair() {
 }
 
 async function createAttendance() {
+  if (!attForm.employee_id) return ElMessage.warning('请选择员工')
   const body: Record<string, unknown> = { ...attForm }
   const res = await approvalApi.createAttendance(body)
   if (res.code !== 1) return ElMessage.error(res.msg)
@@ -267,8 +274,17 @@ watch(active, () => {
       <el-card header="新建审批任务" class="mb">
         <el-form inline size="small">
           <el-form-item label="标题"><el-input v-model="taskForm.title" style="width:160px" /></el-form-item>
-          <el-form-item label="单据类型"><el-input v-model="taskForm.doc_type" style="width:120px" /></el-form-item>
-          <el-form-item label="单据ID"><el-input-number v-model="taskForm.doc_id" :min="0" /></el-form-item>
+          <el-form-item label="单据类型">
+            <EnumSelect v-model="taskForm.doc_type" :options="APPROVAL_DOC_TYPE_OPTIONS" :clearable="false" style="width:140px" />
+          </el-form-item>
+          <el-form-item label="单据">
+            <SalesOrderSelect
+              v-if="taskForm.doc_type === 'sales_order'"
+              v-model="taskForm.doc_id"
+              style="width:220px"
+            />
+            <el-input-number v-else v-model="taskForm.doc_id" :min="0" />
+          </el-form-item>
           <el-form-item label="单号"><el-input v-model="taskForm.doc_no" style="width:130px" placeholder="可空自动" /></el-form-item>
           <el-form-item label="金额"><el-input-number v-model="taskForm.amount" :min="0" :step="100" /></el-form-item>
           <el-form-item label="备注"><el-input v-model="taskForm.remark" style="width:140px" /></el-form-item>
@@ -396,15 +412,25 @@ watch(active, () => {
               <el-option value="overtime_patch" label="加班补卡" />
             </el-select>
           </el-form-item>
-          <el-form-item label="员工ID"><el-input-number v-model="attForm.employee_id" :min="1" /></el-form-item>
+          <el-form-item label="员工"><EmployeeSelect v-model="attForm.employee_id" /></el-form-item>
           <template v-if="attForm.kind === 'leave'">
-            <el-form-item label="假别"><el-input v-model="attForm.leave_type" style="width:100px" /></el-form-item>
-            <el-form-item label="开始"><el-input v-model="attForm.start_at" style="width:150px" placeholder="可空默认今日" /></el-form-item>
-            <el-form-item label="结束"><el-input v-model="attForm.end_at" style="width:150px" /></el-form-item>
+            <el-form-item label="假别">
+              <EnumSelect v-model="attForm.leave_type" :options="LEAVE_TYPE_OPTIONS" :clearable="false" style="width:120px" />
+            </el-form-item>
+            <el-form-item label="开始">
+              <el-date-picker v-model="attForm.start_at" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" style="width:180px" placeholder="可空默认今日" />
+            </el-form-item>
+            <el-form-item label="结束">
+              <el-date-picker v-model="attForm.end_at" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" style="width:180px" />
+            </el-form-item>
           </template>
           <template v-else>
-            <el-form-item label="业务"><el-input v-model="attForm.biz_type" style="width:100px" /></el-form-item>
-            <el-form-item label="日期"><el-input v-model="attForm.biz_date" style="width:120px" /></el-form-item>
+            <el-form-item label="业务">
+              <EnumSelect v-model="attForm.biz_type" :options="OVERTIME_BIZ_OPTIONS" :clearable="false" style="width:120px" />
+            </el-form-item>
+            <el-form-item label="日期">
+              <el-date-picker v-model="attForm.biz_date" type="date" value-format="YYYY-MM-DD" style="width:150px" />
+            </el-form-item>
             <el-form-item label="分钟"><el-input-number v-model="attForm.minutes" :min="1" /></el-form-item>
           </template>
           <el-form-item label="备注"><el-input v-model="attForm.remark" style="width:140px" /></el-form-item>

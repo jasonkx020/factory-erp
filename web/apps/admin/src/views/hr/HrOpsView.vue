@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { hrApi } from '@erp/shared'
+import { hrApi, LEAVE_TYPE_OPTIONS, OVERTIME_BIZ_OPTIONS } from '@erp/shared'
+import { EmployeeSelect, WorkshopSelect, CustomerSelect, EnumSelect } from '../../components/select'
 
 type Row = Record<string, unknown>
 const props = defineProps<{ module: string }>()
 
 const loading = ref(false)
 const list = ref<Row[]>([])
-const employees = ref<Row[]>([])
 const shifts = ref<Row[]>([])
 const schemes = ref<Row[]>([])
 const stats = ref<Row | null>(null)
@@ -23,24 +23,14 @@ function today() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function empLabel(e: Row) {
-  return `${e.emp_no || e.id} · ${e.name || ''}`
-}
-
 function shiftName(id: unknown) {
   const s = shifts.value.find((x) => Number(x.id) === Number(id))
   return s ? String(s.name) : String(id || '')
 }
 
-async function loadEmployees() {
-  const res = await hrApi.employees()
-  employees.value = ((res.data as { list?: Row[] })?.list) || []
-}
-
 async function load() {
   loading.value = true
   try {
-    await loadEmployees()
     const m = props.module
     if (m === '离职登记') {
       const res = await hrApi.offboards()
@@ -101,10 +91,10 @@ function openCreate() {
   else if (m === '请假管理') Object.assign(form, { employee_id: null, leave_type: 'annual', start_at: `${today()} 09:00:00`, end_at: `${today()} 18:00:00`, remark: '' })
   else if (m === '加班补卡统计') Object.assign(form, { employee_id: null, biz_type: 'overtime', biz_date: today(), minutes: 60, remark: '' })
   else if (m === '绩效管理') Object.assign(form, { mode: 'result', scheme_id: schemes.value[0] ? Number(schemes.value[0].id) : null, employee_id: null, period: today().slice(0, 7), score: 80, amount: 0, name: '', scheme_json: '{}' })
-  else if (m === '外访明细') Object.assign(form, { employee_id: null, customer_id: 0, visit_at: `${today()} 10:00:00`, content: '', location: '' })
+  else if (m === '外访明细') Object.assign(form, { employee_id: null, customer_id: null, visit_at: `${today()} 10:00:00`, content: '', location: '' })
   else if (m === '备忘录管理') Object.assign(form, { title: '', content: '', biz_date: today() })
   else if (m === '员工日志') Object.assign(form, { employee_id: null, biz_date: today(), content: '' })
-  else if (m === '考勤月度统计' || m === '考勤绩效汇总') Object.assign(form, { year: Number(today().slice(0, 4)), month: Number(today().slice(5, 7)), period: today().slice(0, 7) })
+  else if (m === '考勤月度统计' || m === '考勤绩效汇总') Object.assign(form, { period: today().slice(0, 7) })
   dlg.value = true
 }
 
@@ -138,8 +128,11 @@ async function save() {
     if (editingId.value) res = await hrApi.updateMemo(editingId.value, { ...form })
     else res = await hrApi.createMemo({ ...form })
   } else if (m === '员工日志') res = await hrApi.createJournal({ ...form })
-  else if (m === '考勤月度统计') res = await hrApi.recalcMonthStats({ year: form.year, month: form.month })
-  else if (m === '考勤绩效汇总') res = await hrApi.recalcAttPerf({ period: form.period || `${form.year}-${String(form.month).padStart(2, '0')}` })
+  else if (m === '考勤月度统计') {
+    const p = String(form.period || '')
+    const [y, mo] = p.split('-').map(Number)
+    res = await hrApi.recalcMonthStats({ year: y, month: mo })
+  } else if (m === '考勤绩效汇总') res = await hrApi.recalcAttPerf({ period: form.period })
   else return
   if (!res || res.code !== 1) return ElMessage.error(res?.msg || '失败')
   ElMessage.success('已保存')
@@ -425,17 +418,17 @@ onMounted(load)
     <el-dialog v-model="dlg" :title="editingId ? `编辑 · ${module}` : module" width="520px">
       <el-form label-width="100px">
         <template v-if="module === '离职登记'">
-          <el-form-item label="员工"><el-select v-model="form.employee_id" filterable style="width:100%"><el-option v-for="e in employees.filter(x=>x.status!=='left')" :key="String(e.id)" :label="empLabel(e)" :value="Number(e.id)" /></el-select></el-form-item>
-          <el-form-item label="离职日"><el-input v-model="form.offboard_date" /></el-form-item>
+          <el-form-item label="员工"><EmployeeSelect v-model="form.employee_id" style="width:100%" /></el-form-item>
+          <el-form-item label="离职日"><el-date-picker v-model="form.offboard_date" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item>
           <el-form-item label="原因"><el-input v-model="form.reason" /></el-form-item>
           <el-form-item label="收回权限"><el-switch v-model="form.revoke_permission" /></el-form-item>
         </template>
         <template v-else-if="module === '班次管理'">
           <el-form-item v-if="!editingId" label="编码"><el-input v-model="form.code" /></el-form-item>
           <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
-          <el-form-item label="开始"><el-input v-model="form.start_time" placeholder="08:00" /></el-form-item>
-          <el-form-item label="结束"><el-input v-model="form.end_time" placeholder="17:00" /></el-form-item>
-          <el-form-item label="车间ID"><el-input-number v-model="form.workshop_id" :min="0" /></el-form-item>
+          <el-form-item label="开始"><el-time-picker v-model="form.start_time" value-format="HH:mm" format="HH:mm" style="width:100%" /></el-form-item>
+          <el-form-item label="结束"><el-time-picker v-model="form.end_time" value-format="HH:mm" format="HH:mm" style="width:100%" /></el-form-item>
+          <el-form-item label="车间"><WorkshopSelect v-model="form.workshop_id" style="width:100%" /></el-form-item>
           <el-form-item v-if="editingId" label="状态"><el-select v-model="form.status" style="width:100%"><el-option label="启用" value="active" /><el-option label="停用" value="inactive" /></el-select></el-form-item>
         </template>
         <template v-else-if="module === '考勤管理'">
@@ -445,31 +438,30 @@ onMounted(load)
           <el-form-item label="早退阈值"><el-input-number v-model="form.early_minutes" :min="0" /></el-form-item>
         </template>
         <template v-else-if="module === '考勤明细'">
-          <el-form-item label="员工"><el-select v-model="form.employee_id" filterable style="width:100%"><el-option v-for="e in employees" :key="String(e.id)" :label="empLabel(e)" :value="Number(e.id)" /></el-select></el-form-item>
-          <el-form-item label="日期"><el-input v-model="form.biz_date" /></el-form-item>
+          <el-form-item label="员工"><EmployeeSelect v-model="form.employee_id" style="width:100%" /></el-form-item>
+          <el-form-item label="日期"><el-date-picker v-model="form.biz_date" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item>
           <el-form-item label="班次"><el-select v-model="form.shift_id" clearable style="width:100%"><el-option v-for="s in shifts" :key="String(s.id)" :label="String(s.name)" :value="Number(s.id)" /></el-select></el-form-item>
           <el-form-item label="类型"><el-select v-model="form.punch_type" style="width:100%"><el-option label="上班打卡" value="in" /><el-option label="下班打卡" value="out" /></el-select></el-form-item>
         </template>
         <template v-else-if="module === '请假管理'">
-          <el-form-item label="员工"><el-select v-model="form.employee_id" filterable style="width:100%"><el-option v-for="e in employees" :key="String(e.id)" :label="empLabel(e)" :value="Number(e.id)" /></el-select></el-form-item>
-          <el-form-item label="类型"><el-select v-model="form.leave_type" style="width:100%"><el-option label="年假" value="annual" /><el-option label="事假" value="personal" /><el-option label="病假" value="sick" /></el-select></el-form-item>
-          <el-form-item label="开始"><el-input v-model="form.start_at" /></el-form-item>
-          <el-form-item label="结束"><el-input v-model="form.end_at" /></el-form-item>
+          <el-form-item label="员工"><EmployeeSelect v-model="form.employee_id" style="width:100%" /></el-form-item>
+          <el-form-item label="类型"><EnumSelect v-model="form.leave_type" :options="LEAVE_TYPE_OPTIONS" :clearable="false" style="width:100%" /></el-form-item>
+          <el-form-item label="开始"><el-date-picker v-model="form.start_at" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" style="width:100%" /></el-form-item>
+          <el-form-item label="结束"><el-date-picker v-model="form.end_at" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" style="width:100%" /></el-form-item>
           <el-form-item label="备注"><el-input v-model="form.remark" /></el-form-item>
         </template>
         <template v-else-if="module === '加班补卡统计'">
-          <el-form-item label="员工"><el-select v-model="form.employee_id" filterable style="width:100%"><el-option v-for="e in employees" :key="String(e.id)" :label="empLabel(e)" :value="Number(e.id)" /></el-select></el-form-item>
-          <el-form-item label="类型"><el-select v-model="form.biz_type" style="width:100%"><el-option label="加班" value="overtime" /><el-option label="补卡" value="patch" /></el-select></el-form-item>
-          <el-form-item label="日期"><el-input v-model="form.biz_date" /></el-form-item>
+          <el-form-item label="员工"><EmployeeSelect v-model="form.employee_id" style="width:100%" /></el-form-item>
+          <el-form-item label="类型"><EnumSelect v-model="form.biz_type" :options="OVERTIME_BIZ_OPTIONS" :clearable="false" style="width:100%" /></el-form-item>
+          <el-form-item label="日期"><el-date-picker v-model="form.biz_date" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item>
           <el-form-item label="分钟"><el-input-number v-model="form.minutes" :min="0" /></el-form-item>
           <el-form-item label="备注"><el-input v-model="form.remark" /></el-form-item>
         </template>
         <template v-else-if="module === '考勤月度统计'">
-          <el-form-item label="年"><el-input-number v-model="form.year" :min="2020" /></el-form-item>
-          <el-form-item label="月"><el-input-number v-model="form.month" :min="1" :max="12" /></el-form-item>
+          <el-form-item label="年月"><el-date-picker v-model="form.period" type="month" value-format="YYYY-MM" style="width:100%" /></el-form-item>
         </template>
         <template v-else-if="module === '考勤绩效汇总'">
-          <el-form-item label="周期"><el-input v-model="form.period" placeholder="YYYY-MM" /></el-form-item>
+          <el-form-item label="周期"><el-date-picker v-model="form.period" type="month" value-format="YYYY-MM" style="width:100%" /></el-form-item>
         </template>
         <template v-else-if="module === '绩效管理'">
           <el-form-item label="录入类型"><el-radio-group v-model="form.mode"><el-radio label="result">结果</el-radio><el-radio label="scheme">方案</el-radio></el-radio-group></el-form-item>
@@ -478,27 +470,27 @@ onMounted(load)
           </template>
           <template v-else>
             <el-form-item label="方案"><el-select v-model="form.scheme_id" style="width:100%"><el-option v-for="s in schemes" :key="String(s.id)" :label="String(s.name)" :value="Number(s.id)" /></el-select></el-form-item>
-            <el-form-item label="员工"><el-select v-model="form.employee_id" filterable style="width:100%"><el-option v-for="e in employees" :key="String(e.id)" :label="empLabel(e)" :value="Number(e.id)" /></el-select></el-form-item>
-            <el-form-item label="周期"><el-input v-model="form.period" placeholder="YYYY-MM" /></el-form-item>
+            <el-form-item label="员工"><EmployeeSelect v-model="form.employee_id" style="width:100%" /></el-form-item>
+            <el-form-item label="周期"><el-date-picker v-model="form.period" type="month" value-format="YYYY-MM" style="width:100%" /></el-form-item>
             <el-form-item label="得分"><el-input-number v-model="form.score" :min="0" :max="100" /></el-form-item>
             <el-form-item label="金额"><el-input-number v-model="form.amount" :min="0" /></el-form-item>
           </template>
         </template>
         <template v-else-if="module === '外访明细'">
-          <el-form-item label="员工"><el-select v-model="form.employee_id" filterable style="width:100%"><el-option v-for="e in employees" :key="String(e.id)" :label="empLabel(e)" :value="Number(e.id)" /></el-select></el-form-item>
-          <el-form-item label="客户ID"><el-input-number v-model="form.customer_id" :min="0" /></el-form-item>
-          <el-form-item label="时间"><el-input v-model="form.visit_at" /></el-form-item>
+          <el-form-item label="员工"><EmployeeSelect v-model="form.employee_id" style="width:100%" /></el-form-item>
+          <el-form-item label="客户"><CustomerSelect v-model="form.customer_id" style="width:100%" /></el-form-item>
+          <el-form-item label="时间"><el-date-picker v-model="form.visit_at" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" style="width:100%" /></el-form-item>
           <el-form-item label="地点"><el-input v-model="form.location" /></el-form-item>
           <el-form-item label="内容"><el-input v-model="form.content" type="textarea" /></el-form-item>
         </template>
         <template v-else-if="module === '备忘录管理'">
           <el-form-item label="标题"><el-input v-model="form.title" /></el-form-item>
-          <el-form-item label="日期"><el-input v-model="form.biz_date" /></el-form-item>
+          <el-form-item label="日期"><el-date-picker v-model="form.biz_date" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item>
           <el-form-item label="内容"><el-input v-model="form.content" type="textarea" /></el-form-item>
         </template>
         <template v-else-if="module === '员工日志'">
-          <el-form-item label="员工"><el-select v-model="form.employee_id" filterable style="width:100%"><el-option v-for="e in employees" :key="String(e.id)" :label="empLabel(e)" :value="Number(e.id)" /></el-select></el-form-item>
-          <el-form-item label="日期"><el-input v-model="form.biz_date" /></el-form-item>
+          <el-form-item label="员工"><EmployeeSelect v-model="form.employee_id" style="width:100%" /></el-form-item>
+          <el-form-item label="日期"><el-date-picker v-model="form.biz_date" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item>
           <el-form-item label="内容"><el-input v-model="form.content" type="textarea" /></el-form-item>
         </template>
       </el-form>

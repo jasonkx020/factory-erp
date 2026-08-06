@@ -2,7 +2,27 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { productionApi, productApi, hrApi } from '@erp/shared'
+import {
+  productionApi,
+  productApi,
+  hrApi,
+  PROCESS_TYPE_OPTIONS,
+  QC_TYPE_OPTIONS,
+  CONSIGNMENT_PROGRESS_OPTIONS,
+} from '@erp/shared'
+import {
+  ProductSelect,
+  ProcessSelect,
+  WorkshopSelect,
+  RoutingSelect,
+  ProdTaskSelect,
+  DispatchSelect,
+  SupplierSelect,
+  CustomerSelect,
+  RoleSelect,
+  WarehouseSelect,
+  EnumSelect,
+} from '../../components/select'
 import RoutingView from '../automation/RoutingView.vue'
 import ProcessReportView from './ProcessReportView.vue'
 import PieceIssueView from './PieceIssueView.vue'
@@ -12,8 +32,10 @@ type Row = Record<string, unknown>
 const route = useRoute()
 const TITLE_MAP: Record<string, string> = {
   processes: '工序设置',
+  'process-mgmt': '工序管理',
   routings: '工艺流程',
   tasks: '生产任务单',
+  'multi-products': '一单多商品',
   dispatches: '生产派工',
   flex: '灵活派发工单',
   reports: '扫码报工',
@@ -51,8 +73,11 @@ const workers = ref<Row[]>([])
 const overview = ref<Row | null>(null)
 
 const taskForm = reactive({ product_id: 3, qty: 1000, routing_id: 1, workshop_id: 1, remark: '' })
-const dispatchForm = reactive({ task_id: 0 as number, process_id: 1, worker_id: 2, qty: 100 })
-const reportForm = reactive({ process_id: 1, worker_id: 2, qty: 100, dispatch_id: 0 as number })
+const multiLines = ref<{ product_id: number; qty: number }[]>([{ product_id: 3, qty: 100 }])
+const processEditDlg = ref(false)
+const processEditForm = reactive({ id: 0, name: '', process_type: 'other', is_piecework: false, status: 'active' })
+const dispatchForm = reactive({ task_id: null as number | null, process_id: 1, worker_id: 2, qty: 100 })
+const reportForm = reactive({ process_id: 1, worker_id: 2, qty: 100, dispatch_id: null as number | null })
 const reqForm = reactive({ product_id: 1, qty: 100, warehouse_id: 1 })
 const processForm = reactive({ code: '', name: '', process_type: 'other', is_piecework: false })
 const workshopForm = reactive({ code: '', name: '' })
@@ -60,8 +85,8 @@ const bomForm = reactive({ product_id: 3, name: '生产BOM', component_product_i
 const scrapForm = reactive({ product_id: 1, qty: 10, scrap_type: 'cut_defect', process_id: 1, remark: '' })
 const qcForm = reactive({ qc_type: 'process', product_id: 3, process_id: 1, qty: 100 })
 const reworkForm = reactive({ process_id: 1, qty: 10, remark: '' })
-const mergeForm = reactive({ title: '多单整合', task_ids: '' })
-const drawingForm = reactive({ drawing_code: '', drawing_name: '', task_id: 0 as number, file_url: '' })
+const mergeForm = reactive({ title: '多单整合', task_ids: [] as number[] })
+const drawingForm = reactive({ drawing_code: '', drawing_name: '', task_id: null as number | null, file_url: '' })
 const outForm = reactive({ supplier_id: 1, process_id: 1, product_id: 3, qty: 100 })
 const consForm = reactive({ customer_id: 1, product_id: 3, qty: 100, progress: '待投产' })
 const hideForm = reactive({ role_id: 1, name: '隐藏成本字段' })
@@ -93,6 +118,7 @@ async function loadMeta() {
     const pid = Number(products.value[0].id)
     taskForm.product_id = pid
     bomForm.product_id = pid
+    if (multiLines.value[0]) multiLines.value[0].product_id = pid
   }
 }
 
@@ -104,9 +130,11 @@ async function refresh() {
     let res
     switch (active.value) {
       case 'processes':
+      case 'process-mgmt':
         res = await productionApi.processes()
         break
       case 'tasks':
+      case 'multi-products':
         res = await productionApi.listTasks()
         break
       case 'dispatches':
@@ -202,7 +230,7 @@ async function openTask(id: number) {
 }
 
 async function createDispatch() {
-  if (!dispatchForm.task_id) return ElMessage.warning('请填写任务ID或先建任务')
+  if (!dispatchForm.task_id) return ElMessage.warning('请选择任务或先建任务')
   const apiCall = active.value === 'flex' ? productionApi.createFlexDispatch : productionApi.createDispatch
   const res = await apiCall({ ...dispatchForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
@@ -255,6 +283,62 @@ async function createProcess() {
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success('工序已创建')
   await loadMeta()
+  await refresh()
+}
+
+function openEditProcess(row: Row) {
+  processEditForm.id = Number(row.id)
+  processEditForm.name = String(row.name || '')
+  processEditForm.process_type = String(row.process_type || 'other')
+  processEditForm.is_piecework = Boolean(row.is_piecework)
+  processEditForm.status = String(row.status || 'active')
+  processEditDlg.value = true
+}
+
+async function saveEditProcess() {
+  if (!processEditForm.id) return
+  const res = await productionApi.updateProcess(processEditForm.id, {
+    name: processEditForm.name,
+    process_type: processEditForm.process_type,
+    is_piecework: processEditForm.is_piecework,
+    status: processEditForm.status,
+  })
+  if (res.code !== 1) return ElMessage.error(res.msg)
+  ElMessage.success('工序已更新')
+  processEditDlg.value = false
+  await loadMeta()
+  await refresh()
+}
+
+function addMultiLine() {
+  const pid = products.value[0] ? Number(products.value[0].id) : taskForm.product_id
+  multiLines.value.push({ product_id: pid, qty: 100 })
+}
+
+function removeMultiLine(idx: number) {
+  if (multiLines.value.length <= 1) return
+  multiLines.value.splice(idx, 1)
+}
+
+async function createMultiTask() {
+  if (!multiLines.value.length) return ElMessage.warning('请至少添加一行商品')
+  const first = multiLines.value[0]
+  const res = await productionApi.createTask({
+    product_id: first.product_id,
+    qty: first.qty,
+    routing_id: taskForm.routing_id,
+    workshop_id: taskForm.workshop_id,
+    remark: taskForm.remark || '一单多商品',
+  })
+  if (res.code !== 1) return ElMessage.error(res.msg)
+  const taskId = Number((res.data as Row)?.id)
+  for (let i = 1; i < multiLines.value.length; i++) {
+    const line = multiLines.value[i]
+    const itemRes = await productionApi.addTaskItem(taskId, { product_id: line.product_id, qty: line.qty })
+    if (itemRes.code !== 1) return ElMessage.error(itemRes.msg || '添加商品行失败')
+  }
+  ElMessage.success(`多商品任务 ${(res.data as Row)?.doc_no}`)
+  dispatchForm.task_id = taskId
   await refresh()
 }
 
@@ -347,8 +431,8 @@ async function closeRework(id: number) {
 }
 
 async function createMerge() {
-  const ids = mergeForm.task_ids.split(/[,，\s]+/).map(Number).filter((n) => n > 0)
-  if (!ids.length) return ElMessage.warning('请填写任务ID，逗号分隔')
+  const ids = (mergeForm.task_ids || []).filter((n) => n > 0)
+  if (!ids.length) return ElMessage.warning('请选择任务')
   const res = await productionApi.createTaskMerge({ title: mergeForm.title, task_ids: ids })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success('整合单已建')
@@ -423,13 +507,14 @@ onMounted(async () => {
         <p class="hint">工厂产线交付：工序/工艺 → 任务派工 → 扫码报工/计件 → 质检废料。现场双扫在 Flutter；本页为管理端台账。</p>
       </div>
 
-      <!-- 工序 -->
+      <!-- 工序设置：新建为主 -->
       <template v-if="active==='processes'">
+        <p class="mode-hint">本页用于新建工序定义；已有工序的启停与维护请走「工序管理」。</p>
         <el-card header="新建工序" class="mb">
           <el-form inline size="small">
             <el-form-item label="编码"><el-input v-model="processForm.code" placeholder="可空自动" /></el-form-item>
             <el-form-item label="名称"><el-input v-model="processForm.name" /></el-form-item>
-            <el-form-item label="类型"><el-input v-model="processForm.process_type" style="width:100px" /></el-form-item>
+            <el-form-item label="类型"><EnumSelect v-model="processForm.process_type" :options="PROCESS_TYPE_OPTIONS" style="width:140px" /></el-form-item>
             <el-form-item label="计件"><el-switch v-model="processForm.is_piecework" /></el-form-item>
             <el-button type="primary" @click="createProcess">新建</el-button>
           </el-form>
@@ -443,9 +528,27 @@ onMounted(async () => {
         </el-table>
       </template>
 
-      <!-- 任务 / 一单多商品 -->
+      <!-- 工序管理：编辑维护 -->
+      <template v-else-if="active==='process-mgmt'">
+        <p class="mode-hint">本页维护已有工序（名称/类型/计件/状态）；新建请走「工序设置」。</p>
+        <el-table :data="list" size="small">
+          <el-table-column prop="code" label="编码" width="120" />
+          <el-table-column prop="name" label="名称" />
+          <el-table-column prop="process_type" label="类型" width="100" />
+          <el-table-column prop="is_piecework" label="计件" width="80" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column label="操作" width="120" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="openEditProcess(row)">编辑</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </template>
+
+      <!-- 生产任务单：单商品任务 -->
       <template v-else-if="active==='tasks'">
-        <el-card header="新建生产任务（可带商品行）" class="mb">
+        <p class="mode-hint">本页创建单商品生产任务；多商品请走「一单多商品」。</p>
+        <el-card header="新建生产任务" class="mb">
           <el-form inline size="small">
             <el-form-item label="产品">
               <el-select v-model="taskForm.product_id" style="width:160px">
@@ -453,10 +556,41 @@ onMounted(async () => {
               </el-select>
             </el-form-item>
             <el-form-item label="计划量"><el-input-number v-model="taskForm.qty" :min="1" /></el-form-item>
-            <el-form-item label="工艺ID"><el-input-number v-model="taskForm.routing_id" :min="0" /></el-form-item>
-            <el-form-item label="车间ID"><el-input-number v-model="taskForm.workshop_id" :min="0" /></el-form-item>
+            <el-form-item label="工艺"><RoutingSelect v-model="taskForm.routing_id" /></el-form-item>
+            <el-form-item label="车间"><WorkshopSelect v-model="taskForm.workshop_id" /></el-form-item>
             <el-button type="primary" @click="createTask">新建</el-button>
           </el-form>
+        </el-card>
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="160" />
+          <el-table-column prop="status" label="状态" width="100" />
+          <el-table-column prop="created_at" label="创建时间" />
+          <el-table-column label="操作" width="200">
+            <template #default="{ row }">
+              <el-button link @click="openTask(Number(row.id)); dispatchForm.task_id=Number(row.id)">明细</el-button>
+              <el-button v-if="row.status!=='closed'" link type="warning" @click="closeTask(Number(row.id))">关闭</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </template>
+
+      <!-- 一单多商品：多行商品任务 -->
+      <template v-else-if="active==='multi-products'">
+        <p class="mode-hint">一张任务单挂多行商品；创建后可在明细中查看全部商品行。</p>
+        <el-card header="新建多商品任务" class="mb">
+          <el-form inline size="small" class="mb">
+            <el-form-item label="工艺"><RoutingSelect v-model="taskForm.routing_id" /></el-form-item>
+            <el-form-item label="车间"><WorkshopSelect v-model="taskForm.workshop_id" /></el-form-item>
+            <el-button @click="addMultiLine">加一行</el-button>
+            <el-button type="primary" @click="createMultiTask">创建任务</el-button>
+          </el-form>
+          <div v-for="(line, idx) in multiLines" :key="idx" class="multi-line">
+            <el-select v-model="line.product_id" style="width:180px" size="small">
+              <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
+            </el-select>
+            <el-input-number v-model="line.qty" :min="1" size="small" />
+            <el-button link type="danger" :disabled="multiLines.length<=1" @click="removeMultiLine(idx)">删除</el-button>
+          </div>
         </el-card>
         <el-table :data="list" size="small">
           <el-table-column prop="doc_no" label="单号" width="160" />
@@ -475,7 +609,7 @@ onMounted(async () => {
       <template v-else-if="active==='dispatches' || active==='flex'">
         <el-card :header="active==='flex' ? '灵活派发' : '新建派工'" class="mb">
           <el-form inline size="small">
-            <el-form-item label="任务ID"><el-input-number v-model="dispatchForm.task_id" :min="1" /></el-form-item>
+            <el-form-item label="任务"><ProdTaskSelect v-model="dispatchForm.task_id" /></el-form-item>
             <el-form-item label="工序">
               <el-select v-model="dispatchForm.process_id" style="width:140px">
                 <el-option v-for="p in processes" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
@@ -520,7 +654,7 @@ onMounted(async () => {
               </el-select>
             </el-form-item>
             <el-form-item label="产量"><el-input-number v-model="reportForm.qty" :min="0.01" /></el-form-item>
-            <el-form-item label="派工ID"><el-input-number v-model="reportForm.dispatch_id" :min="0" /></el-form-item>
+            <el-form-item label="派工"><DispatchSelect v-model="reportForm.dispatch_id" clearable /></el-form-item>
             <el-button type="primary" @click="createReport">提交报工</el-button>
           </el-form>
         </el-card>
@@ -572,7 +706,7 @@ onMounted(async () => {
                 <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
               </el-select>
             </el-form-item>
-            <el-form-item label="组件ID"><el-input-number v-model="bomForm.component_product_id" :min="1" /></el-form-item>
+            <el-form-item label="组件"><ProductSelect v-model="bomForm.component_product_id" /></el-form-item>
             <el-form-item label="用量"><el-input-number v-model="bomForm.qty" :min="0.01" :step="0.1" /></el-form-item>
             <el-form-item label="损耗率"><el-input-number v-model="bomForm.scrap_rate" :min="0" :max="1" :step="0.01" /></el-form-item>
             <el-button type="primary" @click="createBom">新建</el-button>
@@ -610,9 +744,9 @@ onMounted(async () => {
       <template v-else-if="active==='requisitions'">
         <el-card header="联动领料" class="mb">
           <el-form inline size="small">
-            <el-form-item label="物料ID"><el-input-number v-model="reqForm.product_id" :min="1" /></el-form-item>
+            <el-form-item label="物料"><ProductSelect v-model="reqForm.product_id" /></el-form-item>
             <el-form-item label="数量"><el-input-number v-model="reqForm.qty" :min="0.01" /></el-form-item>
-            <el-form-item label="仓库"><el-input-number v-model="reqForm.warehouse_id" :min="1" /></el-form-item>
+            <el-form-item label="仓库"><WarehouseSelect v-model="reqForm.warehouse_id" /></el-form-item>
             <el-button type="primary" @click="createReq">新建</el-button>
           </el-form>
         </el-card>
@@ -677,7 +811,7 @@ onMounted(async () => {
         <el-card header="多单整合" class="mb">
           <el-form inline size="small">
             <el-form-item label="标题"><el-input v-model="mergeForm.title" /></el-form-item>
-            <el-form-item label="任务IDs"><el-input v-model="mergeForm.task_ids" placeholder="1,2,3" style="width:200px" /></el-form-item>
+            <el-form-item label="任务"><ProdTaskSelect v-model="mergeForm.task_ids" multiple style="width:280px" /></el-form-item>
             <el-button type="primary" @click="createMerge">新建</el-button>
           </el-form>
         </el-card>
@@ -700,7 +834,7 @@ onMounted(async () => {
           <el-form inline size="small">
             <el-form-item label="图纸编码"><el-input v-model="drawingForm.drawing_code" /></el-form-item>
             <el-form-item label="名称"><el-input v-model="drawingForm.drawing_name" /></el-form-item>
-            <el-form-item label="任务ID"><el-input-number v-model="drawingForm.task_id" :min="0" /></el-form-item>
+            <el-form-item label="任务"><ProdTaskSelect v-model="drawingForm.task_id" clearable /></el-form-item>
             <el-form-item label="文件URL"><el-input v-model="drawingForm.file_url" style="width:200px" /></el-form-item>
             <el-button type="primary" @click="createDrawing">挂接</el-button>
           </el-form>
@@ -717,8 +851,8 @@ onMounted(async () => {
       <template v-else-if="active==='qc'">
         <el-card header="质检单" class="mb">
           <el-form inline size="small">
-            <el-form-item label="类型"><el-input v-model="qcForm.qc_type" style="width:100px" /></el-form-item>
-            <el-form-item label="产品ID"><el-input-number v-model="qcForm.product_id" :min="1" /></el-form-item>
+            <el-form-item label="类型"><EnumSelect v-model="qcForm.qc_type" :options="QC_TYPE_OPTIONS" style="width:140px" /></el-form-item>
+            <el-form-item label="产品"><ProductSelect v-model="qcForm.product_id" /></el-form-item>
             <el-form-item label="工序">
               <el-select v-model="qcForm.process_id" style="width:140px">
                 <el-option v-for="p in processes" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
@@ -772,7 +906,7 @@ onMounted(async () => {
       <template v-else-if="active==='scraps'">
         <el-card header="废料登记" class="mb">
           <el-form inline size="small">
-            <el-form-item label="料号ID"><el-input-number v-model="scrapForm.product_id" :min="1" /></el-form-item>
+            <el-form-item label="料号"><ProductSelect v-model="scrapForm.product_id" /></el-form-item>
             <el-form-item label="数量"><el-input-number v-model="scrapForm.qty" :min="0" /></el-form-item>
             <el-form-item label="类型">
               <el-select v-model="scrapForm.scrap_type" style="width:140px">
@@ -798,9 +932,9 @@ onMounted(async () => {
       <template v-else-if="active==='outsources'">
         <el-card header="委外加工" class="mb">
           <el-form inline size="small">
-            <el-form-item label="供应商ID"><el-input-number v-model="outForm.supplier_id" :min="1" /></el-form-item>
-            <el-form-item label="工序ID"><el-input-number v-model="outForm.process_id" :min="1" /></el-form-item>
-            <el-form-item label="产品ID"><el-input-number v-model="outForm.product_id" :min="1" /></el-form-item>
+            <el-form-item label="供应商"><SupplierSelect v-model="outForm.supplier_id" /></el-form-item>
+            <el-form-item label="工序"><ProcessSelect v-model="outForm.process_id" /></el-form-item>
+            <el-form-item label="产品"><ProductSelect v-model="outForm.product_id" /></el-form-item>
             <el-form-item label="数量"><el-input-number v-model="outForm.qty" :min="0.01" /></el-form-item>
             <el-button type="primary" @click="createOut">新建</el-button>
           </el-form>
@@ -823,10 +957,10 @@ onMounted(async () => {
       <template v-else-if="active==='consignments'">
         <el-card header="受托加工" class="mb">
           <el-form inline size="small">
-            <el-form-item label="客户ID"><el-input-number v-model="consForm.customer_id" :min="1" /></el-form-item>
-            <el-form-item label="产品ID"><el-input-number v-model="consForm.product_id" :min="1" /></el-form-item>
+            <el-form-item label="客户"><CustomerSelect v-model="consForm.customer_id" /></el-form-item>
+            <el-form-item label="产品"><ProductSelect v-model="consForm.product_id" /></el-form-item>
             <el-form-item label="数量"><el-input-number v-model="consForm.qty" :min="0.01" /></el-form-item>
-            <el-form-item label="进度"><el-input v-model="consForm.progress" /></el-form-item>
+            <el-form-item label="进度"><EnumSelect v-model="consForm.progress" :options="CONSIGNMENT_PROGRESS_OPTIONS" style="width:140px" /></el-form-item>
             <el-button type="primary" @click="createCons">新建</el-button>
           </el-form>
         </el-card>
@@ -848,7 +982,7 @@ onMounted(async () => {
       <template v-else-if="active==='cost-hide'">
         <el-card header="成本隐藏策略" class="mb">
           <el-form inline size="small">
-            <el-form-item label="角色ID"><el-input-number v-model="hideForm.role_id" :min="1" /></el-form-item>
+            <el-form-item label="角色"><RoleSelect v-model="hideForm.role_id" /></el-form-item>
             <el-form-item label="名称"><el-input v-model="hideForm.name" /></el-form-item>
             <el-button type="primary" @click="createHide">新建</el-button>
           </el-form>
@@ -864,6 +998,24 @@ onMounted(async () => {
       <el-card v-if="detail" header="明细" style="margin-top:16px">
         <pre class="detail">{{ JSON.stringify(detail, null, 2) }}</pre>
       </el-card>
+
+      <el-dialog v-model="processEditDlg" title="编辑工序" width="480px" destroy-on-close>
+        <el-form label-width="90px">
+          <el-form-item label="名称"><el-input v-model="processEditForm.name" /></el-form-item>
+          <el-form-item label="类型"><EnumSelect v-model="processEditForm.process_type" :options="PROCESS_TYPE_OPTIONS" style="width:100%" /></el-form-item>
+          <el-form-item label="计件"><el-switch v-model="processEditForm.is_piecework" /></el-form-item>
+          <el-form-item label="状态">
+            <el-select v-model="processEditForm.status" style="width:100%">
+              <el-option label="启用" value="active" />
+              <el-option label="停用" value="inactive" />
+            </el-select>
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="processEditDlg = false">取消</el-button>
+          <el-button type="primary" @click="saveEditProcess">保存</el-button>
+        </template>
+      </el-dialog>
     </div>
   </div>
 </template>
@@ -872,7 +1024,9 @@ onMounted(async () => {
 .page { padding: 16px 20px; }
 .head h2 { margin: 0 0 4px; }
 .hint { color: #667; font-size: 13px; margin: 0 0 12px; }
+.mode-hint { color: #714b67; font-size: 13px; margin: 0 0 12px; background: #f5eef8; padding: 8px 12px; border-radius: 6px; }
 .mb { margin-bottom: 12px; }
+.multi-line { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .detail { background: #f6f8fa; padding: 12px; border-radius: 8px; max-height: 420px; overflow: auto; font-size: 12px; }
 .kpi { color: #667; font-size: 12px; }
 .kpi-n { font-size: 28px; font-weight: 600; margin-top: 4px; }

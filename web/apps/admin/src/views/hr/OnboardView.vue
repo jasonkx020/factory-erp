@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { DEFAULT_EMP_TYPE, EMP_TYPE_OPTIONS, empTypeLabel, hrApi, iamApi } from '@erp/shared'
+import { WorkshopSelect } from '../../components/select'
 
 type Row = Record<string, unknown>
 
@@ -270,7 +271,7 @@ onMounted(load)
           </el-col>
           <el-col :span="12">
             <el-form-item label="入职日期">
-              <el-input v-model="form.onboard_date" placeholder="YYYY-MM-DD" />
+              <el-date-picker v-model="form.onboard_date" type="date" value-format="YYYY-MM-DD" style="width:100%" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -285,17 +286,17 @@ onMounted(load)
           </el-col>
           <el-col :span="8">
             <el-form-item label="部门ID">
-              <el-input-number v-model="form.dept_id" :min="0" style="width:100%" />
+              <el-input-number v-model="form.dept_id" :min="0" placeholder="暂无部门主数据，请填ID" style="width:100%" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="车间ID">
-              <el-input-number v-model="form.workshop_id" :min="0" style="width:100%" />
+            <el-form-item label="车间">
+              <WorkshopSelect v-model="form.workshop_id" style="width:100%" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
             <el-form-item label="班组ID">
-              <el-input-number v-model="form.team_id" :min="0" style="width:100%" />
+              <el-input-number v-model="form.team_id" :min="0" placeholder="暂无部门主数据，请填ID" style="width:100%" />
             </el-form-item>
           </el-col>
           <el-col :span="12">

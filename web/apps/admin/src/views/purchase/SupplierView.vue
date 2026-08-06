@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { purchaseApi } from '@erp/shared'
+import {
+  purchaseApi,
+  CURRENCY_OPTIONS,
+  SETTLE_METHOD_OPTIONS,
+  SUPPLIER_RATING_OPTIONS,
+  LICENSE_TYPE_OPTIONS,
+} from '@erp/shared'
+import { EnumSelect, ProductSelect, WarehouseSelect } from '../../components/select'
 
 type Row = Record<string, unknown>
 
@@ -145,7 +152,7 @@ function addContact() {
 }
 
 function addLicense() {
-  licenses.value.push({ license_type: '营业执照', license_no: '', expire_date: '' })
+  licenses.value.push({ license_type: 'business', license_no: '', expire_date: '' })
 }
 
 async function saveLicenses() {
@@ -244,13 +251,15 @@ onMounted(loadList)
                   <el-option label="委外" value="outsource" /><el-option label="服务" value="service" />
                 </el-select>
               </el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="等级"><el-input v-model="form.rating" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="等级"><EnumSelect v-model="form.rating" :options="SUPPLIER_RATING_OPTIONS" :clearable="false" style="width:100%" /></el-form-item></el-col>
               <el-col :span="12"><el-form-item label="首选"><el-switch v-model="form.is_preferred" /></el-form-item></el-col>
               <el-col :span="12"><el-form-item label="信用代码"><el-input v-model="form.uscc" /></el-form-item></el-col>
               <el-col :span="12"><el-form-item label="法人"><el-input v-model="form.legal_person" /></el-form-item></el-col>
               <el-col :span="24"><el-form-item label="注册地址"><el-input v-model="form.register_address" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="结算方式"><el-input v-model="form.settle_method" placeholder="cash/monthly/cod" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="结算方式"><EnumSelect v-model="form.settle_method" :options="SETTLE_METHOD_OPTIONS" :clearable="false" style="width:100%" /></el-form-item></el-col>
               <el-col :span="12"><el-form-item label="账期天"><el-input-number v-model="form.payment_days" :min="0" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="币种"><EnumSelect v-model="form.currency" :options="CURRENCY_OPTIONS" :clearable="false" style="width:100%" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="默认仓库"><WarehouseSelect v-model="form.default_warehouse_id" style="width:100%" /></el-form-item></el-col>
               <el-col :span="12"><el-form-item label="开户行"><el-input v-model="form.bank_name" /></el-form-item></el-col>
               <el-col :span="12"><el-form-item label="账号"><el-input v-model="form.bank_account" /></el-form-item></el-col>
               <el-col :span="12"><el-form-item label="税号"><el-input v-model="form.tax_no" /></el-form-item></el-col>
@@ -270,16 +279,16 @@ onMounted(loadList)
           <el-button size="small" @click="addLicense">新增</el-button>
           <el-button size="small" type="primary" @click="saveLicenses">保存证照</el-button>
           <el-table :data="licenses" size="small" border style="margin-top:8px">
-            <el-table-column label="类型"><template #default="{row}"><el-input v-model="row.license_type" /></template></el-table-column>
+            <el-table-column label="类型"><template #default="{row}"><EnumSelect v-model="row.license_type" :options="LICENSE_TYPE_OPTIONS" style="width:100%" /></template></el-table-column>
             <el-table-column label="号码"><template #default="{row}"><el-input v-model="row.license_no" /></template></el-table-column>
-            <el-table-column label="到期日"><template #default="{row}"><el-input v-model="row.expire_date" placeholder="YYYY-MM-DD" /></template></el-table-column>
+            <el-table-column label="到期日"><template #default="{row}"><el-date-picker v-model="row.expire_date" type="date" value-format="YYYY-MM-DD" style="width:100%" /></template></el-table-column>
           </el-table>
         </el-tab-pane>
         <el-tab-pane label="可供物料" name="supply" :disabled="!editing">
           <el-button size="small" @click="addSupply">新增</el-button>
           <el-button size="small" type="primary" @click="saveSupply">保存</el-button>
           <el-table :data="supplyItems" size="small" border style="margin-top:8px">
-            <el-table-column label="物料ID" width="120"><template #default="{row}"><el-input-number v-model="row.product_id" :min="1" /></template></el-table-column>
+            <el-table-column label="物料" width="180"><template #default="{row}"><ProductSelect v-model="row.product_id" :clearable="false" style="width:100%" /></template></el-table-column>
             <el-table-column label="首选" width="80"><template #default="{row}"><el-switch v-model="row.is_preferred" /></template></el-table-column>
             <el-table-column label="MOQ"><template #default="{row}"><el-input-number v-model="row.moq" :min="0" /></template></el-table-column>
             <el-table-column label="交期"><template #default="{row}"><el-input-number v-model="row.lead_time_days" :min="0" /></template></el-table-column>

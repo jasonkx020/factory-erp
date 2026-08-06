@@ -2,7 +2,12 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { crmApi } from '@erp/shared'
+import {
+  crmApi,
+  CUSTOMER_SOURCE_OPTIONS,
+  SETTLE_METHOD_OPTIONS,
+} from '@erp/shared'
+import { CustomerSelect, UserSelect, EnumSelect } from '../../components/select'
 
 type Row = Record<string, unknown>
 
@@ -59,7 +64,7 @@ const customerForm = reactive({
   mobile: '',
   address: '',
   level: 'B',
-  source: '电话开发',
+  source: 'phone',
   remark: '',
   is_public_sea: false,
 })
@@ -69,7 +74,7 @@ const profileForm = reactive({
   contact_name: '',
   mobile: '',
   address: '',
-  settle_method: '月结',
+  settle_method: 'monthly',
   payment_days: 30,
   credit_limit: 50000,
   logistics_remark: '',
@@ -167,7 +172,7 @@ async function refresh() {
             profileForm.contact_name = String(d.contact_name || '')
             profileForm.mobile = String(d.mobile || '')
             profileForm.address = String(d.address || '')
-            profileForm.settle_method = String(d.settle_method || '月结')
+            profileForm.settle_method = String(d.settle_method || 'monthly')
             profileForm.payment_days = Number(d.payment_days || 30)
             profileForm.credit_limit = Number(d.credit_limit || 0)
             profileForm.logistics_remark = String(d.logistics_remark || '')
@@ -351,7 +356,7 @@ onMounted(async () => {
   if (!reminderForm.remind_at) {
     const d = new Date()
     d.setDate(d.getDate() + 1)
-    reminderForm.remind_at = d.toISOString().slice(0, 16).replace('T', ' ')
+    reminderForm.remind_at = d.toISOString().slice(0, 19).replace('T', ' ')
   }
   await loadCustomersMeta()
   await refresh()
@@ -378,7 +383,7 @@ onMounted(async () => {
               <el-option label="A" value="A" /><el-option label="B" value="B" /><el-option label="C" value="C" />
             </el-select>
           </el-form-item>
-          <el-form-item label="来源"><el-input v-model="customerForm.source" style="width:110px" /></el-form-item>
+          <el-form-item label="来源"><EnumSelect v-model="customerForm.source" :options="CUSTOMER_SOURCE_OPTIONS" :clearable="false" style="width:120px" /></el-form-item>
           <el-form-item label="公海"><el-switch v-model="customerForm.is_public_sea" /></el-form-item>
           <el-button type="primary" @click="createCustomer">新建</el-button>
         </el-form>
@@ -421,16 +426,15 @@ onMounted(async () => {
       <el-card header="客户档案" class="mb">
         <el-form inline size="small">
           <el-form-item label="客户">
-            <el-select v-model="profileForm.customer_id" filterable style="width:220px" @change="refresh">
-              <el-option v-for="c in customers" :key="String(c.id)" :label="String(c.name)" :value="Number(c.id)" />
-            </el-select>
+            <CustomerSelect v-model="profileForm.customer_id" :clearable="false" style="width:220px" @update:model-value="refresh" />
           </el-form-item>
           <el-form-item label="联系人"><el-input v-model="profileForm.contact_name" /></el-form-item>
           <el-form-item label="手机"><el-input v-model="profileForm.mobile" /></el-form-item>
           <el-form-item label="地址"><el-input v-model="profileForm.address" style="width:200px" /></el-form-item>
-          <el-form-item label="结算"><el-input v-model="profileForm.settle_method" style="width:90px" /></el-form-item>
+          <el-form-item label="结算"><EnumSelect v-model="profileForm.settle_method" :options="SETTLE_METHOD_OPTIONS" :clearable="false" style="width:120px" /></el-form-item>
           <el-form-item label="账期天"><el-input-number v-model="profileForm.payment_days" :min="0" /></el-form-item>
           <el-form-item label="信用额"><el-input-number v-model="profileForm.credit_limit" :min="0" :step="1000" /></el-form-item>
+          <el-form-item label="来源"><EnumSelect v-model="profileForm.source" :options="CUSTOMER_SOURCE_OPTIONS" style="width:120px" /></el-form-item>
           <el-form-item label="物流备注"><el-input v-model="profileForm.logistics_remark" style="width:160px" /></el-form-item>
           <el-button type="primary" @click="saveProfile">保存档案</el-button>
         </el-form>
@@ -441,11 +445,7 @@ onMounted(async () => {
     <template v-else-if="active === 'opportunities'">
       <el-card header="新建商机" class="mb">
         <el-form inline size="small">
-          <el-form-item label="客户">
-            <el-select v-model="oppForm.customer_id" style="width:180px">
-              <el-option v-for="c in customers" :key="String(c.id)" :label="String(c.name)" :value="Number(c.id)" />
-            </el-select>
-          </el-form-item>
+          <el-form-item label="客户"><CustomerSelect v-model="oppForm.customer_id" :clearable="false" /></el-form-item>
           <el-form-item label="标题"><el-input v-model="oppForm.title" placeholder="年供/询价意向" /></el-form-item>
           <el-form-item label="阶段">
             <el-select v-model="oppForm.stage" style="width:120px">
@@ -457,7 +457,7 @@ onMounted(async () => {
             </el-select>
           </el-form-item>
           <el-form-item label="金额"><el-input-number v-model="oppForm.amount" :min="0" :step="1000" /></el-form-item>
-          <el-form-item label="预计成交"><el-input v-model="oppForm.expected_date" placeholder="YYYY-MM-DD" style="width:120px" /></el-form-item>
+          <el-form-item label="预计成交"><el-date-picker v-model="oppForm.expected_date" type="date" value-format="YYYY-MM-DD" style="width:150px" /></el-form-item>
           <el-button type="primary" @click="createOpp">新建</el-button>
         </el-form>
       </el-card>
@@ -481,11 +481,7 @@ onMounted(async () => {
     <template v-else-if="active === 'follow-ups'">
       <el-card header="登记跟进" class="mb">
         <el-form inline size="small">
-          <el-form-item label="客户">
-            <el-select v-model="followForm.customer_id" style="width:180px">
-              <el-option v-for="c in customers" :key="String(c.id)" :label="String(c.name)" :value="Number(c.id)" />
-            </el-select>
-          </el-form-item>
+          <el-form-item label="客户"><CustomerSelect v-model="followForm.customer_id" :clearable="false" /></el-form-item>
           <el-form-item label="方式">
             <el-select v-model="followForm.follow_type" style="width:100px">
               <el-option label="拜访" value="visit" />
@@ -494,7 +490,7 @@ onMounted(async () => {
             </el-select>
           </el-form-item>
           <el-form-item label="内容"><el-input v-model="followForm.content" style="width:260px" /></el-form-item>
-          <el-form-item label="下次提醒"><el-input v-model="followForm.next_remind_at" placeholder="YYYY-MM-DD HH:mm:ss" style="width:170px" /></el-form-item>
+          <el-form-item label="下次提醒"><el-date-picker v-model="followForm.next_remind_at" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" style="width:190px" /></el-form-item>
           <el-button type="primary" @click="createFollow">保存</el-button>
         </el-form>
       </el-card>
@@ -511,12 +507,8 @@ onMounted(async () => {
     <template v-else-if="active === 'assigns'">
       <el-card header="分配/认领客户" class="mb">
         <el-form inline size="small">
-          <el-form-item label="客户">
-            <el-select v-model="assignForm.customer_id" filterable style="width:220px">
-              <el-option v-for="c in customers" :key="String(c.id)" :label="`${c.name}${c.is_public_sea ? ' [公海]' : ''}`" :value="Number(c.id)" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="分配给用户ID"><el-input-number v-model="assignForm.to_user_id" :min="1" /></el-form-item>
+          <el-form-item label="客户"><CustomerSelect v-model="assignForm.customer_id" :clearable="false" style="width:220px" /></el-form-item>
+          <el-form-item label="分配给"><UserSelect v-model="assignForm.to_user_id" :clearable="false" /></el-form-item>
           <el-form-item label="同时锁定"><el-switch v-model="assignForm.lock_flag" /></el-form-item>
           <el-form-item label="备注"><el-input v-model="assignForm.remark" /></el-form-item>
           <el-button type="primary" @click="assignLead">执行分配</el-button>
@@ -556,11 +548,7 @@ onMounted(async () => {
     <template v-else-if="active === 'releases'">
       <el-card header="释放公海" class="mb">
         <el-form inline size="small">
-          <el-form-item label="客户">
-            <el-select v-model="releaseForm.customer_id" filterable style="width:220px">
-              <el-option v-for="c in customers" :key="String(c.id)" :label="String(c.name)" :value="Number(c.id)" />
-            </el-select>
-          </el-form-item>
+          <el-form-item label="客户"><CustomerSelect v-model="releaseForm.customer_id" :clearable="false" style="width:220px" /></el-form-item>
           <el-form-item label="原因"><el-input v-model="releaseForm.reason" style="width:220px" /></el-form-item>
           <el-button type="warning" @click="releaseLead">释放到公海</el-button>
           <el-button @click="autoRelease">到期自动释放</el-button>
@@ -640,13 +628,9 @@ onMounted(async () => {
     <template v-else-if="active === 'reminders'">
       <el-card header="新建提醒" class="mb">
         <el-form inline size="small">
-          <el-form-item label="用户ID"><el-input-number v-model="reminderForm.user_id" :min="1" /></el-form-item>
-          <el-form-item label="关联客户">
-            <el-select v-model="reminderForm.ref_id" style="width:180px">
-              <el-option v-for="c in customers" :key="String(c.id)" :label="String(c.name)" :value="Number(c.id)" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="时间"><el-input v-model="reminderForm.remind_at" style="width:170px" /></el-form-item>
+          <el-form-item label="用户"><UserSelect v-model="reminderForm.user_id" :clearable="false" /></el-form-item>
+          <el-form-item label="关联客户"><CustomerSelect v-model="reminderForm.ref_id" :clearable="false" /></el-form-item>
+          <el-form-item label="时间"><el-date-picker v-model="reminderForm.remind_at" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" style="width:190px" /></el-form-item>
           <el-form-item label="内容"><el-input v-model="reminderForm.content" style="width:220px" /></el-form-item>
           <el-button type="primary" @click="createReminder">新建</el-button>
         </el-form>

@@ -237,10 +237,15 @@ watch(active, refresh)
             </el-select>
           </el-form-item>
           <el-form-item label="部门"><el-input v-model="assetForm.dept_name" style="width:110px" /></el-form-item>
+          <el-form-item label="部门ID">
+            <el-input-number v-model="assetForm.dept_id" :min="0" placeholder="暂无部门主数据，请填ID" />
+          </el-form-item>
           <el-form-item label="存放位置"><el-input v-model="assetForm.location_text" style="width:140px" /></el-form-item>
           <el-form-item label="原值"><el-input-number v-model="assetForm.original_value" :min="0" :step="100" /></el-form-item>
           <el-form-item label="净值"><el-input-number v-model="assetForm.net_value" :min="0" :step="100" /></el-form-item>
-          <el-form-item label="购入日"><el-input v-model="assetForm.purchase_date" style="width:120px" placeholder="YYYY-MM-DD" /></el-form-item>
+          <el-form-item label="购入日">
+            <el-date-picker v-model="assetForm.purchase_date" type="date" value-format="YYYY-MM-DD" style="width:150px" />
+          </el-form-item>
           <el-form-item label="年限(月)"><el-input-number v-model="assetForm.useful_life_months" :min="1" /></el-form-item>
           <el-button type="primary" @click="createAsset">新建</el-button>
         </el-form>
@@ -282,6 +287,9 @@ watch(active, refresh)
             </el-select>
           </el-form-item>
           <el-form-item label="调入部门"><el-input v-model="transferForm.to_dept_name" style="width:120px" /></el-form-item>
+          <el-form-item label="调入部门ID">
+            <el-input-number v-model="transferForm.to_dept_id" :min="0" placeholder="暂无部门主数据，请填ID" />
+          </el-form-item>
           <el-form-item label="调入位置"><el-input v-model="transferForm.to_location" style="width:140px" /></el-form-item>
           <el-form-item label="备注"><el-input v-model="transferForm.remark" style="width:140px" /></el-form-item>
           <el-button type="primary" @click="createTransfer">新建</el-button>

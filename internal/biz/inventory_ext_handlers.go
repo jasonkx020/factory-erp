@@ -179,6 +179,8 @@ func EnsureInventoryExtSchema(db *sql.DB) {
 
 func (s *Services) handleInventoryExt(c *gin.Context, method, openapiPath, action string) bool {
 	switch {
+	case openapiPath == "/api/v1/inventory/warehouses" && method == "GET":
+		return s.listWarehouses(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/inventory/stocktakes") || strings.HasPrefix(openapiPath, "/api/v1/inventory/workshop-stocktakes"):
 		stType := "warehouse"
 		if strings.Contains(openapiPath, "workshop-stocktakes") {
@@ -214,6 +216,26 @@ func (s *Services) handleInventoryExt(c *gin.Context, method, openapiPath, actio
 	default:
 		return false
 	}
+}
+
+func (s *Services) listWarehouses(c *gin.Context) bool {
+	rows, err := s.DB.Query(`SELECT id, code, name, COALESCE(warehouse_type,'') FROM inv_warehouse WHERE COALESCE(is_deleted,0)=0 ORDER BY id`)
+	if err != nil {
+		api.FailJSON(c, "DB_ERROR:"+err.Error())
+		return true
+	}
+	defer rows.Close()
+	list := []gin.H{}
+	for rows.Next() {
+		var id int64
+		var code, name, wtype string
+		if err := rows.Scan(&id, &code, &name, &wtype); err != nil {
+			continue
+		}
+		list = append(list, gin.H{"id": id, "code": code, "name": name, "warehouse_type": wtype})
+	}
+	api.OK(c, gin.H{"list": list, "total": len(list)})
+	return true
 }
 
 // ---------- stocktakes ----------

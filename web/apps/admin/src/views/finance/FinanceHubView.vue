@@ -2,7 +2,14 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { financeApi } from '@erp/shared'
+import { financeApi, CURRENCY_OPTIONS, PAY_CHANNEL_OPTIONS } from '@erp/shared'
+import {
+  CustomerSelect,
+  SupplierSelect,
+  SalesOrderSelect,
+  ProductSelect,
+  EnumSelect,
+} from '../../components/select'
 
 type Row = Record<string, unknown>
 
@@ -302,8 +309,9 @@ watch([active, fundTab], refresh)
       <el-card class="mb" header="小程序账单">
         <el-form inline size="small">
           <el-form-item label="单号"><el-input v-model="mpForm.bill_no" style="width:140px" placeholder="可空" /></el-form-item>
-          <el-form-item label="渠道"><el-input v-model="mpForm.channel" style="width:100px" /></el-form-item>
+          <el-form-item label="渠道"><EnumSelect v-model="mpForm.channel" :options="PAY_CHANNEL_OPTIONS" :clearable="false" style="width:120px" /></el-form-item>
           <el-form-item label="金额"><el-input-number v-model="mpForm.amount" :min="0.01" /></el-form-item>
+          <el-form-item label="订单"><SalesOrderSelect v-model="mpForm.order_id" /></el-form-item>
           <el-button type="primary" @click="run(() => financeApi.createMiniprogramBill({ ...mpForm }), '已建账单')">新建</el-button>
           <el-button @click="run(() => financeApi.reconcileMiniprogram({}), '已对账未付款账单')">一键对账</el-button>
         </el-form>
@@ -372,14 +380,14 @@ watch([active, fundTab], refresh)
     <template v-else-if="active === 'writeoffs'">
       <el-card class="mb" header="收款核单（确认后入资金账户）">
         <el-form inline size="small">
-          <el-form-item label="客户ID"><el-input-number v-model="writeoffForm.customer_id" :min="1" /></el-form-item>
+          <el-form-item label="客户"><CustomerSelect v-model="writeoffForm.customer_id" :clearable="false" /></el-form-item>
           <el-form-item label="金额"><el-input-number v-model="writeoffForm.amount" :min="0.01" /></el-form-item>
           <el-form-item label="资金账户">
             <el-select v-model="writeoffForm.fund_account_id" style="width:140px">
               <el-option v-for="f in funds" :key="String(f.id)" :label="String(f.name)" :value="Number(f.id)" />
             </el-select>
           </el-form-item>
-          <el-form-item label="订单ID"><el-input-number v-model="writeoffForm.sales_order_id" :min="0" /></el-form-item>
+          <el-form-item label="订单"><SalesOrderSelect v-model="writeoffForm.sales_order_id" /></el-form-item>
           <el-button type="primary" @click="run(() => financeApi.createWriteoff({ ...writeoffForm }), '核单已建')">新建</el-button>
         </el-form>
       </el-card>
@@ -397,7 +405,7 @@ watch([active, fundTab], refresh)
     <template v-else-if="active === 'recognitions'">
       <el-card class="mb" header="销售认款">
         <el-form inline size="small">
-          <el-form-item label="客户ID"><el-input-number v-model="recognitionForm.customer_id" :min="1" /></el-form-item>
+          <el-form-item label="客户"><CustomerSelect v-model="recognitionForm.customer_id" :clearable="false" /></el-form-item>
           <el-form-item label="金额"><el-input-number v-model="recognitionForm.amount" :min="0.01" /></el-form-item>
           <el-form-item label="资金账户">
             <el-select v-model="recognitionForm.fund_account_id" style="width:140px">
@@ -421,7 +429,7 @@ watch([active, fundTab], refresh)
     <template v-else-if="active === 'fx' || active === 'fx-query'">
       <el-card v-if="active==='fx'" class="mb" header="外币结汇">
         <el-form inline size="small">
-          <el-form-item label="币种"><el-input v-model="fxForm.currency" style="width:90px" /></el-form-item>
+          <el-form-item label="币种"><EnumSelect v-model="fxForm.currency" :options="CURRENCY_OPTIONS" :clearable="false" style="width:140px" /></el-form-item>
           <el-form-item label="外币金额"><el-input-number v-model="fxForm.amount_fx" :min="0.01" /></el-form-item>
           <el-form-item label="汇率"><el-input-number v-model="fxForm.rate" :min="0.0001" :step="0.01" /></el-form-item>
           <el-form-item label="入账账户">
@@ -465,9 +473,10 @@ watch([active, fundTab], refresh)
     <template v-else-if="active === 'alerts'">
       <el-card class="mb" header="收款预警">
         <el-form inline size="small">
-          <el-form-item label="客户ID"><el-input-number v-model="alertForm.customer_id" :min="1" /></el-form-item>
+          <el-form-item label="客户"><CustomerSelect v-model="alertForm.customer_id" :clearable="false" /></el-form-item>
           <el-form-item label="逾期天"><el-input-number v-model="alertForm.overdue_days" :min="0" /></el-form-item>
           <el-form-item label="金额"><el-input-number v-model="alertForm.amount" :min="0" /></el-form-item>
+          <el-form-item label="到期日"><el-date-picker v-model="alertForm.due_date" type="date" value-format="YYYY-MM-DD" style="width:150px" /></el-form-item>
           <el-button type="primary" @click="run(() => financeApi.createAlert({ ...alertForm }), '预警已建')">新建</el-button>
         </el-form>
       </el-card>
@@ -511,7 +520,10 @@ watch([active, fundTab], refresh)
           <el-form-item label="类型">
             <el-select v-model="prepayForm.party_type" style="width:110px"><el-option label="客户" value="customer" /><el-option label="供应商" value="supplier" /></el-select>
           </el-form-item>
-          <el-form-item label="对方ID"><el-input-number v-model="prepayForm.party_id" :min="1" /></el-form-item>
+          <el-form-item label="对方">
+            <CustomerSelect v-if="prepayForm.party_type === 'customer'" v-model="prepayForm.party_id" :clearable="false" />
+            <SupplierSelect v-else v-model="prepayForm.party_id" :clearable="false" />
+          </el-form-item>
           <el-form-item label="方向">
             <el-select v-model="prepayForm.direction" style="width:90px"><el-option label="预收" value="in" /><el-option label="预付" value="out" /></el-select>
           </el-form-item>
@@ -529,7 +541,8 @@ watch([active, fundTab], refresh)
     <template v-else-if="active === 'cost-accountings'">
       <el-card class="mb" header="成本核算">
         <el-form inline size="small">
-          <el-form-item label="期间"><el-input v-model="costForm.period" style="width:110px" /></el-form-item>
+          <el-form-item label="期间"><el-date-picker v-model="costForm.period" type="month" value-format="YYYY-MM" style="width:140px" /></el-form-item>
+          <el-form-item label="产品"><ProductSelect v-model="costForm.product_id" :clearable="false" /></el-form-item>
           <el-form-item label="物料成本"><el-input-number v-model="costForm.material_cost" :min="0" /></el-form-item>
           <el-form-item label="人工"><el-input-number v-model="costForm.labor_cost" :min="0" /></el-form-item>
           <el-form-item label="制造费用"><el-input-number v-model="costForm.overhead" :min="0" /></el-form-item>
@@ -561,7 +574,7 @@ watch([active, fundTab], refresh)
     <template v-else-if="active === 'return-finances'">
       <el-card class="mb" header="销售退货退单（财务）">
         <el-form inline size="small">
-          <el-form-item label="订单ID"><el-input-number v-model="returnForm.order_id" :min="0" /></el-form-item>
+          <el-form-item label="订单"><SalesOrderSelect v-model="returnForm.order_id" /></el-form-item>
           <el-form-item label="金额"><el-input-number v-model="returnForm.amount" :min="0.01" /></el-form-item>
           <el-button type="primary" @click="run(() => financeApi.createReturnFinance({ ...returnForm }), '退单已建')">新建</el-button>
         </el-form>
@@ -583,7 +596,10 @@ watch([active, fundTab], refresh)
           <el-form-item label="类型">
             <el-select v-model="arapForm.party_type" style="width:110px"><el-option label="客户" value="customer" /><el-option label="供应商" value="supplier" /></el-select>
           </el-form-item>
-          <el-form-item label="对方ID"><el-input-number v-model="arapForm.party_id" :min="1" /></el-form-item>
+          <el-form-item label="对方">
+            <CustomerSelect v-if="arapForm.party_type === 'customer'" v-model="arapForm.party_id" :clearable="false" />
+            <SupplierSelect v-else v-model="arapForm.party_id" :clearable="false" />
+          </el-form-item>
           <el-form-item label="金额"><el-input-number v-model="arapForm.amount" :min="0.01" /></el-form-item>
           <el-form-item label="方向">
             <el-select v-model="arapForm.direction" style="width:110px"><el-option label="调增" value="increase" /><el-option label="调减" value="decrease" /></el-select>
@@ -625,7 +641,7 @@ watch([active, fundTab], refresh)
         <el-form inline size="small">
           <el-form-item label="编码"><el-input v-model="fundAccForm.code" style="width:120px" /></el-form-item>
           <el-form-item label="名称"><el-input v-model="fundAccForm.name" style="width:140px" /></el-form-item>
-          <el-form-item label="币种"><el-input v-model="fundAccForm.currency" style="width:80px" /></el-form-item>
+          <el-form-item label="币种"><EnumSelect v-model="fundAccForm.currency" :options="CURRENCY_OPTIONS" :clearable="false" style="width:140px" /></el-form-item>
           <el-form-item label="期初"><el-input-number v-model="fundAccForm.balance" :min="0" /></el-form-item>
           <el-button type="primary" @click="run(() => financeApi.createFundAccount({ ...fundAccForm }), '账户已建')">新建</el-button>
         </el-form>

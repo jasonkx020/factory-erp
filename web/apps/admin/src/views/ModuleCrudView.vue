@@ -10,6 +10,8 @@ import {
   moduleUpdate,
   moduleDelete,
   moduleAction,
+  STATUS_ACTIVE_OPTIONS,
+  adminModuleForPath,
 } from '@erp/shared'
 import IamView from './iam/IamView.vue'
 import SupplierView from './purchase/SupplierView.vue'
@@ -19,13 +21,63 @@ import HrOpsView from './hr/HrOpsView.vue'
 import EmployeeView from './hr/EmployeeView.vue'
 import SystemAdminView from './system/SystemAdminView.vue'
 import PayrollView from './payroll/PayrollView.vue'
+import {
+  WarehouseSelect,
+  WorkshopSelect,
+  EmployeeSelect,
+  UserSelect,
+  ProductSelect,
+  CustomerSelect,
+  SupplierSelect,
+  ProcessSelect,
+  SalesOrderSelect,
+  EnumSelect,
+} from '../components/select'
+
+type FieldKind = 'text' | 'status' | 'date' | 'month' | 'datetime' | 'ref'
+type RefKind = 'warehouse' | 'workshop' | 'employee' | 'user' | 'product' | 'customer' | 'supplier' | 'process' | 'order'
+
+function fieldKind(key: string): { kind: FieldKind; ref?: RefKind } {
+  if (key === 'status') return { kind: 'status' }
+  if (key === 'period' || key === 'period_ym' || key.endsWith('_ym')) return { kind: 'month' }
+  if (key.endsWith('_at') || key.includes('datetime') || key.includes('remind_at')) return { kind: 'datetime' }
+  if (key.includes('date') || key.endsWith('_day') || key === 'biz_date') return { kind: 'date' }
+  const refMap: Record<string, RefKind> = {
+    warehouse_id: 'warehouse',
+    from_warehouse_id: 'warehouse',
+    to_warehouse_id: 'warehouse',
+    workshop_id: 'workshop',
+    employee_id: 'employee',
+    worker_id: 'employee',
+    user_id: 'user',
+    to_user_id: 'user',
+    assignee_id: 'user',
+    owner_id: 'user',
+    target_user_id: 'user',
+    product_id: 'product',
+    customer_id: 'customer',
+    supplier_id: 'supplier',
+    process_id: 'process',
+    order_id: 'order',
+    sales_order_id: 'order',
+  }
+  if (refMap[key]) return { kind: 'ref', ref: refMap[key] }
+  return { kind: 'text' }
+}
 
 const route = useRoute()
 const auth = useAuthStore()
 const perm = usePermStore()
 
-const domain = computed(() => decodeURIComponent(String(route.params.domain || '')))
-const moduleName = computed(() => decodeURIComponent(String(route.params.module || '')))
+const pathHit = computed(() => adminModuleForPath(route.path))
+const domain = computed(() => {
+  if (pathHit.value) return pathHit.value.domain
+  return decodeURIComponent(String(route.params.domain || ''))
+})
+const moduleName = computed(() => {
+  if (pathHit.value) return pathHit.value.module
+  return decodeURIComponent(String(route.params.module || ''))
+})
 const meta = computed(() => perm.metaFor(domain.value, moduleName.value))
 
 const loading = ref(false)
@@ -219,7 +271,40 @@ watch(() => route.fullPath, load)
     <el-dialog v-model="dialogVisible" :title="editingId ? '编辑' : '新建'" width="520px">
       <el-form label-width="100px">
         <el-form-item v-for="k in formKeys.filter(x => x !== 'id')" :key="k" :label="k">
-          <el-input v-model="form[k]" />
+          <template v-if="fieldKind(k).kind === 'status'">
+            <EnumSelect v-model="(form[k] as string)" :options="STATUS_ACTIVE_OPTIONS" style="width:100%" />
+          </template>
+          <el-date-picker
+            v-else-if="fieldKind(k).kind === 'date'"
+            v-model="form[k]"
+            type="date"
+            value-format="YYYY-MM-DD"
+            style="width:100%"
+          />
+          <el-date-picker
+            v-else-if="fieldKind(k).kind === 'month'"
+            v-model="form[k]"
+            type="month"
+            value-format="YYYY-MM"
+            style="width:100%"
+          />
+          <el-date-picker
+            v-else-if="fieldKind(k).kind === 'datetime'"
+            v-model="form[k]"
+            type="datetime"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            style="width:100%"
+          />
+          <WarehouseSelect v-else-if="fieldKind(k).ref === 'warehouse'" v-model="(form[k] as number)" style="width:100%" />
+          <WorkshopSelect v-else-if="fieldKind(k).ref === 'workshop'" v-model="(form[k] as number)" style="width:100%" />
+          <EmployeeSelect v-else-if="fieldKind(k).ref === 'employee'" v-model="(form[k] as number)" style="width:100%" />
+          <UserSelect v-else-if="fieldKind(k).ref === 'user'" v-model="(form[k] as number)" style="width:100%" />
+          <ProductSelect v-else-if="fieldKind(k).ref === 'product'" v-model="(form[k] as number)" style="width:100%" />
+          <CustomerSelect v-else-if="fieldKind(k).ref === 'customer'" v-model="(form[k] as number)" style="width:100%" />
+          <SupplierSelect v-else-if="fieldKind(k).ref === 'supplier'" v-model="(form[k] as number)" style="width:100%" />
+          <ProcessSelect v-else-if="fieldKind(k).ref === 'process'" v-model="(form[k] as number)" style="width:100%" />
+          <SalesOrderSelect v-else-if="fieldKind(k).ref === 'order'" v-model="(form[k] as number)" style="width:100%" />
+          <el-input v-else v-model="form[k]" />
         </el-form-item>
       </el-form>
       <template #footer>

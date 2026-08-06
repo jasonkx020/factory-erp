@@ -1,11 +1,11 @@
 /** 管理端：域菜单模块 → 专用页面（非通用 ModuleCrud） */
 export const ADMIN_SPECIAL_MODULE_PATHS: Record<string, string> = {
   '销售管理/销售订单': '/sales/hub/orders',
-  '销售管理/修改订单': '/sales/hub/orders',
-  '销售管理/订单复购': '/sales/hub/orders',
+  '销售管理/修改订单': '/sales/hub/order-edit',
+  '销售管理/订单复购': '/sales/hub/order-rebuy',
   '销售管理/我的订单': '/sales/hub/my-orders',
   '销售管理/询价管理': '/sales/hub/inquiries',
-  '销售管理/询价审批': '/sales/hub/inquiries',
+  '销售管理/询价审批': '/sales/hub/inquiry-approve',
   '销售管理/预发货管理': '/sales/hub/pre-ships',
   '销售管理/发货审批': '/sales/hub/deliveries',
   '销售管理/销售锁价': '/sales/hub/price-locks',
@@ -112,11 +112,8 @@ export const ADMIN_SPECIAL_MODULE_PATHS: Record<string, string> = {
   '审批管理/事务申请审批': '/approval/hub/affairs',
   '审批管理/费用申请': '/approval/hub/expense-requests',
   '审批管理/考勤审批': '/approval/hub/attendance',
-  '生产管理/多单整合管理': '/production/hub/merges',
-  '生产管理/生产任务单': '/production/hub/tasks',
-  '生产管理/图纸分发': '/production/hub/drawings',
   '生产管理/工序设置': '/production/hub/processes',
-  '生产管理/工序管理': '/production/hub/processes',
+  '生产管理/工序管理': '/production/hub/process-mgmt',
   '生产管理/工艺流程': '/production/hub/routings',
   '生产管理/生产派工': '/production/hub/dispatches',
   '生产管理/灵活派发工单': '/production/hub/flex',
@@ -132,11 +129,14 @@ export const ADMIN_SPECIAL_MODULE_PATHS: Record<string, string> = {
   '生产管理/委外加工': '/production/hub/outsources',
   '生产管理/受托加工生产流程管控': '/production/hub/consignments',
   '生产管理/成本隐藏': '/production/hub/cost-hide',
-  '生产管理/一单多商品': '/production/hub/tasks',
+  '生产管理/一单多商品': '/production/hub/multi-products',
   '生产管理/进度跟踪': '/production/hub/progress',
   '生产管理/质检管理': '/production/hub/qc',
   '生产管理/返修单': '/production/hub/reworks',
   '生产管理/废料管理': '/production/hub/scraps',
+  '生产管理/生产任务单': '/production/hub/tasks',
+  '生产管理/多单整合管理': '/production/hub/merges',
+  '生产管理/图纸分发': '/production/hub/drawings',
   '人事管理/工具领还': '/hr/tool-issues',
   '采购管理/供应商管理': '/purchase/hub/suppliers',
   '采购管理/农户档案': '/purchase/hub/farmers',
@@ -151,9 +151,39 @@ export const ADMIN_SPECIAL_MODULE_PATHS: Record<string, string> = {
   '采购管理/采购分析': '/purchase/hub/analytics',
   '采购管理/历史价格查看': '/purchase/hub/prices',
   '采购管理/采购任务管理': '/purchase/hub/tasks',
+  '系统管理/基础设置': '/system/settings',
+  '系统管理/自定义打印': '/system/print-templates',
+  '系统管理/自定义菜单': '/iam/menus',
+  '系统管理/自定义权限': '/iam/permissions',
+  '系统管理/表格自定义': '/system/table-customs',
+  '系统管理/公式设置': '/system/formulas',
+  '系统管理/销售设置': '/system/sales-settings',
+  '系统管理/生产设置': '/system/production-settings',
+  '系统管理/物流信息管理': '/system/logistics/carriers',
+  '系统管理/审批流程设定': '/system/approval-flows',
+  '系统管理/人事调动': '/system/personnel-transfers',
+  '系统管理/登录控制': '/iam/login-policy',
+  '系统管理/批量改价': '/system/batch-price-jobs',
+  '系统管理/批量核算工资': '/system/batch-payroll-jobs',
+  '系统管理/单据审批': '/system/doc-approve-switches',
+  '系统管理/单据锁定': '/system/doc-lock-rules',
+  '系统管理/单据通知': '/system/notify-rules',
+  '系统管理/单据编辑': '/system/doc-edit-rules',
+  '系统管理/单据删除': '/system/doc-delete-rules',
+  '系统管理/事项提醒': '/system/reminders',
+  '系统管理/多条件检索': '/system/search-configs',
+  '系统管理/账户冻结': '/iam/users',
+  '系统管理/财审管控': '/system/finance-audit-controls',
+  '系统管理/学堂管理': '/system/courses',
+  '系统管理/知识库': '/system/knowledge',
+  '系统管理/图纸管理': '/system/drawings',
+  '系统管理/文档管理': '/system/documents',
+  '系统管理/员工日志': '/system/employee-journals',
   '系统管理/操作日志': '/automation/logs',
   '系统管理/数据修复': '/automation/repairs',
   '系统管理/业务闭环': '/loops',
+  '系统管理/公告设置': '/system/announcements',
+  '系统管理/备忘录': '/system/memos',
 }
 
 export function adminSpecialPath(domain: string, module: string): string | undefined {
@@ -176,13 +206,16 @@ export function isAdminModuleActive(
   return routeDomain === domain && routeModule === module
 }
 
-/** path → { domain, module } 反查，用于展开侧栏 */
+/** path → { domain, module } 反查；同前缀时优先最长精确匹配 */
 export function adminModuleForPath(path: string): { domain: string; module: string } | null {
+  let best: { domain: string; module: string; len: number } | null = null
   for (const [key, p] of Object.entries(ADMIN_SPECIAL_MODULE_PATHS)) {
     if (path === p || path.startsWith(p + '/')) {
-      const [domain, module] = key.split('/')
-      return { domain, module }
+      if (!best || p.length > best.len) {
+        const [domain, module] = key.split('/')
+        best = { domain, module, len: p.length }
+      }
     }
   }
-  return null
+  return best ? { domain: best.domain, module: best.module } : null
 }

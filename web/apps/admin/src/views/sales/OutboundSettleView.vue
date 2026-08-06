@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { salesApi } from '@erp/shared'
+import { salesApi, BASE_UNIT_OPTIONS } from '@erp/shared'
+import { ProductSelect, EnumSelect } from '../../components/select'
+import { loadProducts } from '../../components/select/entitySelects'
 
 type Row = Record<string, unknown>
 const list = ref<Row[]>([])
 const loading = ref(false)
+const productCache = ref<Row[]>([])
 const form = reactive({
   biz_date: new Date().toISOString().slice(0, 10),
-  product_name: '去芯切块',
+  product_id: null as number | null,
+  product_name: '',
   plate_no: '',
   driver_name: '',
   trace_code: '',
@@ -22,6 +26,21 @@ const form = reactive({
   weigh_fee: 0,
 })
 
+watch(
+  () => form.product_id,
+  async (id) => {
+    if (!id) {
+      form.product_name = ''
+      return
+    }
+    if (!productCache.value.length) {
+      productCache.value = await loadProducts()
+    }
+    const p = productCache.value.find((x) => Number(x.id) === id)
+    form.product_name = p ? String(p.name || '') : ''
+  },
+)
+
 async function refresh() {
   loading.value = true
   try {
@@ -34,7 +53,13 @@ async function refresh() {
 }
 
 async function create() {
-  const res = await salesApi.createOutboundSettle({ ...form, qty: form.qty || form.weight })
+  if (!form.product_id) return ElMessage.warning('请选择产品')
+  const res = await salesApi.createOutboundSettle({
+    ...form,
+    product_id: form.product_id,
+    product_name: form.product_name,
+    qty: form.qty || form.weight,
+  })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success(`已创建，结算金额 ${(res.data as Row)?.amount}`)
   await refresh()
@@ -56,17 +81,21 @@ onMounted(refresh)
     <p class="hint">结算金额 = 重量×单价 + 运费 + 装卸费 + 过磅费</p>
     <el-card header="新建出厂单">
       <el-form inline size="small">
-        <el-form-item label="日期"><el-input v-model="form.biz_date" /></el-form-item>
-        <el-form-item label="产品"><el-input v-model="form.product_name" /></el-form-item>
+        <el-form-item label="日期">
+          <el-date-picker v-model="form.biz_date" type="date" value-format="YYYY-MM-DD" style="width:150px" />
+        </el-form-item>
+        <el-form-item label="产品">
+          <ProductSelect v-model="form.product_id" />
+        </el-form-item>
         <el-form-item label="车牌"><el-input v-model="form.plate_no" /></el-form-item>
         <el-form-item label="司机"><el-input v-model="form.driver_name" /></el-form-item>
         <el-form-item label="溯源批号"><el-input v-model="form.trace_code" /></el-form-item>
-        <el-form-item label="生产日期"><el-input v-model="form.produce_date" /></el-form-item>
+        <el-form-item label="生产日期">
+          <el-date-picker v-model="form.produce_date" type="date" value-format="YYYY-MM-DD" style="width:150px" clearable />
+        </el-form-item>
         <el-form-item label="重量"><el-input-number v-model="form.weight" :min="0" /></el-form-item>
         <el-form-item label="单位">
-          <el-select v-model="form.unit" style="width:90px">
-            <el-option label="kg" value="kg" /><el-option label="袋" value="bag" />
-          </el-select>
+          <EnumSelect v-model="form.unit" :options="BASE_UNIT_OPTIONS" :clearable="false" style="width:100px" />
         </el-form-item>
         <el-form-item label="单价"><el-input-number v-model="form.unit_price" :min="0" :step="0.1" /></el-form-item>
         <el-form-item label="运费"><el-input-number v-model="form.freight_fee" :min="0" /></el-form-item>

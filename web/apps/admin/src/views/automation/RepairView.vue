@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { systemApi } from '@erp/shared'
+import { systemApi, REPAIR_ACTION_OPTIONS, REPAIR_TARGET_TYPE_OPTIONS } from '@erp/shared'
 import { ElMessage } from 'element-plus'
+import { EnumSelect } from '../../components/select'
 
 const list = ref<Record<string, unknown>[]>([])
 const form = reactive({
-  target_type: 'pd_flow_event',
+  target_type: 'prod_task',
   target_id: 0,
   reason: '',
   action: 'retry_flow',
@@ -48,10 +49,14 @@ onMounted(load)
     <p class="sub">强制填写 reason；仅 sys_admin 可 apply；执行动作本身也会写入审计日志。</p>
     <el-card shadow="never" style="margin-bottom:12px">
       <el-form label-width="100px" style="max-width:560px">
-        <el-form-item label="目标类型"><el-input v-model="form.target_type" /></el-form-item>
+        <el-form-item label="目标类型">
+          <EnumSelect v-model="form.target_type" :options="REPAIR_TARGET_TYPE_OPTIONS" :clearable="false" style="width:100%" />
+        </el-form-item>
         <el-form-item label="目标 ID"><el-input-number v-model="form.target_id" :min="0" /></el-form-item>
         <el-form-item label="原因 reason" required><el-input v-model="form.reason" type="textarea" /></el-form-item>
-        <el-form-item label="动作"><el-input v-model="form.action" placeholder="retry_flow / reopen_box" /></el-form-item>
+        <el-form-item label="动作">
+          <EnumSelect v-model="form.action" :options="REPAIR_ACTION_OPTIONS" :clearable="false" style="width:100%" />
+        </el-form-item>
         <el-form-item><el-button type="primary" @click="create">创建修复单</el-button></el-form-item>
       </el-form>
     </el-card>

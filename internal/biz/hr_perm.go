@@ -630,7 +630,7 @@ func (s *Services) openAccountForEmployee(empID int64, roleJSON, loginHint strin
 	res, err := s.DB.Exec(`INSERT INTO iam_user(login_name, password_hash, employee_id, user_type, status, is_deleted) VALUES(?,?,?,'biz','active',0)`,
 		login, hash, empID)
 	if err != nil {
-		return fmt.Errorf("DB_ERROR:" + err.Error())
+		return fmt.Errorf("DB_ERROR:%s", err.Error())
 	}
 	uid, _ := res.LastInsertId()
 	_, _ = s.DB.Exec(`UPDATE hr_employee SET user_id=? WHERE id=?`, uid, empID)

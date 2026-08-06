@@ -3,6 +3,13 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { purchaseApi, productApi } from '@erp/shared'
+import {
+  ProductSelect,
+  SupplierSelect,
+  WarehouseSelect,
+  PurchaseInboundSelect,
+  UserSelect,
+} from '../../components/select'
 import SupplierView from './SupplierView.vue'
 import FarmerInboundView from './FarmerInboundView.vue'
 
@@ -345,18 +352,10 @@ onMounted(async () => {
         <el-card header="新建采购申请" class="mb">
           <el-form inline size="small">
             <el-form-item label="标题"><el-input v-model="reqForm.title" /></el-form-item>
-            <el-form-item label="物料">
-              <el-select v-model="reqForm.product_id" style="width:160px">
-                <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
-              </el-select>
-            </el-form-item>
+            <el-form-item label="物料"><ProductSelect v-model="reqForm.product_id" :clearable="false" /></el-form-item>
             <el-form-item label="数量"><el-input-number v-model="reqForm.qty" :min="1" /></el-form-item>
-            <el-form-item label="建议供应商">
-              <el-select v-model="reqForm.supplier_id" style="width:180px">
-                <el-option v-for="s in suppliers" :key="String(s.id)" :label="String(s.name)" :value="Number(s.id)" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="需用日"><el-input v-model="reqForm.need_date" style="width:120px" /></el-form-item>
+            <el-form-item label="建议供应商"><SupplierSelect v-model="reqForm.supplier_id" :clearable="false" /></el-form-item>
+            <el-form-item label="需用日"><el-date-picker v-model="reqForm.need_date" type="date" value-format="YYYY-MM-DD" style="width:150px" /></el-form-item>
             <el-button type="primary" @click="createRequest">新建</el-button>
           </el-form>
         </el-card>
@@ -381,18 +380,10 @@ onMounted(async () => {
       <template v-else-if="active === 'plans'">
         <el-card header="新建采购计划" class="mb">
           <el-form inline size="small">
-            <el-form-item label="物料">
-              <el-select v-model="planForm.product_id" style="width:160px">
-                <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
-              </el-select>
-            </el-form-item>
+            <el-form-item label="物料"><ProductSelect v-model="planForm.product_id" :clearable="false" /></el-form-item>
             <el-form-item label="数量"><el-input-number v-model="planForm.qty" :min="1" /></el-form-item>
-            <el-form-item label="供应商">
-              <el-select v-model="planForm.supplier_id" style="width:180px">
-                <el-option v-for="s in suppliers" :key="String(s.id)" :label="String(s.name)" :value="Number(s.id)" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="计划日"><el-input v-model="planForm.plan_date" style="width:120px" /></el-form-item>
+            <el-form-item label="供应商"><SupplierSelect v-model="planForm.supplier_id" :clearable="false" /></el-form-item>
+            <el-form-item label="计划日"><el-date-picker v-model="planForm.plan_date" type="date" value-format="YYYY-MM-DD" style="width:150px" /></el-form-item>
             <el-button type="primary" @click="createPlan">新建</el-button>
           </el-form>
         </el-card>
@@ -416,19 +407,11 @@ onMounted(async () => {
       <template v-else-if="active === 'inbounds'">
         <el-card header="新建采购入库（供应商，过账写库存）" class="mb">
           <el-form inline size="small">
-            <el-form-item label="供应商">
-              <el-select v-model="inboundForm.supplier_id" style="width:180px">
-                <el-option v-for="s in suppliers" :key="String(s.id)" :label="String(s.name)" :value="Number(s.id)" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="物料">
-              <el-select v-model="inboundForm.product_id" style="width:160px">
-                <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
-              </el-select>
-            </el-form-item>
+            <el-form-item label="供应商"><SupplierSelect v-model="inboundForm.supplier_id" :clearable="false" /></el-form-item>
+            <el-form-item label="物料"><ProductSelect v-model="inboundForm.product_id" :clearable="false" /></el-form-item>
             <el-form-item label="数量"><el-input-number v-model="inboundForm.qty" :min="0.01" /></el-form-item>
             <el-form-item label="单价"><el-input-number v-model="inboundForm.price" :min="0" :step="0.01" /></el-form-item>
-            <el-form-item label="仓库ID"><el-input-number v-model="inboundForm.warehouse_id" :min="1" /></el-form-item>
+            <el-form-item label="仓库"><WarehouseSelect v-model="inboundForm.warehouse_id" :clearable="false" /></el-form-item>
             <el-form-item label="批次"><el-input v-model="inboundForm.batch_no" style="width:120px" /></el-form-item>
             <el-button type="primary" @click="createInbound">新建</el-button>
           </el-form>
@@ -452,18 +435,10 @@ onMounted(async () => {
       <template v-else-if="active === 'qcs'">
         <el-card header="新建来料质检" class="mb">
           <el-form inline size="small">
-            <el-form-item label="供应商">
-              <el-select v-model="qcForm.supplier_id" style="width:180px">
-                <el-option v-for="s in suppliers" :key="String(s.id)" :label="String(s.name)" :value="Number(s.id)" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="物料">
-              <el-select v-model="qcForm.product_id" style="width:160px">
-                <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
-              </el-select>
-            </el-form-item>
+            <el-form-item label="供应商"><SupplierSelect v-model="qcForm.supplier_id" :clearable="false" /></el-form-item>
+            <el-form-item label="物料"><ProductSelect v-model="qcForm.product_id" :clearable="false" /></el-form-item>
             <el-form-item label="抽检量"><el-input-number v-model="qcForm.qty_check" :min="0" /></el-form-item>
-            <el-form-item label="入库单ID"><el-input-number v-model="qcForm.inbound_id" :min="0" /></el-form-item>
+            <el-form-item label="入库单"><PurchaseInboundSelect v-model="qcForm.inbound_id" /></el-form-item>
             <el-button type="primary" @click="createQc">新建</el-button>
           </el-form>
         </el-card>
@@ -488,16 +463,10 @@ onMounted(async () => {
       <template v-else-if="active === 'returns'">
         <el-card header="新建采购退货" class="mb">
           <el-form inline size="small">
-            <el-form-item label="供应商">
-              <el-select v-model="returnForm.supplier_id" style="width:180px">
-                <el-option v-for="s in suppliers" :key="String(s.id)" :label="String(s.name)" :value="Number(s.id)" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="物料">
-              <el-select v-model="returnForm.product_id" style="width:160px">
-                <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
-              </el-select>
-            </el-form-item>
+            <el-form-item label="供应商"><SupplierSelect v-model="returnForm.supplier_id" :clearable="false" /></el-form-item>
+            <el-form-item label="物料"><ProductSelect v-model="returnForm.product_id" :clearable="false" /></el-form-item>
+            <el-form-item label="入库单"><PurchaseInboundSelect v-model="returnForm.inbound_id" /></el-form-item>
+            <el-form-item label="仓库"><WarehouseSelect v-model="returnForm.warehouse_id" :clearable="false" /></el-form-item>
             <el-form-item label="数量"><el-input-number v-model="returnForm.qty" :min="0.01" /></el-form-item>
             <el-form-item label="原因"><el-input v-model="returnForm.reason" style="width:160px" /></el-form-item>
             <el-button type="primary" @click="createReturn">新建</el-button>
@@ -548,19 +517,11 @@ onMounted(async () => {
         <el-card header="新建采购任务" class="mb">
           <el-form inline size="small">
             <el-form-item label="标题"><el-input v-model="taskForm.title" /></el-form-item>
-            <el-form-item label="物料">
-              <el-select v-model="taskForm.product_id" style="width:160px">
-                <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
-              </el-select>
-            </el-form-item>
+            <el-form-item label="物料"><ProductSelect v-model="taskForm.product_id" :clearable="false" /></el-form-item>
             <el-form-item label="数量"><el-input-number v-model="taskForm.qty" :min="1" /></el-form-item>
-            <el-form-item label="供应商">
-              <el-select v-model="taskForm.supplier_id" style="width:180px">
-                <el-option v-for="s in suppliers" :key="String(s.id)" :label="String(s.name)" :value="Number(s.id)" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="负责人ID"><el-input-number v-model="taskForm.assignee_id" :min="1" /></el-form-item>
-            <el-form-item label="截止日期"><el-input v-model="taskForm.due_date" placeholder="YYYY-MM-DD" style="width:120px" /></el-form-item>
+            <el-form-item label="供应商"><SupplierSelect v-model="taskForm.supplier_id" :clearable="false" /></el-form-item>
+            <el-form-item label="负责人"><UserSelect v-model="taskForm.assignee_id" :clearable="false" /></el-form-item>
+            <el-form-item label="截止日期"><el-date-picker v-model="taskForm.due_date" type="date" value-format="YYYY-MM-DD" style="width:150px" /></el-form-item>
             <el-button type="primary" @click="createTask">新建</el-button>
           </el-form>
         </el-card>

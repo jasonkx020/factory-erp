@@ -2,30 +2,52 @@ import { defineStore } from 'pinia'
 import { computed } from 'vue'
 import { useAuthStore } from './auth'
 import { ERP_MENUS } from '../constants/menus'
+import { systemPermCode } from '../constants/systemPerms'
 import type { ModuleMeta } from '../types'
 import { MODULES } from '../generated/modules'
 
 export const usePermStore = defineStore('perm', () => {
   const auth = useAuthStore()
 
-  /** 13 域菜单：若 me.menus 有裁剪则过滤；管理员看全量 */
-  const visibleMenus = computed(() => {
-    const isAdmin =
+  const isFullAdmin = computed(
+    () =>
       auth.roles.includes('sys_admin') ||
-      auth.permissions.includes('*:*:*') ||
-      auth.menus.length === 0
-    if (isAdmin) return ERP_MENUS
+      auth.roles.includes('系统管理员') ||
+      auth.permissions.includes('*:*:*'),
+  )
 
-    const allowed = new Set(
-      auth.menus.filter((m) => m.visible).map((m) => `${m.domain}|${m.module}`),
+  function hasDomainModulePerm(domain: string, module: string, action?: string) {
+    if (isFullAdmin.value) return true
+    if (action) return auth.hasPerm(`${domain}:${module}:${action}`)
+    const prefix = `${domain}:${module}:`
+    return auth.permissions.some((p) => p.startsWith(prefix))
+  }
+
+  function canSeeModule(domain: string, module: string) {
+    if (isFullAdmin.value) return true
+    const fromMenu = auth.menus.some(
+      (m) =>
+        m.visible &&
+        (`${m.domain}|${m.module}` === `${domain}|${module}` || m.module === module),
     )
-    // menus from API may use English domain — also allow by module name alone
-    const allowedMods = new Set(auth.menus.filter((m) => m.visible).map((m) => m.module))
+    if (fromMenu) return true
+    // 系统管理：权限码亦可显示（即使未配置菜单裁剪）
+    if (domain === '系统管理') {
+      return (
+        auth.hasPerm(systemPermCode(module, '查看')) ||
+        auth.hasPerm(systemPermCode(module, '编辑'))
+      )
+    }
+    return false
+  }
+
+  /** 13 域菜单：管理员全量；否则按菜单裁剪 ∪ 权限码 */
+  const visibleMenus = computed(() => {
+    if (isFullAdmin.value) return ERP_MENUS
+
     return ERP_MENUS.map((d) => ({
       domain: d.domain,
-      modules: d.modules.filter(
-        (m) => allowed.has(`${d.domain}|${m}`) || allowedMods.has(m) || allowed.size === 0,
-      ),
+      modules: d.modules.filter((m) => canSeeModule(d.domain, m)),
     })).filter((d) => d.modules.length > 0)
   })
 
@@ -75,7 +97,18 @@ export const usePermStore = defineStore('perm', () => {
   }
 
   return {
-    visibleMenus, metaFor, isIamModule, isSupplierModule, isFarmerInboundModule,
-    isOnboardModule, isEmployeeModule, isHrOpsModule, isSystemAdminModule, isPayrollModule,
+    isFullAdmin,
+    visibleMenus,
+    metaFor,
+    canSeeModule,
+    hasDomainModulePerm,
+    isIamModule,
+    isSupplierModule,
+    isFarmerInboundModule,
+    isOnboardModule,
+    isEmployeeModule,
+    isHrOpsModule,
+    isSystemAdminModule,
+    isPayrollModule,
   }
 })

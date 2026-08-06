@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/gin-gonic/gin"
 
@@ -37,6 +38,10 @@ func New(cfgPath string) (*App, error) {
 		return nil, err
 	}
 	gin.SetMode(gin.ReleaseMode)
+	// Windows 控制台常无法解析 ANSI 颜色码，表现为 [97;42m 一类乱码
+	if runtime.GOOS == "windows" {
+		gin.DisableConsoleColor()
+	}
 	eng := gin.New()
 	eng.Use(gin.Recovery(), gin.Logger(), middleware.CORS(cfg.CORS.AllowOrigins))
 
@@ -81,6 +86,7 @@ func New(cfgPath string) (*App, error) {
 	apigen.RegisterApprovalExtra(v1, engine)
 	apigen.RegisterPurchaseExtra(v1, engine)
 	apigen.RegisterProductionExtra(v1, engine)
+	apigen.RegisterInventoryExtra(v1, engine)
 
 	stop := make(chan struct{})
 	go notifySvc.StartPublisher(stop)

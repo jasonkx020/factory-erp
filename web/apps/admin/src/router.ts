@@ -1,5 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { getAccessToken, adminSpecialPath } from '@erp/shared'
+import {
+  getAccessToken,
+  adminSpecialPath,
+  adminModuleForPath,
+  systemPermCode,
+  useAuthStore,
+} from '@erp/shared'
+import { ElMessage } from 'element-plus'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -90,6 +97,16 @@ const router = createRouter({
         { path: 'inventory/ledger', redirect: '/inventory/hub/ledger' },
         { path: 'inventory/balances', redirect: '/inventory/hub/balances' },
         {
+          path: 'system/:pathMatch(.*)*',
+          name: 'system-admin',
+          component: () => import('./views/ModuleCrudView.vue'),
+        },
+        {
+          path: 'iam/:section',
+          name: 'iam-admin',
+          component: () => import('./views/ModuleCrudView.vue'),
+        },
+        {
           path: 'm/:domain/:module',
           name: 'module',
           component: () => import('./views/ModuleCrudView.vue'),
@@ -106,9 +123,36 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   if (to.meta.public) return true
   if (!getAccessToken()) return { path: '/login', query: { redirect: to.fullPath } }
+
+  const auth = useAuthStore()
+  if (auth.accessToken && !auth.roles.length && !auth.permissions.length) {
+    await auth.fetchMe()
+  }
+
+  const path = to.path
+  if (
+    path.startsWith('/system/') ||
+    path.startsWith('/iam/') ||
+    path === '/automation/logs' ||
+    path.startsWith('/automation/logs/') ||
+    path === '/automation/repairs' ||
+    path.startsWith('/automation/repairs/') ||
+    path === '/loops'
+  ) {
+    const hit = adminModuleForPath(path)
+    if (hit?.domain === '系统管理') {
+      const ok =
+        auth.hasPerm(systemPermCode(hit.module, '查看')) ||
+        auth.hasPerm(systemPermCode(hit.module, '编辑'))
+      if (!ok) {
+        ElMessage.warning('无权限访问该系统管理功能')
+        return { path: '/' }
+      }
+    }
+  }
   return true
 })
 

@@ -278,7 +278,7 @@ watch(active, refresh)
       </div>
       <div class="actions">
         <template v-if="active === 'daily'">
-          <el-input v-model="bizDate" size="small" style="width: 140px" placeholder="YYYY-MM-DD" />
+          <el-date-picker v-model="bizDate" type="date" value-format="YYYY-MM-DD" size="small" style="width: 150px" />
           <el-button size="small" type="primary" @click="refresh">按日查询</el-button>
         </template>
         <el-button size="small" @click="refresh">刷新</el-button>

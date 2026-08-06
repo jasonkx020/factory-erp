@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { empTypeLabel, hrApi, iamApi } from '@erp/shared'
+import { WorkshopSelect } from '../../components/select'
 
 type Row = Record<string, unknown>
 
@@ -557,11 +558,11 @@ onMounted(loadCore)
                     <el-option label="全部 all" value="all" />
                   </el-select>
                 </el-form-item>
-                <el-form-item label="车间 ID">
-                  <el-input-number v-model="dataScope.workshop_id" :min="0" />
+                <el-form-item label="车间">
+                  <WorkshopSelect v-model="dataScope.workshop_id" allow-zero zero-label="不限" style="width:100%" />
                 </el-form-item>
                 <el-form-item label="班组 ID">
-                  <el-input-number v-model="dataScope.team_id" :min="0" />
+                  <el-input-number v-model="dataScope.team_id" :min="0" placeholder="暂无班组主数据，请填ID" style="width:100%" />
                 </el-form-item>
                 <el-button type="primary" @click="saveScope">保存数据范围</el-button>
               </el-form>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   useAuthStore,
@@ -8,6 +8,7 @@ import {
   adminSpecialPath,
   adminModuleForPath,
   isAdminModuleActive,
+  buildSidebarGroups,
 } from '@erp/shared'
 import NotifyBell from '../components/NotifyBell.vue'
 
@@ -15,10 +16,34 @@ const auth = useAuthStore()
 const perm = usePermStore()
 const route = useRoute()
 const router = useRouter()
-const openDomains = ref<string[]>([])
 const portalUrl = portalHomeUrl()
+const menuFilter = ref('')
+const activeDomain = ref('')
+
+onMounted(() => {
+  if (auth.accessToken && (!auth.roles.length || !auth.permissions.length)) {
+    void auth.fetchMe()
+  }
+})
 
 const menus = computed(() => perm.visibleMenus)
+
+const domainIcons: Record<string, string> = {
+  销售管理: '🛒',
+  客户管理: '👥',
+  采购管理: '📦',
+  生产管理: '🏭',
+  库存管理: '📒',
+  产品管理: '🏷️',
+  固定资产管理: '🏗️',
+  财务管理: '💰',
+  工资管理: '💵',
+  人事管理: '👤',
+  统计报表: '📊',
+  审批管理: '✅',
+  系统管理: '⚙️',
+}
+
 const crumb = computed(() => {
   const d = route.params.domain as string
   const m = route.params.module as string
@@ -26,31 +51,63 @@ const crumb = computed(() => {
   const hit = adminModuleForPath(route.path)
   if (hit) return `${hit.domain} / ${hit.module}`
   if (route.path === '/' || route.path === '') return '工作台'
-  return '工作台'
+  return activeDomain.value || '工作台'
 })
+
+const currentDomain = computed(() => {
+  if (activeDomain.value) return activeDomain.value
+  const hit = adminModuleForPath(route.path)
+  if (hit) return hit.domain
+  const d = route.params.domain as string
+  if (d) return decodeURIComponent(d)
+  return ''
+})
+
+const sidebarGroups = computed(() => {
+  const domain = currentDomain.value
+  if (!domain) return []
+  const entry = menus.value.find((x) => x.domain === domain)
+  if (!entry) return []
+  const q = menuFilter.value.trim()
+  const mods = q
+    ? entry.modules.filter((m) => m.includes(q))
+    : entry.modules
+  return buildSidebarGroups(domain, mods)
+})
+
+const showSidebar = computed(() => currentDomain.value !== '' && route.path !== '/' && route.path !== '')
 
 watch(
   () => route.path,
   (path) => {
     const hit = adminModuleForPath(path)
-    if (hit && !openDomains.value.includes(hit.domain)) openDomains.value.push(hit.domain)
-    const d = route.params.domain as string
-    if (d) {
-      const domain = decodeURIComponent(d)
-      if (!openDomains.value.includes(domain)) openDomains.value.push(domain)
+    if (hit) {
+      activeDomain.value = hit.domain
+      return
     }
+    const d = route.params.domain as string
+    if (d) activeDomain.value = decodeURIComponent(d)
+    else if (path === '/' || path === '') activeDomain.value = ''
   },
   { immediate: true },
 )
 
-function toggle(domain: string) {
-  const i = openDomains.value.indexOf(domain)
-  if (i >= 0) openDomains.value.splice(i, 1)
-  else openDomains.value.push(domain)
+function selectDomain(domain: string) {
+  activeDomain.value = domain
+  menuFilter.value = ''
+  const entry = menus.value.find((x) => x.domain === domain)
+  const first = entry?.modules?.[0]
+  if (first) goModule(domain, first)
+}
+
+function goHome() {
+  activeDomain.value = ''
+  menuFilter.value = ''
+  router.push('/')
 }
 
 function goModule(domain: string, module: string) {
-  if (!openDomains.value.includes(domain)) openDomains.value.push(domain)
+  activeDomain.value = domain
   const special = adminSpecialPath(domain, module)
   if (special) {
     router.push(special)
@@ -65,6 +122,10 @@ function moduleActive(domain: string, module: string) {
   return isAdminModuleActive(domain, module, route.path, rd, rm)
 }
 
+function domainActive(domain: string) {
+  return currentDomain.value === domain
+}
+
 function logout() {
   auth.logout()
   router.replace('/login')
@@ -73,43 +134,82 @@ function logout() {
 
 <template>
   <div class="admin-shell">
-    <aside class="sidebar">
-      <div class="brand">
-        加工厂 ERP 管理端
-        <small>13 域 · 契约对齐</small>
-        <a class="portal-link" :href="portalUrl">← 返回入口</a>
+    <!-- 一级菜单：顶部 -->
+    <header class="top-nav">
+      <button type="button" class="brand" @click="goHome" title="工作台">
+        <span class="brand-mark">ERP</span>
+        <span class="brand-text">加工厂</span>
+      </button>
+
+      <nav class="top-menus">
+        <button
+          type="button"
+          class="top-item"
+          :class="{ active: !currentDomain && (route.path === '/' || route.path === '') }"
+          @click="goHome"
+        >
+          <span class="ico">🏠</span>
+          <span class="lbl">工作台</span>
+        </button>
+        <button
+          v-for="d in menus"
+          :key="d.domain"
+          type="button"
+          class="top-item"
+          :class="{ active: domainActive(d.domain) }"
+          :title="d.domain"
+          @click="selectDomain(d.domain)"
+        >
+          <span class="ico">{{ domainIcons[d.domain] || '📁' }}</span>
+          <span class="lbl">{{ d.domain.replace(/管理$/, '') }}</span>
+        </button>
+      </nav>
+
+      <div class="top-right">
+        <a class="portal-link" :href="portalUrl" title="返回入口">入口</a>
+        <NotifyBell />
+        <span class="user-name">{{ auth.user?.name || auth.user?.login_name || '用户' }}</span>
+        <el-button link type="danger" size="small" @click="logout">退出</el-button>
       </div>
-      <el-button class="home-btn" @click="router.push('/')">工作台</el-button>
-      <nav class="nav">
-        <div v-for="d in menus" :key="d.domain" class="nav-domain" :class="{ open: openDomains.includes(d.domain) }">
-          <button type="button" class="dom-btn" @click="toggle(d.domain)">
-            <span>{{ d.domain }}</span>
-            <span>▾</span>
-          </button>
-          <div class="mods">
+    </header>
+
+    <div class="body">
+      <!-- 二/三级菜单：左侧 -->
+      <aside v-if="showSidebar" class="side-nav">
+        <div class="side-head">
+          <div class="side-domain">{{ currentDomain }}</div>
+          <el-input
+            v-model="menuFilter"
+            clearable
+            size="small"
+            placeholder="搜索菜单…"
+            class="side-search"
+          />
+        </div>
+        <nav class="side-groups">
+          <div v-for="g in sidebarGroups" :key="g.title" class="side-group">
+            <div class="group-title">{{ g.title }}</div>
             <a
-              v-for="m in d.modules"
+              v-for="m in g.modules"
               :key="m"
               href="#"
-              :class="{ active: moduleActive(d.domain, m), iam: perm.isIamModule(m) }"
-              @click.prevent="goModule(d.domain, m)"
+              class="side-link"
+              :class="{ active: moduleActive(currentDomain, m), iam: perm.isIamModule(m) }"
+              @click.prevent="goModule(currentDomain, m)"
             >{{ m }}</a>
           </div>
+          <div v-if="!sidebarGroups.length" class="side-empty">无匹配菜单</div>
+        </nav>
+      </aside>
+
+      <div class="main">
+        <div class="crumb-bar">
+          <span class="crumb">{{ crumb }}</span>
         </div>
-      </nav>
-    </aside>
-    <div class="main">
-      <header class="topbar">
-        <span class="crumb">{{ crumb }}</span>
-        <span class="user">
-          <NotifyBell />
-          {{ auth.user?.name || auth.user?.login_name || '用户' }}
-          <el-button link type="danger" @click="logout">退出</el-button>
-        </span>
-      </header>
-      <main class="content">
-        <router-view />
-      </main>
+        <main class="content" :class="{ 'full-width': !showSidebar }">
+          <router-view />
+        </main>
+      </div>
     </div>
   </div>
 </template>
@@ -117,119 +217,244 @@ function logout() {
 <style scoped>
 .admin-shell {
   display: flex;
+  flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  background: #e9ecef;
 }
-.sidebar {
-  width: 240px;
+
+/* —— 顶部一级菜单 —— */
+.top-nav {
+  height: 56px;
   flex-shrink: 0;
-  background: #0f1c22;
-  color: #c5d0d6;
+  display: flex;
+  align-items: stretch;
+  background: #2c3e50;
+  color: #ecf0f1;
+  z-index: 20;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 0;
+  background: #1a252f;
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.brand-mark {
+  background: #714b67;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+}
+.brand-text {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.top-menus {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-width: 0;
+}
+.top-menus::-webkit-scrollbar {
+  height: 0;
+}
+.top-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 64px;
+  padding: 4px 10px;
+  border: 0;
+  background: transparent;
+  color: #bdc3c7;
+  cursor: pointer;
+  flex-shrink: 0;
+  border-bottom: 3px solid transparent;
+  transition: background 0.15s, color 0.15s;
+}
+.top-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+.top-item.active {
+  background: rgba(113, 75, 103, 0.45);
+  color: #fff;
+  border-bottom-color: #c39bd3;
+}
+.top-item .ico {
+  font-size: 16px;
+  line-height: 1;
+}
+.top-item .lbl {
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.top-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  flex-shrink: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+.portal-link {
+  color: #aeb6bf;
+  font-size: 12px;
+  text-decoration: none;
+}
+.portal-link:hover {
+  color: #fff;
+}
+.user-name {
+  font-size: 12px;
+  color: #d5dbdb;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* —— 主体：左栏 + 内容 —— */
+.body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.side-nav {
+  width: 220px;
+  flex-shrink: 0;
+  background: #f8f9fa;
+  border-right: 1px solid #dee2e6;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
-.brand {
-  padding: 16px 14px 10px;
+.side-head {
+  padding: 12px 12px 8px;
+  border-bottom: 1px solid #e9ecef;
+  flex-shrink: 0;
+}
+.side-domain {
+  font-size: 14px;
   font-weight: 700;
-  color: #9fd4cb;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #2c3e50;
+  margin-bottom: 8px;
 }
-.brand small {
-  display: block;
-  font-weight: 400;
-  font-size: 11px;
-  color: #6a7d86;
-  margin-top: 4px;
+.side-search :deep(.el-input__wrapper) {
+  background: #fff;
 }
-.portal-link {
-  display: inline-block;
-  margin-top: 8px;
-  font-size: 12px;
-  color: #7eb8ae;
-  text-decoration: none;
-}
-.home-btn {
-  margin: 10px 12px 6px;
-  width: calc(100% - 24px);
-}
-.nav {
+.side-groups {
   flex: 1;
   overflow: auto;
-  padding: 4px 0 16px;
+  padding: 8px 0 20px;
 }
-.nav-domain .dom-btn {
-  width: 100%;
+.side-group {
+  margin-bottom: 6px;
+}
+.group-title {
   display: flex;
-  justify-content: space-between;
-  background: transparent;
-  border: 0;
-  color: #9fb0ba;
-  padding: 10px 14px;
-  cursor: pointer;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px 4px;
   font-size: 13px;
+  font-weight: 700;
+  color: #343a40;
 }
-.nav-domain.open .dom-btn {
-  color: #e8eef1;
+.group-title::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #714b67;
+  flex-shrink: 0;
 }
-.mods {
-  display: none;
-  padding: 0 8px 8px;
-}
-.nav-domain.open .mods {
+.side-link {
   display: block;
-}
-.mods a {
-  display: block;
-  padding: 6px 10px;
-  border-radius: 4px;
-  color: #8a9ba4;
+  padding: 6px 14px 6px 26px;
+  color: #5c6b75;
   text-decoration: none;
-  font-size: 12px;
+  font-size: 13px;
+  border-radius: 0;
+  line-height: 1.4;
 }
-.mods a:hover {
-  background: #1a2b34;
-  color: #e8eef1;
+.side-link:hover {
+  background: #eef1f4;
+  color: #1a252f;
 }
-.mods a.active {
-  background: #0d7a6f;
+.side-link.active {
+  background: #714b67;
   color: #fff;
+  font-weight: 500;
 }
-.mods a.iam {
-  color: #c9a86c;
+.side-link.iam:not(.active) {
+  color: #9a7b2f;
 }
-.mods a.iam.active {
-  color: #fff;
+.side-empty {
+  padding: 24px 14px;
+  color: #98a2a8;
+  font-size: 13px;
+  text-align: center;
 }
+
 .main {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: #eef2f4;
+  background: #f0f2f5;
 }
-.topbar {
-  height: 48px;
-  background: #fff;
-  border-bottom: 1px solid #d5dde3;
+.crumb-bar {
+  height: 40px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 0 16px;
+  background: #fff;
+  border-bottom: 1px solid #e2e8ec;
 }
 .crumb {
   font-size: 13px;
-  color: #44555e;
-}
-.user {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  color: #5c6b75;
 }
 .content {
   flex: 1;
   overflow: auto;
   padding: 12px 16px;
+}
+.content.full-width {
+  padding: 16px 20px;
+}
+
+@media (max-width: 960px) {
+  .top-item .lbl {
+    display: none;
+  }
+  .top-item {
+    min-width: 44px;
+  }
+  .side-nav {
+    width: 180px;
+  }
+  .brand-text {
+    display: none;
+  }
 }
 </style>

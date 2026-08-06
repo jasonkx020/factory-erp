@@ -2,9 +2,16 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { salesApi, productApi, crmApi } from '@erp/shared'
+import { salesApi, productApi, crmApi, type FormOption } from '@erp/shared'
+import { SalesOrderSelect, ProductSelect, WarehouseSelect, EnumSelect } from '../../components/select'
 
 type Row = Record<string, unknown>
+
+const PRINT_DOC_OPTIONS: FormOption[] = [
+  { value: 'sales_order', label: '销售订单' },
+  { value: 'pre_shipment', label: '预发货' },
+  { value: 'delivery', label: '发货单' },
+]
 
 const props = defineProps<{ module?: string }>()
 const route = useRoute()
@@ -12,11 +19,11 @@ const router = useRouter()
 
 const MODULE_MAP: Record<string, string> = {
   销售订单: 'orders',
-  修改订单: 'orders',
-  订单复购: 'orders',
+  修改订单: 'order-edit',
+  订单复购: 'order-rebuy',
   我的订单: 'my-orders',
   询价管理: 'inquiries',
-  询价审批: 'inquiries',
+  询价审批: 'inquiry-approve',
   预发货管理: 'pre-ships',
   发货审批: 'deliveries',
   销售锁价: 'price-locks',
@@ -31,6 +38,27 @@ const MODULE_MAP: Record<string, string> = {
   出厂结算: 'outbound',
 }
 
+const SECTION_TITLE: Record<string, string> = {
+  orders: '销售订单',
+  'order-edit': '修改订单',
+  'order-rebuy': '订单复购',
+  'my-orders': '我的订单',
+  inquiries: '询价管理',
+  'inquiry-approve': '询价审批',
+  'pre-ships': '预发货管理',
+  deliveries: '发货审批',
+  'price-locks': '销售锁价',
+  contracts: '合同管理',
+  quotes: '历史报价查询',
+  rankings: '数据排行榜',
+  boms: '销售BOM',
+  budgets: '成本预算',
+  calculator: '报价计算器',
+  prints: '单据打印',
+  'self-orders': '自助下单',
+  outbound: '出厂结算',
+}
+
 const active = computed(() => {
   const section = String(route.params.section || '')
   if (section) return section
@@ -38,9 +66,15 @@ const active = computed(() => {
   return 'orders'
 })
 
-const title = computed(() => {
-  const entry = Object.entries(MODULE_MAP).find(([, v]) => v === active.value)
-  return entry?.[0] || '销售管理'
+const title = computed(() => SECTION_TITLE[active.value] || '销售管理')
+
+const editDlg = ref(false)
+const editForm = reactive({
+  id: 0,
+  remark: '',
+  product_id: 3,
+  qty: 100,
+  price: 0,
 })
 
 const loading = ref(false)
@@ -60,13 +94,13 @@ const orderForm = reactive({
 const inquiryForm = reactive({ customer_id: 1, product_id: 3, qty: 100, quote_price: 0, remark: '' })
 const lockForm = reactive({ customer_id: 1, product_id: 3, lock_price: 6.8, effective_from: new Date().toISOString().slice(0, 10), effective_to: '2026-12-31' })
 const contractForm = reactive({ customer_id: 1, title: '年度供货合同', amount: 100000, remark: '' })
-const preShipForm = reactive({ order_id: 0 as number, plan_ship_date: new Date().toISOString().slice(0, 10) })
-const deliveryForm = reactive({ order_id: 0 as number, logistics_no: '' })
+const preShipForm = reactive({ order_id: null as number | null, plan_ship_date: new Date().toISOString().slice(0, 10) })
+const deliveryForm = reactive({ order_id: null as number | null, logistics_no: '' })
 const calcForm = reactive({ product_id: 3, qty: 100, base_cost: 4, margin_rate: 0.2 })
 const calcResult = ref<Row | null>(null)
-const bomForm = reactive({ product_id: 3, name: '袋装木薯丁BOM', material_product_id: 1, qty: 1.2 })
-const budgetForm = reactive({ order_id: 0 as number, material_cost: 0, labor_cost: 0, other_cost: 0 })
-const printForm = reactive({ doc_type: 'sales_order', doc_id: 0 as number })
+const bomForm = reactive({ product_id: 3, name: '袋装木薯丁BOM', material_product_id: null as number | null, qty: 1.2 })
+const budgetForm = reactive({ order_id: null as number | null, material_cost: 0, labor_cost: 0, other_cost: 0 })
+const printForm = reactive({ doc_type: 'sales_order', doc_id: null as number | null })
 const selfForm = reactive({ customer_id: 1, product_id: 3, qty: 50, price: 0 })
 
 async function loadMeta() {
@@ -88,12 +122,15 @@ async function refresh() {
     let res
     switch (active.value) {
       case 'orders':
+      case 'order-edit':
+      case 'order-rebuy':
         res = await salesApi.orders()
         break
       case 'my-orders':
         res = await salesApi.myOrders()
         break
       case 'inquiries':
+      case 'inquiry-approve':
         res = await salesApi.inquiries()
         break
       case 'pre-ships':
@@ -188,6 +225,44 @@ async function rebuyOrder(id: number) {
   await refresh()
 }
 
+async function openEditOrder(row: Row) {
+  editForm.id = Number(row.id)
+  editForm.remark = String(row.remark || '')
+  const lines = (row.lines as Row[]) || []
+  if (lines[0]) {
+    editForm.product_id = Number(lines[0].product_id || editForm.product_id)
+    editForm.qty = Number(lines[0].qty || 100)
+    editForm.price = Number(lines[0].price || 0)
+  }
+  // 若列表无行明细，拉详情
+  if (!lines.length) {
+    const res = await salesApi.getOrder(Number(row.id))
+    if (res.code === 1) {
+      const d = res.data as Row
+      editForm.remark = String(d.remark || '')
+      const dl = (d.lines as Row[]) || []
+      if (dl[0]) {
+        editForm.product_id = Number(dl[0].product_id || 3)
+        editForm.qty = Number(dl[0].qty || 100)
+        editForm.price = Number(dl[0].price || 0)
+      }
+    }
+  }
+  editDlg.value = true
+}
+
+async function saveEditOrder() {
+  if (!editForm.id) return
+  const res = await salesApi.updateOrder(editForm.id, {
+    remark: editForm.remark,
+    lines: linePayload(editForm.product_id, editForm.qty, editForm.price),
+  })
+  if (res.code !== 1) return ElMessage.error(res.msg)
+  ElMessage.success('订单已修改')
+  editDlg.value = false
+  await refresh()
+}
+
 async function openOrder(id: number) {
   const res = await salesApi.getOrder(id)
   if (res.code !== 1) return ElMessage.error(res.msg)
@@ -234,7 +309,7 @@ async function createContract() {
 }
 
 async function createPreShip() {
-  if (!preShipForm.order_id) return ElMessage.warning('请填写订单ID')
+  if (!preShipForm.order_id) return ElMessage.warning('请选择订单')
   const res = await salesApi.createPreShip({ ...preShipForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success(`预发货 ${(res.data as Row)?.doc_no}`)
@@ -256,7 +331,7 @@ async function confirmPre(id: number) {
 }
 
 async function createDelivery() {
-  if (!deliveryForm.order_id) return ElMessage.warning('请填写订单ID')
+  if (!deliveryForm.order_id) return ElMessage.warning('请选择订单')
   const res = await salesApi.createDelivery({ order_id: deliveryForm.order_id })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success(`发货单 ${(res.data as Row)?.doc_no}`)
@@ -295,6 +370,7 @@ async function applyCalc() {
 }
 
 async function createBom() {
+  if (!bomForm.material_product_id) return ElMessage.warning('请选择原料')
   const res = await salesApi.createSalesBom({ product_id: bomForm.product_id, name: bomForm.name })
   if (res.code !== 1) return ElMessage.error(res.msg)
   const id = Number((res.data as Row)?.id)
@@ -306,7 +382,7 @@ async function createBom() {
 }
 
 async function createBudget() {
-  if (!budgetForm.order_id) return ElMessage.warning('请填写订单ID')
+  if (!budgetForm.order_id) return ElMessage.warning('请选择订单')
   const res = await salesApi.createCostBudget({ ...budgetForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success(`毛利率 ${(((res.data as Row)?.margin as number) || 0 * 100).toFixed?.(2) ?? (res.data as Row)?.margin}`)
@@ -314,7 +390,7 @@ async function createBudget() {
 }
 
 async function doPrint() {
-  if (!printForm.doc_id) return ElMessage.warning('请填写单据ID')
+  if (!printForm.doc_id) return ElMessage.warning('请选择单据')
   const res = await salesApi.createPrint({ ...printForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
   detail.value = ((res.data as Row)?.preview as Row) || (res.data as Row)
@@ -358,14 +434,17 @@ onMounted(async () => {
       <p class="hint">工厂销售交付：客户 → 询价/锁价 → 订单占用 → 预发货 → 发货出库。成品默认仓=成品冷库(3)。</p>
     </div>
 
-    <!-- 销售订单 / 修改 / 复购 / 我的订单 -->
-    <template v-if="active==='orders' || active==='my-orders'">
-      <el-card v-if="active==='orders'" header="新建销售订单" class="mb">
+    <!-- 销售订单：新建 + 全量操作 -->
+    <template v-if="active==='orders'">
+      <el-card header="新建销售订单" class="mb">
         <el-form inline size="small">
           <el-form-item label="客户">
             <el-select v-model="orderForm.customer_id" style="width:180px">
               <el-option v-for="c in customers" :key="String(c.id)" :label="String(c.name)" :value="Number(c.id)" />
             </el-select>
+          </el-form-item>
+          <el-form-item label="仓库">
+            <WarehouseSelect v-model="orderForm.warehouse_id" :clearable="false" />
           </el-form-item>
           <el-form-item label="产品">
             <el-select v-model="orderForm.product_id" style="width:160px">
@@ -385,10 +464,10 @@ onMounted(async () => {
         <el-table-column prop="source" label="来源" width="90" />
         <el-table-column prop="total_amount" label="金额" width="100" />
         <el-table-column prop="created_at" label="时间" min-width="150" />
-        <el-table-column v-if="active==='orders'" label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click.stop="submitOrder(Number(row.id))">提交</el-button>
-            <el-button link @click.stop="rebuyOrder(Number(row.id))">复购</el-button>
+            <el-button link @click.stop="openEditOrder(row)">修改</el-button>
             <el-button link type="danger" @click.stop="cancelOrder(Number(row.id))">取消</el-button>
             <el-button link @click.stop="pickOrder(row)">选用</el-button>
           </template>
@@ -396,7 +475,55 @@ onMounted(async () => {
       </el-table>
     </template>
 
-    <!-- 询价 -->
+    <!-- 修改订单：仅草稿/可改订单的编辑 -->
+    <template v-else-if="active==='order-edit'">
+      <p class="mode-hint">本页专注修改已有订单（备注与明细行）；新建请走「销售订单」。</p>
+      <el-table :data="list.filter(r => ['draft','open','submitted'].includes(String(r.status)))" size="small">
+        <el-table-column prop="doc_no" label="单号" width="160" />
+        <el-table-column prop="customer_name" label="客户" width="140" />
+        <el-table-column prop="status" label="状态" width="100" />
+        <el-table-column prop="total_amount" label="金额" width="100" />
+        <el-table-column prop="created_at" label="时间" min-width="150" />
+        <el-table-column label="操作" width="160" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openEditOrder(row)">编辑保存</el-button>
+            <el-button link @click="openOrder(Number(row.id))">查看</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </template>
+
+    <!-- 订单复购：以复购为主操作 -->
+    <template v-else-if="active==='order-rebuy'">
+      <p class="mode-hint">选择历史订单一键复购生成新单；不会修改原单。</p>
+      <el-table :data="list" size="small">
+        <el-table-column prop="doc_no" label="原单号" width="160" />
+        <el-table-column prop="customer_name" label="客户" width="140" />
+        <el-table-column prop="status" label="状态" width="100" />
+        <el-table-column prop="total_amount" label="金额" width="100" />
+        <el-table-column prop="created_at" label="时间" min-width="150" />
+        <el-table-column label="操作" width="140" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="success" @click="rebuyOrder(Number(row.id))">一键复购</el-button>
+            <el-button link @click="openOrder(Number(row.id))">查看</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </template>
+
+    <!-- 我的订单 -->
+    <template v-else-if="active==='my-orders'">
+      <el-table :data="list" size="small" @row-click="(r: Row) => openOrder(Number(r.id))">
+        <el-table-column prop="doc_no" label="单号" width="160" />
+        <el-table-column prop="customer_name" label="客户" width="140" />
+        <el-table-column prop="status" label="状态" width="100" />
+        <el-table-column prop="source" label="来源" width="90" />
+        <el-table-column prop="total_amount" label="金额" width="100" />
+        <el-table-column prop="created_at" label="时间" min-width="150" />
+      </el-table>
+    </template>
+
+    <!-- 询价管理：新建 + 转订单 -->
     <template v-else-if="active==='inquiries'">
       <el-card header="新建询价" class="mb">
         <el-form inline size="small">
@@ -420,10 +547,25 @@ onMounted(async () => {
         <el-table-column prop="customer_name" label="客户" />
         <el-table-column prop="status" label="状态" width="100" />
         <el-table-column prop="created_at" label="时间" width="160" />
-        <el-table-column label="操作" width="200">
+        <el-table-column label="操作" width="160">
           <template #default="{ row }">
-            <el-button link type="success" @click="approveInquiry(Number(row.id))">审批</el-button>
             <el-button link type="primary" @click="inquiryToOrder(Number(row.id))">转订单</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </template>
+
+    <!-- 询价审批：仅审批待审单据 -->
+    <template v-else-if="active==='inquiry-approve'">
+      <p class="mode-hint">本页仅处理待审批询价；新建询价请走「询价管理」。</p>
+      <el-table :data="list.filter(r => ['draft','pending','submitted'].includes(String(r.status)))" size="small">
+        <el-table-column prop="doc_no" label="单号" width="160" />
+        <el-table-column prop="customer_name" label="客户" />
+        <el-table-column prop="status" label="状态" width="100" />
+        <el-table-column prop="created_at" label="时间" width="160" />
+        <el-table-column label="操作" width="120">
+          <template #default="{ row }">
+            <el-button link type="success" @click="approveInquiry(Number(row.id))">审批通过</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -433,8 +575,12 @@ onMounted(async () => {
     <template v-else-if="active==='pre-ships'">
       <el-card header="新建预发货" class="mb">
         <el-form inline size="small">
-          <el-form-item label="订单ID"><el-input-number v-model="preShipForm.order_id" :min="1" /></el-form-item>
-          <el-form-item label="计划发货日"><el-input v-model="preShipForm.plan_ship_date" /></el-form-item>
+          <el-form-item label="订单">
+            <SalesOrderSelect v-model="preShipForm.order_id" />
+          </el-form-item>
+          <el-form-item label="计划发货日">
+            <el-date-picker v-model="preShipForm.plan_ship_date" type="date" value-format="YYYY-MM-DD" style="width:150px" />
+          </el-form-item>
           <el-button type="primary" @click="createPreShip">创建</el-button>
         </el-form>
       </el-card>
@@ -457,7 +603,9 @@ onMounted(async () => {
     <template v-else-if="active==='deliveries'">
       <el-card header="新建发货单" class="mb">
         <el-form inline size="small">
-          <el-form-item label="订单ID"><el-input-number v-model="deliveryForm.order_id" :min="1" /></el-form-item>
+          <el-form-item label="订单">
+            <SalesOrderSelect v-model="deliveryForm.order_id" />
+          </el-form-item>
           <el-form-item label="物流单号"><el-input v-model="deliveryForm.logistics_no" /></el-form-item>
           <el-button type="primary" @click="createDelivery">创建</el-button>
         </el-form>
@@ -492,8 +640,12 @@ onMounted(async () => {
             </el-select>
           </el-form-item>
           <el-form-item label="锁价"><el-input-number v-model="lockForm.lock_price" :min="0" :step="0.1" /></el-form-item>
-          <el-form-item label="起"><el-input v-model="lockForm.effective_from" style="width:120px" /></el-form-item>
-          <el-form-item label="止"><el-input v-model="lockForm.effective_to" style="width:120px" /></el-form-item>
+          <el-form-item label="起">
+            <el-date-picker v-model="lockForm.effective_from" type="date" value-format="YYYY-MM-DD" style="width:150px" />
+          </el-form-item>
+          <el-form-item label="止">
+            <el-date-picker v-model="lockForm.effective_to" type="date" value-format="YYYY-MM-DD" style="width:150px" />
+          </el-form-item>
           <el-button type="primary" @click="createLock">保存</el-button>
         </el-form>
       </el-card>
@@ -560,7 +712,9 @@ onMounted(async () => {
             </el-select>
           </el-form-item>
           <el-form-item label="名称"><el-input v-model="bomForm.name" /></el-form-item>
-          <el-form-item label="原料ID"><el-input-number v-model="bomForm.material_product_id" :min="1" /></el-form-item>
+          <el-form-item label="原料">
+            <ProductSelect v-model="bomForm.material_product_id" />
+          </el-form-item>
           <el-form-item label="用量"><el-input-number v-model="bomForm.qty" :min="0" :step="0.1" /></el-form-item>
           <el-button type="primary" @click="createBom">保存</el-button>
         </el-form>
@@ -576,7 +730,9 @@ onMounted(async () => {
     <template v-else-if="active==='budgets'">
       <el-card header="成本预算测算" class="mb">
         <el-form inline size="small">
-          <el-form-item label="订单ID"><el-input-number v-model="budgetForm.order_id" :min="1" /></el-form-item>
+          <el-form-item label="订单">
+            <SalesOrderSelect v-model="budgetForm.order_id" />
+          </el-form-item>
           <el-form-item label="材料"><el-input-number v-model="budgetForm.material_cost" :min="0" /></el-form-item>
           <el-form-item label="人工"><el-input-number v-model="budgetForm.labor_cost" :min="0" /></el-form-item>
           <el-form-item label="其他"><el-input-number v-model="budgetForm.other_cost" :min="0" /></el-form-item>
@@ -618,13 +774,19 @@ onMounted(async () => {
       <el-card header="单据打印预览" class="mb">
         <el-form inline size="small">
           <el-form-item label="类型">
-            <el-select v-model="printForm.doc_type" style="width:140px">
-              <el-option label="销售订单" value="sales_order" />
-              <el-option label="预发货" value="pre_shipment" />
-              <el-option label="发货单" value="delivery" />
+            <EnumSelect v-model="printForm.doc_type" :options="PRINT_DOC_OPTIONS" :clearable="false" style="width:140px" />
+          </el-form-item>
+          <el-form-item label="单据">
+            <SalesOrderSelect v-if="printForm.doc_type === 'sales_order'" v-model="printForm.doc_id" />
+            <el-select v-else v-model="printForm.doc_id" clearable filterable placeholder="选择单据" style="width:220px">
+              <el-option
+                v-for="r in list"
+                :key="String(r.id)"
+                :label="String(r.doc_no || r.id)"
+                :value="Number(r.id)"
+              />
             </el-select>
           </el-form-item>
-          <el-form-item label="单据ID"><el-input-number v-model="printForm.doc_id" :min="1" /></el-form-item>
           <el-button type="primary" @click="doPrint">生成预览</el-button>
         </el-form>
       </el-card>
@@ -663,6 +825,23 @@ onMounted(async () => {
     <el-card v-if="detail" header="明细" style="margin-top:16px">
       <pre class="detail">{{ JSON.stringify(detail, null, 2) }}</pre>
     </el-card>
+
+    <el-dialog v-model="editDlg" title="修改订单" width="520px" destroy-on-close>
+      <el-form label-width="90px">
+        <el-form-item label="产品">
+          <el-select v-model="editForm.product_id" style="width:100%">
+            <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="数量"><el-input-number v-model="editForm.qty" :min="1" style="width:100%" /></el-form-item>
+        <el-form-item label="单价"><el-input-number v-model="editForm.price" :min="0" :step="0.1" style="width:100%" /></el-form-item>
+        <el-form-item label="备注"><el-input v-model="editForm.remark" type="textarea" :rows="2" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editDlg = false">取消</el-button>
+        <el-button type="primary" @click="saveEditOrder">保存修改</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -670,6 +849,7 @@ onMounted(async () => {
 .page { padding: 16px 20px; }
 .head h2 { margin: 0 0 4px; }
 .hint { color: #667; font-size: 13px; margin: 0 0 12px; }
+.mode-hint { color: #714b67; font-size: 13px; margin: 0 0 12px; background: #f5eef8; padding: 8px 12px; border-radius: 6px; }
 .mb { margin-bottom: 12px; }
 .detail { background: #f6f8fa; padding: 12px; border-radius: 8px; max-height: 360px; overflow: auto; font-size: 12px; }
 </style>

@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { DEFAULT_EMP_TYPE, EMP_TYPE_OPTIONS, empTypeLabel, hrApi, iamApi } from '@erp/shared'
+import { WorkshopSelect } from '../../components/select'
 
 type Row = Record<string, unknown>
 
@@ -231,9 +232,13 @@ onMounted(load)
         <el-form-item label="岗位"><el-input v-model="form.job_title" /></el-form-item>
         <el-form-item label="手机"><el-input v-model="form.mobile" /></el-form-item>
         <el-form-item label="工牌"><el-input v-model="form.badge_code" /></el-form-item>
-        <el-form-item label="部门ID"><el-input-number v-model="form.dept_id" :min="0" /></el-form-item>
-        <el-form-item label="车间ID"><el-input-number v-model="form.workshop_id" :min="0" /></el-form-item>
-        <el-form-item label="班组ID"><el-input-number v-model="form.team_id" :min="0" /></el-form-item>
+        <el-form-item label="部门ID">
+          <el-input-number v-model="form.dept_id" :min="0" placeholder="暂无部门主数据，请填ID" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="车间"><WorkshopSelect v-model="form.workshop_id" style="width:100%" /></el-form-item>
+        <el-form-item label="班组ID">
+          <el-input-number v-model="form.team_id" :min="0" placeholder="暂无部门主数据，请填ID" style="width:100%" />
+        </el-form-item>
         <el-form-item v-if="editingId" label="状态">
           <el-select v-model="form.status" style="width:100%">
             <el-option label="在职" value="active" />

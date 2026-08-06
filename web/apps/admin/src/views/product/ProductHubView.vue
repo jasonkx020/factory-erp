@@ -2,7 +2,8 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { productApi, productionApi } from '@erp/shared'
+import { productApi, BASE_UNIT_OPTIONS } from '@erp/shared'
+import { ProductSelect, ProcessSelect, RoutingSelect, EnumSelect } from '../../components/select'
 
 type Row = Record<string, unknown>
 
@@ -20,9 +21,8 @@ const title = computed(() => TITLE_MAP[active.value] || '产品管理')
 const loading = ref(false)
 const list = ref<Row[]>([])
 const products = ref<Row[]>([])
-const routings = ref<Row[]>([])
 const units = ref<Row[]>([])
-const selectedProductId = ref(0)
+const selectedProductId = ref<number | null>(null)
 
 const productForm = reactive({
   code: '',
@@ -48,18 +48,17 @@ const unitForm = reactive({
 })
 
 const specForm = reactive({
-  product_id: 0 as number,
+  product_id: null as number | null,
   spec_code: '',
-  routing_id: 0 as number,
-  process_id: 0 as number,
+  routing_id: null as number | null,
+  process_id: null as number | null,
   wage: 0,
   remark: '',
 })
 
 async function loadMeta() {
-  const [p, r] = await Promise.all([productApi.list(), productionApi.listRoutings()])
+  const p = await productApi.list()
   products.value = ((p.data as { list?: Row[] })?.list) || []
-  routings.value = ((r.data as { list?: Row[] })?.list) || []
   if (products.value[0]) {
     const id = Number(products.value[0].id)
     if (!selectedProductId.value) selectedProductId.value = id
@@ -282,12 +281,14 @@ watch(selectedProductId, () => {
               <el-option label="废料" value="scrap" />
             </el-select>
           </el-form-item>
-          <el-form-item label="分类"><el-input v-model="productForm.category" style="width:100px" /></el-form-item>
+          <el-form-item label="分类"><el-input v-model="productForm.category" style="width:100px" placeholder="自由文本" /></el-form-item>
           <el-form-item label="规格"><el-input v-model="productForm.spec_text" style="width:120px" /></el-form-item>
           <el-form-item label="条码"><el-input v-model="productForm.barcode" style="width:120px" /></el-form-item>
           <el-form-item label="成本"><el-input-number v-model="productForm.cost_price" :min="0" :step="0.01" /></el-form-item>
           <el-form-item label="售价"><el-input-number v-model="productForm.sale_price" :min="0" :step="0.01" /></el-form-item>
-          <el-form-item label="基本单位"><el-input v-model="productForm.base_unit" style="width:80px" /></el-form-item>
+          <el-form-item label="基本单位">
+            <EnumSelect v-model="productForm.base_unit" :options="BASE_UNIT_OPTIONS" :clearable="false" style="width:110px" />
+          </el-form-item>
           <el-form-item label="批次"><el-switch v-model="productForm.is_batch_managed" /></el-form-item>
           <el-form-item label="箱码"><el-switch v-model="productForm.is_box_managed" /></el-form-item>
           <el-button type="primary" @click="createProduct">新建</el-button>
@@ -315,14 +316,7 @@ watch(selectedProductId, () => {
     <!-- 单位管理 -->
     <template v-else-if="active === 'units'">
       <el-card header="选择产品" class="mb">
-        <el-select v-model="selectedProductId" filterable style="width:280px" placeholder="选择产品">
-          <el-option
-            v-for="p in products"
-            :key="String(p.id)"
-            :label="`${p.code} ${p.name}`"
-            :value="Number(p.id)"
-          />
-        </el-select>
+        <ProductSelect v-model="selectedProductId" style="width:280px" placeholder="选择产品" />
       </el-card>
       <el-card header="添加单位（换算到基本单位）" class="mb">
         <el-form inline size="small">
@@ -385,27 +379,13 @@ watch(selectedProductId, () => {
       <el-card header="新建规格绑定（挂工艺路线 / 工序工资）" class="mb">
         <el-form inline size="small">
           <el-form-item label="产品">
-            <el-select v-model="specForm.product_id" filterable style="width:200px">
-              <el-option
-                v-for="p in products"
-                :key="String(p.id)"
-                :label="`${p.code} ${p.name}`"
-                :value="Number(p.id)"
-              />
-            </el-select>
+            <ProductSelect v-model="specForm.product_id" style="width:200px" />
           </el-form-item>
           <el-form-item label="规格码"><el-input v-model="specForm.spec_code" style="width:120px" placeholder="如 20kg袋" /></el-form-item>
           <el-form-item label="工艺路线">
-            <el-select v-model="specForm.routing_id" clearable filterable style="width:180px" placeholder="可选">
-              <el-option
-                v-for="r in routings"
-                :key="String(r.id)"
-                :label="String(r.name || r.code || r.id)"
-                :value="Number(r.id)"
-              />
-            </el-select>
+            <RoutingSelect v-model="specForm.routing_id" style="width:180px" placeholder="可选" />
           </el-form-item>
-          <el-form-item label="工序ID"><el-input-number v-model="specForm.process_id" :min="0" /></el-form-item>
+          <el-form-item label="工序"><ProcessSelect v-model="specForm.process_id" style="width:160px" /></el-form-item>
           <el-form-item label="计件工资"><el-input-number v-model="specForm.wage" :min="0" :step="0.01" /></el-form-item>
           <el-form-item label="备注"><el-input v-model="specForm.remark" style="width:140px" /></el-form-item>
           <el-button type="primary" @click="createSpec">新建</el-button>

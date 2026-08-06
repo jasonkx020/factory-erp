@@ -1,15 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { empTypeLabel, hrApi, payrollApi } from '@erp/shared'
+import { empTypeLabel, payrollApi, PAY_ADJUST_TYPE_OPTIONS, RATE_UNIT_OPTIONS } from '@erp/shared'
+import { EmployeeSelect, WorkshopSelect, ProcessSelect, EnumSelect } from '../../components/select'
 
 type Row = Record<string, unknown>
 const props = defineProps<{ module: string }>()
 
 const loading = ref(false)
 const list = ref<Row[]>([])
-const processes = ref<Row[]>([])
-const employees = ref<Row[]>([])
 const sheetDetail = ref<Row | null>(null)
 const calcs = ref<Row[]>([])
 
@@ -24,26 +23,9 @@ function todayYM() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
-function empLabel(e: Row) {
-  return `${e.emp_no || e.id} · ${e.name || ''}`
-}
-
-async function loadMeta() {
-  const e = await hrApi.employees()
-  employees.value = ((e.data as { list?: Row[] })?.list) || []
-  try {
-    const { moduleList } = await import('@erp/shared')
-    const r = await moduleList('/production/processes')
-    processes.value = ((r.data as { list?: Row[] })?.list) || []
-  } catch {
-    processes.value = []
-  }
-}
-
 async function load() {
   loading.value = true
   try {
-    await loadMeta()
     const m = props.module
     if (m === '工人信息管理') {
       const res = await payrollApi.workerProfiles()
@@ -72,8 +54,8 @@ function openCreate() {
   Object.keys(form).forEach((k) => delete form[k])
   const m = props.module
   if (m === '工人信息管理') Object.assign(form, { employee_id: null, pay_type: 'piece', monthly_base: 0, bank_account: '', tax_no: '' })
-  else if (m === '工资批量管理' || m === '薪酬核算') Object.assign(form, { period_ym: todayYM(), workshop_id: 0, force: false })
-  else if (m === '工序工资') Object.assign(form, { process_id: processes.value[0] ? Number(processes.value[0].id) : null, rate: 0.22, rate_unit: 'kg', effective_from: new Date().toISOString().slice(0, 10) })
+  else if (m === '工资批量管理' || m === '薪酬核算') Object.assign(form, { period_ym: todayYM(), workshop_id: null, force: false })
+  else if (m === '工序工资') Object.assign(form, { process_id: null, rate: 0.22, rate_unit: 'yuan/kg', effective_from: new Date().toISOString().slice(0, 10) })
   else if (m === '销售提成') Object.assign(form, { mode: 'rule', name: '', rate: 0.01, effective_from: new Date().toISOString().slice(0, 10), period: todayYM(), employee_id: null, base_amount: 0 })
   dlg.value = true
 }
@@ -280,9 +262,7 @@ onMounted(load)
       <el-form label-width="110px">
         <template v-if="module === '工人信息管理'">
           <el-form-item label="员工">
-            <el-select v-model="form.employee_id" filterable style="width:100%" :disabled="!!editingId">
-              <el-option v-for="e in employees" :key="String(e.id)" :label="empLabel(e)" :value="Number(e.id)" />
-            </el-select>
+            <EmployeeSelect v-model="form.employee_id" style="width:100%" />
           </el-form-item>
           <el-form-item label="计薪方式">
             <el-select v-model="form.pay_type" style="width:100%">
@@ -296,20 +276,16 @@ onMounted(load)
           <el-form-item label="税号"><el-input v-model="form.tax_no" /></el-form-item>
         </template>
         <template v-else-if="module === '工资批量管理' || module === '薪酬核算'">
-          <el-form-item label="期间"><el-input v-model="form.period_ym" placeholder="YYYY-MM" /></el-form-item>
-          <el-form-item label="车间ID"><el-input-number v-model="form.workshop_id" :min="0" /></el-form-item>
+          <el-form-item label="期间"><el-date-picker v-model="form.period_ym" type="month" value-format="YYYY-MM" style="width:100%" /></el-form-item>
+          <el-form-item label="车间"><WorkshopSelect v-model="form.workshop_id" style="width:100%" /></el-form-item>
           <el-form-item label="强制重算"><el-switch v-model="form.force" /></el-form-item>
           <p class="hint">计件工：汇总当月计件金额；固定/职能：取月薪基数（可按迟到微调）；提成：取已算提成。</p>
         </template>
         <template v-else-if="module === '工序工资'">
-          <el-form-item label="工序">
-            <el-select v-model="form.process_id" filterable style="width:100%">
-              <el-option v-for="p in processes" :key="String(p.id)" :label="`${p.code || p.id} · ${p.name || ''}`" :value="Number(p.id)" />
-            </el-select>
-          </el-form-item>
+          <el-form-item label="工序"><ProcessSelect v-model="form.process_id" style="width:100%" /></el-form-item>
           <el-form-item label="工价"><el-input-number v-model="form.rate" :min="0" :step="0.01" :precision="4" style="width:100%" /></el-form-item>
-          <el-form-item label="单位"><el-input v-model="form.rate_unit" placeholder="kg" /></el-form-item>
-          <el-form-item label="生效日"><el-input v-model="form.effective_from" /></el-form-item>
+          <el-form-item label="单位"><EnumSelect v-model="form.rate_unit" :options="RATE_UNIT_OPTIONS" :clearable="false" style="width:100%" /></el-form-item>
+          <el-form-item label="生效日"><el-date-picker v-model="form.effective_from" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item>
         </template>
         <template v-else-if="module === '销售提成'">
           <el-form-item label="类型">
@@ -321,11 +297,11 @@ onMounted(load)
           <template v-if="form.mode === 'rule'">
             <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
             <el-form-item label="比例"><el-input-number v-model="form.rate" :min="0" :max="1" :step="0.001" :precision="4" style="width:100%" /></el-form-item>
-            <el-form-item label="生效日"><el-input v-model="form.effective_from" /></el-form-item>
+            <el-form-item label="生效日"><el-date-picker v-model="form.effective_from" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item>
           </template>
           <template v-else>
-            <el-form-item label="员工"><el-select v-model="form.employee_id" filterable style="width:100%"><el-option v-for="e in employees" :key="String(e.id)" :label="empLabel(e)" :value="Number(e.id)" /></el-select></el-form-item>
-            <el-form-item label="期间"><el-input v-model="form.period" /></el-form-item>
+            <el-form-item label="员工"><EmployeeSelect v-model="form.employee_id" style="width:100%" /></el-form-item>
+            <el-form-item label="期间"><el-date-picker v-model="form.period" type="month" value-format="YYYY-MM" style="width:100%" /></el-form-item>
             <el-form-item label="销售基数"><el-input-number v-model="form.base_amount" :min="0" style="width:100%" /></el-form-item>
           </template>
         </template>
@@ -338,9 +314,9 @@ onMounted(load)
 
     <el-dialog v-model="adjustDlg" title="工资调整" width="460px">
       <el-form label-width="100px">
-        <el-form-item label="员工"><el-select v-model="form.employee_id" filterable style="width:100%"><el-option v-for="e in employees" :key="String(e.id)" :label="empLabel(e)" :value="Number(e.id)" /></el-select></el-form-item>
+        <el-form-item label="员工"><EmployeeSelect v-model="form.employee_id" style="width:100%" /></el-form-item>
         <el-form-item label="金额"><el-input-number v-model="form.amount" style="width:100%" /></el-form-item>
-        <el-form-item label="类型"><el-input v-model="form.adjust_type" /></el-form-item>
+        <el-form-item label="类型"><EnumSelect v-model="form.adjust_type" :options="PAY_ADJUST_TYPE_OPTIONS" :clearable="false" style="width:100%" /></el-form-item>
         <el-form-item label="原因"><el-input v-model="form.reason" /></el-form-item>
       </el-form>
       <template #footer>

@@ -1,17 +1,47 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { fieldLedgerApi } from '@erp/shared'
+import { EmployeeSelect, ProcessSelect } from '../../components/select'
+import { loadEmployees, loadProcesses } from '../../components/select/entitySelects'
 
 type Row = Record<string, unknown>
 const sheets = ref<Row[]>([])
 const detail = ref<Row | null>(null)
 const loading = ref(false)
 const genDate = ref(new Date().toISOString().slice(0, 10))
+const employees = ref<Row[]>([])
+const processes = ref<Row[]>([])
+
 const form = reactive({
   biz_date: genDate.value,
-  lines: [{ employee_name: '', process_name: '去皮', process_kind: 'piece', unit_price: 0.5, qty: 0, reject_qty: 0 }],
+  lines: [{
+    employee_id: null as number | null,
+    employee_name: '',
+    process_id: null as number | null,
+    process_name: '',
+    process_kind: 'piece',
+    unit_price: 0.5,
+    qty: 0,
+    reject_qty: 0,
+  }],
 })
+
+watch(
+  () => form.lines[0].employee_id,
+  (id) => {
+    const row = employees.value.find((e) => Number(e.id) === id)
+    form.lines[0].employee_name = row ? String(row.name || '') : ''
+  },
+)
+
+watch(
+  () => form.lines[0].process_id,
+  (id) => {
+    const row = processes.value.find((p) => Number(p.id) === id)
+    form.lines[0].process_name = row ? String(row.name || '') : ''
+  },
+)
 
 async function refresh() {
   loading.value = true
@@ -25,7 +55,22 @@ async function refresh() {
 }
 
 async function create() {
-  const res = await fieldLedgerApi.createPieceIssueSheet({ ...form })
+  const line = form.lines[0]
+  if (!line.employee_id && !line.employee_name) return ElMessage.warning('请选择员工')
+  if (!line.process_id && !line.process_name) return ElMessage.warning('请选择工序')
+  const res = await fieldLedgerApi.createPieceIssueSheet({
+    biz_date: form.biz_date,
+    lines: [{
+      employee_id: line.employee_id || 0,
+      employee_name: line.employee_name,
+      process_id: line.process_id || 0,
+      process_name: line.process_name,
+      process_kind: line.process_kind,
+      unit_price: line.unit_price,
+      qty: line.qty,
+      reject_qty: line.reject_qty,
+    }],
+  })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success('领料表已建')
   detail.value = (res.data as Row) || null
@@ -46,7 +91,10 @@ async function openSheet(id: number) {
   detail.value = (res.data as Row) || null
 }
 
-onMounted(refresh)
+onMounted(async () => {
+  ;[employees.value, processes.value] = await Promise.all([loadEmployees(), loadProcesses()])
+  await refresh()
+})
 </script>
 
 <template>
@@ -55,9 +103,15 @@ onMounted(refresh)
     <p class="hint">金额 = (数量 − 扣减不合格) × 单价；支持计时 process_kind=time</p>
     <el-card header="手工建一行">
       <el-form inline size="small">
-        <el-form-item label="日期"><el-input v-model="form.biz_date" /></el-form-item>
-        <el-form-item label="员工"><el-input v-model="form.lines[0].employee_name" /></el-form-item>
-        <el-form-item label="工序"><el-input v-model="form.lines[0].process_name" /></el-form-item>
+        <el-form-item label="日期">
+          <el-date-picker v-model="form.biz_date" type="date" value-format="YYYY-MM-DD" style="width:160px" />
+        </el-form-item>
+        <el-form-item label="员工">
+          <EmployeeSelect v-model="form.lines[0].employee_id" />
+        </el-form-item>
+        <el-form-item label="工序">
+          <ProcessSelect v-model="form.lines[0].process_id" />
+        </el-form-item>
         <el-form-item label="类型">
           <el-select v-model="form.lines[0].process_kind" style="width:100px">
             <el-option label="计件" value="piece" /><el-option label="计时" value="time" />
@@ -70,7 +124,7 @@ onMounted(refresh)
       </el-form>
     </el-card>
     <el-card header="从报工生成" style="margin-top:12px">
-      <el-input v-model="genDate" style="width:160px;margin-right:8px" />
+      <el-date-picker v-model="genDate" type="date" value-format="YYYY-MM-DD" style="width:160px;margin-right:8px" />
       <el-button @click="generate">生成草稿</el-button>
     </el-card>
     <el-table :data="sheets" size="small" style="margin-top:12px" @row-click="(row: Row) => openSheet(Number(row.id))">
