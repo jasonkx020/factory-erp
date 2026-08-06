@@ -103,13 +103,82 @@ func (s *Services) generateTraceBatchCodes(c *gin.Context) bool {
 func (s *Services) validateTraceBatchCodeAPI(c *gin.Context) bool {
 	body := bindBody(c)
 	code := strings.ToUpper(strings.TrimSpace(strOr(body["code"])))
+	kind := strings.ToLower(strings.TrimSpace(strOr(body["receive_kind"])))
+	if kind == "stockin" {
+		out, errCode := s.validateTraceBatchForStockin(code)
+		if errCode != "" {
+			api.FailJSON(c, errCode)
+			return true
+		}
+		api.OK(c, out)
+		return true
+	}
 	ok, detail := s.validateTraceBatchCode(code, 0)
 	if !ok {
 		api.FailJSON(c, detail)
 		return true
 	}
-	api.OK(c, gin.H{"code": code, "valid": true, "status": detail})
+	api.OK(c, gin.H{"code": code, "valid": true, "status": detail, "receive_kind": "gate"})
 	return true
+}
+
+// validateTraceBatchForStockin allows used codes that were bound at gate entry.
+func (s *Services) validateTraceBatchForStockin(code string) (gin.H, string) {
+	secret := TraceHMACSecret(s.TraceHMACSecret)
+	if _, _, _, ok := ParseTraceBatchCode(secret, code); !ok {
+		return nil, "BATCH_CODE_INVALID"
+	}
+	var status string
+	err := s.DB.QueryRow(`SELECT status FROM pur_trace_batch_code WHERE code=?`, code).Scan(&status)
+	if err != nil {
+		return nil, "BATCH_CODE_NOT_FOUND"
+	}
+	if status == "void" {
+		return nil, "BATCH_CODE_VOID"
+	}
+	bind, errCode := s.resolveGateBindingByBatch(code)
+	if errCode != "" {
+		return nil, errCode
+	}
+	out := gin.H{
+		"code": code, "valid": true, "status": status, "receive_kind": "stockin",
+		"gate_ticket_id": bind["gate_ticket_id"], "farmer_id": bind["farmer_id"],
+		"farmer_name": bind["farmer_name"], "party_name": bind["party_name"],
+		"party_mobile": bind["party_mobile"], "origin": bind["origin"],
+	}
+	return out, ""
+}
+
+// resolveGateBindingByBatch returns farmer binding from the latest gate weigh ticket for this batch.
+func (s *Services) resolveGateBindingByBatch(batchNo string) (gin.H, string) {
+	batchNo = strings.ToUpper(strings.TrimSpace(batchNo))
+	if batchNo == "" {
+		return nil, "BATCH_NO_REQUIRED"
+	}
+	var gateID, farmerID int64
+	var partyName, partyMobile, origin, channel, farmerName string
+	err := s.DB.QueryRow(`SELECT w.id, COALESCE(w.farmer_id,0), COALESCE(w.party_name,''), COALESCE(w.party_mobile,''),
+		COALESCE(w.origin,''), COALESCE(w.channel,''), COALESCE(f.name,'')
+		FROM pur_weigh_ticket w
+		LEFT JOIN pur_farmer f ON f.id=w.farmer_id
+		WHERE UPPER(w.batch_no)=? AND LOWER(COALESCE(w.receive_kind,''))='gate'
+		ORDER BY w.id DESC LIMIT 1`, batchNo).
+		Scan(&gateID, &farmerID, &partyName, &partyMobile, &origin, &channel, &farmerName)
+	if err != nil || gateID <= 0 {
+		return nil, "GATE_BINDING_REQUIRED"
+	}
+	if farmerName == "" {
+		farmerName = partyName
+	}
+	return gin.H{
+		"gate_ticket_id": gateID,
+		"farmer_id":      farmerID,
+		"farmer_name":    farmerName,
+		"party_name":     partyName,
+		"party_mobile":   partyMobile,
+		"origin":         origin,
+		"channel":        channel,
+	}, ""
 }
 
 // validateTraceBatchCode checks format+pool. If ticketID>0 allow already-used-by-same-ticket.

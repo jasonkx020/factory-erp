@@ -5,6 +5,7 @@ import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
 import '../../core/employee_modules.dart';
 import '../../core/notify_service.dart';
+import '../../widgets/trace_code_field.dart';
 
 class WarehousePage extends StatefulWidget {
   const WarehousePage({super.key});
@@ -341,7 +342,14 @@ class _WarehousePageState extends State<WarehousePage> {
                             const Divider(),
                             Text('核对入库 · ${_active!['doc_no']}', style: const TextStyle(fontWeight: FontWeight.bold)),
                             Text('推送溯源码：${_active!['trace_code']}'),
-                            TextField(controller: _verify, decoration: const InputDecoration(labelText: '输入/扫描溯源码')),
+                            const SizedBox(height: 8),
+                            TraceCodeField(
+                              controller: _verify,
+                              label: '核对溯源码',
+                              hint: '点击输入，或点右侧图标扫码',
+                              scannerTitle: '扫描溯源码',
+                              textCapitalization: TextCapitalization.none,
+                            ),
                             const SizedBox(height: 8),
                             FilledButton(onPressed: _confirm, child: const Text('确认入库')),
                           ],
@@ -387,13 +395,14 @@ class _WarehousePageState extends State<WarehousePage> {
                 ListView(
                   padding: const EdgeInsets.all(12),
                   children: [
-                    TextField(
+                    TraceCodeField(
                       controller: _boxQuery,
-                      decoration: InputDecoration(
-                        labelText: '箱码查询/追溯',
-                        suffixIcon: IconButton(onPressed: _traceBox, icon: const Icon(Icons.search)),
-                      ),
-                      onSubmitted: (_) => _traceBox(),
+                      label: '箱码查询/追溯',
+                      hint: '点击输入，或点右侧图标扫码',
+                      scannerTitle: '扫描箱码',
+                      textCapitalization: TextCapitalization.none,
+                      onEditingComplete: _traceBox,
+                      onScanned: (_) => _traceBox(),
                     ),
                     if (_boxTrace != null) ...[
                       const SizedBox(height: 8),
@@ -475,9 +484,13 @@ class _WarehousePageState extends State<WarehousePage> {
                   padding: const EdgeInsets.all(16),
                   children: [
                     const Text('扫码出入库', style: TextStyle(fontWeight: FontWeight.bold)),
-                    TextField(
+                    const SizedBox(height: 8),
+                    TraceCodeField(
                       controller: _txnScan,
-                      decoration: const InputDecoration(labelText: '箱码/条码（可手输）'),
+                      label: '箱码/条码',
+                      hint: '点击输入，或点右侧图标扫码',
+                      scannerTitle: '扫描箱码',
+                      textCapitalization: TextCapitalization.none,
                     ),
                     SegmentedButton<String>(
                       segments: const [

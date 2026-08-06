@@ -8,7 +8,7 @@ import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
 import '../../core/employee_modules.dart';
 import '../../core/notify_service.dart';
-import 'batch_code_scanner_page.dart';
+import '../../widgets/trace_code_field.dart';
 
 /// 现场过磅收货：入厂/入库双模 → 批号+拍照 → 质检 → 确认出码 → 推仓管
 class ReceivingPage extends StatefulWidget {
@@ -31,8 +31,6 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
   String _channel = 'internal';
   String _grade = 'A';
   String _coldStore = 'fresh';
-  /// scan | manual
-  String _batchInputMode = 'scan';
   final _farmerSearch = TextEditingController();
   final _gross = TextEditingController();
   final _deductRate = TextEditingController(text: '5');
@@ -55,6 +53,7 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
   bool _loading = false;
   bool _batchOk = false;
   bool _searchingFarmer = false;
+  String _boundFarmerName = '';
   Timer? _searchDebounce;
 
   @override
@@ -247,28 +246,45 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
     if (code.isEmpty) {
       setState(() {
         _batchOk = false;
+        _boundFarmerName = '';
         _msg = '请录入溯源批号';
       });
       return;
     }
-    final r = await context.read<AuthState>().api.post('/purchase/trace-batch-codes/validate', {'code': code});
+    final r = await context.read<AuthState>().api.post('/purchase/trace-batch-codes/validate', {
+      'code': code,
+      'receive_kind': _receiveKind,
+    });
+    if (!mounted) return;
+    String bound = '';
+    if (r.ok && r.data is Map) {
+      final m = Map<String, dynamic>.from(r.data as Map);
+      bound = (m['farmer_name'] ?? m['party_name'] ?? '').toString();
+    }
     setState(() {
       _batchOk = r.ok;
-      _msg = r.ok ? '批号校验通过' : r.msg;
+      _boundFarmerName = bound;
+      if (r.ok) {
+        _msg = _receiveKind == 'stockin'
+            ? (bound.isEmpty ? '批号校验通过（入库）' : '批号校验通过 · 关联农户 $bound')
+            : '批号校验通过（可入厂占用）';
+      } else {
+        _msg = r.msg;
+      }
     });
   }
 
-  Future<void> _openCameraScan() async {
-    final code = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => const BatchCodeScannerPage()),
-    );
-    if (!mounted || code == null || code.trim().isEmpty) return;
+  void _onReceiveKindChanged(String kind) {
     setState(() {
-      _batchNo.text = code.trim().toUpperCase();
+      _receiveKind = kind;
       _batchOk = false;
-      _msg = '已扫到批号，校验中…';
+      _boundFarmerName = '';
+      if (kind == 'stockin') {
+        _farmerId = null;
+        _farmerSearch.clear();
+        _farmerHits = [];
+      }
     });
-    await _validateBatch();
   }
 
   Future<void> _takePhoto() async {
@@ -315,8 +331,8 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
       setState(() => _msg = '请现场拍照留底');
       return;
     }
-    if ((_farmerId == null || _farmerId! <= 0) && _partyName.text.trim().isEmpty) {
-      setState(() => _msg = '请搜索关联农户，或现场录入');
+    if (_receiveKind == 'gate' && (_farmerId == null || _farmerId! <= 0) && _partyName.text.trim().isEmpty) {
+      setState(() => _msg = '入厂须搜索关联农户，或现场录入');
       return;
     }
     String varietyName = '鲜木薯';
@@ -330,14 +346,10 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
     final body = <String, dynamic>{
       'receive_kind': _receiveKind,
       'batch_no': _batchNo.text.trim().toUpperCase(),
-      'farmer_id': _farmerId ?? 0,
-      'party_name': _partyName.text.trim(),
-      'party_mobile': _partyMobile.text.trim(),
       'channel': _channel,
       'product_id': _productId,
       if (_varietyId != null) 'variety_id': _varietyId,
       'variety': varietyName,
-      'origin': _origin.text.trim(),
       'grade': _grade,
       'biz_date': DateTime.now().toIso8601String().substring(0, 10),
       'source_type': 'self',
@@ -345,6 +357,14 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
       'image_urls': _photoUrls,
       'remark': _remark.text.trim(),
     };
+    if (_receiveKind == 'gate') {
+      body.addAll({
+        'farmer_id': _farmerId ?? 0,
+        'party_name': _partyName.text.trim(),
+        'party_mobile': _partyMobile.text.trim(),
+        'origin': _origin.text.trim(),
+      });
+    }
     if (_receiveKind == 'gate') {
       final gross = double.tryParse(_gross.text) ?? 0;
       if (gross <= 0) {
@@ -382,6 +402,7 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
       _batchNo.clear();
       _photoUrls.clear();
       _batchOk = false;
+      _boundFarmerName = '';
       await _refresh();
       _tabs.animateTo(1);
     }
@@ -531,77 +552,32 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
     return [
       const Text('溯源批号', style: TextStyle(fontWeight: FontWeight.w600)),
       const SizedBox(height: 6),
-      SegmentedButton<String>(
-        segments: const [
-          ButtonSegment(value: 'scan', label: Text('扫描输入'), icon: Icon(Icons.qr_code_scanner, size: 18)),
-          ButtonSegment(value: 'manual', label: Text('手动输入'), icon: Icon(Icons.keyboard, size: 18)),
-        ],
-        selected: {_batchInputMode},
-        onSelectionChanged: (s) {
+      TraceCodeField(
+        controller: _batchNo,
+        label: '溯源批号',
+        hint: _receiveKind == 'stockin' ? '扫入厂已绑定的批号' : '点击输入，或点右侧图标扫码',
+        validated: _batchOk,
+        scannerTitle: '扫描溯源批号',
+        onChanged: (_) => setState(() {
+          _batchOk = false;
+          _boundFarmerName = '';
+        }),
+        onEditingComplete: _validateBatch,
+        onScanned: (_) async {
           setState(() {
-            _batchInputMode = s.first;
             _batchOk = false;
+            _boundFarmerName = '';
+            _msg = '已扫到批号，校验中…';
           });
-          if (s.first == 'scan') {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) _openCameraScan();
-            });
-          }
+          await _validateBatch();
         },
       ),
-      const SizedBox(height: 8),
-      if (_batchInputMode == 'scan')
-        Material(
-          color: Colors.teal.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(8),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: _openCameraScan,
-            child: InputDecorator(
-              decoration: InputDecoration(
-                labelText: '点击调起摄像头扫描',
-                hintText: _batchNo.text.isEmpty ? '未扫描' : null,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                suffixIcon: Icon(
-                  _batchOk ? Icons.check_circle : Icons.qr_code_scanner,
-                  color: _batchOk ? Colors.teal : Colors.teal.shade700,
-                ),
-              ),
-              child: Text(
-                _batchNo.text.isEmpty ? '点此打开相机扫码' : _batchNo.text,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: _batchNo.text.isEmpty ? Colors.black45 : Colors.black87,
-                  fontWeight: _batchNo.text.isEmpty ? FontWeight.normal : FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-        )
-      else
-        TextField(
-          controller: _batchNo,
-          textCapitalization: TextCapitalization.characters,
-          decoration: InputDecoration(
-            labelText: '手输溯源批号',
-            suffixIcon: IconButton(
-              icon: Icon(_batchOk ? Icons.check_circle : Icons.verified_outlined),
-              onPressed: _validateBatch,
-            ),
-          ),
-          onChanged: (_) => setState(() => _batchOk = false),
-          onEditingComplete: _validateBatch,
-        ),
-      if (_batchInputMode == 'scan')
+      if (_receiveKind == 'stockin' && _batchOk && _boundFarmerName.isNotEmpty)
         Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Row(
-            children: [
-              const Expanded(
-                child: Text('扫描模式：点击上方区域打开摄像头', style: TextStyle(fontSize: 12, color: Colors.black54)),
-              ),
-              TextButton(onPressed: _openCameraScan, child: const Text('重新扫描')),
-            ],
+          padding: const EdgeInsets.only(top: 8),
+          child: Chip(
+            avatar: const Icon(Icons.agriculture, size: 16),
+            label: Text('关联农户（入厂绑定）$_boundFarmerName'),
           ),
         ),
     ];
@@ -611,16 +587,25 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
     return [
       SegmentedButton<String>(
         segments: const [
-          ButtonSegment(value: 'gate', label: Text('入厂')),
-          ButtonSegment(value: 'stockin', label: Text('入库')),
+          ButtonSegment(value: 'gate', label: Text('过磅入厂'), icon: Icon(Icons.login, size: 18)),
+          ButtonSegment(value: 'stockin', label: Text('过磅入库'), icon: Icon(Icons.warehouse_outlined, size: 18)),
         ],
         selected: {_receiveKind},
-        onSelectionChanged: (s) => setState(() => _receiveKind = s.first),
+        onSelectionChanged: (s) => _onReceiveKindChanged(s.first),
       ),
-      const SizedBox(height: 12),
+      Padding(
+        padding: const EdgeInsets.only(top: 6, bottom: 4),
+        child: Text(
+          _receiveKind == 'gate' ? '入厂须绑定农户，占用溯源批号' : '入库凭溯源批号跟踪，自动带出入厂关联农户',
+          style: const TextStyle(fontSize: 12, color: Colors.black54),
+        ),
+      ),
+      const SizedBox(height: 8),
       ..._batchSection(),
-      const SizedBox(height: 12),
-      ..._farmerSection(),
+      if (_receiveKind == 'gate') ...[
+        const SizedBox(height: 12),
+        ..._farmerSection(),
+      ],
       const SizedBox(height: 8),
       if (_varieties.isEmpty)
         const Padding(

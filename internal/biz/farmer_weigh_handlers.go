@@ -288,9 +288,19 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 		api.FailJSON(c, "BATCH_NO_REQUIRED")
 		return true
 	}
-	if ok, errCode := s.validateTraceBatchCode(batchNo, 0); !ok {
-		api.FailJSON(c, errCode)
-		return true
+	var gateBind gin.H
+	if kind == "stockin" {
+		out, errCode := s.validateTraceBatchForStockin(batchNo)
+		if errCode != "" {
+			api.FailJSON(c, errCode)
+			return true
+		}
+		gateBind = out
+	} else {
+		if ok, errCode := s.validateTraceBatchCode(batchNo, 0); !ok {
+			api.FailJSON(c, errCode)
+			return true
+		}
 	}
 	imgs := collectImageURLs(body)
 	if len(imgs) == 0 {
@@ -328,6 +338,19 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 			api.FailJSON(c, "GRADE_REQUIRED")
 			return true
 		}
+	} else if kind == "stockin" {
+		farmerID = asInt64Or0(gateBind["farmer_id"])
+		partyName = strOr(gateBind["party_name"])
+		partyMobile = strOr(gateBind["party_mobile"])
+		origin = strOr(gateBind["origin"])
+		channel = strOrDef(gateBind["channel"], "internal")
+		if partyName == "" {
+			partyName = strOr(gateBind["farmer_name"])
+		}
+		grade = strings.ToUpper(strOr(body["grade"]))
+		sourceType = strOrDef(body["source_type"], "self")
+		variety = strOrDef(body["variety"], "鲜木薯")
+		bizDate = strOrDef(body["biz_date"], time.Now().Format("2006-01-02"))
 	} else {
 		farmerID, _ = asInt64(body["farmer_id"])
 		grade = strings.ToUpper(strOr(body["grade"]))
@@ -462,7 +485,7 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 		plate_no, receive_address, pass_rate, reject_weight, freight_fee, loading_fee, weigh_fee,
 		receive_kind, unit_price, settle_amount, bag_qty, cold_store_type, party_name, party_mobile, warehouse_id)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		docNo, farmerID, channel, template, productID, variety, gross, deductRate, deductWeight, net,
+		docNo, nullIf0(farmerID), channel, template, productID, variety, gross, deductRate, deductWeight, net,
 		qcResult, status, "",
 		origin, bizDate, sourceType, imageURL, strOr(body["remark"]), nullIf0(arrivalID), grade, ocrDraft, batchNo,
 		plate, recvAddr, passRate, reject, freight, loading, weighFee,
@@ -472,10 +495,13 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 		return true
 	}
 	id, _ := res.LastInsertId()
-	if err := s.occupyTraceBatchCode(batchNo, id); err != nil {
-		_, _ = s.DB.Exec(`DELETE FROM pur_weigh_ticket WHERE id=?`, id)
-		api.FailJSON(c, err.Error())
-		return true
+	// Gate occupies batch pool; stockin reuses the gate-bound code (no second occupy).
+	if kind == "gate" {
+		if err := s.occupyTraceBatchCode(batchNo, id); err != nil {
+			_, _ = s.DB.Exec(`DELETE FROM pur_weigh_ticket WHERE id=?`, id)
+			api.FailJSON(c, err.Error())
+			return true
+		}
 	}
 	for _, u := range imgs {
 		_, _ = s.addEvidence(c, "weigh_ticket", id, "site_photo", u, nil)
