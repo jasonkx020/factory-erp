@@ -56,9 +56,9 @@ func (s *Services) listFarmers(c *gin.Context) bool {
 		args = append(args, "%"+nameQ+"%")
 	}
 	if kw != "" {
-		where += ` AND (name LIKE ? OR mobile LIKE ? OR code LIKE ? OR origin LIKE ? OR CAST(id AS TEXT)=?)`
+		where += ` AND (name LIKE ? OR mobile LIKE ? OR code LIKE ? OR origin LIKE ?)`
 		like := "%" + kw + "%"
-		args = append(args, like, like, like, like, kw)
+		args = append(args, like, like, like, like)
 	}
 	var total int
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pur_farmer `+where, args...).Scan(&total)

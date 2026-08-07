@@ -662,9 +662,12 @@ func (s *Services) genericDoc(c *gin.Context, method, action, rk string) bool {
 func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
 	switch action {
 	case "list":
-		rows, err := s.DB.Query(`SELECT id, emp_no, name, COALESCE(org_id,0), COALESCE(dept_id,0), COALESCE(workshop_id,0), COALESCE(team_id,0),
-			COALESCE(job_title,''), emp_type, status, COALESCE(user_id,0), COALESCE(badge_code,''), COALESCE(mobile,'')
-			FROM hr_employee WHERE COALESCE(is_deleted,0)=0 ORDER BY id`)
+		rows, err := s.DB.Query(`SELECT e.id, e.emp_no, e.name, COALESCE(e.org_id,0), COALESCE(e.dept_id,0), COALESCE(e.workshop_id,0), COALESCE(e.team_id,0),
+			COALESCE(e.job_title,''), e.emp_type, e.status, COALESCE(e.user_id,0), COALESCE(e.badge_code,''), COALESCE(e.mobile,''),
+			COALESCE(u.login_name,'')
+			FROM hr_employee e
+			LEFT JOIN iam_user u ON u.id=e.user_id AND COALESCE(u.is_deleted,0)=0
+			WHERE COALESCE(e.is_deleted,0)=0 ORDER BY e.id`)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR")
 			return true
@@ -673,12 +676,15 @@ func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
 		list := []gin.H{}
 		for rows.Next() {
 			var id, org, dept, workshop, team, uid int64
-			var no, name, job, typ, status, badge, mobile string
-			_ = rows.Scan(&id, &no, &name, &org, &dept, &workshop, &team, &job, &typ, &status, &uid, &badge, &mobile)
+			var no, name, job, typ, status, badge, mobile, login string
+			_ = rows.Scan(&id, &no, &name, &org, &dept, &workshop, &team, &job, &typ, &status, &uid, &badge, &mobile, &login)
+			if login == "" && uid > 0 {
+				_ = s.DB.QueryRow(`SELECT COALESCE(login_name,'') FROM iam_user WHERE employee_id=? AND COALESCE(is_deleted,0)=0 LIMIT 1`, id).Scan(&login)
+			}
 			list = append(list, gin.H{
 				"id": id, "emp_no": no, "name": name, "org_id": org, "dept_id": dept, "workshop_id": workshop, "team_id": team,
 				"job_title": job, "emp_type": typ, "status": status, "user_id": uid, "badge_code": badge, "mobile": mobile,
-				"has_account": uid > 0,
+				"login_name": login, "has_account": uid > 0 || login != "",
 			})
 		}
 		api.OK(c, gin.H{"list": list, "total": len(list)})

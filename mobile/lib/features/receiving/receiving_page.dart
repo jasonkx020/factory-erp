@@ -11,8 +11,20 @@ import '../../core/notify_service.dart';
 import '../../widgets/trace_code_field.dart';
 
 /// 现场过磅收货：入厂/入库双模 → 批号+拍照 → 质检 → 确认出码 → 推仓管
+/// [initialReceiveKind] / [lockKind]：供主壳「+」快捷入口锁定过磅入厂或入库表单
 class ReceivingPage extends StatefulWidget {
-  const ReceivingPage({super.key});
+  const ReceivingPage({
+    super.key,
+    this.initialReceiveKind,
+    this.lockKind = false,
+    this.popOnCreated = false,
+  });
+
+  /// `gate` 过磅入厂 · `stockin` 过磅入库
+  final String? initialReceiveKind;
+  final bool lockKind;
+  /// 从「+」快捷创建成功后 pop(true)
+  final bool popOnCreated;
 
   @override
   State<ReceivingPage> createState() => _ReceivingPageState();
@@ -27,10 +39,11 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
   int? _farmerId;
   int? _varietyId;
   int _productId = 1;
-  String _receiveKind = 'gate';
+  late String _receiveKind;
   String _channel = 'internal';
   String _grade = 'A';
   String _coldStore = 'fresh';
+  bool _kindLocked = false;
   final _farmerSearch = TextEditingController();
   final _gross = TextEditingController();
   final _deductRate = TextEditingController(text: '5');
@@ -59,6 +72,9 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
+    final init = widget.initialReceiveKind;
+    _receiveKind = (init == 'stockin' || init == 'gate') ? init! : 'gate';
+    _kindLocked = widget.lockKind && (init == 'stockin' || init == 'gate');
     _tabs = TabController(length: 3, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _boot());
   }
@@ -89,9 +105,23 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
 
   Future<void> _boot() async {
     final auth = context.read<AuthState>();
-    if (!canAccessEmployeeModule(EmployeeModule.receiving, auth.permissions, auth.roles)) {
+    final canRecv = canAccessEmployeeModule(EmployeeModule.receiving, auth.permissions, auth.roles);
+    final canWh = canAccessEmployeeModule(EmployeeModule.warehouse, auth.permissions, auth.roles);
+    if (!canRecv && !canWh) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无过磅收货权限')));
+        Navigator.of(context).pop();
+      }
+      return;
+    }
+    // 仅仓管：快捷入库；无采购过磅权限时不可入厂
+    if (!canRecv && canWh) {
+      _receiveKind = 'stockin';
+      _kindLocked = true;
+    }
+    if (_kindLocked && _receiveKind == 'gate' && !canRecv) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无过磅入厂权限')));
         Navigator.of(context).pop();
       }
       return;
@@ -133,7 +163,7 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
     if (price != null && price > 0) {
       _unitPrice.text = price.toString();
     }
-    _farmerSearch.text = '${m['name'] ?? ''} ${m['mobile'] ?? ''} (#${m['id']})'.trim();
+    _farmerSearch.text = '${m['name'] ?? ''} ${m['mobile'] ?? ''}'.trim();
   }
 
   void _clearFarmerLink() {
@@ -164,13 +194,12 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
     }
     setState(() => _searchingFarmer = true);
     final api = context.read<AuthState>().api;
+    // 仅手机号 / 姓名模糊；不再按农户 ID 搜索
     final String path;
-    if (RegExp(r'^\d+$').hasMatch(q) && q.length <= 6) {
-      path = '/purchase/farmers?id=${Uri.encodeQueryComponent(q)}&page_size=20';
-    } else if (RegExp(r'^1\d{10}$').hasMatch(q) || RegExp(r'^\d{7,}$').hasMatch(q)) {
+    if (RegExp(r'\d').hasMatch(q)) {
       path = '/purchase/farmers?mobile=${Uri.encodeQueryComponent(q)}&page_size=20';
     } else {
-      path = '/purchase/farmers?keyword=${Uri.encodeQueryComponent(q)}&page_size=20';
+      path = '/purchase/farmers?name=${Uri.encodeQueryComponent(q)}&page_size=20';
     }
     final r = await api.get(path);
     if (!mounted) return;
@@ -256,22 +285,81 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
       'receive_kind': _receiveKind,
     });
     if (!mounted) return;
-    String bound = '';
-    if (r.ok && r.data is Map) {
-      final m = Map<String, dynamic>.from(r.data as Map);
-      bound = (m['farmer_name'] ?? m['party_name'] ?? '').toString();
-    }
-    setState(() {
-      _batchOk = r.ok;
-      _boundFarmerName = bound;
-      if (r.ok) {
-        _msg = _receiveKind == 'stockin'
-            ? (bound.isEmpty ? '批号校验通过（入库）' : '批号校验通过 · 关联农户 $bound')
-            : '批号校验通过（可入厂占用）';
-      } else {
+    if (!r.ok || r.data is! Map) {
+      setState(() {
+        _batchOk = false;
+        _boundFarmerName = '';
         _msg = r.msg;
+      });
+      return;
+    }
+    final m = Map<String, dynamic>.from(r.data as Map);
+    setState(() {
+      _batchOk = true;
+      _applyBatchBinding(m);
+      final bound = _boundFarmerName;
+      if (_receiveKind == 'stockin') {
+        _msg = bound.isEmpty
+            ? '批号校验通过（入库）'
+            : '批号校验通过 · 已同步农户/产品：$bound';
+      } else {
+        _msg = bound.isEmpty ? '批号校验通过（可入厂占用）' : '批号校验通过 · 已同步 $bound';
       }
     });
+  }
+
+  /// 校验通过后把入厂绑定的农户/产地/品种等写入表单
+  void _applyBatchBinding(Map<String, dynamic> m) {
+    final name = (m['farmer_name'] ?? m['party_name'] ?? '').toString().trim();
+    final mobile = (m['party_mobile'] ?? '').toString().trim();
+    final origin = (m['origin'] ?? '').toString().trim();
+    final fid = (m['farmer_id'] as num?)?.toInt() ?? 0;
+    _boundFarmerName = name;
+
+    if (fid > 0) {
+      _farmerId = fid;
+      _farmerSearch.text = '$name ${mobile.isNotEmpty ? mobile : ''}'.trim();
+    }
+    if (name.isNotEmpty) _partyName.text = name;
+    if (mobile.isNotEmpty) _partyMobile.text = mobile;
+    if (origin.isNotEmpty) _origin.text = origin;
+
+    final plate = (m['plate_no'] ?? '').toString().trim();
+    final recv = (m['receive_address'] ?? '').toString().trim();
+    if (plate.isNotEmpty) _plate.text = plate;
+    if (recv.isNotEmpty) _recvAddr.text = recv;
+
+    final ch = (m['channel'] ?? '').toString();
+    if (ch == 'internal' || ch == 'external') _channel = ch;
+
+    final grade = (m['grade'] ?? '').toString();
+    if (grade == 'A' || grade == 'B' || grade == 'C') _grade = grade;
+
+    final price = (m['unit_price'] as num?)?.toDouble();
+    if (price != null && price > 0) _unitPrice.text = price.toString();
+
+    final pid = (m['product_id'] as num?)?.toInt() ?? 0;
+    if (pid > 0) _productId = pid;
+
+    final vid = (m['variety_id'] as num?)?.toInt();
+    final vname = (m['variety'] ?? '').toString().trim();
+    if (vid != null && vid > 0) {
+      final hit = _varieties
+          .cast<dynamic>()
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .where((x) => (x['id'] as num?)?.toInt() == vid);
+      if (hit.isNotEmpty) {
+        _applyVariety(hit.first);
+      } else {
+        _varietyId = vid;
+      }
+    } else if (vname.isNotEmpty && _varieties.isNotEmpty) {
+      final hit = _varieties
+          .cast<dynamic>()
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .where((x) => '${x['name']}' == vname || '${x['code']}' == vname);
+      if (hit.isNotEmpty) _applyVariety(hit.first);
+    }
   }
 
   void _onReceiveKindChanged(String kind) {
@@ -395,8 +483,13 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
       });
     }
     final r = await context.read<AuthState>().api.post('/purchase/weigh-tickets', body);
+    if (!mounted) return;
     setState(() => _msg = r.ok ? '草稿已创建 #${(r.data is Map) ? (r.data as Map)['doc_no'] : ''}' : r.msg);
     if (r.ok) {
+      if (widget.popOnCreated) {
+        Navigator.of(context).pop(true);
+        return;
+      }
       _gross.clear();
       _netWeight.clear();
       _batchNo.clear();
@@ -482,7 +575,7 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
       TextField(
         controller: _farmerSearch,
         decoration: InputDecoration(
-          labelText: '手机号 / 姓名 / ID 搜索',
+          labelText: '手机号 / 姓名（模糊搜索）',
           hintText: '输入后自动匹配共享农户',
           suffixIcon: _searchingFarmer
               ? const Padding(
@@ -508,7 +601,7 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
                 ListTile(
                   dense: true,
                   title: Text('${(e as Map)['name'] ?? ''}'),
-                  subtitle: Text('${e['mobile'] ?? ''} · ${e['origin'] ?? ''} · #${e['id']}'),
+                  subtitle: Text('${e['mobile'] ?? ''} · ${e['origin'] ?? ''}'),
                   trailing: const Icon(Icons.check_circle_outline),
                   onTap: () => setState(() {
                     _applyFarmer(Map<String, dynamic>.from(e));
@@ -585,21 +678,32 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
 
   List<Widget> _formFields() {
     return [
-      SegmentedButton<String>(
-        segments: const [
-          ButtonSegment(value: 'gate', label: Text('过磅入厂'), icon: Icon(Icons.login, size: 18)),
-          ButtonSegment(value: 'stockin', label: Text('过磅入库'), icon: Icon(Icons.warehouse_outlined, size: 18)),
-        ],
-        selected: {_receiveKind},
-        onSelectionChanged: (s) => _onReceiveKindChanged(s.first),
-      ),
-      Padding(
-        padding: const EdgeInsets.only(top: 6, bottom: 4),
-        child: Text(
-          _receiveKind == 'gate' ? '入厂须绑定农户，占用溯源批号' : '入库凭溯源批号跟踪，自动带出入厂关联农户',
-          style: const TextStyle(fontSize: 12, color: Colors.black54),
+      if (!_kindLocked)
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'gate', label: Text('过磅入厂'), icon: Icon(Icons.login, size: 18)),
+            ButtonSegment(value: 'stockin', label: Text('过磅入库'), icon: Icon(Icons.warehouse_outlined, size: 18)),
+          ],
+          selected: {_receiveKind},
+          onSelectionChanged: (s) => _onReceiveKindChanged(s.first),
+        )
+      else
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(_receiveKind == 'stockin' ? Icons.warehouse_outlined : Icons.login),
+          title: Text(_receiveKind == 'stockin' ? '过磅入库' : '过磅入厂'),
+          subtitle: Text(
+            _receiveKind == 'gate' ? '入厂须绑定农户，占用溯源批号' : '入库凭溯源批号跟踪，自动带出入厂关联农户',
+          ),
         ),
-      ),
+      if (!_kindLocked)
+        Padding(
+          padding: const EdgeInsets.only(top: 6, bottom: 4),
+          child: Text(
+            _receiveKind == 'gate' ? '入厂须绑定农户，占用溯源批号' : '入库凭溯源批号跟踪，自动带出入厂关联农户',
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+        ),
       const SizedBox(height: 8),
       ..._batchSection(),
       if (_receiveKind == 'gate') ...[
@@ -669,6 +773,8 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
         ),
       ],
       const SizedBox(height: 8),
+      if (_receiveKind == 'stockin')
+        TextField(controller: _origin, decoration: const InputDecoration(labelText: '产地地址')),
       Row(
         children: [
           FilledButton.tonalIcon(onPressed: _takePhoto, icon: const Icon(Icons.photo_camera), label: const Text('现场拍照')),
@@ -696,9 +802,12 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
+    final title = _kindLocked
+        ? (_receiveKind == 'stockin' ? '过磅入库' : '过磅入厂')
+        : '过磅收货';
     return Scaffold(
       appBar: AppBar(
-        title: const Text('过磅收货'),
+        title: Text(title),
         bottom: TabBar(controller: _tabs, tabs: const [
           Tab(text: '新建'),
           Tab(text: '单据'),

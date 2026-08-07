@@ -4,9 +4,17 @@ import 'package:provider/provider.dart';
 import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
 
-/// 按工单类型动态填表创建
+/// 按工单类型动态填表创建；可由壳层锁定种类（过磅入厂/入库）
 class TicketCreatePage extends StatefulWidget {
-  const TicketCreatePage({super.key});
+  const TicketCreatePage({
+    super.key,
+    this.lockedCategoryCode,
+    this.lockedCategoryTitle,
+  });
+
+  /// 非空时不再切换类型，直接按该 code 填表
+  final String? lockedCategoryCode;
+  final String? lockedCategoryTitle;
 
   @override
   State<TicketCreatePage> createState() => _TicketCreatePageState();
@@ -16,13 +24,17 @@ class _TicketCreatePageState extends State<TicketCreatePage> {
   List<dynamic> _categories = [];
   List<dynamic> _pool = [];
   int? _categoryId;
+  String? _categoryName;
   int? _assignee;
   List<Map<String, dynamic>> _schema = [];
   final Map<String, TextEditingController> _ctrls = {};
   final Map<String, dynamic> _selects = {};
   String _msg = '';
   bool _busy = false;
+  bool _loading = true;
   final _title = TextEditingController();
+
+  bool get _locked => widget.lockedCategoryCode != null && widget.lockedCategoryCode!.isNotEmpty;
 
   @override
   void initState() {
@@ -43,14 +55,34 @@ class _TicketCreatePageState extends State<TicketCreatePage> {
     final r = await context.read<AuthState>().api.get('/workflow/ticket-categories');
     if (!mounted) return;
     final list = ApiClient.listOf(r.data);
-    // skip pure tool types — use dedicated tool page; still allow if user picks
     setState(() {
       _categories = list;
-      if (_categories.isNotEmpty) {
-        _categoryId = ((_categories.first as Map)['id'] as num?)?.toInt();
-      }
+      _loading = false;
     });
-    if (_categoryId != null) await _onCat(_categoryId!);
+
+    if (_locked) {
+      final code = widget.lockedCategoryCode!;
+      Map? found;
+      for (final raw in list) {
+        final m = raw as Map;
+        if ('${m['code']}' == code) {
+          found = m;
+          break;
+        }
+      }
+      if (found == null) {
+        setState(() => _msg = '未找到工单类型「${widget.lockedCategoryTitle ?? code}」，请联系管理员配置');
+        return;
+      }
+      final id = (found['id'] as num).toInt();
+      await _onCat(id);
+      return;
+    }
+
+    if (_categories.isNotEmpty) {
+      _categoryId = ((_categories.first as Map)['id'] as num?)?.toInt();
+      if (_categoryId != null) await _onCat(_categoryId!);
+    }
   }
 
   Future<void> _onCat(int id) async {
@@ -85,6 +117,7 @@ class _TicketCreatePageState extends State<TicketCreatePage> {
     if (!mounted) return;
     setState(() {
       _categoryId = id;
+      _categoryName = widget.lockedCategoryTitle ?? '${cat['name'] ?? ''}';
       _schema = schema;
       _pool = pool;
       _assignee = pool.isNotEmpty ? ((pool.first as Map)['user_id'] as num?)?.toInt() : null;
@@ -131,78 +164,94 @@ class _TicketCreatePageState extends State<TicketCreatePage> {
 
   @override
   Widget build(BuildContext context) {
+    final title = _locked
+        ? (widget.lockedCategoryTitle ?? '新建工单')
+        : '新建工单';
     return Scaffold(
-      appBar: AppBar(title: const Text('新建工单')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          DropdownButtonFormField<int>(
-            initialValue: _categoryId,
-            decoration: const InputDecoration(labelText: '工单类型', border: OutlineInputBorder()),
-            items: [
-              for (final raw in _categories)
-                DropdownMenuItem(
-                  value: ((raw as Map)['id'] as num).toInt(),
-                  child: Text('${raw['name']}'),
+      appBar: AppBar(title: Text(title)),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (_locked)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.assignment_outlined),
+                    title: Text(_categoryName ?? widget.lockedCategoryTitle ?? ''),
+                    subtitle: const Text('工单种类已选定'),
+                  )
+                else
+                  DropdownButtonFormField<int>(
+                    initialValue: _categoryId,
+                    decoration: const InputDecoration(labelText: '工单类型', border: OutlineInputBorder()),
+                    items: [
+                      for (final raw in _categories)
+                        DropdownMenuItem(
+                          value: ((raw as Map)['id'] as num).toInt(),
+                          child: Text('${raw['name']}'),
+                        ),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) _onCat(v);
+                    },
+                  ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _title,
+                  decoration: const InputDecoration(labelText: '标题（可空）', border: OutlineInputBorder()),
                 ),
-            ],
-            onChanged: (v) {
-              if (v != null) _onCat(v);
-            },
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _title,
-            decoration: const InputDecoration(labelText: '标题（可空）', border: OutlineInputBorder()),
-          ),
-          const SizedBox(height: 12),
-          ..._schema.map((f) {
-            final key = '${f['key']}';
-            final type = '${f['type'] ?? 'text'}';
-            final label = '${f['label']}${f['required'] == true ? ' *' : ''}';
-            if (type == 'select') {
-              final opts = (f['options'] as List?)?.map((e) => '$e').toList() ?? [];
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: DropdownButtonFormField<String>(
-                  initialValue: _selects[key]?.toString(),
-                  decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
-                  items: [for (final o in opts) DropdownMenuItem(value: o, child: Text(o))],
-                  onChanged: (v) => setState(() => _selects[key] = v),
+                const SizedBox(height: 12),
+                ..._schema.map((f) {
+                  final key = '${f['key']}';
+                  final type = '${f['type'] ?? 'text'}';
+                  final label = '${f['label']}${f['required'] == true ? ' *' : ''}';
+                  if (type == 'select') {
+                    final opts = (f['options'] as List?)?.map((e) => '$e').toList() ?? [];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _selects[key]?.toString(),
+                        decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+                        items: [for (final o in opts) DropdownMenuItem(value: o, child: Text(o))],
+                        onChanged: (v) => setState(() => _selects[key] = v),
+                      ),
+                    );
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: TextField(
+                      controller: _ctrls[key],
+                      decoration: InputDecoration(
+                        labelText: label,
+                        border: const OutlineInputBorder(),
+                        suffixText: f['unit']?.toString(),
+                      ),
+                      keyboardType: type == 'number' ? TextInputType.number : TextInputType.text,
+                      maxLines: type == 'textarea' ? 3 : 1,
+                    ),
+                  );
+                }),
+                DropdownButtonFormField<int>(
+                  initialValue: _assignee,
+                  decoration: const InputDecoration(labelText: '下一手处理人', border: OutlineInputBorder()),
+                  items: [
+                    for (final raw in _pool)
+                      DropdownMenuItem(
+                        value: ((raw as Map)['user_id'] as num).toInt(),
+                        child: Text('${raw['name'] ?? raw['login_name']}'),
+                      ),
+                  ],
+                  onChanged: (v) => setState(() => _assignee = v),
                 ),
-              );
-            }
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: TextField(
-                controller: _ctrls[key],
-                decoration: InputDecoration(
-                  labelText: label,
-                  border: const OutlineInputBorder(),
-                  suffixText: f['unit']?.toString(),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: _busy || _categoryId == null ? null : _submit,
+                  child: Text(_busy ? '提交中…' : '提交工单'),
                 ),
-                keyboardType: type == 'number' ? TextInputType.number : TextInputType.text,
-                maxLines: type == 'textarea' ? 3 : 1,
-              ),
-            );
-          }),
-          DropdownButtonFormField<int>(
-            initialValue: _assignee,
-            decoration: const InputDecoration(labelText: '下一手处理人', border: OutlineInputBorder()),
-            items: [
-              for (final raw in _pool)
-                DropdownMenuItem(
-                  value: ((raw as Map)['user_id'] as num).toInt(),
-                  child: Text('${raw['name'] ?? raw['login_name']}'),
-                ),
-            ],
-            onChanged: (v) => setState(() => _assignee = v),
-          ),
-          const SizedBox(height: 16),
-          FilledButton(onPressed: _busy ? null : _submit, child: Text(_busy ? '提交中…' : '提交工单')),
-          if (_msg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_msg)),
-        ],
-      ),
+                if (_msg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_msg)),
+              ],
+            ),
     );
   }
 }

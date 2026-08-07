@@ -145,39 +145,73 @@ func (s *Services) validateTraceBatchForStockin(code string) (gin.H, string) {
 		"gate_ticket_id": bind["gate_ticket_id"], "farmer_id": bind["farmer_id"],
 		"farmer_name": bind["farmer_name"], "party_name": bind["party_name"],
 		"party_mobile": bind["party_mobile"], "origin": bind["origin"],
+		"channel": bind["channel"], "product_id": bind["product_id"],
+		"variety_id": bind["variety_id"], "variety": bind["variety"],
+		"grade": bind["grade"], "unit_price": bind["unit_price"],
+		"plate_no": bind["plate_no"], "receive_address": bind["receive_address"],
 	}
 	return out, ""
 }
 
-// resolveGateBindingByBatch returns farmer binding from the latest gate weigh ticket for this batch.
+// resolveGateBindingByBatch returns farmer/product binding from the latest gate weigh ticket for this batch.
 func (s *Services) resolveGateBindingByBatch(batchNo string) (gin.H, string) {
 	batchNo = strings.ToUpper(strings.TrimSpace(batchNo))
 	if batchNo == "" {
 		return nil, "BATCH_NO_REQUIRED"
 	}
-	var gateID, farmerID int64
-	var partyName, partyMobile, origin, channel, farmerName string
+	var gateID, farmerID, productID int64
+	var partyName, partyMobile, origin, channel, farmerName, variety, grade, plate, recvAddr string
+	var unitPrice float64
 	err := s.DB.QueryRow(`SELECT w.id, COALESCE(w.farmer_id,0), COALESCE(w.party_name,''), COALESCE(w.party_mobile,''),
-		COALESCE(w.origin,''), COALESCE(w.channel,''), COALESCE(f.name,'')
+		COALESCE(w.origin,''), COALESCE(w.channel,''), COALESCE(f.name,''),
+		COALESCE(w.product_id,0), COALESCE(w.variety,''), COALESCE(w.grade,''),
+		COALESCE(w.unit_price,0), COALESCE(w.plate_no,''), COALESCE(w.receive_address,'')
 		FROM pur_weigh_ticket w
 		LEFT JOIN pur_farmer f ON f.id=w.farmer_id
 		WHERE UPPER(w.batch_no)=? AND LOWER(COALESCE(w.receive_kind,''))='gate'
 		ORDER BY w.id DESC LIMIT 1`, batchNo).
-		Scan(&gateID, &farmerID, &partyName, &partyMobile, &origin, &channel, &farmerName)
+		Scan(&gateID, &farmerID, &partyName, &partyMobile, &origin, &channel, &farmerName,
+			&productID, &variety, &grade, &unitPrice, &plate, &recvAddr)
 	if err != nil || gateID <= 0 {
 		return nil, "GATE_BINDING_REQUIRED"
 	}
 	if farmerName == "" {
 		farmerName = partyName
 	}
+	// farmer master origin / mobile as fallback
+	if farmerID > 0 {
+		var fo, fm string
+		_ = s.DB.QueryRow(`SELECT COALESCE(origin,''), COALESCE(mobile,'') FROM pur_farmer WHERE id=?`, farmerID).Scan(&fo, &fm)
+		if origin == "" {
+			origin = fo
+		}
+		if partyMobile == "" {
+			partyMobile = fm
+		}
+	}
+	// resolve variety_id from catalog by name / product
+	var varietyID int64
+	if productID > 0 {
+		_ = s.DB.QueryRow(`SELECT id FROM pur_weigh_variety WHERE default_product_id=? AND status='active' ORDER BY id LIMIT 1`, productID).Scan(&varietyID)
+	}
+	if varietyID <= 0 && variety != "" {
+		_ = s.DB.QueryRow(`SELECT id FROM pur_weigh_variety WHERE name=? AND status='active' ORDER BY id LIMIT 1`, variety).Scan(&varietyID)
+	}
 	return gin.H{
-		"gate_ticket_id": gateID,
-		"farmer_id":      farmerID,
-		"farmer_name":    farmerName,
-		"party_name":     partyName,
-		"party_mobile":   partyMobile,
-		"origin":         origin,
-		"channel":        channel,
+		"gate_ticket_id":  gateID,
+		"farmer_id":       farmerID,
+		"farmer_name":     farmerName,
+		"party_name":      partyName,
+		"party_mobile":    partyMobile,
+		"origin":          origin,
+		"channel":         channel,
+		"product_id":      productID,
+		"variety_id":      varietyID,
+		"variety":         variety,
+		"grade":           grade,
+		"unit_price":      unitPrice,
+		"plate_no":        plate,
+		"receive_address": recvAddr,
 	}, ""
 }
 

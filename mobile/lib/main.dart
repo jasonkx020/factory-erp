@@ -7,7 +7,6 @@ import 'core/notify_service.dart';
 import 'features/assets/assets_page.dart';
 import 'features/auth/login_page.dart';
 import 'features/collab/collab_finance_page.dart';
-import 'features/home/home_page.dart';
 import 'features/hr/hr_onboard_page.dart';
 import 'features/hr/ticket_create_page.dart';
 import 'features/hr/tickets_page.dart';
@@ -18,6 +17,8 @@ import 'features/mine/mine_page.dart';
 import 'features/notify/inbox_page.dart';
 import 'features/receiving/receiving_page.dart';
 import 'features/sales/sales_page.dart';
+import 'features/shell/main_shell.dart';
+import 'features/ticket/ticket_widgets.dart';
 import 'features/warehouse/warehouse_page.dart';
 import 'features/worker/worker_page.dart';
 import 'features/workshop/workshop_page.dart';
@@ -28,18 +29,25 @@ Future<void> main() async {
   await api.loadToken();
   final auth = AuthState(api);
   final notify = NotifyService(api);
+  final ticketRefresh = TicketRefreshBus();
   if (api.accessToken != null) {
     await auth.fetchMe();
     await notify.start();
   }
-  runApp(ErpEmployeeApp(auth: auth, notify: notify));
+  runApp(ErpEmployeeApp(auth: auth, notify: notify, ticketRefresh: ticketRefresh));
 }
 
 class ErpEmployeeApp extends StatelessWidget {
-  const ErpEmployeeApp({super.key, required this.auth, required this.notify});
+  const ErpEmployeeApp({
+    super.key,
+    required this.auth,
+    required this.notify,
+    required this.ticketRefresh,
+  });
 
   final AuthState auth;
   final NotifyService notify;
+  final TicketRefreshBus ticketRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +55,7 @@ class ErpEmployeeApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider.value(value: auth),
         ChangeNotifierProvider.value(value: notify),
+        ChangeNotifierProvider.value(value: ticketRefresh),
       ],
       child: MaterialApp(
         title: '加工厂员工端',
@@ -58,7 +67,7 @@ class ErpEmployeeApp extends StatelessWidget {
         home: Consumer<AuthState>(
           builder: (context, a, _) {
             if (!a.isLoggedIn) return const LoginPage();
-            return const _HomeWithLaunchLink();
+            return const _ShellWithLaunchLink();
           },
         ),
         routes: {
@@ -77,21 +86,22 @@ class ErpEmployeeApp extends StatelessWidget {
           '/tickets': (_) => const TicketsPage(),
           '/ticket-create': (_) => const TicketCreatePage(),
           '/inbox': (_) => const InboxPage(),
+          '/home': (_) => const MainShell(),
         },
       ),
     );
   }
 }
 
-/// Home shell that applies cold-start notification deep link once after mount.
-class _HomeWithLaunchLink extends StatefulWidget {
-  const _HomeWithLaunchLink();
+/// 登录后主壳；冷启动通知深链消费一次
+class _ShellWithLaunchLink extends StatefulWidget {
+  const _ShellWithLaunchLink();
 
   @override
-  State<_HomeWithLaunchLink> createState() => _HomeWithLaunchLinkState();
+  State<_ShellWithLaunchLink> createState() => _ShellWithLaunchLinkState();
 }
 
-class _HomeWithLaunchLinkState extends State<_HomeWithLaunchLink> {
+class _ShellWithLaunchLinkState extends State<_ShellWithLaunchLink> {
   @override
   void initState() {
     super.initState();
@@ -101,5 +111,5 @@ class _HomeWithLaunchLinkState extends State<_HomeWithLaunchLink> {
   }
 
   @override
-  Widget build(BuildContext context) => const HomePage();
+  Widget build(BuildContext context) => const MainShell();
 }

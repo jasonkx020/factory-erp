@@ -81,8 +81,8 @@ func seedTicketCategories(db *sql.DB) {
 		_, _ = db.Exec(`UPDATE wf_ticket_category SET form_schema_json=?, biz_hint=COALESCE(NULLIF(biz_hint,''), ?), name=?, remark=?
 			WHERE code=? AND (form_schema_json IS NULL OR form_schema_json='' OR form_schema_json='[]' OR form_schema_json='null')`,
 			schema, seed.BizHint, seed.Name, seed.Remark, seed.Code)
-		// force-refresh tool multi-line form schemas
-		if seed.Code == "tool_issue" || seed.Code == "tool_return" {
+		// force-refresh display names / schemas for app-facing create kinds & tools
+		if seed.Code == "tool_issue" || seed.Code == "tool_return" || seed.Code == "farm_inbound" || seed.Code == "stock_inbound" {
 			_, _ = db.Exec(`UPDATE wf_ticket_category SET form_schema_json=?, biz_hint=?, name=?, remark=? WHERE code=?`,
 				schema, seed.BizHint, seed.Name, seed.Remark, seed.Code)
 		}

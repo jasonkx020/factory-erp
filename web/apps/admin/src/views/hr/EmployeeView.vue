@@ -47,7 +47,8 @@ const filtered = computed(() => {
         String(r.emp_no || '').toLowerCase().includes(k) ||
         String(r.name || '').toLowerCase().includes(k) ||
         String(r.mobile || '').includes(k) ||
-        String(r.badge_code || '').toLowerCase().includes(k),
+        String(r.badge_code || '').toLowerCase().includes(k) ||
+        String(r.login_name || '').toLowerCase().includes(k),
     )
   }
   return rows
@@ -184,7 +185,7 @@ onMounted(load)
     <div class="row">
       <el-button type="primary" @click="openCreate">新建员工</el-button>
       <el-button @click="load">刷新</el-button>
-      <el-input v-model="keyword" clearable placeholder="工号/姓名/手机/工牌" style="width:200px" />
+      <el-input v-model="keyword" clearable placeholder="工号/姓名/登录账号/手机/工牌" style="width:240px" />
       <el-select v-model="statusFilter" clearable placeholder="状态" style="width:120px">
         <el-option label="在职" value="active" />
         <el-option label="离职" value="left" />
@@ -198,6 +199,7 @@ onMounted(load)
     <el-table :data="filtered" border stripe>
       <el-table-column prop="emp_no" label="工号" width="110" />
       <el-table-column prop="name" label="姓名" width="100" />
+      <el-table-column prop="login_name" label="登录账号" width="120" />
       <el-table-column label="类型" width="100">
         <template #default="{ row }">{{ empTypeLabel(row.emp_type) }}</template>
       </el-table-column>
@@ -208,7 +210,7 @@ onMounted(load)
       <el-table-column prop="dept_id" label="部门" width="70" />
       <el-table-column prop="status" label="状态" width="80" />
       <el-table-column label="账号" width="70">
-        <template #default="{ row }">{{ Number(row.user_id) > 0 || row.has_account ? '有' : '无' }}</template>
+        <template #default="{ row }">{{ Number(row.user_id) > 0 || row.has_account || row.login_name ? '有' : '无' }}</template>
       </el-table-column>
       <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
