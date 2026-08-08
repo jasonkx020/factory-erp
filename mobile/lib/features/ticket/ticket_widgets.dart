@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/auth_state.dart';
@@ -16,6 +17,76 @@ bool ticketIsClosed(String status) =>
 
 bool ticketCanAct(String status) => status == 'open' || status == 'in_progress';
 
+/// 仅当前处理人（或系统管理员）可操作工单。
+bool ticketIsCurrentAssignee(AuthState auth, Map<String, dynamic> row) {
+  final roles = auth.roles.map((e) => e.toString().toLowerCase()).toList();
+  if (roles.contains('sys_admin') || roles.contains('admin') || roles.contains('系统管理员')) {
+    return true;
+  }
+  final assignee = (row['current_assignee_user_id'] as num?)?.toInt() ?? 0;
+  return assignee > 0 && assignee == auth.userId;
+}
+
+bool ticketCanActByMe(AuthState auth, Map<String, dynamic> row) =>
+    ticketCanAct('${row['status'] ?? ''}') && ticketIsCurrentAssignee(auth, row);
+
+bool _hasRole(AuthState auth, String role) {
+  final roles = auth.roles.map((e) => e.toString().toLowerCase()).toList();
+  return roles.contains(role.toLowerCase()) ||
+      roles.contains('sys_admin') ||
+      roles.contains('admin') ||
+      (role == 'warehouse' && (roles.contains('仓管') || roles.contains('仓管员')));
+}
+
+List<String> _weighVerifyImages(Map<String, dynamic> payload, {String Function(String)? resolve}) {
+  final out = <String>[];
+  void add(dynamic v) {
+    var s = v?.toString().trim() ?? '';
+    if (s.isEmpty) return;
+    if (resolve != null) s = resolve(s);
+    if (s.isEmpty || out.contains(s)) return;
+    out.add(s);
+  }
+
+  add(payload['image_url']);
+  for (final key in ['verify_images', 'site_photos', 'image_urls']) {
+    final raw = payload[key];
+    if (raw is List) {
+      for (final e in raw) {
+        add(e);
+      }
+    }
+  }
+  final evidences = payload['evidences'];
+  if (evidences is List) {
+    for (final e in evidences) {
+      if (e is Map) {
+        add(e['file_url'] ?? e['url']);
+      }
+    }
+  }
+  return out;
+}
+
+Future<void> _previewImage(BuildContext context, String url) async {
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => Dialog(
+      insetPadding: const EdgeInsets.all(12),
+      child: InteractiveViewer(
+        child: AspectRatio(
+          aspectRatio: 1,
+          child: Image.network(
+            url,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const Center(child: Text('图片加载失败')),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 class TicketRefreshBus extends ChangeNotifier {
   void bump() => notifyListeners();
 }
@@ -24,13 +95,13 @@ Future<void> ticketAct(
   BuildContext context,
   Map<String, dynamic> row,
   String action, {
+  Map<String, dynamic>? extra,
   VoidCallback? onDone,
 }) async {
   final id = (row['id'] as num?)?.toInt();
   if (id == null) return;
-  final r = await context.read<AuthState>().api.post('/workflow/tickets/$id/action', {
-    'action': action,
-  });
+  final body = <String, dynamic>{'action': action, ...?extra};
+  final r = await context.read<AuthState>().api.post('/workflow/tickets/$id/action', body);
   if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(content: Text(r.ok ? '已$action' : r.msg)),
@@ -51,7 +122,8 @@ Future<void> openTicketDetail(
 }) async {
   final id = (row['id'] as num?)?.toInt();
   if (id == null) return;
-  final r = await context.read<AuthState>().api.get('/workflow/tickets/$id');
+  final auth = context.read<AuthState>();
+  final r = await auth.api.get('/workflow/tickets/$id');
   if (!context.mounted) return;
   if (!r.ok || r.data is! Map) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.msg)));
@@ -62,7 +134,48 @@ Future<void> openTicketDetail(
   final payload =
       d['payload'] is Map ? Map<String, dynamic>.from(d['payload'] as Map) : <String, dynamic>{};
   final st = '${d['status'] ?? ''}';
-  final canAct = allowActions && ticketCanAct(st);
+  // 详情以服务端最新 assignee 为准，非当前处理人只读。
+  final canAct = allowActions && ticketCanActByMe(auth, d);
+  final bizType = '${d['biz_type'] ?? ''}';
+  final isWeigh = bizType == 'weigh_ticket';
+  final bizId = (d['biz_id'] as num?)?.toInt() ?? 0;
+
+  // 兜底：工单 payload 无图时，从过磅单补拉现场照片
+  if (isWeigh && bizId > 0 && _weighVerifyImages(payload).isEmpty) {
+    final wr = await auth.api.get('/purchase/weigh-tickets/$bizId');
+    if (context.mounted && wr.ok && wr.data is Map) {
+      final w = Map<String, dynamic>.from(wr.data as Map);
+      final imgs = <String>[];
+      void add(dynamic v) {
+        final s = v?.toString().trim() ?? '';
+        if (s.isNotEmpty && !imgs.contains(s)) imgs.add(s);
+      }
+      add(w['image_url']);
+      final urls = w['image_urls'] ?? w['verify_images'];
+      if (urls is List) {
+        for (final e in urls) {
+          add(e);
+        }
+      }
+      final evidences = w['evidences'];
+      if (evidences is List) {
+        for (final e in evidences) {
+          if (e is Map) add(e['file_url'] ?? e['url']);
+        }
+      }
+      if (imgs.isNotEmpty) {
+        payload['image_url'] = imgs.first;
+        payload['image_urls'] = imgs;
+        payload['verify_images'] = imgs;
+      }
+    }
+  }
+
+  final settle = payload['settle_breakdown'] is Map
+      ? Map<String, dynamic>.from(payload['settle_breakdown'] as Map)
+      : <String, dynamic>{};
+  final hasSettle = settle.isNotEmpty || payload['settlement_id'] != null;
+  final verifyImgs = _weighVerifyImages(payload, resolve: auth.api.resolveMediaUrl);
 
   await showModalBottomSheet<void>(
     context: context,
@@ -82,32 +195,112 @@ Future<void> openTicketDetail(
             '${d['doc_no']} · ${d['category_name']} · ${ticketStatusLabel[st] ?? st}',
           ),
           const Divider(),
-          ...schema.map((raw) {
-            final f = Map<String, dynamic>.from(raw as Map);
-            final key = '${f['key']}';
-            return ListTile(
-              dense: true,
-              title: Text('${f['label']}'),
-              trailing: Text('${payload[key] ?? '-'}'),
-            );
-          }),
+          if (isWeigh) ...[
+            if (payload['batch_no'] != null) ListTile(dense: true, title: const Text('批号'), trailing: Text('${payload['batch_no']}')),
+            if (payload['trace_code'] != null) ListTile(dense: true, title: const Text('溯源码'), trailing: Text('${payload['trace_code']}')),
+            if (payload['variety'] != null || payload['product_name'] != null)
+              ListTile(
+                dense: true,
+                title: const Text('品种'),
+                trailing: Text('${payload['variety'] ?? payload['product_name'] ?? '-'}'),
+              ),
+            if (payload['net_weight'] != null)
+              ListTile(dense: true, title: const Text('净重(kg)'), trailing: Text('${payload['net_weight']}')),
+            if (verifyImgs.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              const Text('现场照片（核对用）', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 110,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: verifyImgs.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (_, i) {
+                    final url = verifyImgs[i];
+                    return GestureDetector(
+                      onTap: () => _previewImage(context, url),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          url,
+                          width: 110,
+                          height: 110,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            width: 110,
+                            height: 110,
+                            color: Colors.black12,
+                            alignment: Alignment.center,
+                            child: const Icon(Icons.broken_image),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+            if (_hasRole(auth, 'finance') && settle.isNotEmpty) ...[
+              const Divider(),
+              const Text('结算明细', style: TextStyle(fontWeight: FontWeight.w600)),
+              ListTile(dense: true, title: const Text('净重×单价'), trailing: Text('${settle['net_weight']} × ${settle['unit_price']}')),
+              ListTile(dense: true, title: const Text('货款'), trailing: Text('${settle['goods_amount']}')),
+              ListTile(dense: true, title: const Text('运费/装卸/过磅'), trailing: Text('${settle['freight_fee']}/${settle['loading_fee']}/${settle['weigh_fee']}')),
+              ListTile(dense: true, title: const Text('应付合计'), trailing: Text('${settle['amount']}')),
+              if (settle['farmer_name'] != null)
+                ListTile(dense: true, title: const Text('农户'), trailing: Text('${settle['farmer_name']}')),
+            ],
+          ] else
+            ...schema.map((raw) {
+              final f = Map<String, dynamic>.from(raw as Map);
+              final key = '${f['key']}';
+              return ListTile(
+                dense: true,
+                title: Text('${f['label']}'),
+                trailing: Text('${payload[key] ?? '-'}'),
+              );
+            }),
           if (canAct) ...[
             const SizedBox(height: 8),
-            FilledButton(
-              onPressed: () async {
-                Navigator.pop(ctx);
-                await ticketAct(context, d, 'approve', onDone: onActed);
-              },
-              child: const Text('通过/办结'),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton(
-              onPressed: () async {
-                Navigator.pop(ctx);
-                await ticketAct(context, d, 'return_confirm', onDone: onActed);
-              },
-              child: const Text('确认归还'),
-            ),
+            if (isWeigh && _hasRole(auth, 'warehouse') && !hasSettle)
+              FilledButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  await ticketAct(context, d, 'warehouse_confirm', onDone: onActed);
+                },
+                child: const Text('核对并确认入库'),
+              )
+            else if (isWeigh && _hasRole(auth, 'finance') && hasSettle)
+              FilledButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  await _settlePayDialog(context, d, onActed: onActed);
+                },
+                child: const Text('确认付款'),
+              )
+            else if (!isWeigh || (!_hasRole(auth, 'warehouse') && !_hasRole(auth, 'finance'))) ...[
+              FilledButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  await ticketAct(context, d, 'approve', onDone: onActed);
+                },
+                child: const Text('通过/办结'),
+              ),
+              if (!isWeigh) ...[
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    await ticketAct(context, d, 'return_confirm', onDone: onActed);
+                  },
+                  child: const Text('确认归还'),
+                ),
+              ],
+            ] else if (isWeigh && _hasRole(auth, 'finance') && !hasSettle)
+              const Text('待仓管入库生成结算后再付款', style: TextStyle(color: Colors.black54))
+            else if (isWeigh && _hasRole(auth, 'warehouse') && hasSettle)
+              const Text('已入库，等待财务付款', style: TextStyle(color: Colors.black54)),
             const SizedBox(height: 8),
             TextButton(
               onPressed: () async {
@@ -123,40 +316,247 @@ Future<void> openTicketDetail(
   );
 }
 
+Future<void> _settlePayDialog(
+  BuildContext context,
+  Map<String, dynamic> d, {
+  VoidCallback? onActed,
+}) async {
+  final transfer = TextEditingController();
+  String evidenceUrl = '';
+  String err = '';
+  bool uploading = false;
+
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) {
+      return StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('确认付款'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: transfer,
+                  decoration: const InputDecoration(labelText: '转账号 *'),
+                  onTap: () {
+                    final t = transfer.text;
+                    transfer.selection = TextSelection.collapsed(offset: t.length);
+                  },
+                ),
+                const SizedBox(height: 12),
+                const Text('发票 / 转账截图 *', style: TextStyle(fontSize: 13, color: Colors.black54)),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    FilledButton.tonalIcon(
+                      onPressed: uploading
+                          ? null
+                          : () async {
+                              try {
+                                final picker = ImagePicker();
+                                final file = await picker.pickImage(
+                                  source: ImageSource.camera,
+                                  imageQuality: 85,
+                                );
+                                if (file == null) return;
+                                setLocal(() {
+                                  uploading = true;
+                                  err = '';
+                                });
+                                final bytes = await file.readAsBytes();
+                                if (!ctx.mounted) return;
+                                final r = await ctx.read<AuthState>().api.postMultipart(
+                                      '/biz/uploads',
+                                      bytes,
+                                      filename: file.name.isEmpty ? 'pay_receipt.jpg' : file.name,
+                                    );
+                                if (!ctx.mounted) return;
+                                setLocal(() => uploading = false);
+                                if (!r.ok || r.data is! Map) {
+                                  setLocal(() => err = '上传失败：${r.msg}');
+                                  return;
+                                }
+                                final url = (r.data as Map)['url']?.toString() ??
+                                    (r.data as Map)['file_url']?.toString() ??
+                                    '';
+                                if (url.isEmpty) {
+                                  setLocal(() => err = '上传无返回地址');
+                                  return;
+                                }
+                                setLocal(() {
+                                  evidenceUrl = url;
+                                  err = '';
+                                });
+                              } catch (e) {
+                                setLocal(() {
+                                  uploading = false;
+                                  err = '拍照失败：$e';
+                                });
+                              }
+                            },
+                      icon: const Icon(Icons.photo_camera),
+                      label: Text(uploading ? '上传中…' : '拍照上传'),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: uploading
+                          ? null
+                          : () async {
+                              try {
+                                final picker = ImagePicker();
+                                final file = await picker.pickImage(
+                                  source: ImageSource.gallery,
+                                  imageQuality: 85,
+                                );
+                                if (file == null) return;
+                                setLocal(() {
+                                  uploading = true;
+                                  err = '';
+                                });
+                                final bytes = await file.readAsBytes();
+                                if (!ctx.mounted) return;
+                                final r = await ctx.read<AuthState>().api.postMultipart(
+                                      '/biz/uploads',
+                                      bytes,
+                                      filename: file.name.isEmpty ? 'pay_receipt.jpg' : file.name,
+                                    );
+                                if (!ctx.mounted) return;
+                                setLocal(() => uploading = false);
+                                if (!r.ok || r.data is! Map) {
+                                  setLocal(() => err = '上传失败：${r.msg}');
+                                  return;
+                                }
+                                final url = (r.data as Map)['url']?.toString() ??
+                                    (r.data as Map)['file_url']?.toString() ??
+                                    '';
+                                if (url.isEmpty) {
+                                  setLocal(() => err = '上传无返回地址');
+                                  return;
+                                }
+                                setLocal(() {
+                                  evidenceUrl = url;
+                                  err = '';
+                                });
+                              } catch (e) {
+                                setLocal(() {
+                                  uploading = false;
+                                  err = '选择失败：$e';
+                                });
+                              }
+                            },
+                      child: const Text('相册'),
+                    ),
+                  ],
+                ),
+                if (evidenceUrl.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: Image.network(evidenceUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Center(child: Text('预览失败'))),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => setLocal(() => evidenceUrl = ''),
+                    child: const Text('清除图片'),
+                  ),
+                ],
+                if (err.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(err, style: const TextStyle(color: Colors.red, fontSize: 13)),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            FilledButton(
+              onPressed: uploading
+                  ? null
+                  : () {
+                      if (transfer.text.trim().isEmpty) {
+                        setLocal(() => err = '请填写转账号');
+                        return;
+                      }
+                      if (evidenceUrl.isEmpty) {
+                        setLocal(() => err = '请拍照或选择发票/转账截图');
+                        return;
+                      }
+                      Navigator.pop(ctx, true);
+                    },
+              child: const Text('提交'),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+  final transferNo = transfer.text.trim();
+  transfer.dispose();
+  if (ok != true || !context.mounted) return;
+  await ticketAct(
+    context,
+    d,
+    'settle_pay',
+    extra: {
+      'transfer_no': transferNo,
+      'pay_evidence_url': evidenceUrl,
+    },
+    onDone: onActed,
+  );
+}
+
 class TicketListCard extends StatelessWidget {
   const TicketListCard({
     super.key,
     required this.row,
     this.showActions = false,
+    this.emphasizeAssignee = false,
     this.onTap,
     this.onAction,
   });
 
   final Map<String, dynamic> row;
   final bool showActions;
+  /// 「处理中」跟踪视角：突出当前处理人
+  final bool emphasizeAssignee;
   final VoidCallback? onTap;
   final void Function(String action)? onAction;
 
   @override
   Widget build(BuildContext context) {
     final st = '${row['status'] ?? ''}';
+    final isWeigh = '${row['biz_type'] ?? ''}' == 'weigh_ticket';
+    final auth = context.watch<AuthState>();
+    final canMine = showActions && ticketCanActByMe(auth, row);
+    final assignee = '${row['assignee_name'] ?? '-'}';
+    final statusLine = emphasizeAssignee
+        ? '${ticketStatusLabel[st] ?? st} · 当前在 $assignee 手上'
+        : '${ticketStatusLabel[st] ?? st} · 处理人 $assignee';
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: ListTile(
         title: Text('${row['title'] ?? ''}'),
         subtitle: Text(
-          '${row['doc_no']} · ${row['category_name']}\n'
-          '${ticketStatusLabel[st] ?? st} · 处理人 ${row['assignee_name'] ?? '-'}',
+          '${row['doc_no']} · ${row['category_name']}\n$statusLine',
         ),
         isThreeLine: true,
         onTap: onTap,
-        trailing: showActions && ticketCanAct(st)
+        trailing: canMine
             ? PopupMenuButton<String>(
                 onSelected: onAction,
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'approve', child: Text('通过/办结')),
-                  PopupMenuItem(value: 'return_confirm', child: Text('确认归还')),
-                  PopupMenuItem(value: 'reject', child: Text('驳回')),
+                itemBuilder: (_) => [
+                  if (isWeigh)
+                    const PopupMenuItem(value: 'warehouse_confirm', child: Text('确认入库')),
+                  if (!isWeigh) ...[
+                    const PopupMenuItem(value: 'approve', child: Text('通过/办结')),
+                    const PopupMenuItem(value: 'return_confirm', child: Text('确认归还')),
+                  ],
+                  const PopupMenuItem(value: 'reject', child: Text('驳回')),
                 ],
               )
             : null,

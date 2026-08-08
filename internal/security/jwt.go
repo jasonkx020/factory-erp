@@ -17,8 +17,8 @@ type Claims struct {
 	LoginName   string   `json:"login_name"`
 	UserType    string   `json:"user_type"`
 	ClientType  string   `json:"client_type"`
-	Roles       []string `json:"roles"`
-	Permissions []string `json:"permissions"`
+	Roles       []string `json:"roles,omitempty"`
+	Permissions []string `json:"permissions,omitempty"` // runtime-hydrated; omitted from new JWTs
 	jwt.RegisteredClaims
 }
 

@@ -3,6 +3,7 @@ package biz
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -305,10 +306,16 @@ func (s *Services) handleFlowEvents(c *gin.Context, method, action, path string)
 
 func (s *Services) handleFlowRules(c *gin.Context, method, action string) bool {
 	if method == "GET" || action == "list" || action == "get" {
+		rid := int64(1)
+		if q := c.Query("routing_id"); q != "" {
+			if v, err := strconv.ParseInt(q, 10, 64); err == nil && v > 0 {
+				rid = v
+			}
+		}
 		rows, err := s.DB.Query(`SELECT id, routing_id, seq_no, process_id, COALESCE(step_code,''), COALESCE(step_name,''),
 			COALESCE(is_piecework,0), COALESCE(is_inbound_checkpoint,0), COALESCE(auto_next,1),
 			COALESCE(auto_stock_in,0), COALESCE(auto_stock_out,0), COALESCE(warehouse_id,0)
-			FROM pd_routing_step WHERE routing_id=1 ORDER BY seq_no`)
+			FROM pd_routing_step WHERE routing_id=? ORDER BY seq_no`, rid)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR")
 			return true
@@ -316,17 +323,17 @@ func (s *Services) handleFlowRules(c *gin.Context, method, action string) bool {
 		defer rows.Close()
 		list := []gin.H{}
 		for rows.Next() {
-			var id, rid, pid, wh int64
+			var id, rrid, pid, wh int64
 			var seq, piece, cp, an, asi, aso int
 			var code, name string
-			_ = rows.Scan(&id, &rid, &seq, &pid, &code, &name, &piece, &cp, &an, &asi, &aso, &wh)
+			_ = rows.Scan(&id, &rrid, &seq, &pid, &code, &name, &piece, &cp, &an, &asi, &aso, &wh)
 			list = append(list, gin.H{
-				"id": id, "routing_id": rid, "seq_no": seq, "process_id": pid, "step_code": code, "step_name": name,
+				"id": id, "routing_id": rrid, "seq_no": seq, "process_id": pid, "step_code": code, "step_name": name,
 				"is_piecework": piece == 1, "is_inbound_checkpoint": cp == 1, "auto_next": an == 1,
 				"auto_stock_in": asi == 1, "auto_stock_out": aso == 1, "warehouse_id": wh,
 			})
 		}
-		api.OK(c, gin.H{"routing_id": 1, "steps": list})
+		api.OK(c, gin.H{"routing_id": rid, "steps": list})
 		return true
 	}
 	if method == "PUT" || action == "replace" {

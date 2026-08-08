@@ -1705,10 +1705,26 @@
   },
   {
     "method": "GET",
-    "path": "/api/v1/production/flow-rules"
+    "path": "/api/v1/production/flow-graphs"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/flow-graphs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/flow-graphs/{id}"
   },
   {
     "method": "PUT",
+    "path": "/api/v1/production/flow-graphs/{id}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/production/flow-graphs/{id}"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/production/flow-rules"
   },
   {
@@ -2253,6 +2269,14 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/purchase/weigh-tickets/by-trace"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/by-trace"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/purchase/weigh-tickets/{id}"
   },
   {
@@ -2338,6 +2362,14 @@
   {
     "method": "POST",
     "path": "/api/v1/purchase/weigh-tickets/{id}/warehouse-confirm"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/weigh-tickets/by-trace"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/by-trace"
   },
   {
     "method": "GET",

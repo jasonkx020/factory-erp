@@ -110,6 +110,8 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		return s.handleFlowEvents(c, method, action, openapiPath)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/flow-rules"):
 		return s.handleFlowRules(c, method, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/production/flow-graphs"):
+		return s.handleFlowGraphs(c, method, action, openapiPath)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/"):
 		if s.handleProductionExt(c, method, openapiPath, action) {
 			return true

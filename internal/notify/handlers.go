@@ -147,6 +147,11 @@ func (s *Service) handleTaskList(c *gin.Context) bool {
 		_ = rows.Scan(&id, &ek, &bt, &bizID, &doc, &trace, &fr, &tr, &assignee, &pj, &st, &created)
 		var payload interface{}
 		_ = json.Unmarshal([]byte(pj), &payload)
+		if strings.EqualFold(tr, "warehouse") {
+			if m, ok := payload.(map[string]interface{}); ok {
+				payload = maskTaskPayloadForWarehouse(m)
+			}
+		}
 		list = append(list, gin.H{
 			"id": id, "event_key": ek, "biz_type": bt, "biz_id": bizID, "doc_no": doc, "trace_code": trace,
 			"from_role": fr, "to_role": tr, "assignee_user_id": assignee, "payload": payload, "status": st, "created_at": created,
@@ -154,6 +159,24 @@ func (s *Service) handleTaskList(c *gin.Context) bool {
 	}
 	api.OK(c, gin.H{"list": list, "total": total, "page_num": pageNum, "page_size": pageSize})
 	return true
+}
+
+func maskTaskPayloadForWarehouse(src map[string]interface{}) map[string]interface{} {
+	allow := map[string]bool{
+		"doc_no": true, "batch_no": true, "trace_code": true, "variety": true, "product_name": true,
+		"product_id": true, "plate_no": true, "gross_weight": true, "deduct_rate": true, "deduct_weight": true,
+		"reject_weight": true, "net_weight": true, "image_url": true, "cold_store_type": true,
+		"warehouse_id": true, "receive_kind": true, "status": true, "bag_qty": true, "channel": true,
+		"biz_date": true, "box_code": true, "qc_result": true, "grade": true,
+		"image_urls": true, "verify_images": true, "site_photos": true,
+	}
+	out := map[string]interface{}{}
+	for k, v := range src {
+		if allow[strings.ToLower(k)] {
+			out[k] = v
+		}
+	}
+	return out
 }
 
 func (s *Service) handleTaskClaim(c *gin.Context) bool {

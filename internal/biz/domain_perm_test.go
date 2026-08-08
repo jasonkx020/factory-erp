@@ -48,4 +48,21 @@ func TestCheckAPIPerm(t *testing.T) {
 	if !CheckAPIPerm(c, "purchase/weigh-tickets", "create", "POST") {
 		t.Fatal("sys_admin should pass")
 	}
+
+	c = mk([]string{"warehouse"}, []string{"库存管理:仓管待入库:查看"})
+	if !CheckAPIPerm(c, "purchase/weigh-tickets/by-trace", "list", "GET") {
+		t.Fatal("warehouse stockin view should pass by-trace")
+	}
+	c = mk([]string{"warehouse"}, nil)
+	if !CheckAPIPerm(c, "purchase/weigh-tickets/by-trace", "list", "GET") {
+		t.Fatal("warehouse role alone should pass by-trace")
+	}
+	c = mk([]string{"warehouse"}, []string{"库存管理:仓管待入库:编辑"})
+	if !CheckAPIPerm(c, "purchase/weigh-tickets", "action:warehouse-confirm", "POST") {
+		t.Fatal("warehouse stockin edit should pass warehouse-confirm")
+	}
+	c = mk([]string{"sales"}, []string{"库存管理:库存查询:查看"})
+	if CheckAPIPerm(c, "purchase/weigh-tickets/by-trace", "list", "GET") {
+		t.Fatal("sales with inventory query alone should not pass by-trace")
+	}
 }

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"database/sql"
 	"net/http"
 	"strings"
 
@@ -37,7 +38,7 @@ func CORS(origins []string) gin.HandlerFunc {
 	}
 }
 
-func JWT(secret string, permitAll []string) gin.HandlerFunc {
+func JWT(secret string, db *sql.DB, permitAll []string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 		for _, p := range permitAll {
@@ -56,6 +57,8 @@ func JWT(secret string, permitAll []string) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, api.Response{Code: 0, Msg: "UNAUTHORIZED"})
 			return
 		}
+		// Permissions are no longer embedded in JWT; load from DB (cached).
+		security.HydrateClaimsRolesPerms(db, claims)
 		c.Set(CtxClaims, claims)
 		c.Next()
 	}

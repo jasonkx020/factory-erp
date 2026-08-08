@@ -2,6 +2,8 @@ package biz
 
 import (
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"log"
 	"strings"
 )
@@ -119,6 +121,20 @@ func EnsureAutomationSchema(db *sql.DB) {
 		`ALTER TABLE pd_routing_step ADD COLUMN auto_stock_in INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE pd_routing_step ADD COLUMN auto_stock_out INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE pd_routing_step ADD COLUMN warehouse_id INTEGER`,
+		`ALTER TABLE pd_routing ADD COLUMN graph_json TEXT`,
+		`CREATE TABLE IF NOT EXISTS pd_flow_graph (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft',
+  routing_id INTEGER,
+  graph_json TEXT NOT NULL DEFAULT '{}',
+  version_no TEXT NOT NULL DEFAULT 'V1',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  is_deleted INTEGER NOT NULL DEFAULT 0
+)`,
 		`ALTER TABLE pd_report_work ADD COLUMN input_weight REAL`,
 		`ALTER TABLE pd_report_work ADD COLUMN output_weight REAL`,
 		`ALTER TABLE pd_report_work ADD COLUMN loss REAL`,
@@ -138,6 +154,7 @@ func EnsureAutomationSchema(db *sql.DB) {
 	}
 	execSchemaRuns(db, "automation", stmts)
 	seedAutomation(db)
+	seedFlowGraphs(db)
 	EnsureFarmerSchema(db)
 	EnsureClosedLoopSchema(db)
 	EnsureFieldLedgerSchema(db)
@@ -421,6 +438,118 @@ func seedAutomation(db *sql.DB) {
 	_, _ = db.Exec(`INSERT OR IGNORE INTO inv_box_code(id, code, product_id, warehouse_id, batch_no, qty, weight, current_process_id, current_step_id, status) VALUES
  (1, 'BX-RAW-DEMO', 1, 1, 'B0801', 1000, 1000, 8, NULL, 'open')`)
 	EnsurePurchaseSchema(db)
+}
+
+func seedFlowGraphs(db *sql.DB) {
+	if db == nil {
+		return
+	}
+	gateJSON := purchaseGateFlowJSON()
+	stockJSON := purchaseStockinFlowJSON()
+
+	var n int
+	_ = db.QueryRow(`SELECT COUNT(1) FROM pd_flow_graph WHERE COALESCE(is_deleted,0)=0`).Scan(&n)
+	if n == 0 {
+		seedFlowGraphsInitial(db, gateJSON, stockJSON)
+	}
+	// migrate: 入厂默认图改为 采购→仓管→财务（去掉质检必经）
+	_, _ = db.Exec(`UPDATE pd_flow_graph SET graph_json=?, name='过磅入厂流程', version_no='V2', updated_at=datetime('now')
+		WHERE code='PURCHASE_GATE' AND COALESCE(is_deleted,0)=0`, gateJSON)
+	_, _ = db.Exec(`UPDATE pd_flow_graph SET status='active' WHERE code='PURCHASE_GATE' AND COALESCE(is_deleted,0)=0`)
+}
+
+func purchaseGateFlowJSON() string {
+	return `{"nodes":[
+{"id":"start","type":"start","position":{"x":40,"y":80},"data":{}},
+{"id":"submit","type":"role_task","position":{"x":220,"y":80},"data":{"role_code":"purchase","action":"submit","label":"采购提交"}},
+{"id":"wh","type":"role_task","position":{"x":420,"y":80},"data":{"role_code":"warehouse","action":"warehouse_confirm","label":"仓管入库"}},
+{"id":"fin","type":"role_task","position":{"x":620,"y":80},"data":{"role_code":"finance","action":"pay","label":"财务付款"}},
+{"id":"end","type":"end","position":{"x":820,"y":80},"data":{}}
+],"edges":[
+{"id":"e1","source":"start","target":"submit","data":{"is_default":true}},
+{"id":"e2","source":"submit","target":"wh","data":{"is_default":true}},
+{"id":"e3","source":"wh","target":"fin","data":{"is_default":true}},
+{"id":"e4","source":"fin","target":"end","data":{"is_default":true}}
+]}`
+}
+
+func purchaseStockinFlowJSON() string {
+	return `{"nodes":[
+{"id":"start","type":"start","position":{"x":40,"y":80},"data":{}},
+{"id":"submit","type":"role_task","position":{"x":220,"y":80},"data":{"role_code":"purchase","action":"submit","label":"采购提交"}},
+{"id":"wh","type":"role_task","position":{"x":420,"y":80},"data":{"role_code":"warehouse","action":"warehouse_confirm","label":"仓管入库"}},
+{"id":"end","type":"end","position":{"x":620,"y":80},"data":{}}
+],"edges":[
+{"id":"e1","source":"start","target":"submit","data":{"is_default":true}},
+{"id":"e2","source":"submit","target":"wh","data":{"is_default":true}},
+{"id":"e3","source":"wh","target":"end","data":{"is_default":true}}
+]}`
+}
+
+func seedFlowGraphsInitial(db *sql.DB, gateJSON, stockJSON string) {
+	// Build production graph from existing routing steps
+	type stepRow struct {
+		seq                     int
+		pid, wh                 int64
+		code, name              string
+		piece, cp, an, asi, aso int
+	}
+	rows, err := db.Query(`SELECT seq_no, process_id, COALESCE(step_code,''), COALESCE(step_name,''),
+		COALESCE(is_piecework,0), COALESCE(is_inbound_checkpoint,0), COALESCE(auto_next,1),
+		COALESCE(auto_stock_in,0), COALESCE(auto_stock_out,0), COALESCE(warehouse_id,0)
+		FROM pd_routing_step WHERE routing_id=1 ORDER BY seq_no`)
+	prodJSON := `{"nodes":[{"id":"start","type":"start","position":{"x":80,"y":200},"data":{}},{"id":"end","type":"end","position":{"x":80,"y":200},"data":{}}],"edges":[]}`
+	if err == nil {
+		defer rows.Close()
+		var steps []stepRow
+		for rows.Next() {
+			var r stepRow
+			_ = rows.Scan(&r.seq, &r.pid, &r.code, &r.name, &r.piece, &r.cp, &r.an, &r.asi, &r.aso, &r.wh)
+			steps = append(steps, r)
+		}
+		if len(steps) > 0 {
+			nodes := []map[string]interface{}{
+				{"id": "start", "type": "start", "position": map[string]float64{"x": 40, "y": 40}, "data": map[string]interface{}{}},
+			}
+			edges := []map[string]interface{}{}
+			prev := "start"
+			for i, st := range steps {
+				nid := fmt.Sprintf("ps%d", st.seq)
+				nodes = append(nodes, map[string]interface{}{
+					"id": nid, "type": "process_step",
+					"position": map[string]float64{"x": float64(40 + (i%4)*220), "y": float64(140 + (i/4)*140)},
+					"data": map[string]interface{}{
+						"process_id": st.pid, "step_code": st.code, "step_name": st.name,
+						"is_piecework": st.piece == 1, "is_inbound_checkpoint": st.cp == 1,
+						"auto_next": st.an == 1, "auto_stock_in": st.asi == 1, "auto_stock_out": st.aso == 1,
+						"warehouse_id": st.wh, "label": st.name,
+					},
+				})
+				edges = append(edges, map[string]interface{}{
+					"id": fmt.Sprintf("e_%s_%s", prev, nid), "source": prev, "target": nid,
+					"data": map[string]interface{}{"is_default": true},
+				})
+				prev = nid
+			}
+			nodes = append(nodes, map[string]interface{}{
+				"id": "end", "type": "end", "position": map[string]float64{"x": 40, "y": float64(140 + ((len(steps)+3)/4)*140)},
+				"data": map[string]interface{}{},
+			})
+			edges = append(edges, map[string]interface{}{
+				"id": fmt.Sprintf("e_%s_end", prev), "source": prev, "target": "end",
+				"data": map[string]interface{}{"is_default": true},
+			})
+			b, _ := json.Marshal(map[string]interface{}{"nodes": nodes, "edges": edges})
+			prodJSON = string(b)
+		}
+	}
+	_, _ = db.Exec(`INSERT OR IGNORE INTO pd_flow_graph(code, name, kind, status, routing_id, graph_json, version_no) VALUES(?,?,?,?,?,?,?)`,
+		"RT-CASSAVA", "木薯丁产线", "production", "active", 1, prodJSON, "V1")
+	_, _ = db.Exec(`UPDATE pd_routing SET graph_json=? WHERE id=1`, prodJSON)
+	_, _ = db.Exec(`INSERT OR IGNORE INTO pd_flow_graph(code, name, kind, status, graph_json, version_no) VALUES(?,?,?,?,?,?)`,
+		"PURCHASE_GATE", "过磅入厂流程", "purchase_gate", "active", gateJSON, "V2")
+	_, _ = db.Exec(`INSERT OR IGNORE INTO pd_flow_graph(code, name, kind, status, graph_json, version_no) VALUES(?,?,?,?,?,?)`,
+		"PURCHASE_STOCKIN", "过磅入库流程", "purchase_stockin", "active", stockJSON, "V1")
 }
 
 // EnsurePurchaseSchema creates purchase/supplier tables on existing DBs.

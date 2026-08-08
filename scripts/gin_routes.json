@@ -77,6 +77,14 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/production/flow-graphs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/flow-graphs/:id"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/production/flow-rules"
   },
   {
@@ -221,6 +229,34 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/purchase/weigh-tickets"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/weigh-tickets/by-trace"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/weigh-tickets/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/weigh-tickets/:id/label"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/weigh-varieties"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/weigh-varieties/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/weigh-flow/next-options"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/purchase/inbounds"
   },
   {
@@ -262,26 +298,6 @@
   {
     "method": "GET",
     "path": "/api/v1/purchase/suppliers/:id/supply-items"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/weigh-tickets"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/weigh-tickets/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/weigh-tickets/:id/label"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/weigh-varieties"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/purchase/weigh-varieties/:id"
   },
   {
     "method": "GET",
@@ -1537,6 +1553,22 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/production/flex-dispatches"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/flex-dispatches/:id/reassign"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/flow-events/:id/retry"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/flow-graphs"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/production/task-merges"
   },
   {
@@ -1562,18 +1594,6 @@
   {
     "method": "POST",
     "path": "/api/v1/production/drawing-links"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/flex-dispatches"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/flex-dispatches/:id/reassign"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/flow-events/:id/retry"
   },
   {
     "method": "POST",
@@ -1677,6 +1697,34 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/by-trace"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/qc"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/stock-in"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/warehouse-confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-varieties"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/purchase/requests"
   },
   {
@@ -1730,30 +1778,6 @@
   {
     "method": "POST",
     "path": "/api/v1/purchase/tasks/:id/complete"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/:id/qc"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/:id/stock-in"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/:id/warehouse-confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-varieties"
   },
   {
     "method": "POST",
@@ -2689,6 +2713,58 @@
   },
   {
     "method": "DELETE",
+    "path": "/api/v1/production/boms/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/production/drawing-links/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/production/flow-graphs/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/production/processes/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/production/routings/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/production/workshops/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/product/products/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/product/specs/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/purchase/farmers/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/purchase/suppliers/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/purchase/weigh-varieties/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/payroll/commission-rules/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/payroll/wage-rates/:id"
+  },
+  {
+    "method": "DELETE",
     "path": "/api/v1/system/announcements/:id"
   },
   {
@@ -2738,54 +2814,6 @@
   {
     "method": "DELETE",
     "path": "/api/v1/sales/price-locks/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/boms/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/drawing-links/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/processes/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/routings/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/workshops/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/product/products/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/product/specs/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/purchase/farmers/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/purchase/suppliers/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/purchase/weigh-varieties/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/payroll/commission-rules/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/payroll/wage-rates/:id"
   },
   {
     "method": "DELETE",
@@ -2913,7 +2941,7 @@
   },
   {
     "method": "PUT",
-    "path": "/api/v1/production/flow-rules"
+    "path": "/api/v1/production/flow-graphs/:id"
   },
   {
     "method": "PUT",

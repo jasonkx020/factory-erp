@@ -26,6 +26,7 @@ class _WarehousePageState extends State<WarehousePage> {
   String? _error;
   bool _loading = false;
   Map<String, dynamic>? _active;
+  Map<String, dynamic>? _scanHit;
   final _verify = TextEditingController();
   final _boxQuery = TextEditingController();
   final _countQty = TextEditingController(text: '0');
@@ -241,29 +242,55 @@ class _WarehousePageState extends State<WarehousePage> {
   Future<void> _confirm() async {
     final row = _active;
     if (row == null) return;
-    final expect = (row['trace_code'] ?? NotifyService.parsePayload(row['payload'] ?? row['payload_json'])['trace_code'] ?? '')
-        .toString()
-        .trim();
-    final got = _verify.text.trim();
-    if (got.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请输入溯源码核对')));
+    if (_verify.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请先扫码/输入溯源码定位单据')));
       return;
     }
-    if (expect.isNotEmpty && got != expect) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('溯源码不一致')));
+    final bizId = row['weigh_ticket_id'] ?? row['biz_id'] ?? row['id'];
+    if (bizId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('未定位到过磅单')));
       return;
     }
-    final bizId = row['biz_id'];
-    final res = await context.read<AuthState>().api.post('/purchase/weigh-tickets/$bizId/warehouse-confirm', {});
+    final res = await context.read<AuthState>().api.post(
+      '/purchase/weigh-tickets/$bizId/warehouse-confirm',
+      {'verified': true, 'match_confirmed': true},
+    );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res.ok ? '入库完成' : res.msg)));
     if (res.ok) {
       setState(() {
         _active = null;
         _verify.clear();
+        _scanHit = null;
       });
       await _loadTasks();
       await _loadBalances();
+    }
+  }
+
+  Future<void> _scanLocate() async {
+    final code = _verify.text.trim();
+    if (code.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请扫码或输入溯源码')));
+      return;
+    }
+    final res = await context.read<AuthState>().api.get(
+      '/purchase/weigh-tickets/by-trace?code=${Uri.encodeComponent(code)}',
+    );
+    if (!mounted) return;
+    if (!res.ok || res.data is! Map) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res.msg)));
+      return;
+    }
+    final m = Map<String, dynamic>.from(res.data as Map);
+    setState(() {
+      _scanHit = m;
+      _active = m;
+    });
+    if (m['stockin_ready'] != true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('单据未就绪：${m['reason'] ?? m['status'] ?? ''}')),
+      );
     }
   }
 
@@ -308,9 +335,96 @@ class _WarehousePageState extends State<WarehousePage> {
                     : ListView(
                         padding: const EdgeInsets.all(12),
                         children: [
-                          Text('待入库 ${_tasks.length} · 未读 ${notify.unread}', style: const TextStyle(color: Colors.black54)),
+                          Text('扫码入库 · 待办 ${_tasks.length}', style: const TextStyle(color: Colors.black54)),
                           const SizedBox(height: 8),
-                          if (_tasks.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('暂无过磅推送待办'))),
+                          TraceCodeField(
+                            controller: _verify,
+                            label: '扫溯源码定位',
+                            hint: '扫码或输入溯源码/批号',
+                            scannerTitle: '扫描溯源码',
+                            textCapitalization: TextCapitalization.none,
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              FilledButton.tonal(onPressed: _scanLocate, child: const Text('定位单据')),
+                              const SizedBox(width: 8),
+                              FilledButton(
+                                onPressed: (_active != null && _active!['stockin_ready'] == true) ? _confirm : null,
+                                child: const Text('核对相符并入库'),
+                              ),
+                            ],
+                          ),
+                          if (_scanHit != null) ...[
+                            const Divider(),
+                            Text('单据 ${_scanHit!['doc_no'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                            Text('批号 ${_scanHit!['batch_no'] ?? '-'} · 溯源 ${_scanHit!['trace_code'] ?? '-'}'),
+                            Text(
+                              '品种 ${_scanHit!['variety'] ?? _scanHit!['product_name'] ?? '-'} · '
+                              '净重 ${_scanHit!['net_weight'] ?? '-'}kg · '
+                              '扣损 ${_scanHit!['deduct_weight'] ?? '-'}',
+                            ),
+                            if (_scanHit!['stockin_ready'] != true)
+                              Text('未就绪：${_scanHit!['reason'] ?? _scanHit!['status']}', style: const TextStyle(color: Colors.orange)),
+                            Builder(builder: (_) {
+                              final api = context.read<AuthState>().api;
+                              final imgs = <String>[];
+                              void add(dynamic v) {
+                                final s = api.resolveMediaUrl(v?.toString() ?? '');
+                                if (s.isNotEmpty && !imgs.contains(s)) imgs.add(s);
+                              }
+                              add(_scanHit!['image_url']);
+                              for (final k in ['verify_images', 'site_photos', 'image_urls']) {
+                                final raw = _scanHit![k];
+                                if (raw is List) {
+                                  for (final e in raw) {
+                                    add(e);
+                                  }
+                                }
+                              }
+                              final evidences = _scanHit!['evidences'];
+                              if (evidences is List) {
+                                for (final e in evidences) {
+                                  if (e is Map) add(e['file_url'] ?? e['url']);
+                                }
+                              }
+                              if (imgs.isEmpty) return const SizedBox.shrink();
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 8),
+                                  const Text('现场照片', style: TextStyle(fontWeight: FontWeight.w600)),
+                                  const SizedBox(height: 6),
+                                  SizedBox(
+                                    height: 96,
+                                    child: ListView.separated(
+                                      scrollDirection: Axis.horizontal,
+                                      itemCount: imgs.length,
+                                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                                      itemBuilder: (_, i) => ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Image.network(
+                                          imgs[i],
+                                          width: 96,
+                                          height: 96,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) => Container(
+                                            width: 96,
+                                            height: 96,
+                                            color: Colors.black12,
+                                            child: const Icon(Icons.broken_image),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }),
+                          ],
+                          const Divider(),
+                          Text('推送待办', style: const TextStyle(fontWeight: FontWeight.w600)),
+                          if (_tasks.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Center(child: Text('暂无过磅推送待办'))),
                           ..._tasks.map((e) {
                             final t = Map<String, dynamic>.from(e as Map);
                             final p = NotifyService.parsePayload(t['payload'] ?? t['payload_json']);
@@ -318,8 +432,8 @@ class _WarehousePageState extends State<WarehousePage> {
                               child: ListTile(
                                 title: Text('${t['doc_no'] ?? ''}'),
                                 subtitle: Text(
-                                  '溯源 ${t['trace_code'] ?? ''}\n'
-                                  '${p['farmer_name'] ?? ''} ${p['net_weight'] != null ? '· ${p['net_weight']}kg' : ''}',
+                                  '溯源 ${t['trace_code'] ?? p['trace_code'] ?? ''}\n'
+                                  '净重 ${p['net_weight'] ?? '-'}kg · ${p['variety'] ?? p['product_name'] ?? ''}',
                                 ),
                                 isThreeLine: true,
                                 trailing: Wrap(
@@ -327,10 +441,19 @@ class _WarehousePageState extends State<WarehousePage> {
                                   children: [
                                     TextButton(onPressed: () => _claim(t), child: const Text('认领')),
                                     FilledButton(
-                                      onPressed: () => setState(() {
-                                        _active = t;
-                                        _verify.clear();
-                                      }),
+                                      onPressed: () {
+                                        final code = (t['trace_code'] ?? p['trace_code'] ?? '').toString();
+                                        setState(() {
+                                          _verify.text = code;
+                                          _active = {
+                                            ...t,
+                                            ...p,
+                                            'weigh_ticket_id': t['biz_id'],
+                                            'stockin_ready': true,
+                                          };
+                                          _scanHit = _active;
+                                        });
+                                      },
                                       child: const Text('核对'),
                                     ),
                                   ],
@@ -338,21 +461,6 @@ class _WarehousePageState extends State<WarehousePage> {
                               ),
                             );
                           }),
-                          if (_active != null) ...[
-                            const Divider(),
-                            Text('核对入库 · ${_active!['doc_no']}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                            Text('推送溯源码：${_active!['trace_code']}'),
-                            const SizedBox(height: 8),
-                            TraceCodeField(
-                              controller: _verify,
-                              label: '核对溯源码',
-                              hint: '点击输入，或点右侧图标扫码',
-                              scannerTitle: '扫描溯源码',
-                              textCapitalization: TextCapitalization.none,
-                            ),
-                            const SizedBox(height: 8),
-                            FilledButton(onPressed: _confirm, child: const Text('确认入库')),
-                          ],
                         ],
                       ),
                 ListView(

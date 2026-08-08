@@ -14,6 +14,7 @@ import SupplierView from './SupplierView.vue'
 import FarmerInboundView from './FarmerInboundView.vue'
 import WeighVarietyView from './WeighVarietyView.vue'
 import TraceBatchView from './TraceBatchView.vue'
+import FlowGraphEditorView from '../automation/FlowGraphEditorView.vue'
 
 type Row = Record<string, unknown>
 
@@ -23,6 +24,7 @@ const TITLE_MAP: Record<string, string> = {
   suppliers: '供应商管理',
   farmers: '农户档案',
   weigh: '过磅收货',
+  'flow-graphs': '过磅流程编排',
   varieties: '过磅品种',
   'trace-batches': '溯源批号',
   settlements: '农户结算',
@@ -40,6 +42,7 @@ const TITLE_MAP: Record<string, string> = {
 const active = computed(() => String(route.params.section || 'suppliers'))
 const title = computed(() => TITLE_MAP[active.value] || '采购管理')
 const isFarmerSection = computed(() => ['farmers', 'weigh', 'settlements', 'trace'].includes(active.value))
+const isFlowGraphSection = computed(() => active.value === 'flow-graphs')
 const isVarietySection = computed(() => active.value === 'varieties')
 const isTraceBatchSection = computed(() => active.value === 'trace-batches')
 const isSupplierSection = computed(() => active.value === 'suppliers')
@@ -125,7 +128,7 @@ async function loadMeta() {
 }
 
 async function refresh() {
-  if (isSupplierSection.value || isFarmerSection.value || isVarietySection.value || isTraceBatchSection.value) return
+  if (isSupplierSection.value || isFarmerSection.value || isVarietySection.value || isTraceBatchSection.value || isFlowGraphSection.value) return
   loading.value = true
   detail.value = null
   try {
@@ -346,6 +349,11 @@ onMounted(async () => {
     <WeighVarietyView v-else-if="isVarietySection" />
     <TraceBatchView v-else-if="isTraceBatchSection" />
     <FarmerInboundView v-else-if="isFarmerSection" :section="active" />
+    <div v-else-if="isFlowGraphSection" class="page">
+      <h2>过磅流程编排</h2>
+      <p class="hint">配置入厂/入库过磅岗序；运行时按图推送下一角色待办。</p>
+      <FlowGraphEditorView kind-filter="purchase" />
+    </div>
 
     <div v-else class="page" v-loading="loading">
       <div class="head">

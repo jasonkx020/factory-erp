@@ -220,8 +220,30 @@ func (s *Services) handleProcesses(c *gin.Context, method, action string) bool {
 		}
 		if action == "update" {
 			body := bindBody(c)
-			name, _ := body["name"].(string)
-			_, _ = s.DB.Exec(`UPDATE pd_process SET name=COALESCE(NULLIF(?,''),name) WHERE id=?`, name, id)
+			name := strOr(body["name"])
+			typ := strOr(body["process_type"])
+			sets := []string{}
+			args := []interface{}{}
+			if name != "" {
+				sets = append(sets, "name=?")
+				args = append(args, name)
+			}
+			if typ != "" {
+				sets = append(sets, "process_type=?")
+				args = append(args, typ)
+			}
+			if _, ok := body["is_piecework"]; ok {
+				sets = append(sets, "is_piecework=?")
+				args = append(args, boolToInt(asBool(body["is_piecework"])))
+			}
+			if _, ok := body["is_handover_point"]; ok {
+				sets = append(sets, "is_handover_point=?")
+				args = append(args, boolToInt(asBool(body["is_handover_point"])))
+			}
+			if len(sets) > 0 {
+				args = append(args, id)
+				_, _ = s.DB.Exec(`UPDATE pd_process SET `+strings.Join(sets, ",")+` WHERE id=?`, args...)
+			}
 			api.OK(c, gin.H{"id": id})
 			return true
 		}
@@ -790,7 +812,12 @@ func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
 			api.OK(c, gin.H{"list": list})
 			return true
 		case path == "/api/v1/iam/permissions":
-			rows, err := s.DB.Query(`SELECT id, code, name, domain, module, action FROM iam_permission WHERE is_deleted = 0`)
+			var n int
+			_ = s.DB.QueryRow(`SELECT COUNT(1) FROM iam_permission WHERE COALESCE(is_deleted,0)=0`).Scan(&n)
+			if n == 0 {
+				EnsureDomainPermissions(s.DB)
+			}
+			rows, err := s.DB.Query(`SELECT id, code, name, domain, module, action FROM iam_permission WHERE COALESCE(is_deleted,0)=0 ORDER BY domain, module, action, id`)
 			if err != nil {
 				api.FailJSON(c, "DB_ERROR")
 				return true
@@ -803,7 +830,7 @@ func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
 				_ = rows.Scan(&id, &code, &name, &domain, &module, &act)
 				list = append(list, gin.H{"id": id, "code": code, "name": name, "domain": domain, "module": module, "action": act})
 			}
-			api.OK(c, gin.H{"list": list})
+			api.OK(c, gin.H{"list": list, "total": len(list)})
 			return true
 		case path == "/api/v1/iam/login-policy":
 			var maxFail, lockMin, ttl, minLen, hist int
@@ -906,6 +933,7 @@ func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
 				_, _ = s.DB.Exec(`INSERT OR IGNORE INTO iam_user_role(user_id, role_id) VALUES(?,?)`, id, rid)
 			}
 		}
+		security.InvalidateUserRBAC(id)
 		api.OK(c, gin.H{"id": id, "login_name": login, "status": "active", "employee_id": empID})
 		return true
 	case strings.HasPrefix(path, "/api/v1/iam/users/") && strings.HasSuffix(path, "/roles") && method == "PUT":
@@ -917,6 +945,7 @@ func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
 			rid, _ := asInt64(r)
 			_, _ = s.DB.Exec(`INSERT INTO iam_user_role(user_id, role_id) VALUES(?,?)`, uid, rid)
 		}
+		security.InvalidateUserRBAC(uid)
 		api.OK(c, gin.H{"user_id": uid, "role_ids": roleIDs})
 		return true
 	case strings.HasSuffix(path, "/freeze") && method == "POST":
@@ -952,6 +981,13 @@ func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
 		return s.createRoleIAM(c)
 	case path == "/api/v1/iam/roles/{id}" && method == "PUT":
 		return s.updateRoleIAM(c)
+	case path == "/api/v1/iam/permissions/sync" && method == "POST":
+		EnsureDomainPermissions(s.DB)
+		security.InvalidateAllRBAC()
+		var total int
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM iam_permission WHERE COALESCE(is_deleted,0)=0`).Scan(&total)
+		api.OK(c, gin.H{"synced": true, "total": total})
+		return true
 	case path == "/api/v1/iam/roles/{id}/permissions" && method == "PUT":
 		rid := paramID(c)
 		body := bindBody(c)
@@ -973,6 +1009,7 @@ func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
 				}
 			}
 		}
+		security.InvalidateAllRBAC()
 		api.OK(c, gin.H{"role_id": rid})
 		return true
 	case path == "/api/v1/iam/menus" && method == "PUT":

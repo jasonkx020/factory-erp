@@ -257,6 +257,14 @@ func (s *Services) occupyTraceBatchCode(code string, ticketID int64) error {
 	return nil
 }
 
+func (s *Services) releaseTraceBatchCode(ticketID int64) {
+	if ticketID <= 0 {
+		return
+	}
+	_, _ = s.DB.Exec(`UPDATE pur_trace_batch_code SET status='available', weigh_ticket_id=NULL, used_at=NULL
+		WHERE weigh_ticket_id=? AND status='used'`, ticketID)
+}
+
 func (s *Services) voidTraceBatchCode(c *gin.Context) bool {
 	body := bindBody(c)
 	code := strings.ToUpper(strings.TrimSpace(strOr(body["code"])))

@@ -167,15 +167,26 @@ func (s *Services) tableUpdate(c *gin.Context, spec *tablespec.Spec) {
 			vals = append(vals, coerce(col, v))
 		}
 	}
-	if len(sets) == 0 {
+	hasLines := false
+	if spec.Lines != nil {
+		if _, ok := body["lines"].([]interface{}); ok {
+			hasLines = true
+		}
+		if _, ok := body["steps"].([]interface{}); ok {
+			hasLines = true
+		}
+	}
+	if len(sets) == 0 && !hasLines {
 		api.FailJSON(c, "EMPTY_BODY")
 		return
 	}
-	vals = append(vals, id)
-	_, err := s.DB.Exec(fmt.Sprintf(`UPDATE %s SET %s WHERE id=?`, spec.Table, strings.Join(sets, ",")), vals...)
-	if err != nil {
-		api.FailJSON(c, "DB_ERROR")
-		return
+	if len(sets) > 0 {
+		vals = append(vals, id)
+		_, err := s.DB.Exec(fmt.Sprintf(`UPDATE %s SET %s WHERE id=?`, spec.Table, strings.Join(sets, ",")), vals...)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR")
+			return
+		}
 	}
 	if spec.Lines != nil {
 		if lines, ok := body["lines"].([]interface{}); ok {

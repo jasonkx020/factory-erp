@@ -161,6 +161,7 @@ export const ADMIN_SPECIAL_MODULE_PATHS: Record<string, string> = {
   '采购管理/供应商管理': '/purchase/hub/suppliers',
   '采购管理/农户档案': '/purchase/hub/farmers',
   '采购管理/过磅收货': '/purchase/hub/weigh',
+  '采购管理/过磅流程编排': '/purchase/hub/flow-graphs',
   '采购管理/过磅品种': '/purchase/hub/varieties',
   '采购管理/溯源批号': '/purchase/hub/trace-batches',
   '采购管理/农户结算': '/purchase/hub/settlements',

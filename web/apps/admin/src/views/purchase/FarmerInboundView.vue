@@ -85,7 +85,7 @@ const onsiteFarmer = reactive({ name: '', mobile: '', origin: '' })
 const varieties = ref<Row[]>([])
 const confirmDlg = ref(false)
 const confirmTicket = ref<Row | null>(null)
-const confirmModel = reactive<Record<string, unknown>>({
+const confirmModel = ref<Record<string, unknown>>({
   gross_weight: '',
   deduct_rate: '',
   deduct_weight: '',
@@ -356,20 +356,23 @@ function onVarietyChange(id: number) {
 
 function openConfirm(row: Row) {
   confirmTicket.value = row
-  confirmModel.gross_weight = row.gross_weight
-  confirmModel.deduct_rate = row.deduct_rate
-  confirmModel.deduct_weight = row.deduct_weight
-  confirmModel.net_weight = row.net_weight
+  confirmModel.value = {
+    gross_weight: row.gross_weight,
+    deduct_rate: row.deduct_rate,
+    deduct_weight: row.deduct_weight,
+    net_weight: row.net_weight,
+  }
   confirmDlg.value = true
 }
 
 async function doConfirm() {
   const id = Number(confirmTicket.value?.id)
+  const m = confirmModel.value
   const res = await purchaseApi.confirmWeighTicket(id, {
-    gross_weight: Number(confirmModel.gross_weight),
-    deduct_rate: Number(confirmModel.deduct_rate),
-    deduct_weight: Number(confirmModel.deduct_weight),
-    net_weight: Number(confirmModel.net_weight),
+    gross_weight: Number(m.gross_weight),
+    deduct_rate: Number(m.deduct_rate),
+    deduct_weight: Number(m.deduct_weight),
+    net_weight: Number(m.net_weight),
     confirmed: true,
   })
   if (res.code !== 1) return ElMessage.error(res.msg)
@@ -387,12 +390,32 @@ function openPay(row: Row) {
   payDlg.value = true
 }
 
+async function uploadPayEvidence(file: File) {
+  const res = await bizApi.upload(file)
+  if (res.code !== 1) {
+    ElMessage.error(res.msg)
+    return false
+  }
+  const url = String((res.data as Row)?.url || (res.data as Row)?.file_url || '')
+  if (!url) {
+    ElMessage.error('上传无返回地址')
+    return false
+  }
+  payForm.pay_evidence_url = url
+  ElMessage.success('发票/转账截图已上传')
+  return false
+}
+
 async function doPay() {
   if (!payRow.value) return
-  if (!payForm.transfer_no || !payForm.pay_evidence_url) return ElMessage.warning('转账单号与回单必填')
+  if (!payForm.transfer_no || !payForm.pay_evidence_url) return ElMessage.warning('转账单号与发票/转账截图必填')
   const res = await purchaseApi.payFarmerSettlement(Number(payRow.value.id), { ...payForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success('已支付关单')
+  ElMessage.success(
+    res.data && (res.data as Row).ticket_id
+      ? `已支付关单，关联工单 #${(res.data as Row).ticket_id} 已办结`
+      : '已支付关单',
+  )
   payDlg.value = false
   await refresh()
 }
@@ -733,9 +756,17 @@ onMounted(refresh)
     </el-dialog>
 
     <el-dialog v-model="payDlg" title="财务支付关单" width="480px">
-      <el-form label-width="100px">
-        <el-form-item label="转账单号"><el-input v-model="payForm.transfer_no" /></el-form-item>
-        <el-form-item label="回单URL"><el-input v-model="payForm.pay_evidence_url" /></el-form-item>
+      <el-form label-width="110px">
+        <el-form-item label="转账单号" required><el-input v-model="payForm.transfer_no" /></el-form-item>
+        <el-form-item label="发票/转账截图" required>
+          <el-upload :show-file-list="false" :http-request="(opt: any) => uploadPayEvidence(opt.file)" accept="image/*">
+            <el-button type="primary" plain>上传图片</el-button>
+          </el-upload>
+          <div v-if="payForm.pay_evidence_url" style="margin-top:8px">
+            <el-image :src="payForm.pay_evidence_url" style="width:160px;height:100px" fit="contain" />
+            <div class="muted" style="font-size:12px;word-break:break-all">{{ payForm.pay_evidence_url }}</div>
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="payDlg = false">取消</el-button>

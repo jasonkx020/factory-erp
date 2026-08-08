@@ -542,9 +542,24 @@ CREATE TABLE IF NOT EXISTS pd_routing (
   product_id INTEGER,
   version_no TEXT NOT NULL DEFAULT 'V1',
   status TEXT NOT NULL DEFAULT 'active',
+  graph_json TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   is_deleted INTEGER NOT NULL DEFAULT 0,
   UNIQUE(code, version_no)
+);
+
+CREATE TABLE IF NOT EXISTS pd_flow_graph (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft',
+  routing_id INTEGER,
+  graph_json TEXT NOT NULL DEFAULT '{}',
+  version_no TEXT NOT NULL DEFAULT 'V1',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  is_deleted INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS pd_routing_step (

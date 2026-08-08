@@ -62,15 +62,15 @@ func (h *Handler) Login(c *gin.Context) {
 		api.FailJSON(c, "USER_FROZEN")
 		return
 	}
-	roles, perms := h.loadRolesPerms(id)
-	claims := security.Claims{
-		UserID:      id,
-		LoginName:   req.LoginName,
-		UserType:    userType,
-		ClientType:  clientType,
-		Roles:       roles,
-		Permissions: perms,
-	}
+	roles, perms := security.LoadUserRolesPerms(h.DB, id)
+	security.InvalidateUserRBAC(id)
+	claims := security.SlimForToken(security.Claims{
+		UserID:     id,
+		LoginName:  req.LoginName,
+		UserType:   userType,
+		ClientType: clientType,
+		Roles:      roles,
+	})
 	access, err := security.IssueToken(h.Cfg.JWT.Secret, h.Cfg.JWT.AccessTTLMin, claims)
 	if err != nil {
 		api.FailJSON(c, "TOKEN_ERROR")
@@ -111,19 +111,33 @@ func (h *Handler) Refresh(c *gin.Context) {
 		return
 	}
 	claims.ClientType = security.NormalizeClientType(claims.ClientType)
-	access, err := security.IssueToken(h.Cfg.JWT.Secret, h.Cfg.JWT.AccessTTLMin, *claims)
+	roles, perms := security.LoadUserRolesPerms(h.DB, claims.UserID)
+	security.InvalidateUserRBAC(claims.UserID)
+	slim := security.SlimForToken(security.Claims{
+		UserID:     claims.UserID,
+		LoginName:  claims.LoginName,
+		UserType:   claims.UserType,
+		ClientType: claims.ClientType,
+		Roles:      roles,
+	})
+	access, err := security.IssueToken(h.Cfg.JWT.Secret, h.Cfg.JWT.AccessTTLMin, slim)
 	if err != nil {
 		api.FailJSON(c, "TOKEN_ERROR")
 		return
 	}
+	// Also rotate refresh to drop legacy fat tokens that embedded permissions.
+	refresh, err := security.IssueToken(h.Cfg.JWT.Secret, h.Cfg.JWT.RefreshTTLMin, slim)
+	if err != nil {
+		refresh = req.RefreshToken
+	}
 	h.saveSession(c, claims.UserID, access, claims.ClientType, h.Cfg.JWT.AccessTTLMin)
 	api.OK(c, gin.H{
 		"access_token":  access,
-		"refresh_token": req.RefreshToken,
+		"refresh_token": refresh,
 		"expires_in":    h.Cfg.JWT.AccessTTLMin * 60,
 		"client_type":   claims.ClientType,
-		"roles":         claims.Roles,
-		"permissions":   claims.Permissions,
+		"roles":         roles,
+		"permissions":   perms,
 	})
 }
 
@@ -158,6 +172,7 @@ func (h *Handler) Me(c *gin.Context) {
 		c.JSON(401, api.Response{Code: 0, Msg: "UNAUTHORIZED"})
 		return
 	}
+	roles, perms := security.CachedUserRolesPerms(h.DB, claims.UserID)
 	menus := h.loadMenus(claims.UserID)
 	fields := h.loadFieldPolicies(claims.UserID)
 	var empID sql.NullInt64
@@ -173,8 +188,8 @@ func (h *Handler) Me(c *gin.Context) {
 			"name":        empName,
 		},
 		"client_type":    claims.ClientType,
-		"roles":          claims.Roles,
-		"permissions":    claims.Permissions,
+		"roles":          roles,
+		"permissions":    perms,
 		"menus":          menus,
 		"field_policies": fields,
 	})
@@ -199,37 +214,6 @@ func truncateUA(ua string) string {
 		return ua[:512]
 	}
 	return ua
-}
-
-func (h *Handler) loadRolesPerms(userID int64) ([]string, []string) {
-	roles := []string{}
-	rows, err := h.DB.Query(`
-		SELECT r.code FROM iam_user_role ur
-		JOIN iam_role r ON r.id = ur.role_id
-		WHERE ur.user_id = ?`, userID)
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var code string
-			_ = rows.Scan(&code)
-			roles = append(roles, code)
-		}
-	}
-	perms := []string{}
-	prows, err := h.DB.Query(`
-		SELECT DISTINCT p.code FROM iam_user_role ur
-		JOIN iam_role_permission rp ON rp.role_id = ur.role_id
-		JOIN iam_permission p ON p.id = rp.permission_id
-		WHERE ur.user_id = ?`, userID)
-	if err == nil {
-		defer prows.Close()
-		for prows.Next() {
-			var code string
-			_ = prows.Scan(&code)
-			perms = append(perms, code)
-		}
-	}
-	return roles, perms
 }
 
 func (h *Handler) loadMenus(userID int64) []gin.H {

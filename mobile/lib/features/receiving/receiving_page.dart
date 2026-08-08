@@ -9,6 +9,7 @@ import '../../core/auth_state.dart';
 import '../../core/employee_modules.dart';
 import '../../core/notify_service.dart';
 import '../../widgets/trace_code_field.dart';
+import 'gate_inbound_wizard.dart';
 
 /// 现场过磅收货：入厂/入库双模 → 批号+拍照 → 质检 → 确认出码 → 推仓管
 /// [initialReceiveKind] / [lockKind]：供主壳「+」快捷入口锁定过磅入厂或入库表单
@@ -176,6 +177,12 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
     _varietyId = (m['id'] as num?)?.toInt();
     final pid = (m['default_product_id'] as num?)?.toInt() ?? 0;
     _productId = pid > 0 ? pid : 1;
+    final name = '${m['name'] ?? m['code'] ?? ''}'.toLowerCase();
+    if (name.contains('半成品') || name.contains('semi')) {
+      _coldStore = 'semi';
+    } else if (_receiveKind == 'gate') {
+      _coldStore = 'fresh';
+    }
   }
 
   void _onFarmerSearchChanged(String q) {
@@ -410,18 +417,23 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
     }
   }
 
-  Future<void> _create() async {
+  Future<bool> _create({
+    String? nextRole,
+    String? nextNodeId,
+    int? nextAssigneeUserId,
+    bool? qualified,
+  }) async {
     if (!_batchOk) {
       await _validateBatch();
-      if (!_batchOk) return;
+      if (!_batchOk) return false;
     }
     if (_photoUrls.isEmpty) {
       setState(() => _msg = '请现场拍照留底');
-      return;
+      return false;
     }
     if (_receiveKind == 'gate' && (_farmerId == null || _farmerId! <= 0) && _partyName.text.trim().isEmpty) {
       setState(() => _msg = '入厂须搜索关联农户，或现场录入');
-      return;
+      return false;
     }
     String varietyName = '鲜木薯';
     for (final e in _varieties) {
@@ -457,24 +469,30 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
       final gross = double.tryParse(_gross.text) ?? 0;
       if (gross <= 0) {
         setState(() => _msg = '请输入入场重量');
-        return;
+        return false;
       }
+      var reject = double.tryParse(_reject.text) ?? 0;
+      if (qualified == true) reject = 0;
       body.addAll({
         'gross_weight': gross,
         'deduct_rate': double.tryParse(_deductRate.text) ?? 0,
-        'reject_weight': double.tryParse(_reject.text) ?? 0,
+        'reject_weight': reject,
         'unit_price': double.tryParse(_unitPrice.text) ?? 0,
         'plate_no': _plate.text.trim(),
         'receive_address': _recvAddr.text.trim(),
         'freight_fee': double.tryParse(_freight.text) ?? 0,
         'loading_fee': double.tryParse(_loadingFee.text) ?? 0,
         'weigh_fee': double.tryParse(_weighFee.text) ?? 0,
+        'cold_store_type': _coldStore,
+        if (nextRole != null && nextRole.isNotEmpty) 'next_role': nextRole,
+        if (nextNodeId != null && nextNodeId.isNotEmpty) 'next_node_id': nextNodeId,
+        if (nextAssigneeUserId != null && nextAssigneeUserId > 0) 'next_assignee_user_id': nextAssigneeUserId,
       });
     } else {
       final net = double.tryParse(_netWeight.text) ?? 0;
       if (net <= 0) {
         setState(() => _msg = '请输入入库重量');
-        return;
+        return false;
       }
       body.addAll({
         'net_weight': net,
@@ -483,12 +501,12 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
       });
     }
     final r = await context.read<AuthState>().api.post('/purchase/weigh-tickets', body);
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() => _msg = r.ok ? '草稿已创建 #${(r.data is Map) ? (r.data as Map)['doc_no'] : ''}' : r.msg);
     if (r.ok) {
       if (widget.popOnCreated) {
         Navigator.of(context).pop(true);
-        return;
+        return true;
       }
       _gross.clear();
       _netWeight.clear();
@@ -496,9 +514,73 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
       _photoUrls.clear();
       _batchOk = false;
       _boundFarmerName = '';
+      _farmerId = null;
+      _farmerHits = [];
       await _refresh();
       _tabs.animateTo(1);
+      return true;
     }
+    return false;
+  }
+
+  Widget _gateWizard() {
+    return GateInboundWizard(
+      batchNo: _batchNo,
+      unitPrice: _unitPrice,
+      deductRate: _deductRate,
+      reject: _reject,
+      freight: _freight,
+      loadingFee: _loadingFee,
+      weighFee: _weighFee,
+      gross: _gross,
+      plate: _plate,
+      recvAddr: _recvAddr,
+      remark: _remark,
+      farmerSearch: _farmerSearch,
+      partyName: _partyName,
+      partyMobile: _partyMobile,
+      origin: _origin,
+      batchOk: _batchOk,
+      photoUrls: _photoUrls,
+      varieties: _varieties,
+      varietyId: _varietyId,
+      channel: _channel,
+      coldStore: _coldStore,
+      grade: _grade,
+      farmerId: _farmerId,
+      farmerHits: _farmerHits,
+      searchingFarmer: _searchingFarmer,
+      msg: _msg,
+      onBatchChanged: (_) => setState(() {
+        _batchOk = false;
+        _boundFarmerName = '';
+      }),
+      onValidateBatch: _validateBatch,
+      onFarmerSearchChanged: (v) {
+        if (_farmerId != null) setState(() => _farmerId = null);
+        _onFarmerSearchChanged(v);
+      },
+      onSearchFarmers: _searchFarmers,
+      onApplyFarmer: (m) => setState(() {
+        _applyFarmer(m);
+        _farmerHits = [];
+      }),
+      onClearFarmer: () => setState(_clearFarmerLink),
+      onShowOnsiteFarmer: _showOnsiteFarmerDialog,
+      onApplyVariety: (m) => setState(() => _applyVariety(m)),
+      onChannelChanged: (v) => setState(() => _channel = v),
+      onColdStoreChanged: (v) => setState(() => _coldStore = v),
+      onGradeChanged: (v) => setState(() => _grade = v),
+      onTakePhoto: _takePhoto,
+      onRemovePhoto: (i) => setState(() => _photoUrls.removeAt(i)),
+      onMsg: (m) => setState(() => _msg = m),
+      onSubmit: ({required nextRole, nextNodeId, nextAssigneeUserId, required qualified}) => _create(
+        nextRole: nextRole,
+        nextNodeId: nextNodeId,
+        nextAssigneeUserId: nextAssigneeUserId,
+        qualified: qualified,
+      ),
+    );
   }
 
   Future<void> _qc(Map row, {required bool pass}) async {
@@ -568,79 +650,6 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
 
   String _kindLabel(String k) => k == 'stockin' ? '入库' : '入厂';
 
-  List<Widget> _farmerSection() {
-    return [
-      const Text('农户（平台共享）', style: TextStyle(fontWeight: FontWeight.w600)),
-      const SizedBox(height: 4),
-      TextField(
-        controller: _farmerSearch,
-        decoration: InputDecoration(
-          labelText: '手机号 / 姓名（模糊搜索）',
-          hintText: '输入后自动匹配共享农户',
-          suffixIcon: _searchingFarmer
-              ? const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-                )
-              : IconButton(icon: const Icon(Icons.search), onPressed: () => _searchFarmers(_farmerSearch.text)),
-        ),
-        onChanged: (v) {
-          if (_farmerId != null) {
-            setState(() => _farmerId = null);
-          }
-          _onFarmerSearchChanged(v);
-        },
-        onSubmitted: _searchFarmers,
-      ),
-      if (_farmerHits.isNotEmpty)
-        Card(
-          margin: const EdgeInsets.only(top: 6, bottom: 6),
-          child: Column(
-            children: [
-              for (final e in _farmerHits.take(8))
-                ListTile(
-                  dense: true,
-                  title: Text('${(e as Map)['name'] ?? ''}'),
-                  subtitle: Text('${e['mobile'] ?? ''} · ${e['origin'] ?? ''}'),
-                  trailing: const Icon(Icons.check_circle_outline),
-                  onTap: () => setState(() {
-                    _applyFarmer(Map<String, dynamic>.from(e));
-                    _farmerHits = [];
-                  }),
-                ),
-            ],
-          ),
-        ),
-      if (_farmerSearch.text.trim().isNotEmpty && !_searchingFarmer && _farmerHits.isEmpty && _farmerId == null)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Row(
-            children: [
-              const Expanded(child: Text('未找到匹配农户', style: TextStyle(color: Colors.orange))),
-              FilledButton.tonal(onPressed: _showOnsiteFarmerDialog, child: const Text('现场录入')),
-            ],
-          ),
-        ),
-      if (_farmerId != null)
-        Chip(
-          avatar: const Icon(Icons.link, size: 16),
-          label: Text('已关联农户 #$_farmerId ${_partyName.text}'),
-          onDeleted: () => setState(_clearFarmerLink),
-        ),
-      TextField(controller: _partyName, decoration: const InputDecoration(labelText: '姓名（可改快照）')),
-      TextField(controller: _partyMobile, decoration: const InputDecoration(labelText: '电话'), keyboardType: TextInputType.phone),
-      TextField(controller: _origin, decoration: InputDecoration(labelText: _receiveKind == 'stockin' ? '产地地址' : '产地')),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton.icon(
-          onPressed: _showOnsiteFarmerDialog,
-          icon: const Icon(Icons.person_add_alt),
-          label: const Text('现场新建农户'),
-        ),
-      ),
-    ];
-  }
-
   List<Widget> _batchSection() {
     return [
       const Text('溯源批号', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -676,7 +685,8 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
     ];
   }
 
-  List<Widget> _formFields() {
+  /// 入库模式仍用单页表单；入厂走 [_gateWizard]。
+  List<Widget> _stockinFormFields() {
     return [
       if (!_kindLocked)
         SegmentedButton<String>(
@@ -690,26 +700,20 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
       else
         ListTile(
           contentPadding: EdgeInsets.zero,
-          leading: Icon(_receiveKind == 'stockin' ? Icons.warehouse_outlined : Icons.login),
-          title: Text(_receiveKind == 'stockin' ? '过磅入库' : '过磅入厂'),
-          subtitle: Text(
-            _receiveKind == 'gate' ? '入厂须绑定农户，占用溯源批号' : '入库凭溯源批号跟踪，自动带出入厂关联农户',
-          ),
+          leading: const Icon(Icons.warehouse_outlined),
+          title: const Text('过磅入库'),
+          subtitle: const Text('入库凭溯源批号跟踪，自动带出入厂关联农户'),
         ),
       if (!_kindLocked)
-        Padding(
-          padding: const EdgeInsets.only(top: 6, bottom: 4),
+        const Padding(
+          padding: EdgeInsets.only(top: 6, bottom: 4),
           child: Text(
-            _receiveKind == 'gate' ? '入厂须绑定农户，占用溯源批号' : '入库凭溯源批号跟踪，自动带出入厂关联农户',
-            style: const TextStyle(fontSize: 12, color: Colors.black54),
+            '入库凭溯源批号跟踪，自动带出入厂关联农户',
+            style: TextStyle(fontSize: 12, color: Colors.black54),
           ),
         ),
       const SizedBox(height: 8),
       ..._batchSection(),
-      if (_receiveKind == 'gate') ...[
-        const SizedBox(height: 12),
-        ..._farmerSection(),
-      ],
       const SizedBox(height: 8),
       if (_varieties.isEmpty)
         const Padding(
@@ -730,51 +734,20 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
             if (hit.isNotEmpty) setState(() => _applyVariety(hit.first));
           },
         ),
-      if (_receiveKind == 'gate') ...[
-        SegmentedButton<String>(
-          segments: const [
-            ButtonSegment(value: 'internal', label: Text('厂内秤')),
-            ButtonSegment(value: 'external', label: Text('外磅单')),
-          ],
-          selected: {_channel},
-          onSelectionChanged: (s) => setState(() => _channel = s.first),
-        ),
-        TextField(controller: _gross, decoration: const InputDecoration(labelText: '入场重量(kg)'), keyboardType: TextInputType.number),
-        TextField(controller: _deductRate, decoration: const InputDecoration(labelText: '扣损率(% 或小数)'), keyboardType: TextInputType.number),
-        TextField(controller: _reject, decoration: const InputDecoration(labelText: '不合格重量(kg)'), keyboardType: TextInputType.number),
-        TextField(controller: _unitPrice, decoration: const InputDecoration(labelText: '单价(元/kg)'), keyboardType: TextInputType.number),
-        TextField(controller: _plate, decoration: const InputDecoration(labelText: '车牌号')),
-        TextField(controller: _recvAddr, decoration: const InputDecoration(labelText: '收货地址')),
-        TextField(controller: _freight, decoration: const InputDecoration(labelText: '运费'), keyboardType: TextInputType.number),
-        TextField(controller: _loadingFee, decoration: const InputDecoration(labelText: '装卸费'), keyboardType: TextInputType.number),
-        TextField(controller: _weighFee, decoration: const InputDecoration(labelText: '过磅费'), keyboardType: TextInputType.number),
-        DropdownButtonFormField<String>(
-          value: _grade,
-          decoration: const InputDecoration(labelText: '等级(质检用)'),
-          items: const [
-            DropdownMenuItem(value: 'A', child: Text('A')),
-            DropdownMenuItem(value: 'B', child: Text('B')),
-            DropdownMenuItem(value: 'C', child: Text('C')),
-          ],
-          onChanged: (v) => setState(() => _grade = v ?? 'A'),
-        ),
-      ] else ...[
-        TextField(controller: _netWeight, decoration: const InputDecoration(labelText: '重量(kg)'), keyboardType: TextInputType.number),
-        TextField(controller: _bagQty, decoration: const InputDecoration(labelText: '袋数'), keyboardType: TextInputType.number),
-        DropdownButtonFormField<String>(
-          value: _coldStore,
-          decoration: const InputDecoration(labelText: '冷库类型'),
-          items: const [
-            DropdownMenuItem(value: 'fresh', child: Text('保鲜库')),
-            DropdownMenuItem(value: 'semi', child: Text('半成品库')),
-            DropdownMenuItem(value: 'fg', child: Text('成品库')),
-          ],
-          onChanged: (v) => setState(() => _coldStore = v ?? 'fresh'),
-        ),
-      ],
+      TextField(controller: _netWeight, decoration: const InputDecoration(labelText: '重量(kg)'), keyboardType: TextInputType.number),
+      TextField(controller: _bagQty, decoration: const InputDecoration(labelText: '袋数'), keyboardType: TextInputType.number),
+      DropdownButtonFormField<String>(
+        value: _coldStore,
+        decoration: const InputDecoration(labelText: '冷库类型'),
+        items: const [
+          DropdownMenuItem(value: 'fresh', child: Text('保鲜库')),
+          DropdownMenuItem(value: 'semi', child: Text('半成品库')),
+          DropdownMenuItem(value: 'fg', child: Text('成品库')),
+        ],
+        onChanged: (v) => setState(() => _coldStore = v ?? 'fresh'),
+      ),
       const SizedBox(height: 8),
-      if (_receiveKind == 'stockin')
-        TextField(controller: _origin, decoration: const InputDecoration(labelText: '产地地址')),
+      TextField(controller: _origin, decoration: const InputDecoration(labelText: '产地地址')),
       Row(
         children: [
           FilledButton.tonalIcon(onPressed: _takePhoto, icon: const Icon(Icons.photo_camera), label: const Text('现场拍照')),
@@ -795,9 +768,32 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
         ),
       TextField(controller: _remark, decoration: const InputDecoration(labelText: '备注')),
       const SizedBox(height: 12),
-      FilledButton(onPressed: _create, child: Text('创建${_kindLabel(_receiveKind)}草稿')),
+      FilledButton(onPressed: () => _create(), child: const Text('创建入库草稿')),
       if (_msg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_msg)),
     ];
+  }
+
+  Widget _createTabBody() {
+    if (_receiveKind == 'gate') {
+      return Column(
+        children: [
+          if (!_kindLocked)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'gate', label: Text('过磅入厂'), icon: Icon(Icons.login, size: 18)),
+                  ButtonSegment(value: 'stockin', label: Text('过磅入库'), icon: Icon(Icons.warehouse_outlined, size: 18)),
+                ],
+                selected: {_receiveKind},
+                onSelectionChanged: (s) => _onReceiveKindChanged(s.first),
+              ),
+            ),
+          Expanded(child: _gateWizard()),
+        ],
+      );
+    }
+    return ListView(padding: const EdgeInsets.all(16), children: _stockinFormFields());
   }
 
   @override
@@ -820,7 +816,7 @@ class _ReceivingPageState extends State<ReceivingPage> with SingleTickerProvider
           : TabBarView(
               controller: _tabs,
               children: [
-                ListView(padding: const EdgeInsets.all(16), children: _formFields()),
+                _createTabBody(),
                 RefreshIndicator(
                   onRefresh: _refresh,
                   child: ListView.builder(

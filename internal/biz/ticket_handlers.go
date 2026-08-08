@@ -98,6 +98,21 @@ func seedTicketCategories(db *sql.DB) {
 				_, _ = db.Exec(`INSERT OR IGNORE INTO wf_ticket_category_handler(category_id, handler_type, handler_ref) VALUES(?,'role',?)`, catID, roleID)
 			}
 		}
+		// 过磅入厂 → 采购/仓管可处理；过磅入库 → 仓管
+		extraRoles := []string{}
+		switch seed.Code {
+		case "farm_inbound":
+			extraRoles = []string{"purchase", "warehouse", "qc"}
+		case "stock_inbound":
+			extraRoles = []string{"warehouse", "purchase"}
+		}
+		for _, roleCode := range extraRoles {
+			var roleID int64
+			_ = db.QueryRow(`SELECT id FROM iam_role WHERE code=? LIMIT 1`, roleCode).Scan(&roleID)
+			if roleID > 0 {
+				_, _ = db.Exec(`INSERT OR IGNORE INTO wf_ticket_category_handler(category_id, handler_type, handler_ref) VALUES(?,'role',?)`, catID, roleID)
+			}
+		}
 	}
 }
 
@@ -365,6 +380,52 @@ func (s *Services) categoryIDByCode(code string) int64 {
 	return id
 }
 
+func (s *Services) firstHandlerUserID(catID int64) int64 {
+	for _, p := range s.resolveHandlerPool(catID) {
+		if uid := asInt64Or0(p["user_id"]); uid > 0 {
+			return uid
+		}
+	}
+	return 0
+}
+
+// spawnWeighCollabTicket links a weigh draft to a workflow ticket so it shows under「我发起的」.
+func (s *Services) spawnWeighCollabTicket(c *gin.Context, kind string, weighID int64, docNo string, payload map[string]interface{}) int64 {
+	EnsureTicketSchema(s.DB)
+	code := "farm_inbound"
+	name := "过磅入厂"
+	if kind == "stockin" {
+		code = "stock_inbound"
+		name = "过磅入库"
+	}
+	catID := s.categoryIDByCode(code)
+	if catID <= 0 {
+		return 0
+	}
+	cl := middleware.Claims(c)
+	applicant := int64(0)
+	if cl != nil {
+		applicant = cl.UserID
+	}
+	if applicant <= 0 {
+		return 0
+	}
+	assignee := s.firstHandlerUserID(catID)
+	if assignee <= 0 {
+		assignee = applicant
+	}
+	title := fmt.Sprintf("%s · %s", name, docNo)
+	if batch := strOr(payload["batch_no"]); batch != "" {
+		title = fmt.Sprintf("%s · %s · %s", name, batch, docNo)
+	}
+	payloadB, _ := json.Marshal(payload)
+	tid, _, err := s.createTicket(c, catID, title, applicant, assignee, "weigh_ticket", weighID, string(payloadB), "")
+	if err != nil {
+		return 0
+	}
+	return tid
+}
+
 func (s *Services) assigneeInPool(catID, userID int64) bool {
 	for _, p := range s.resolveHandlerPool(catID) {
 		if id, _ := asInt64(p["user_id"]); id == userID {
@@ -372,6 +433,47 @@ func (s *Services) assigneeInPool(catID, userID int64) bool {
 		}
 	}
 	return false
+}
+
+// requireOpenTicketAssignee ensures the caller is the current holder of the open
+// collaboration ticket for bizType/bizID. sys_admin bypasses. Returns false after writing error.
+func (s *Services) requireOpenTicketAssignee(c *gin.Context, bizType string, bizID int64) bool {
+	cl := middleware.Claims(c)
+	if cl == nil {
+		api.FailJSON(c, "UNAUTHORIZED")
+		return false
+	}
+	if claimsIsSysAdmin(cl.Roles, cl.Permissions) {
+		return true
+	}
+	if bizID <= 0 || bizType == "" {
+		api.FailJSON(c, "TICKET_ASSIGNEE_REQUIRED")
+		return false
+	}
+	var tid, assignee int64
+	_ = s.DB.QueryRow(`SELECT id, COALESCE(current_assignee_user_id,0) FROM wf_ticket
+		WHERE biz_type=? AND biz_id=? AND status IN ('open','in_progress') ORDER BY id DESC LIMIT 1`, bizType, bizID).
+		Scan(&tid, &assignee)
+	if tid <= 0 {
+		api.FailJSON(c, "TICKET_ASSIGNEE_REQUIRED")
+		return false
+	}
+	if assignee != cl.UserID {
+		api.FailJSON(c, "PERM_DENIED")
+		return false
+	}
+	return true
+}
+
+// firstPoolUserExcluding returns first handler-pool user except excludeID.
+func (s *Services) firstPoolUserExcluding(catID, excludeID int64) int64 {
+	for _, p := range s.resolveHandlerPool(catID) {
+		uid := asInt64Or0(p["user_id"])
+		if uid > 0 && uid != excludeID {
+			return uid
+		}
+	}
+	return 0
 }
 
 func (s *Services) handleTickets(c *gin.Context, method, action string) bool {
@@ -440,12 +542,16 @@ func (s *Services) listTickets(c *gin.Context) bool {
 		var id, catID, applicant, assignee, bizID int64
 		var docNo, catCode, catName, title, status, bizType, payload, created, updated, closed string
 		_ = rows.Scan(&id, &docNo, &catID, &catCode, &catName, &title, &status, &applicant, &assignee, &bizType, &bizID, &payload, &created, &updated, &closed)
-		list = append(list, gin.H{
+		row := gin.H{
 			"id": id, "doc_no": docNo, "category_id": catID, "category_code": catCode, "category_name": catName,
 			"title": title, "status": status, "applicant_user_id": applicant, "current_assignee_user_id": assignee,
 			"applicant_name": s.userDisplayName(applicant), "assignee_name": s.userDisplayName(assignee),
 			"biz_type": bizType, "biz_id": bizID, "payload_json": payload, "created_at": created, "updated_at": updated, "closed_at": closed,
-		})
+		}
+		if bizType == "weigh_ticket" && claimsIsWarehouseOnly(cl) {
+			row["payload_json"] = maskWeighPayloadJSON(payload)
+		}
+		list = append(list, row)
 	}
 	api.PageOK(c, list, total, pageNum, pageSize)
 	return true
@@ -473,6 +579,30 @@ func (s *Services) getTicket(c *gin.Context) bool {
 	}
 	d["logs"] = s.listTicketLogs(id)
 	d["pool"] = s.resolveHandlerPool(asInt64Or0(d["category_id"]))
+	cl := middleware.Claims(c)
+	bizType := strOr(d["biz_type"])
+	bizID := asInt64Or0(d["biz_id"])
+	payload := parsePayloadMap(strOr(d["payload_json"]))
+	if bizType == "weigh_ticket" && claimsIsWarehouseOnly(cl) {
+		payload = maskWeighPayloadForWarehouse(payload)
+	}
+	// 过磅工单：所有可见角色均可看现场图（仓管脱敏后仍保留图片字段）
+	if bizType == "weigh_ticket" && bizID > 0 {
+		wt := s.loadWeighTicket(bizID)
+		urls, evs := s.collectWeighVerifyMedia(bizID, strOr(wt["image_url"]))
+		if len(urls) > 0 {
+			payload["image_url"] = urls[0]
+			payload["image_urls"] = urls
+			payload["verify_images"] = urls
+			payload["site_photos"] = urls
+		}
+		if len(evs) > 0 {
+			payload["evidences"] = evs
+		}
+	}
+	b, _ := json.Marshal(payload)
+	d["payload_json"] = string(b)
+	d["payload"] = payload
 	api.OK(c, d)
 	return true
 }
@@ -633,7 +763,8 @@ func (s *Services) assignTicket(c *gin.Context) bool {
 	}
 	cur := asInt64Or0(t["current_assignee_user_id"])
 	admin := claimsIsSysAdmin(cl.Roles, cl.Permissions)
-	if !admin && cur != cl.UserID && asInt64Or0(t["applicant_user_id"]) != cl.UserID {
+	// 仅当前处理人（或系统管理员）可改派，申请人不可代为处理/改派。
+	if !admin && cur != cl.UserID {
 		api.FailJSON(c, "PERM_DENIED")
 		return true
 	}
@@ -686,6 +817,77 @@ func (s *Services) actionTicketBody(c *gin.Context, id int64, body map[string]in
 	catID := asInt64Or0(t["category_id"])
 	bizType := strOr(t["biz_type"])
 	bizID := asInt64Or0(t["biz_id"])
+
+	if bizType == "weigh_ticket" && bizID > 0 {
+		switch action {
+		case "warehouse_confirm":
+			if !s.requireAnyRole(c, "warehouse") {
+				return false
+			}
+			body["verified"] = true
+			body["match_confirmed"] = true
+			_, errCode, _ := s.applyVerifiedWeighStockIn(c, bizID, body)
+			if errCode != "" {
+				api.FailJSON(c, errCode)
+				return false
+			}
+			s.appendTicketLog(id, "warehouse_confirm", cl.UserID, 0, comment)
+			return true
+		case "settle_pay":
+			if !s.requireAnyRole(c, "finance") {
+				return false
+			}
+			var sid int64
+			_ = s.DB.QueryRow(`SELECT id FROM pur_farmer_settlement WHERE weigh_ticket_id=? ORDER BY id DESC LIMIT 1`, bizID).Scan(&sid)
+			if sid <= 0 {
+				api.FailJSON(c, "SETTLEMENT_NOT_FOUND")
+				return false
+			}
+			transferNo := strOr(body["transfer_no"])
+			payURL := strOrDef(body["pay_evidence_url"], strOr(body["image_url"]))
+			if transferNo == "" {
+				api.FailJSON(c, "TRANSFER_NO_REQUIRED")
+				return false
+			}
+			if payURL == "" {
+				api.FailJSON(c, "EVIDENCE_INCOMPLETE:pay_receipt")
+				return false
+			}
+			var st string
+			_ = s.DB.QueryRow(`SELECT status FROM pur_farmer_settlement WHERE id=?`, sid).Scan(&st)
+			if st == "settle_paid" {
+				api.FailJSON(c, "ALREADY_PAID")
+				return false
+			}
+			_, _ = s.addEvidence(c, "farmer_settlement", sid, "pay_receipt", payURL, gin.H{"transfer_no": transferNo})
+			_, err := s.DB.Exec(`UPDATE pur_farmer_settlement SET status='settle_paid', transfer_no=?, paid_at=datetime('now'), pay_evidence_url=? WHERE id=?`,
+				transferNo, payURL, sid)
+			if err != nil {
+				api.FailJSON(c, "DB_ERROR:"+err.Error())
+				return false
+			}
+			s.closeWeighTicketByBiz(bizID, cl.UserID, "settle_pay:"+transferNo)
+			s.appendTicketLog(id, "settle_pay", cl.UserID, 0, comment)
+			if s.Notify != nil {
+				s.Notify.CompleteTask("farmer_settlement", sid)
+				s.Notify.CompleteTask("weigh_ticket", bizID, "purchase.stocked")
+				s.Notify.NotifyNext(c, notify.Event{
+					Key: "purchase.settle_paid", BizType: "farmer_settlement", BizID: sid,
+					FromRole: "finance", ToRoles: []string{"purchase"}, CreateTask: false,
+					Payload: gin.H{"transfer_no": transferNo},
+				})
+			}
+			return true
+		case "approve", "close":
+			var sid int64
+			var st string
+			_ = s.DB.QueryRow(`SELECT id, status FROM pur_farmer_settlement WHERE weigh_ticket_id=? ORDER BY id DESC LIMIT 1`, bizID).Scan(&sid, &st)
+			if sid > 0 && st != "settle_paid" && claimsHasAnyRole(cl, "finance") {
+				api.FailJSON(c, "SETTLE_PAY_REQUIRED")
+				return false
+			}
+		}
+	}
 
 	switch action {
 	case "approve", "return_confirm", "close":

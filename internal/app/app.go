@@ -59,7 +59,7 @@ func New(cfgPath string) (*App, error) {
 		"/files",
 	}
 	eng.Use(middleware.Metrics())
-	eng.Use(middleware.JWT(cfg.JWT.Secret, permit))
+	eng.Use(middleware.JWT(cfg.JWT.Secret, db.SQL, permit))
 	eng.Use(middleware.Audit(db.SQL))
 	_ = os.MkdirAll(filepath.Join("data", "uploads"), 0o755)
 	eng.Static("/files", "data")

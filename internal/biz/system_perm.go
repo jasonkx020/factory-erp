@@ -62,6 +62,9 @@ func isSystemProtectedResource(resourceKey string) bool {
 	if _, ok := systemResourceModule[resourceKey]; ok {
 		return true
 	}
+	if strings.HasPrefix(resourceKey, "iam/permissions") {
+		return true
+	}
 	return strings.HasPrefix(resourceKey, "system/")
 }
 
@@ -113,6 +116,9 @@ func CheckSystemAPIPerm(c *gin.Context, resourceKey, action, method string) bool
 	}
 
 	module, ok := systemResourceModule[resourceKey]
+	if !ok && strings.HasPrefix(resourceKey, "iam/permissions") {
+		module, ok = "自定义权限", true
+	}
 	if !ok {
 		c.AbortWithStatusJSON(http.StatusForbidden, api.Response{Code: 0, Msg: "PERM_DENIED"})
 		return false
@@ -131,14 +137,20 @@ func CheckSystemAPIPerm(c *gin.Context, resourceKey, action, method string) bool
 
 	viewCode := "系统管理:" + module + ":查看"
 	editCode := "系统管理:" + module + ":编辑"
+	// 人事「权限分配」可读写权限码目录（与系统「自定义权限」等价入口）
+	hrView, hrEdit := "", ""
+	if resourceKey == "iam/permissions" || strings.HasPrefix(resourceKey, "iam/permissions/") {
+		hrView = "人事管理:权限分配:查看"
+		hrEdit = "人事管理:权限分配:编辑"
+	}
 	if needEdit {
-		if !claimsHasCode(claims.Permissions, editCode) {
+		if !claimsHasCode(claims.Permissions, editCode, hrEdit) {
 			c.AbortWithStatusJSON(http.StatusForbidden, api.Response{Code: 0, Msg: "PERM_DENIED"})
 			return false
 		}
 		return true
 	}
-	if !claimsHasCode(claims.Permissions, viewCode, editCode) {
+	if !claimsHasCode(claims.Permissions, viewCode, editCode, hrView, hrEdit) {
 		c.AbortWithStatusJSON(http.StatusForbidden, api.Response{Code: 0, Msg: "PERM_DENIED"})
 		return false
 	}
@@ -163,12 +175,15 @@ func EnsureSystemAdminPermissions(db *sql.DB) {
 	if err != nil {
 		return
 	}
-	defer rows.Close()
+	ids := make([]int64, 0, 128)
 	for rows.Next() {
 		var pid int64
-		if rows.Scan(&pid) != nil {
-			continue
+		if rows.Scan(&pid) == nil && pid > 0 {
+			ids = append(ids, pid)
 		}
+	}
+	_ = rows.Close()
+	for _, pid := range ids {
 		_, _ = db.Exec(`INSERT OR IGNORE INTO iam_role_permission(role_id, permission_id) VALUES(?,?)`, roleID, pid)
 	}
 }

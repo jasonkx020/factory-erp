@@ -258,6 +258,7 @@ func (s *Services) openEmployeeAccount(c *gin.Context) bool {
 	for _, rid := range roleIDs {
 		_, _ = s.DB.Exec(`INSERT OR IGNORE INTO iam_user_role(user_id, role_id) VALUES(?,?)`, uid, rid)
 	}
+	security.InvalidateUserRBAC(uid)
 	// default data scope from employee workshop
 	var workshopID int64
 	_ = s.DB.QueryRow(`SELECT COALESCE(workshop_id,0) FROM hr_employee WHERE id=?`, empID).Scan(&workshopID)
@@ -811,6 +812,7 @@ func (s *Services) handleOffboards(c *gin.Context, method, action string) bool {
 			_, _ = s.DB.Exec(`DELETE FROM iam_user_session WHERE user_id=?`, uid)
 			_, _ = s.DB.Exec(`UPDATE iam_user SET status='frozen', freeze_reason=?, frozen_at=?, frozen_by=? WHERE id=?`,
 				"offboard revoke", now, by, uid)
+			security.InvalidateUserRBAC(uid)
 		}
 		_, _ = s.DB.Exec(`UPDATE hr_employee SET status='left' WHERE id=?`, empID)
 		_, _ = s.DB.Exec(`UPDATE hr_offboard SET status='confirmed' WHERE id=?`, id)

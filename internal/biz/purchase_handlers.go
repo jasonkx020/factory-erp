@@ -32,6 +32,8 @@ func (s *Services) handlePurchase(c *gin.Context, method, openapiPath, resourceK
 		return s.handleWeighVarieties(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/trace-batch-codes"):
 		return s.handleTraceBatchCodes(c, method, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/purchase/weigh-flow"):
+		return s.handleWeighFlowNextOptions(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/weigh-tickets"):
 		return s.handleWeighTickets(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/farmer-settlements"):

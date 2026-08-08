@@ -38,6 +38,7 @@ var resourceDomainModule = map[string]domainModule{
 	"production/boms": {"生产管理", "自动BOM"}, "production/workshops": {"生产管理", "车间管理"},
 	"production/qc": {"生产管理", "质检管理"}, "production/scraps": {"生产管理", "废料管理"},
 	"production/reworks": {"生产管理", "返修单"}, "production/routings": {"生产管理", "工艺流程"},
+	"production/flow-graphs": {"生产管理", "工艺流程"}, "production/flow-rules": {"生产管理", "工艺流程"},
 	// inventory
 	"inventory/balances": {"库存管理", "库存查询"}, "inventory/stock-txns": {"库存管理", "出入库记录汇总"},
 	"inventory/warehouses": {"库存管理", "库存查询"}, "inventory/stocktakes": {"库存管理", "仓库盘点"},
@@ -65,6 +66,10 @@ var resourceDomainModule = map[string]domainModule{
 	"crm/customers": {"客户管理", "CRM客户管理"}, "product/products": {"产品管理", "产品档案"},
 	"asset/fixed-assets": {"固定资产管理", "固定资产项目"}, "approval/tasks": {"审批管理", "任务管理"},
 	"report/dashboards": {"统计报表", "老板驾驶舱"},
+	// IAM used by 人事管理/权限分配
+	"iam/roles": {"人事管理", "权限分配"},
+	"iam/admin-groups": {"人事管理", "权限分配"},
+	"iam/hr-perm-overview": {"人事管理", "权限分配"},
 }
 
 var domainPrefixCN = map[string]string{
@@ -140,6 +145,36 @@ func needWrite(action, method string) bool {
 	return false
 }
 
+func isWeighWarehouseAPI(resourceKey, action string) bool {
+	if resourceKey == "purchase/weigh-tickets/by-trace" {
+		return true
+	}
+	if resourceKey != "purchase/weigh-tickets" {
+		return false
+	}
+	switch action {
+	case "action:warehouse-confirm", "action:stock-in", "get", "list":
+		return true
+	default:
+		return false
+	}
+}
+
+func claimsHasWeighWarehousePerm(perms []string, write bool) bool {
+	if write {
+		return claimsHasCode(perms,
+			"库存管理:仓管待入库:编辑",
+			"采购管理:过磅收货:编辑",
+		)
+	}
+	return claimsHasCode(perms,
+		"库存管理:仓管待入库:查看",
+		"库存管理:仓管待入库:编辑",
+		"采购管理:过磅收货:查看",
+		"采购管理:过磅收货:编辑",
+	)
+}
+
 func domainHasAnyPerm(perms []string, domain string, write bool) bool {
 	prefix := domain + ":"
 	for _, p := range perms {
@@ -179,6 +214,11 @@ func CheckAPIPerm(c *gin.Context, resourceKey, action, method string) bool {
 	}
 
 	write := needWrite(action, method)
+	// 仓管扫码定位 / 确认入库：仓管角色，或持有仓管待入库/过磅收货权限
+	if isWeighWarehouseAPI(resourceKey, action) &&
+		(claimsHasAnyRole(claims, "warehouse", "仓管", "仓管员") || claimsHasWeighWarehousePerm(claims.Permissions, write)) {
+		return true
+	}
 	if dm.Module != "" {
 		viewCode := dm.Domain + ":" + dm.Module + ":查看"
 		editCode := dm.Domain + ":" + dm.Module + ":编辑"
@@ -225,6 +265,11 @@ func EnsureDomainPermissions(db *sql.DB) {
 		_, _ = db.Exec(`INSERT OR IGNORE INTO iam_permission(code, name, domain, module, action) VALUES(?,?,?,?,?)`,
 			code, "审批"+mod, "财务管理", mod, "审批")
 	}
+	bindAllPermissionsToSysAdmin(db)
+}
+
+// bindAllPermissionsToSysAdmin 先收集 id 再写入，避免 SQLite 在 Rows 未关闭时嵌套 Exec 失败。
+func bindAllPermissionsToSysAdmin(db *sql.DB) {
 	var roleID int64
 	if err := db.QueryRow(`SELECT id FROM iam_role WHERE code='sys_admin' LIMIT 1`).Scan(&roleID); err != nil || roleID == 0 {
 		return
@@ -233,12 +278,15 @@ func EnsureDomainPermissions(db *sql.DB) {
 	if err != nil {
 		return
 	}
-	defer rows.Close()
+	ids := make([]int64, 0, 512)
 	for rows.Next() {
 		var pid int64
-		if rows.Scan(&pid) != nil {
-			continue
+		if rows.Scan(&pid) == nil && pid > 0 {
+			ids = append(ids, pid)
 		}
+	}
+	_ = rows.Close()
+	for _, pid := range ids {
 		_, _ = db.Exec(`INSERT OR IGNORE INTO iam_role_permission(role_id, permission_id) VALUES(?,?)`, roleID, pid)
 	}
 }

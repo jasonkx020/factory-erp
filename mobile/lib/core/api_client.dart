@@ -32,6 +32,16 @@ class ApiClient {
   String? accessToken;
   String? refreshToken;
 
+  /// 相对路径 `/files/...` → 绝对 URL（去掉 `/api/v1` 前缀挂到同源）
+  String resolveMediaUrl(String? path) {
+    final p = (path ?? '').trim();
+    if (p.isEmpty) return '';
+    if (p.startsWith('http://') || p.startsWith('https://')) return p;
+    final origin = baseUrl.replaceFirst(RegExp(r'/api/v1/?$'), '');
+    if (p.startsWith('/')) return '$origin$p';
+    return '$origin/$p';
+  }
+
   Future<void> loadToken() async {
     final p = await SharedPreferences.getInstance();
     accessToken = p.getString('access_token');

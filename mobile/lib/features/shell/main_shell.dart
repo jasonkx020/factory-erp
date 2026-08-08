@@ -49,6 +49,8 @@ class _MainShellState extends State<MainShell> {
     final ok = await pickAndCreateTicket(context);
     if (ok && mounted) {
       setState(() => _index = 0);
+      _homeKey.currentState?.reload();
+      _todoKey.currentState?.reload();
     }
   }
 

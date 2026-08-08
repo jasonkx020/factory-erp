@@ -10028,6 +10028,114 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkAnyResponse"
 
+  /api/v1/production/flow-graphs:
+    get:
+      tags: [生产管理]
+      summary: 流程编排图-列表
+      operationId: get_api_v1_production_flow_graphs
+      description: |
+        功能模块：工艺流程；分期：1
+      x-erp-phase: 1
+      x-erp-module: 工艺流程
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+        - name: kind
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [生产管理]
+      summary: 流程编排图-新建
+      operationId: post_api_v1_production_flow_graphs
+      description: |
+        功能模块：工艺流程；分期：1
+      x-erp-phase: 1
+      x-erp-module: 工艺流程
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/production/flow-graphs/{id}:
+    get:
+      tags: [生产管理]
+      summary: 流程编排图-详情
+      operationId: get_api_v1_production_flow_graphs_id
+      description: |
+        功能模块：工艺流程；分期：1
+      x-erp-phase: 1
+      x-erp-module: 工艺流程
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    put:
+      tags: [生产管理]
+      summary: 流程编排图-保存
+      operationId: put_api_v1_production_flow_graphs_id
+      description: |
+        功能模块：工艺流程；分期：1
+      x-erp-phase: 1
+      x-erp-module: 工艺流程
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    delete:
+      tags: [生产管理]
+      summary: 流程编排图-删除
+      operationId: delete_api_v1_production_flow_graphs_id
+      description: |
+        功能模块：工艺流程；分期：1
+      x-erp-phase: 1
+      x-erp-module: 工艺流程
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
   /api/v1/production/flow-rules:
     get:
       tags: [生产管理]
@@ -10040,17 +10148,9 @@ paths:
       parameters:
         - $ref: "#/components/parameters/PageNum"
         - $ref: "#/components/parameters/PageSize"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OkAnyResponse"
-    put:
-      tags: [生产管理]
-      summary: 流转规则-保存
-      operationId: put_api_v1_production_flow_rules
+        - name: routing_id
+          in: query
+          schema: { type: integer, format: int64 }
       description: |
         功能模块：工艺流程；分期：1
       x-erp-phase: 1
@@ -13321,6 +13421,54 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkAnyResponse"
 
+  /api/v1/purchase/weigh-tickets/by-trace:
+    get:
+      tags: [采购管理]
+      summary: 过磅单-按溯源码定位（仓管扫码）
+      operationId: get_api_v1_purchase_weigh_tickets_by_trace
+      description: |
+        功能模块：过磅收货；分期：2
+        仓管扫溯源码/批号定位待入库过磅单；返回字段已脱敏（不含农户/单价）。
+        鉴权：库存管理:仓管待入库 或 采购管理:过磅收货。
+      x-erp-phase: 2
+      x-erp-module: 过磅收货
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [采购管理]
+      summary: 过磅单-按溯源码定位（仓管扫码）
+      operationId: post_api_v1_purchase_weigh_tickets_by_trace
+      description: |
+        功能模块：过磅收货；分期：2
+      x-erp-phase: 2
+      x-erp-module: 过磅收货
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code: { type: string }
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
   /api/v1/purchase/weigh-tickets/{id}:
     get:
       tags: [采购管理]
@@ -13808,6 +13956,7 @@ paths:
       operationId: post_api_v1_purchase_weigh_tickets_id_warehouse_confirm
       description: |
         功能模块：过磅收货；分期：2
+        须 body.verified=true（扫码核对相符后）方可入库；gate 入厂单会幂等生成农户结算并通知财务。
       x-erp-phase: 2
       x-erp-module: 过磅收货
       parameters:

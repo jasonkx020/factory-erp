@@ -15,5 +15,7 @@ func RegisterPurchaseExtra(r *gin.RouterGroup, h Handler) {
 	r.POST("/purchase/trace-batch-codes/validate", h.Dispatch("POST", "/api/v1/purchase/trace-batch-codes/validate", "/purchase/trace-batch-codes/validate", "purchase/trace-batch-codes", "action:validate"))
 	r.POST("/purchase/trace-batch-codes/void", h.Dispatch("POST", "/api/v1/purchase/trace-batch-codes/void", "/purchase/trace-batch-codes/void", "purchase/trace-batch-codes", "action:void"))
 
+	r.GET("/purchase/weigh-flow/next-options", h.Dispatch("GET", "/api/v1/purchase/weigh-flow/next-options", "/purchase/weigh-flow/next-options", "purchase/weigh-tickets", "list"))
+
 	r.POST("/biz/uploads", h.Dispatch("POST", "/api/v1/biz/uploads", "/biz/uploads", "biz/uploads", "create"))
 }
