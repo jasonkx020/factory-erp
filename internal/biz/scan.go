@@ -71,19 +71,17 @@ func (s *Services) handleScan(c *gin.Context, resolveOnly bool) bool {
 		_ = s.DB.QueryRow(`SELECT id FROM pd_dispatch WHERE work_order_id=? AND status IN ('dispatched','received','open') ORDER BY id DESC LIMIT 1`, woID).Scan(&dispatchID)
 	}
 	if processID == 0 {
-		// bootstrap first step
+		// bootstrap first step — advance box only, do not spawn per-box dispatch
 		step := s.firstStep(1)
 		if step != nil {
 			processID = step.ProcessID
 			stepID = step.ID
-			woID, dispatchID = s.spawnNextWO(taskID, step, qty)
-			taskID = 0
-			if woID > 0 {
-				_ = s.DB.QueryRow(`SELECT task_id FROM pd_work_order WHERE id=?`, woID).Scan(&taskID)
-			}
-			_, _ = s.DB.Exec(`UPDATE inv_box_code SET current_process_id=?, current_step_id=?, task_id=?, work_order_id=? WHERE id=?`,
-				processID, stepID, taskID, woID, boxID)
+			s.advanceBoxToStep(boxID, step)
 		}
+	}
+	if !s.workerShiftAuthorized(workerID, processID) {
+		api.FailJSON(c, "SHIFT_NOT_AUTHORIZED")
+		return true
 	}
 
 	preview := gin.H{
@@ -96,6 +94,7 @@ func (s *Services) handleScan(c *gin.Context, resolveOnly bool) bool {
 	if step := s.loadStep(stepID); step != nil {
 		preview["step_name"] = step.StepName
 		preview["is_piecework"] = step.IsPiecework
+		preview["is_inbound_checkpoint"] = step.IsInboundCheckpoint
 	}
 	if resolveOnly {
 		api.OK(c, preview)

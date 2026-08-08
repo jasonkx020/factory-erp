@@ -28,22 +28,14 @@ class _HomePageState extends State<HomePage> {
 
   IconData _icon(EmployeeModule m) {
     switch (m) {
+      case EmployeeModule.station:
+        return Icons.qr_code_scanner;
       case EmployeeModule.workshop:
-        return Icons.precision_manufacturing;
-      case EmployeeModule.worker:
-        return Icons.badge;
+        return Icons.groups;
       case EmployeeModule.receiving:
         return Icons.scale;
       case EmployeeModule.warehouse:
         return Icons.warehouse;
-      case EmployeeModule.sales:
-        return Icons.storefront;
-      case EmployeeModule.assets:
-        return Icons.handyman;
-      case EmployeeModule.collab:
-        return Icons.payments;
-      case EmployeeModule.knowledge:
-        return Icons.menu_book;
       case EmployeeModule.mine:
         return Icons.person;
     }

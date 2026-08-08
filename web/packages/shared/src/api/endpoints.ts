@@ -185,6 +185,14 @@ export const productionApi = {
   updateWorkshop: (id: number, body: Record<string, unknown>) => api.put(`/production/workshops/${id}`, body),
   workbenchOverview: () => api.get('/production/workshop-workbench/overview'),
   workbenchToday: () => api.get('/production/workshop-workbench/today-tasks'),
+  shifts: () => api.get<PageData>('/production/shifts'),
+  getShift: (id: number) => api.get(`/production/shifts/${id}`),
+  createShift: (body: Record<string, unknown>) => api.post('/production/shifts', body),
+  closeShift: (id: number) => api.post(`/production/shifts/${id}/close`, {}),
+  addShiftMember: (id: number, body: Record<string, unknown>) =>
+    api.post(`/production/shifts/${id}/members`, body),
+  removeShiftMember: (shiftId: number, memberId: number) =>
+    api.del(`/production/shifts/${shiftId}/members/${memberId}`),
   progress: () => api.get<PageData>('/production/progress'),
   taskMerges: () => api.get<PageData>('/production/task-merges'),
   createTaskMerge: (body: Record<string, unknown>) => api.post('/production/task-merges', body),

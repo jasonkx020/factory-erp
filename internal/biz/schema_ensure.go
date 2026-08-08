@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 )
 
 // execSchemaRuns runs DDL; ignores idempotent "already exists" errors, logs real failures once.
@@ -151,6 +152,22 @@ func EnsureAutomationSchema(db *sql.DB) {
 		`UPDATE inv_warehouse SET name='保鲜库' WHERE code='WH-RAW' AND name='原料仓'`,
 		`UPDATE inv_warehouse SET name='半成品库' WHERE code='WH-SEMI' AND name='半成品仓'`,
 		`UPDATE inv_warehouse SET name='成品冷库' WHERE code='WH-FG' AND name='成品仓'`,
+		`CREATE TABLE IF NOT EXISTS pd_shift (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc_no TEXT NOT NULL,
+  workshop_id INTEGER NOT NULL DEFAULT 1,
+  biz_date TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  remark TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+)`,
+		`CREATE TABLE IF NOT EXISTS pd_shift_member (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  shift_id INTEGER NOT NULL,
+  employee_id INTEGER NOT NULL,
+  process_id INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(shift_id, employee_id, process_id)
+)`,
 	}
 	execSchemaRuns(db, "automation", stmts)
 	seedAutomation(db)
@@ -437,7 +454,53 @@ func seedAutomation(db *sql.DB) {
 	_, _ = db.Exec(`UPDATE hr_employee SET badge_code='EMP0001' WHERE id=1 AND (badge_code IS NULL OR badge_code='')`)
 	_, _ = db.Exec(`INSERT OR IGNORE INTO inv_box_code(id, code, product_id, warehouse_id, batch_no, qty, weight, current_process_id, current_step_id, status) VALUES
  (1, 'BX-RAW-DEMO', 1, 1, 'B0801', 1000, 1000, 8, NULL, 'open')`)
+	seedOpenShift(db)
 	EnsurePurchaseSchema(db)
+}
+
+// SeedOpenShiftForToday ensures demo workers can pass shift gate when shifts are enabled.
+func SeedOpenShiftForToday(db *sql.DB) {
+	seedOpenShift(db)
+}
+
+func seedOpenShift(db *sql.DB) {
+	var sid int64
+	_ = db.QueryRow(`SELECT id FROM pd_shift WHERE status='open' AND date(biz_date)=date('now') ORDER BY id DESC LIMIT 1`).Scan(&sid)
+	if sid == 0 {
+		res, err := db.Exec(`INSERT INTO pd_shift(doc_no, workshop_id, biz_date, status, remark) VALUES(?,1,date('now'),'open','demo open shift')`,
+			fmt.Sprintf("SHF%d", time.Now().UnixNano()%1e9))
+		if err != nil {
+			return
+		}
+		sid, _ = res.LastInsertId()
+	}
+	if sid == 0 {
+		return
+	}
+	seedShiftMembers(db, sid, `SELECT id FROM hr_employee WHERE badge_code IN ('EMP-PC','EMP-FX','EMP0301','EMP0205') AND status='active'`)
+	seedShiftMembers(db, sid, `SELECT e.id FROM hr_employee e
+		INNER JOIN iam_user u ON u.employee_id=e.id AND COALESCE(u.is_deleted,0)=0
+		INNER JOIN iam_user_role ur ON ur.user_id=u.id
+		INNER JOIN iam_role r ON r.id=ur.role_id
+		WHERE r.code IN ('piece','fixed','foreman') AND e.status='active'`)
+}
+
+func seedShiftMembers(db *sql.DB, shiftID int64, query string) {
+	rows, err := db.Query(query)
+	if err != nil || rows == nil {
+		return
+	}
+	ids := make([]int64, 0, 16)
+	for rows.Next() {
+		var eid int64
+		if rows.Scan(&eid) == nil && eid > 0 {
+			ids = append(ids, eid)
+		}
+	}
+	_ = rows.Close()
+	for _, eid := range ids {
+		_, _ = db.Exec(`INSERT OR IGNORE INTO pd_shift_member(shift_id, employee_id, process_id) VALUES(?,?,0)`, shiftID, eid)
+	}
 }
 
 func seedFlowGraphs(db *sql.DB) {

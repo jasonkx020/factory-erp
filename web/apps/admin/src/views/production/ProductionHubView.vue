@@ -6,6 +6,7 @@ import {
   productionApi,
   productApi,
   hrApi,
+  fieldLedgerApi,
   PROCESS_TYPE_OPTIONS,
   QC_TYPE_OPTIONS,
   CONSIGNMENT_PROGRESS_OPTIONS,
@@ -24,23 +25,23 @@ import {
   EnumSelect,
 } from '../../components/select'
 import RoutingView from '../automation/RoutingView.vue'
-import ProcessReportView from './ProcessReportView.vue'
 import PieceIssueView from './PieceIssueView.vue'
 
 type Row = Record<string, unknown>
 
 const route = useRoute()
 const TITLE_MAP: Record<string, string> = {
-  processes: '工序设置',
-  'process-mgmt': '工序管理',
+  processes: '工序定义',
+  'process-mgmt': '工序定义',
   routings: '工艺流程',
+  shifts: '产线班次',
   tasks: '生产任务单',
   'multi-products': '一单多商品',
-  dispatches: '生产派工',
+  dispatches: '例外派岗',
   flex: '灵活派发工单',
-  reports: '扫码报工',
+  reports: '过站记录',
+  'process-reports': '过站记录',
   piecework: '计件工资',
-  'process-reports': '加工记录',
   'piece-issue': '计件领料表',
   boms: '自动BOM',
   mrp: 'MRP物料分析',
@@ -61,8 +62,13 @@ const TITLE_MAP: Record<string, string> = {
 const active = computed(() => String(route.params.section || 'tasks'))
 const title = computed(() => TITLE_MAP[active.value] || '生产管理')
 const embedRoutings = computed(() => active.value === 'routings')
-const embedProcessReports = computed(() => active.value === 'process-reports')
 const embedPieceIssue = computed(() => active.value === 'piece-issue')
+const reportTab = ref('ledger')
+
+/** 默认 false：现场录入仅 App；管理员补单需 backfill_reason */
+const fieldInputOnAdmin = import.meta.env.VITE_FIELD_INPUT_ON_ADMIN === 'true'
+
+const backfillForm = reactive({ backfill_reason: '' })
 
 const loading = ref(false)
 const list = ref<Row[]>([])
@@ -71,6 +77,12 @@ const products = ref<Row[]>([])
 const processes = ref<Row[]>([])
 const workers = ref<Row[]>([])
 const overview = ref<Row | null>(null)
+const processReports = ref<Row[]>([])
+const shiftDetail = ref<Row | null>(null)
+const scrapTypeFilter = ref('')
+
+const shiftForm = reactive({ workshop_id: 1, remark: '产线开工' })
+const shiftMemberForm = reactive({ employee_id: 2, process_id: 0 })
 
 const taskForm = reactive({ product_id: 3, qty: 1000, routing_id: 1, workshop_id: 1, remark: '' })
 const multiLines = ref<{ product_id: number; qty: number }[]>([{ product_id: 3, qty: 100 }])
@@ -123,7 +135,7 @@ async function loadMeta() {
 }
 
 async function refresh() {
-  if (embedRoutings.value || embedProcessReports.value || embedPieceIssue.value) return
+  if (embedRoutings.value || embedPieceIssue.value) return
   loading.value = true
   detail.value = null
   try {
@@ -132,6 +144,9 @@ async function refresh() {
       case 'processes':
       case 'process-mgmt':
         res = await productionApi.processes()
+        break
+      case 'shifts':
+        res = await productionApi.shifts()
         break
       case 'tasks':
       case 'multi-products':
@@ -144,8 +159,15 @@ async function refresh() {
         res = await productionApi.listFlexDispatches()
         break
       case 'reports':
+      case 'process-reports':
         res = await productionApi.listReportWorks()
-        break
+        if (res && res.code !== 1) return ElMessage.error(res.msg)
+        list.value = ((res?.data as { list?: Row[] })?.list) || []
+        const q = scrapTypeFilter.value ? `scrap_type=${encodeURIComponent(scrapTypeFilter.value)}` : undefined
+        const pr = await fieldLedgerApi.processReports(q)
+        if (pr.code !== 1) return ElMessage.error(pr.msg)
+        processReports.value = ((pr.data as { list?: Row[] })?.list) || []
+        return
       case 'piecework':
         res = await productionApi.pieceworkSummaries()
         break
@@ -246,11 +268,14 @@ async function receiveDispatch(id: number) {
 }
 
 async function createReport() {
-  const body: Record<string, unknown> = { ...reportForm }
+  const reason = String(backfillForm.backfill_reason || '').trim()
+  if (!reason) return ElMessage.warning('管理员补单须填写补单原因')
+  const body: Record<string, unknown> = { ...reportForm, backfill_reason: reason, remark: reason }
   if (!reportForm.dispatch_id) delete body.dispatch_id
   const res = await productionApi.createReportWork(body)
   if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success('报工已提交')
+  ElMessage.success('补单已提交')
+  backfillForm.backfill_reason = ''
   await refresh()
 }
 
@@ -488,7 +513,47 @@ async function createHide() {
   await refresh()
 }
 
-watch(active, () => refresh())
+async function createShift() {
+  const res = await productionApi.createShift({ ...shiftForm })
+  if (res.code !== 1) return ElMessage.error(res.msg)
+  ElMessage.success(`班次 ${(res.data as Row)?.doc_no}`)
+  await refresh()
+}
+
+async function openShift(id: number) {
+  const res = await productionApi.getShift(id)
+  if (res.code !== 1) return ElMessage.error(res.msg)
+  shiftDetail.value = (res.data as Row) || null
+}
+
+async function closeShiftRow(id: number) {
+  const res = await productionApi.closeShift(id)
+  if (res.code !== 1) return ElMessage.error(res.msg)
+  ElMessage.success('已收工')
+  shiftDetail.value = null
+  await refresh()
+}
+
+async function addShiftMember() {
+  if (!shiftDetail.value?.id) return ElMessage.warning('请先选择班次')
+  const res = await productionApi.addShiftMember(Number(shiftDetail.value.id), { ...shiftMemberForm })
+  if (res.code !== 1) return ElMessage.error(res.msg)
+  ElMessage.success('已添加授权')
+  await openShift(Number(shiftDetail.value.id))
+}
+
+async function removeShiftMember(memberId: number) {
+  if (!shiftDetail.value?.id) return
+  const res = await productionApi.removeShiftMember(Number(shiftDetail.value.id), memberId)
+  if (res.code !== 1) return ElMessage.error(res.msg)
+  await openShift(Number(shiftDetail.value.id))
+}
+
+watch(active, () => {
+  reportTab.value = 'ledger'
+  shiftDetail.value = null
+  refresh()
+})
 onMounted(async () => {
   await loadMeta()
   await refresh()
@@ -498,18 +563,17 @@ onMounted(async () => {
 <template>
   <div>
     <RoutingView v-if="embedRoutings" />
-    <ProcessReportView v-else-if="embedProcessReports" />
     <PieceIssueView v-else-if="embedPieceIssue" />
 
     <div v-else class="page" v-loading="loading">
       <div class="head">
         <h2>{{ title }}</h2>
-        <p class="hint">工厂产线交付：工序/工艺 → 任务派工 → 扫码报工/计件 → 质检废料。现场双扫在 Flutter；本页为管理端台账。</p>
+        <p class="hint">管理端：配置、查询、结算与例外补单。日常过站/过磅请在 Flutter App 完成。</p>
       </div>
 
-      <!-- 工序设置：新建为主 -->
-      <template v-if="active==='processes'">
-        <p class="mode-hint">本页用于新建工序定义；已有工序的启停与维护请走「工序管理」。</p>
+      <!-- 工序定义：新建 + 维护 -->
+      <template v-if="active==='processes' || active==='process-mgmt'">
+        <p class="mode-hint">工序主数据：编码、类型、是否计件。App 过站按工艺流程推进，此处为根配置。</p>
         <el-card header="新建工序" class="mb">
           <el-form inline size="small">
             <el-form-item label="编码"><el-input v-model="processForm.code" placeholder="可空自动" /></el-form-item>
@@ -525,24 +589,72 @@ onMounted(async () => {
           <el-table-column prop="process_type" label="类型" width="100" />
           <el-table-column prop="is_piecework" label="计件" width="80" />
           <el-table-column prop="status" label="状态" width="90" />
-        </el-table>
-      </template>
-
-      <!-- 工序管理：编辑维护 -->
-      <template v-else-if="active==='process-mgmt'">
-        <p class="mode-hint">本页维护已有工序（名称/类型/计件/状态）；新建请走「工序设置」。</p>
-        <el-table :data="list" size="small">
-          <el-table-column prop="code" label="编码" width="120" />
-          <el-table-column prop="name" label="名称" />
-          <el-table-column prop="process_type" label="类型" width="100" />
-          <el-table-column prop="is_piecework" label="计件" width="80" />
-          <el-table-column prop="status" label="状态" width="90" />
           <el-table-column label="操作" width="120" fixed="right">
             <template #default="{ row }">
               <el-button link type="primary" @click="openEditProcess(row)">编辑</el-button>
             </template>
           </el-table-column>
         </el-table>
+      </template>
+
+      <!-- 产线班次：替代日常派工授权 -->
+      <template v-else-if="active==='shifts'">
+        <el-alert type="info" show-icon :closable="false" class="mb"
+          title="产线开工班次授权：工人须在当日 open 班次成员中方可 App 过站。与「人事·考勤班次」不同。" />
+        <el-row :gutter="12">
+          <el-col :span="14">
+            <el-card header="开工 / 班次列表" class="mb">
+              <el-form inline size="small" class="mb">
+                <el-form-item label="车间"><WorkshopSelect v-model="shiftForm.workshop_id" /></el-form-item>
+                <el-form-item label="备注"><el-input v-model="shiftForm.remark" style="width:160px" /></el-form-item>
+                <el-button type="primary" @click="createShift">开工</el-button>
+              </el-form>
+              <el-table :data="list" size="small" highlight-current-row @row-click="(row: Row) => openShift(Number(row.id))">
+                <el-table-column prop="doc_no" label="班次号" width="150" />
+                <el-table-column prop="biz_date" label="日期" width="110" />
+                <el-table-column prop="workshop_name" label="车间" width="100" />
+                <el-table-column prop="member_count" label="人数" width="70" />
+                <el-table-column prop="status" label="状态" width="90" />
+                <el-table-column label="操作" width="100">
+                  <template #default="{ row }">
+                    <el-button v-if="row.status==='open'" link type="warning" @click.stop="closeShiftRow(Number(row.id))">收工</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-card>
+          </el-col>
+          <el-col :span="10">
+            <el-card header="成员授权" v-if="shiftDetail">
+              <p class="hint mb">班次 {{ shiftDetail.doc_no }} · process_id=0 表示全工序</p>
+              <el-form inline size="small" class="mb">
+                <el-form-item label="员工">
+                  <el-select v-model="shiftMemberForm.employee_id" style="width:120px">
+                    <el-option v-for="w in workers" :key="String(w.id)" :label="String(w.name)" :value="Number(w.id)" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="工序">
+                  <el-select v-model="shiftMemberForm.process_id" style="width:120px">
+                    <el-option label="全工序" :value="0" />
+                    <el-option v-for="p in processes" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
+                  </el-select>
+                </el-form-item>
+                <el-button type="primary" @click="addShiftMember">添加</el-button>
+              </el-form>
+              <el-table :data="(shiftDetail.members as Row[]) || []" size="small">
+                <el-table-column prop="employee_name" label="员工" />
+                <el-table-column prop="process_name" label="工序" width="100">
+                  <template #default="{ row }">{{ row.process_id === 0 ? '全工序' : row.process_name }}</template>
+                </el-table-column>
+                <el-table-column label="操作" width="80">
+                  <template #default="{ row }">
+                    <el-button link type="danger" @click="removeShiftMember(Number(row.id))">移除</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-card>
+            <el-empty v-else description="点击左侧班次查看/维护成员" />
+          </el-col>
+        </el-row>
       </template>
 
       <!-- 生产任务单：单商品任务 -->
@@ -607,7 +719,8 @@ onMounted(async () => {
 
       <!-- 派工 / 灵活 -->
       <template v-else-if="active==='dispatches' || active==='flex'">
-        <el-card :header="active==='flex' ? '灵活派发' : '新建派工'" class="mb">
+        <el-alert type="info" show-icon :closable="false" class="mb" title="正常流转无需派工，App 扫工牌+箱码即可过站。此处仅用于例外派岗/灵活派发。" />
+        <el-card v-if="fieldInputOnAdmin || active==='flex'" :header="active==='flex' ? '灵活派发（例外）' : '例外派岗'" class="mb">
           <el-form inline size="small">
             <el-form-item label="任务"><ProdTaskSelect v-model="dispatchForm.task_id" /></el-form-item>
             <el-form-item label="工序">
@@ -639,37 +752,61 @@ onMounted(async () => {
         </el-table>
       </template>
 
-      <!-- 报工 -->
-      <template v-else-if="active==='reports'">
-        <el-card header="管理端补录报工（现场请用 App 双扫）" class="mb">
-          <el-form inline size="small">
-            <el-form-item label="工序">
-              <el-select v-model="reportForm.process_id" style="width:140px">
-                <el-option v-for="p in processes" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
+      <!-- 过站记录：台账 + 加工明细 -->
+      <template v-else-if="active==='reports' || active==='process-reports'">
+        <el-alert type="warning" show-icon :closable="false" class="mb"
+          title="现场过站请使用 App「工序过站」。本页仅查询；管理员补单需开启 VITE_FIELD_INPUT_ON_ADMIN 并填写补单原因。" />
+        <el-tabs v-model="reportTab" class="mb">
+          <el-tab-pane label="过站台账" name="ledger">
+            <el-card v-if="fieldInputOnAdmin" header="管理员补单（须填原因）" class="mb">
+              <el-form inline size="small">
+                <el-form-item label="工序">
+                  <el-select v-model="reportForm.process_id" style="width:140px">
+                    <el-option v-for="p in processes" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="工人">
+                  <el-select v-model="reportForm.worker_id" style="width:140px">
+                    <el-option v-for="w in workers" :key="String(w.id)" :label="String(w.name)" :value="Number(w.id)" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="产量"><el-input-number v-model="reportForm.qty" :min="0.01" /></el-form-item>
+                <el-form-item label="补单原因"><el-input v-model="backfillForm.backfill_reason" style="width:200px" placeholder="必填" /></el-form-item>
+                <el-button type="primary" @click="createReport">提交补单</el-button>
+              </el-form>
+            </el-card>
+            <el-table :data="list" size="small">
+              <el-table-column prop="doc_no" label="单号" width="150" />
+              <el-table-column prop="process_id" label="工序" width="80" />
+              <el-table-column prop="worker_id" label="工人" width="80" />
+              <el-table-column prop="input_weight" label="投料" width="80" />
+              <el-table-column prop="output_weight" label="完工" width="80" />
+              <el-table-column prop="qty" label="产量" width="90" />
+              <el-table-column prop="status" label="状态" width="100" />
+              <el-table-column prop="reported_at" label="时间" min-width="160" />
+            </el-table>
+          </el-tab-pane>
+          <el-tab-pane label="加工明细" name="detail">
+            <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
+              <el-select v-model="scrapTypeFilter" clearable placeholder="次品类型" style="width:200px" @change="refresh">
+                <el-option label="切断次品" value="cut_defect" />
+                <el-option label="去芯次品" value="core_defect" />
+                <el-option label="切块次品" value="dice_defect" />
+                <el-option label="筛选装袋次品" value="sieve_bag_defect" />
               </el-select>
-            </el-form-item>
-            <el-form-item label="工人">
-              <el-select v-model="reportForm.worker_id" style="width:140px">
-                <el-option v-for="w in workers" :key="String(w.id)" :label="String(w.name)" :value="Number(w.id)" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="产量"><el-input-number v-model="reportForm.qty" :min="0.01" /></el-form-item>
-            <el-form-item label="派工"><DispatchSelect v-model="reportForm.dispatch_id" clearable /></el-form-item>
-            <el-button type="primary" @click="createReport">提交报工</el-button>
-          </el-form>
-        </el-card>
-        <el-table :data="list" size="small">
-          <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column prop="process_id" label="工序" width="80" />
-          <el-table-column prop="worker_id" label="工人" width="80" />
-          <el-table-column prop="qty" label="产量" width="90" />
-          <el-table-column prop="status" label="状态" width="100" />
-          <el-table-column label="操作" width="100">
-            <template #default="{ row }">
-              <el-button v-if="row.status==='submitted' || row.status==='draft'" link type="success" @click="confirmReport(Number(row.id))">确认</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+            </div>
+            <el-table :data="processReports" size="small">
+              <el-table-column prop="process_name" label="工序" width="120" />
+              <el-table-column prop="input_weight" label="投料" width="80" />
+              <el-table-column prop="output_weight" label="完工" width="80" />
+              <el-table-column prop="loss" label="损耗" width="80" />
+              <el-table-column prop="bag_qty" label="袋数" width="70" />
+              <el-table-column prop="scrap_type" label="次品类型" width="120" />
+              <el-table-column prop="status" label="状态" width="100" />
+              <el-table-column prop="reported_at" label="时间" min-width="160" />
+            </el-table>
+          </el-tab-pane>
+        </el-tabs>
       </template>
 
       <!-- 计件 -->
@@ -764,11 +901,12 @@ onMounted(async () => {
       <!-- 工作台 -->
       <template v-else-if="active==='workbench'">
         <el-row :gutter="12" class="mb" v-if="overview">
-          <el-col :span="6"><el-card shadow="never"><div class="kpi">开立任务</div><div class="kpi-n">{{ overview.open_tasks }}</div></el-card></el-col>
-          <el-col :span="6"><el-card shadow="never"><div class="kpi">在派工</div><div class="kpi-n">{{ overview.open_dispatches }}</div></el-card></el-col>
-          <el-col :span="6"><el-card shadow="never"><div class="kpi">今日报工</div><div class="kpi-n">{{ overview.today_reports }}</div></el-card></el-col>
+          <el-col :span="6"><el-card shadow="never"><div class="kpi">今日过站</div><div class="kpi-n">{{ overview.today_station_passes ?? overview.today_reports }}</div></el-card></el-col>
+          <el-col :span="6"><el-card shadow="never"><div class="kpi">待确认</div><div class="kpi-n">{{ overview.pending_confirm ?? 0 }}</div></el-card></el-col>
+          <el-col :span="6"><el-card shadow="never"><div class="kpi">开工班次</div><div class="kpi-n">{{ overview.open_shifts ?? 0 }}</div></el-card></el-col>
           <el-col :span="6"><el-card shadow="never"><div class="kpi">流转失败</div><div class="kpi-n">{{ overview.failed_flow_events }}</div></el-card></el-col>
         </el-row>
+        <p v-if="overview" class="hint mb">例外派工 {{ overview.exception_dispatches ?? overview.open_dispatches ?? 0 }} 张 · 开立任务 {{ overview.open_tasks }}</p>
         <el-card header="今日/在制任务">
           <el-table :data="list" size="small">
             <el-table-column prop="doc_no" label="单号" />

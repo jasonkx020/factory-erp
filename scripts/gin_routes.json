@@ -165,6 +165,22 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/production/scraps"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/scraps/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/shifts"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/shifts/:id"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/production/boms"
   },
   {
@@ -194,14 +210,6 @@
   {
     "method": "GET",
     "path": "/api/v1/production/qc-orders/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/scraps"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/scraps/:id"
   },
   {
     "method": "GET",
@@ -1489,10 +1497,6 @@
   },
   {
     "method": "GET",
-    "path": "/api/v1/_debug/routes"
-  },
-  {
-    "method": "GET",
     "path": "/files/*filepath"
   },
   {
@@ -1530,6 +1534,30 @@
   {
     "method": "POST",
     "path": "/api/v1/production/routings"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/scan"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/scan/resolve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/scraps"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/shifts"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/shifts/:id/close"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/shifts/:id/members"
   },
   {
     "method": "POST",
@@ -1594,18 +1622,6 @@
   {
     "method": "POST",
     "path": "/api/v1/production/drawing-links"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/scan"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/scan/resolve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/scraps"
   },
   {
     "method": "POST",
@@ -2737,6 +2753,10 @@
   },
   {
     "method": "DELETE",
+    "path": "/api/v1/production/shifts/:id/members/:memberId"
+  },
+  {
+    "method": "DELETE",
     "path": "/api/v1/product/products/:id"
   },
   {
@@ -2933,6 +2953,22 @@
   },
   {
     "method": "PUT",
+    "path": "/api/v1/production/scraps/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/production/shifts/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/production/flow-graphs/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/production/flow-rules"
+  },
+  {
+    "method": "PUT",
     "path": "/api/v1/production/boms/:id"
   },
   {
@@ -2941,19 +2977,11 @@
   },
   {
     "method": "PUT",
-    "path": "/api/v1/production/flow-graphs/:id"
-  },
-  {
-    "method": "PUT",
     "path": "/api/v1/production/outsources/:id"
   },
   {
     "method": "PUT",
     "path": "/api/v1/production/qc-orders/:id"
-  },
-  {
-    "method": "PUT",
-    "path": "/api/v1/production/scraps/:id"
   },
   {
     "method": "PUT",

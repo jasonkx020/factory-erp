@@ -436,6 +436,9 @@ func (s *Services) handleReportWorks(c *gin.Context, method, action, path string
 		return s.listDocTable(c, `SELECT * FROM pd_report_work`)
 	case "create":
 		body := bindBody(c)
+		if !s.canCreateReportWorkBackfill(c, body) {
+			return s.rejectReportWorkCreate(c)
+		}
 		did, _ := asInt64(body["dispatch_id"])
 		pid, _ := asInt64(body["process_id"])
 		wid, _ := asInt64(body["worker_id"])

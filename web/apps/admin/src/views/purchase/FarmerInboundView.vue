@@ -464,6 +464,8 @@ onMounted(refresh)
 <template>
   <div class="page" v-loading="loading">
     <h2>{{ pageTitle }}</h2>
+    <el-alert v-if="showWeigh" type="warning" show-icon :closable="false" class="mb" style="margin-bottom:12px"
+      title="日常过磅收货请优先使用 Flutter App「过磅收货」。管理端用于审核、查询与补单。" />
     <p class="hint">
       到货拍照质检定级 → 过磅图+自动预填 → 对照原图确认出码贴标 → 仓管扫码入库 → 财务转账回单关单。业务可查可改不可删。
     </p>

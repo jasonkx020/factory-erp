@@ -119,12 +119,15 @@ func (s *Services) AfterReportWork(c *gin.Context, reportID, processID, workerID
 			next := s.nextStep(step)
 			if next != nil {
 				toStepID = next.ID
-				woID, dID := s.spawnNextWO(taskID, next, qty)
+				var woID, dID int64
+				if next.IsInboundCheckpoint {
+					woID, dID = s.spawnNextWO(taskID, next, qty)
+					nextInfo["next_work_order_id"] = woID
+					nextInfo["next_dispatch_id"] = dID
+				}
 				nextInfo["next_step"] = next.StepName
 				nextInfo["next_step_id"] = next.ID
-				nextInfo["next_work_order_id"] = woID
-				nextInfo["next_dispatch_id"] = dID
-				_, _ = s.DB.Exec(`UPDATE inv_box_code SET current_process_id=?, current_step_id=?, work_order_id=?, updated_at=datetime('now') WHERE code=?`,
+				_, _ = s.DB.Exec(`UPDATE inv_box_code SET current_process_id=?, current_step_id=?, work_order_id=COALESCE(NULLIF(?,0),work_order_id), updated_at=datetime('now') WHERE code=?`,
 					next.ProcessID, next.ID, woID, boxCode)
 			} else {
 				nextInfo["finished"] = true

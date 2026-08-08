@@ -137,7 +137,16 @@ try {
   Assert-Ok "month close" (Invoke-Api POST "/finance/month-closes" @{ year = $y; month = $mo } $token)
   Assert-Ok "statements" (Invoke-Api POST "/finance/statements/generate" @{ period = $period } $token)
 
-  Write-Host "== 6) unauthorized =="
+  Write-Host "== 6) delivery smokes =="
+  $env:API_BASE = "$base"
+  go run ./cmd/mobile_delivery_smoke
+  if ($LASTEXITCODE -ne 0) { throw "mobile_delivery_smoke failed" }
+  Write-Host "OK  mobile_delivery_smoke"
+  go run ./cmd/station_pass_smoke
+  if ($LASTEXITCODE -ne 0) { throw "station_pass_smoke failed" }
+  Write-Host "OK  station_pass_smoke"
+
+  Write-Host "== 7) unauthorized =="
   $denied = $false
   try {
     Invoke-WebRequest -Method GET -Uri "$base/finance/vouchers" -UseBasicParsing | Out-Null
@@ -147,7 +156,7 @@ try {
   if (-not $denied) { throw "expected 401 without token" }
   Write-Host "OK  unauthorized without token"
 
-  Write-Host "== 7) sign-off =="
+  Write-Host "== 8) sign-off =="
   $now = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
   $lines = @(
     "# Release Gate Sign-off",
@@ -160,6 +169,8 @@ try {
     "| go test ./internal/biz | PASS |",
     "| /live /ready(db=up) /health /metrics | PASS |",
     "| login + weigh/inventory/report/finance lists | PASS |",
+    "| station_pass_smoke (App过站+Admin写拒绝) | PASS |",
+    "| delivery_loop (mobile+station smoke) | PASS |",
     "| finance loop subject->fund/ledger->voucher post->writeoff->month close->statements | PASS |",
     "| unbalanced voucher post rejected | PASS |",
     "| request without token rejected | PASS |",

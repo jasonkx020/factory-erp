@@ -11,6 +11,17 @@ export default defineConfig(({ command }) => ({
       '@erp/shared': fileURLToPath(new URL('../../packages/shared/src', import.meta.url)),
     },
   },
+  optimizeDeps: {
+    include: [
+      'pinia',
+      'nostics',
+      '@vue/devtools-api',
+      '@vue/devtools-kit',
+      'vue',
+      'vue-router',
+      'element-plus',
+    ],
+  },
   server: {
     port: 5177,
     host: true,

@@ -10,6 +10,7 @@
     "dev": "npm run dev -w @erp/portal",
     "dev:portal": "npm run dev -w @erp/portal",
     "dev:admin": "npm run dev -w @erp/admin",
+    "dev:admin:clean": "npm run dev:clean -w @erp/admin",
     "dev:boss": "npm run dev -w @erp/boss",
     "build": "npm run build:all",
     "build:all": "npm run build -w @erp/portal && npm run build -w @erp/admin && npm run build -w @erp/boss",

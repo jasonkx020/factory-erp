@@ -17,10 +17,11 @@ import 'features/mine/mine_page.dart';
 import 'features/notify/inbox_page.dart';
 import 'features/receiving/receiving_page.dart';
 import 'features/sales/sales_page.dart';
+import 'features/shell/factory_shell.dart';
 import 'features/shell/main_shell.dart';
+import 'features/station/station_pass_page.dart';
 import 'features/ticket/ticket_widgets.dart';
 import 'features/warehouse/warehouse_page.dart';
-import 'features/worker/worker_page.dart';
 import 'features/workshop/workshop_page.dart';
 
 Future<void> main() async {
@@ -72,7 +73,8 @@ class ErpEmployeeApp extends StatelessWidget {
         ),
         routes: {
           '/workshop': (_) => const WorkshopPage(),
-          '/worker': (_) => const WorkerPage(),
+          '/worker': (_) => const StationPassPage(),
+          '/station': (_) => const StationPassPage(),
           '/receiving': (_) => const ReceivingPage(),
           '/warehouse': (_) => const WarehousePage(),
           '/sales': (_) => const SalesPage(),
@@ -111,5 +113,5 @@ class _ShellWithLaunchLinkState extends State<_ShellWithLaunchLink> {
   }
 
   @override
-  Widget build(BuildContext context) => const MainShell();
+  Widget build(BuildContext context) => const FactoryShell();
 }

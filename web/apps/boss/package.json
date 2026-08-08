@@ -5,12 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 5177 --host",
+    "dev:clean": "rm -rf node_modules/.vite && vite --port 5177 --host --force",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
     "@erp/shared": "^1.0.0",
+    "@vue/devtools-api": "^8.1.5",
+    "@vue/devtools-kit": "^8.2.1",
     "element-plus": "^2.14.3",
     "pinia": "^4.0.2",
     "vue": "^3.5.40",

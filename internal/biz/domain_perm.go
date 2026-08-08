@@ -9,6 +9,7 @@ import (
 
 	"erp/internal/api"
 	"erp/internal/middleware"
+	"erp/internal/security"
 )
 
 type domainModule struct {
@@ -32,8 +33,12 @@ var resourceDomainModule = map[string]domainModule{
 	"purchase/qcs": {"采购管理", "来料质检"}, "purchase/returns": {"采购管理", "采购退货"},
 	"purchase/tasks": {"采购管理", "采购任务管理"},
 	// production
-	"production/tasks": {"生产管理", "生产任务单"}, "production/processes": {"生产管理", "工序设置"},
-	"production/dispatches": {"生产管理", "生产派工"}, "production/report-works": {"生产管理", "扫码报工"},
+	"production/tasks": {"生产管理", "生产任务单"}, "production/processes": {"生产管理", "工序定义"},
+	"production/shifts": {"生产管理", "产线班次"},
+	"production/dispatches": {"生产管理", "例外派岗"}, "production/report-works": {"生产管理", "过站记录"},
+	"production/workshop-workbench": {"生产管理", "车间工作台"},
+	"production/scan":               {"生产管理", "过站记录"},
+	"production/scan/resolve":       {"生产管理", "过站记录"},
 	"production/piecework-summaries": {"生产管理", "计件工资"}, "production/requisitions": {"生产管理", "联动式领料"},
 	"production/boms": {"生产管理", "自动BOM"}, "production/workshops": {"生产管理", "车间管理"},
 	"production/qc": {"生产管理", "质检管理"}, "production/scraps": {"生产管理", "废料管理"},
@@ -72,6 +77,13 @@ var resourceDomainModule = map[string]domainModule{
 	"iam/hr-perm-overview": {"人事管理", "权限分配"},
 }
 
+// modulePermAliases 模块重命名后兼容旧权限码
+var modulePermAliases = map[string][]string{
+	"过站记录": {"扫码报工", "加工记录"},
+	"例外派岗": {"生产派工"},
+	"工序定义": {"工序设置", "工序管理"},
+}
+
 var domainPrefixCN = map[string]string{
 	"sales": "销售管理", "purchase": "采购管理", "production": "生产管理",
 	"inventory": "库存管理", "finance": "财务管理", "hr": "人事管理",
@@ -89,7 +101,7 @@ var allDomainMenus = []struct {
 	{"销售管理", []string{"销售订单", "自助下单", "询价管理", "合同管理", "修改订单", "发货审批", "预发货管理", "单据打印", "订单复购", "数据排行榜", "销售锁价", "询价审批", "历史报价查询", "销售BOM", "我的订单", "成本预算", "报价计算器", "出厂结算"}},
 	{"客户管理", []string{"CRM客户管理", "商机管理", "客户档案", "客户跟进", "资源分配", "保护机制", "释放机制", "询价管理", "导入客户", "线索锁定", "线索隐藏", "任务提醒"}},
 	{"采购管理", []string{"供应商管理", "农户档案", "过磅收货", "过磅品种", "溯源批号", "农户结算", "原料溯源", "采购申请", "采购计划单", "采购入库", "来料质检", "采购退货", "采购分析", "历史价格查看", "采购任务管理"}},
-	{"生产管理", []string{"多单整合管理", "生产任务单", "图纸分发", "工序设置", "工序管理", "工艺流程", "生产派工", "灵活派发工单", "扫码报工", "计件工资", "加工记录", "计件领料表", "自动BOM", "MRP物料分析", "联动式领料", "车间工作台", "车间管理", "委外加工", "受托加工生产流程管控", "成本隐藏", "一单多商品", "进度跟踪", "质检管理", "返修单", "废料管理"}},
+	{"生产管理", []string{"多单整合管理", "生产任务单", "图纸分发", "工序定义", "工艺流程", "产线班次", "例外派岗", "灵活派发工单", "过站记录", "计件工资", "计件领料表", "自动BOM", "MRP物料分析", "联动式领料", "车间工作台", "车间管理", "委外加工", "受托加工生产流程管控", "成本隐藏", "一单多商品", "进度跟踪", "质检管理", "返修单", "废料管理"}},
 	{"库存管理", []string{"库存查询", "仓管待入库", "地磅台账", "亏料预警", "过量预警", "入库质检", "仓库盘点", "车间盘点", "仓库盘点记录", "销售退皮", "物料调拨耗用", "商品调价组装拆分", "物料转应付", "在途量统计", "待用量统计", "可用量分析", "期初入库", "出入库记录汇总", "采购退货", "箱码管理"}},
 	{"产品管理", []string{"产品档案", "产品单位管理", "APP产品排序", "生产规格绑定"}},
 	{"固定资产管理", []string{"固定资产类别", "固定资产项目", "固定资产内部转移", "固定资产统计"}},
@@ -143,6 +155,35 @@ func needWrite(action, method string) bool {
 		return true
 	}
 	return false
+}
+
+func modulePermCodes(domain, module string, write bool) []string {
+	suffix := "查看"
+	if write {
+		suffix = "编辑"
+	}
+	codes := []string{domain + ":" + module + ":" + suffix}
+	for _, alias := range modulePermAliases[module] {
+		codes = append(codes, domain+":"+alias+":"+suffix)
+	}
+	return codes
+}
+
+func isProductionFieldAPI(resourceKey, action string) bool {
+	if strings.HasPrefix(resourceKey, "production/scan") {
+		return true
+	}
+	if strings.Contains(resourceKey, "piecework-summaries/mine") {
+		return true
+	}
+	if strings.Contains(resourceKey, "report-works") && (strings.Contains(action, "confirm") || action == "action:confirm") {
+		return true
+	}
+	return false
+}
+
+func claimsHasProductionFieldRole(claims *security.Claims) bool {
+	return claimsHasAnyRole(claims, "piece", "fixed", "foreman", "line_worker", "计件工", "固定工", "车间主任")
 }
 
 func isWeighWarehouseAPI(resourceKey, action string) bool {
@@ -219,21 +260,28 @@ func CheckAPIPerm(c *gin.Context, resourceKey, action, method string) bool {
 		(claimsHasAnyRole(claims, "warehouse", "仓管", "仓管员") || claimsHasWeighWarehousePerm(claims.Permissions, write)) {
 		return true
 	}
+	// App 现场过站：计件/固定/班组长角色可访问 scan / confirm / 我的计件
+	if isProductionFieldAPI(resourceKey, action) && claimsHasProductionFieldRole(claims) {
+		return true
+	}
 	if dm.Module != "" {
-		viewCode := dm.Domain + ":" + dm.Module + ":查看"
-		editCode := dm.Domain + ":" + dm.Module + ":编辑"
+		viewCodes := modulePermCodes(dm.Domain, dm.Module, false)
+		editCodes := modulePermCodes(dm.Domain, dm.Module, true)
 		if write {
-			if !claimsHasCode(claims.Permissions, editCode) {
-				// 审批动作也可用审批码
+			if !claimsHasCode(claims.Permissions, editCodes...) {
 				approve := dm.Domain + ":" + dm.Module + ":审批"
-				if !claimsHasCode(claims.Permissions, approve) {
+				approveAliases := []string{approve}
+				for _, alias := range modulePermAliases[dm.Module] {
+					approveAliases = append(approveAliases, dm.Domain+":"+alias+":审批")
+				}
+				if !claimsHasCode(claims.Permissions, approveAliases...) {
 					c.AbortWithStatusJSON(http.StatusForbidden, api.Response{Code: 0, Msg: "PERM_DENIED"})
 					return false
 				}
 			}
 			return true
 		}
-		if !claimsHasCode(claims.Permissions, viewCode, editCode) {
+		if !claimsHasCode(claims.Permissions, append(viewCodes, editCodes...)...) {
 			c.AbortWithStatusJSON(http.StatusForbidden, api.Response{Code: 0, Msg: "PERM_DENIED"})
 			return false
 		}

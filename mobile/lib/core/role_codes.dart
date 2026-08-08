@@ -40,10 +40,10 @@ String workbenchRoleLabel(WorkbenchRole r) {
       return '过磅收货';
     case WorkbenchRole.warehouse:
       return '仓管作业';
-    case WorkbenchRole.workshop:
-      return '车间工作台';
     case WorkbenchRole.worker:
-      return '工人报工';
+      return '工序过站';
+    case WorkbenchRole.workshop:
+      return '班组管理';
     case WorkbenchRole.sales:
       return '销售外勤';
     case WorkbenchRole.collab:

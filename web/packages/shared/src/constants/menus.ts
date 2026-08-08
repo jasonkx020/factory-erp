@@ -25,8 +25,8 @@ export const ERP_MENUS: Array<{ domain: string; modules: string[] }> = [
   {
     domain: '生产管理',
     modules: [
-      '多单整合管理', '生产任务单', '图纸分发', '工序设置', '工序管理', '工艺流程',
-      '生产派工', '灵活派发工单', '扫码报工', '计件工资', '加工记录', '计件领料表', '自动BOM', 'MRP物料分析',
+      '多单整合管理', '生产任务单', '图纸分发', '工序定义', '工艺流程', '产线班次',
+      '例外派岗', '灵活派发工单', '过站记录', '计件工资', '计件领料表', '自动BOM', 'MRP物料分析',
       '联动式领料', '车间工作台', '车间管理', '委外加工', '受托加工生产流程管控',
       '成本隐藏', '一单多商品', '进度跟踪', '质检管理', '返修单', '废料管理',
     ],
@@ -91,7 +91,7 @@ export const ERP_MENUS: Array<{ domain: string; modules: string[] }> = [
 export const DOMAIN_LIST_PATH: Record<string, string> = {
   产品管理: '/product/hub/products',
   库存管理: '/inventory/hub/balances',
-  生产管理: '/production/hub/tasks',
+  生产管理: '/production/hub/processes',
   工资管理: '/payroll/wage-rates',
   人事管理: '/hr/employees',
   审批管理: '/approval/hub/tasks',

@@ -32,6 +32,7 @@ func EnsureDemoRoleUsers(db *sql.DB) {
 	for _, u := range users {
 		ensureOneDemoRoleUser(db, u)
 	}
+	SeedOpenShiftForToday(db)
 	log.Printf("demo role users ensured (password=admin123)")
 }
 
@@ -58,6 +59,13 @@ func ensureOneDemoRoleUser(db *sql.DB, u demoRoleUser) {
 		return
 	}
 	_, _ = db.Exec(`UPDATE hr_employee SET user_id=? WHERE id=?`, userID, empID)
+	// badge for scan station pass smoke / demo
+	switch u.RoleCode {
+	case "piece":
+		_, _ = db.Exec(`UPDATE hr_employee SET badge_code='EMP-PC' WHERE id=?`, empID)
+	case "fixed":
+		_, _ = db.Exec(`UPDATE hr_employee SET badge_code='EMP-FX' WHERE id=?`, empID)
+	}
 	_, _ = db.Exec(`INSERT OR IGNORE INTO iam_user_role(user_id, role_id) VALUES(?,?)`, userID, roleID)
 
 	// bind domain permissions (查看+编辑) so API CheckAPIPerm passes
@@ -89,11 +97,15 @@ func bindDomainPerms(db *sql.DB, roleID int64, domain string) {
 	if err != nil {
 		return
 	}
-	defer rows.Close()
+	ids := make([]int64, 0, 64)
 	for rows.Next() {
 		var pid int64
-		if rows.Scan(&pid) == nil {
-			_, _ = db.Exec(`INSERT OR IGNORE INTO iam_role_permission(role_id, permission_id) VALUES(?,?)`, roleID, pid)
+		if rows.Scan(&pid) == nil && pid > 0 {
+			ids = append(ids, pid)
 		}
+	}
+	_ = rows.Close()
+	for _, pid := range ids {
+		_, _ = db.Exec(`INSERT OR IGNORE INTO iam_role_permission(role_id, permission_id) VALUES(?,?)`, roleID, pid)
 	}
 }

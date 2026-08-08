@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>木薯粗加工 · 工序过站优化 Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Noto+Serif+SC:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #14201a;
+    --muted: #5a6b62;
+    --line: rgba(20, 32, 26, 0.12);
+    --panel: rgba(255, 252, 247, 0.86);
+    --panel-solid: #fffdf8;
+    --accent: #1f6b4a;
+    --accent-2: #c45c26;
+    --warn: #b45309;
+    --ok: #15803d;
+    --danger: #b91c1c;
+    --chip: #e8f2ec;
+    --shadow: 0 18px 50px rgba(20, 32, 26, 0.12);
+    --radius: 18px;
+    --font: "IBM Plex Sans", "PingFang SC", "Noto Sans SC", sans-serif;
+    --display: "Noto Serif SC", "Songti SC", serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    font-family: var(--font);
+    color: var(--ink);
+    background:
+      radial-gradient(1200px 600px at 10% -10%, rgba(31, 107, 74, 0.18), transparent 55%),
+      radial-gradient(900px 500px at 100% 0%, rgba(196, 92, 38, 0.14), transparent 50%),
+      linear-gradient(165deg, #eef5f0 0%, #f7f3ea 42%, #e7eee9 100%);
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.35;
+    background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%231f6b4a' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  }
+
+  .app {
+    position: relative;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 28px 20px 64px;
+  }
+
+  header.hero {
+    display: grid;
+    gap: 18px;
+    margin-bottom: 22px;
+    animation: rise 0.7s ease both;
+  }
+  .brand-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 18px;
+    justify-content: space-between;
+  }
+  .brand {
+    font-family: var(--display);
+    font-size: clamp(1.8rem, 3.5vw, 2.6rem);
+    letter-spacing: 0.02em;
+    line-height: 1.15;
+    margin: 0;
+  }
+  .brand span { color: var(--accent); }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgba(31, 107, 74, 0.1);
+    color: var(--accent);
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .lede {
+    max-width: 62ch;
+    margin: 0;
+    color: var(--muted);
+    font-size: 1.02rem;
+    line-height: 1.65;
+  }
+  .tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .tabs button {
+    border: 1px solid var(--line);
+    background: rgba(255,253,248,0.7);
+    color: var(--ink);
+    border-radius: 999px;
+    padding: 10px 16px;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform .15s ease, background .2s ease, border-color .2s;
+  }
+  .tabs button:hover { transform: translateY(-1px); border-color: rgba(31,107,74,.35); }
+  .tabs button.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  .panel {
+    display: none;
+    animation: rise 0.45s ease both;
+  }
+  .panel.active { display: block; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+  @media (max-width: 960px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+
+  .station-nav, .card {
+    background: var(--panel);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .station-nav { padding: 14px; position: sticky; top: 14px; }
+  .station-nav h2 {
+    margin: 0 0 10px;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .station-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+    max-height: min(70vh, 720px);
+    overflow: auto;
+  }
+  .station-list button {
+    width: 100%;
+    text-align: left;
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 12px;
+    padding: 10px 12px;
+    cursor: pointer;
+    font: inherit;
+    display: grid;
+    gap: 2px;
+    transition: background .15s, border-color .15s;
+  }
+  .station-list button:hover { background: rgba(31,107,74,.06); }
+  .station-list button.active {
+    background: var(--chip);
+    border-color: rgba(31,107,74,.25);
+  }
+  .station-list .idx {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .station-list .name { font-weight: 600; font-size: 0.95rem; }
+  .station-list .meta { font-size: 0.75rem; color: var(--muted); }
+
+  .card { padding: 22px; }
+  .card + .card { margin-top: 14px; }
+
+  .title-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .title-row h1 {
+    margin: 0;
+    font-family: var(--display);
+    font-size: 1.55rem;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #eef2f0;
+    color: var(--muted);
+  }
+  .chip.piece { background: #fff1e6; color: var(--accent-2); }
+  .chip.fixed { background: #e8eef8; color: #274c77; }
+  .chip.wh { background: #e7f0ff; color: #1d4ed8; }
+  .chip.gate { background: #fef3c7; color: #92400e; }
+  .chip.recv { background: #ede9fe; color: #5b21b6; }
+
+  .desc { color: var(--muted); line-height: 1.65; margin: 0 0 16px; }
+
+  .grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  @media (max-width: 800px) {
+    .grid-3 { grid-template-columns: 1fr; }
+  }
+  .mini {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: rgba(255,255,255,0.55);
+  }
+  .mini h3 {
+    margin: 0 0 8px;
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .mini ul { margin: 0; padding-left: 1.1rem; color: var(--ink); line-height: 1.55; font-size: 0.92rem; }
+  .mini p { margin: 0; font-size: 0.92rem; line-height: 1.55; }
+
+  .steps {
+    display: grid;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .step {
+    display: grid;
+    grid-template-columns: 36px 1fr;
+    gap: 12px;
+    align-items: start;
+    padding: 12px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: rgba(255,255,255,0.5);
+    opacity: 0.55;
+    transform: translateY(4px);
+    transition: opacity .25s, transform .25s, border-color .25s, background .25s;
+  }
+  .step.on {
+    opacity: 1;
+    transform: none;
+    border-color: rgba(31,107,74,.35);
+    background: rgba(232,242,236,.75);
+  }
+  .step .n {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.9rem;
+  }
+  .step strong { display: block; margin-bottom: 2px; }
+  .step span { color: var(--muted); font-size: 0.88rem; line-height: 1.45; }
+
+  .sim-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 16px 0 8px;
+    align-items: center;
+  }
+  .btn {
+    border: none;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform .15s, filter .15s;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.secondary { background: #e8eee9; color: var(--ink); }
+  .btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--ink); }
+  .hint { font-size: 0.85rem; color: var(--muted); }
+
+  .kpi {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-top: 14px;
+  }
+  @media (max-width: 800px) { .kpi { grid-template-columns: repeat(2, 1fr); } }
+  .kpi .box {
+    border-radius: 14px;
+    padding: 12px;
+    background: linear-gradient(160deg, rgba(31,107,74,.08), rgba(255,255,255,.7));
+    border: 1px solid var(--line);
+  }
+  .kpi .label { font-size: 0.75rem; color: var(--muted); }
+  .kpi .value { font-size: 1.35rem; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .kpi .value.warn { color: var(--warn); }
+  .kpi .value.ok { color: var(--ok); }
+
+  .formula {
+    margin-top: 14px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: #14201a;
+    color: #e8f2ec;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.88rem;
+    line-height: 1.7;
+    overflow-x: auto;
+  }
+  .formula em { color: #9fe3bf; font-style: normal; }
+
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  @media (max-width: 800px) { .compare { grid-template-columns: 1fr; } }
+  .compare .side { padding: 18px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--panel); }
+  .compare .side.old { background: #fff7f5; }
+  .compare .side.new { background: #f2faf5; }
+  .compare h3 { margin: 0 0 10px; font-family: var(--display); }
+  .compare ol { margin: 0; padding-left: 1.2rem; line-height: 1.7; color: var(--muted); }
+  .compare li strong { color: var(--ink); }
+
+  .timeline {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 8px 2px 14px;
+    scroll-snap-type: x mandatory;
+  }
+  .tl-item {
+    flex: 0 0 150px;
+    scroll-snap-align: start;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: var(--panel-solid);
+    padding: 12px;
+    cursor: pointer;
+    transition: border-color .2s, transform .15s;
+  }
+  .tl-item:hover, .tl-item.active { border-color: var(--accent); transform: translateY(-2px); }
+  .tl-item .no { font-size: 0.72rem; font-weight: 700; color: var(--accent); }
+  .tl-item .nm { font-weight: 600; margin: 4px 0; font-size: 0.9rem; }
+  .tl-item .tg { font-size: 0.72rem; color: var(--muted); }
+
+  .arch {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 14px;
+  }
+  @media (max-width: 900px) { .arch { grid-template-columns: 1fr; } }
+  .flow-box {
+    border: 1px dashed rgba(31,107,74,.35);
+    border-radius: 14px;
+    padding: 14px;
+    background: rgba(255,255,255,.45);
+  }
+  .flow-box + .flow-box { margin-top: 10px; }
+  .flow-box h4 { margin: 0 0 8px; }
+  .pill-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pill {
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid var(--line);
+    font-size: 0.82rem;
+    font-weight: 500;
+  }
+  .arrow { text-align: center; color: var(--accent); font-weight: 700; margin: 6px 0; }
+
+  table.matrix {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+  table.matrix th, table.matrix td {
+    border-bottom: 1px solid var(--line);
+    padding: 10px 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+  table.matrix th { color: var(--muted); font-size: 0.78rem; letter-spacing: 0.04em; }
+  .log {
+    margin-top: 12px;
+    max-height: 180px;
+    overflow: auto;
+    font-size: 0.82rem;
+    line-height: 1.55;
+    color: var(--muted);
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+  }
+  .log div { margin-bottom: 4px; }
+  .log .t { color: var(--accent); font-weight: 600; }
+
+  footer.note {
+    margin-top: 22px;
+    color: var(--muted);
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="hero">
+    <div class="brand-row">
+      <h1 class="brand">木薯粗加工 <span>工序过站</span> 优化方案</h1>
+      <div class="badge">重构理论 Demo · 非线上系统</div>
+    </div>
+    <p class="lede">
+      将「任务 → 工单 → 派工 → 报工」收敛为「箱码驱动的工序过站」。
+      派工仅用于班次授权与返工/顶岗例外。下列演示覆盖产线每一道工位的运转方式、工具、公式与库存副作用。
+    </p>
+    <div class="tabs" role="tablist">
+      <button class="active" data-tab="stations">全工位运转</button>
+      <button data-tab="compare">现状 vs 目标</button>
+      <button data-tab="arch">目标架构</button>
+      <button data-tab="matrix">角色矩阵</button>
+      <button data-tab="delivery">交付检查</button>
+    </div>
+  </header>
+
+  <!-- STATIONS -->
+  <section id="panel-stations" class="panel active">
+    <div class="timeline" id="timeline"></div>
+    <div class="layout">
+      <aside class="station-nav">
+        <h2>产线工位</h2>
+        <ul class="station-list" id="stationList"></ul>
+      </aside>
+      <main>
+        <article class="card" id="stationDetail"></article>
+        <article class="card">
+          <div class="title-row">
+            <h1 style="font-size:1.2rem;font-family:var(--display);margin:0">过站模拟器</h1>
+            <span class="hint" id="simHint">点击「执行下一步」逐步演示本工位动作</span>
+          </div>
+          <div class="steps" id="simSteps"></div>
+          <div class="sim-bar">
+            <button class="btn primary" id="btnNext">执行下一步</button>
+            <button class="btn secondary" id="btnReset">重置本站</button>
+            <button class="btn ghost" id="btnAuto">自动演示</button>
+          </div>
+          <div class="kpi" id="simKpi"></div>
+          <div class="formula" id="simFormula"></div>
+          <div class="log" id="simLog"></div>
+        </article>
+      </main>
+    </div>
+  </section>
+
+  <!-- COMPARE -->
+  <section id="panel-compare" class="panel">
+    <div class="compare">
+      <div class="side old">
+        <h3>现状：单据驱动</h3>
+        <ol>
+          <li><strong>生产任务</strong> 下达计划量</li>
+          <li><strong>工单 + 派工</strong> 常自动 spawn，现场弱感知</li>
+          <li><strong>扫码报工草稿</strong> confirm_pending</li>
+          <li><strong>工人确认</strong> 后算损耗/利用率</li>
+          <li><strong>AfterReportWork</strong> 计件、出入库、下工序</li>
+          <li>另有<strong>简易报工</strong>旁路，口径易漂</li>
+        </ol>
+      </div>
+      <div class="side new">
+        <h3>目标：箱码过站</h3>
+        <ol>
+          <li><strong>班次授权</strong> 工序×人员（非每箱派工）</li>
+          <li><strong>扫工牌 + 扫箱 + 过磅</strong> 一次采集</li>
+          <li><strong>确认过站</strong> 原子写入损耗/库存/计件</li>
+          <li>箱码 <strong>current_process</strong> 自动前移</li>
+          <li><strong>派岗</strong> 仅返工/顶岗/月薪责任</li>
+          <li><strong>下班核对</strong> 当日产量与工资自助确认</li>
+        </ol>
+      </div>
+    </div>
+    <article class="card" style="margin-top:14px">
+      <h1 style="font-family:var(--display);font-size:1.25rem;margin:0 0 10px">统一公式（全加工工位）</h1>
+      <div class="formula">
+        loss L = max(input I − output O, 0)<br />
+        utilization U = O / I&nbsp;&nbsp;(I &gt; 0)<br />
+        piecewage = O × rate&nbsp;&nbsp;(仅计件工位)<br />
+        stock_out = I&nbsp;&nbsp;|&nbsp;&nbsp;stock_in / next = O<br />
+        <em>入场：净重 = 毛重 × (1 − 扣损率) → 合格入保鲜库</em>
+      </div>
+    </article>
+  </section>
+
+  <!-- ARCH -->
+  <section id="panel-arch" class="panel">
+    <div class="arch">
+      <article class="card">
+        <h1 style="font-family:var(--display);font-size:1.35rem;margin:0 0 12px">目标主链</h1>
+        <div class="flow-box">
+          <h4>收货建批</h4>
+          <div class="pill-row">
+            <span class="pill">农户</span><span class="pill">过磅单</span><span class="pill">质检</span><span class="pill">TraceLot</span><span class="pill">箱码</span>
+          </div>
+        </div>
+        <div class="arrow">↓</div>
+        <div class="flow-box">
+          <h4>三仓 × 过站循环</h4>
+          <div class="pill-row">
+            <span class="pill">保鲜库</span><span class="pill">清洗</span><span class="pill">去皮★</span><span class="pill">卡点</span>
+            <span class="pill">切断</span><span class="pill">去芯★</span><span class="pill">卡点</span><span class="pill">半成品库</span>
+            <span class="pill">切块★</span><span class="pill">过筛装袋</span><span class="pill">成品冷库</span>
+          </div>
+          <p class="hint" style="margin:10px 0 0">★ = 默认计件工位</p>
+        </div>
+        <div class="arrow">↓</div>
+        <div class="flow-box">
+          <h4>结算闭环</h4>
+          <div class="pill-row">
+            <span class="pill">农户净重货款</span><span class="pill">计件日结</span><span class="pill">下班自助核对</span>
+          </div>
+        </div>
+      </article>
+      <article class="card">
+        <h1 style="font-family:var(--display);font-size:1.35rem;margin:0 0 12px">对象映射（重构）</h1>
+        <table class="matrix">
+          <thead><tr><th>目标</th><th>现状落点</th></tr></thead>
+          <tbody>
+            <tr><td>StationPass 过站</td><td>统一 pd_report_work 唯一写入</td></tr>
+            <tr><td>Shift 班次授权</td><td>新建 / 弱化派工范围</td></tr>
+            <tr><td>TraceLot 追溯批</td><td>扩展 inv_box_code + 农户字段</td></tr>
+            <tr><td>Assignment 派岗</td><td>例外用 pd_dispatch</td></tr>
+            <tr><td>副作用引擎</td><td>保留 AfterReportWork</td></tr>
+            <tr><td>简易报工 create</td><td>下线或仅管理员补单</td></tr>
+          </tbody>
+        </table>
+        <p class="hint" style="margin-top:14px">详见文档：docs/木薯工序过站优化方案.md</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- MATRIX -->
+  <section id="panel-matrix" class="panel">
+    <article class="card">
+      <h1 style="font-family:var(--display);font-size:1.35rem;margin:0 0 12px">角色 × 系统动作</h1>
+      <table class="matrix">
+        <thead>
+          <tr><th>角色</th><th>日常</th><th>系统对象</th><th>是否需要派工</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>过磅/质检</td><td>入场建批</td><td>过磅单 / TraceLot</td><td>否</td></tr>
+          <tr><td>仓管</td><td>三仓确认</td><td>仓站过站</td><td>否</td></tr>
+          <tr><td>计件临时工</td><td>过站 + 下班核对</td><td>StationPass / 日结</td><td>否（班次授权即可）</td></tr>
+          <tr><td>固定工（切断）</td><td>过站记产</td><td>StationPass</td><td>可选派岗到机台</td></tr>
+          <tr><td>卡点员</td><td>复核放行</td><td>checkpoint 过站</td><td>否</td></tr>
+          <tr><td>班组长</td><td>开班、异常、返工</td><td>Shift / Assignment</td><td>例外时是</td></tr>
+          <tr><td>结算</td><td>农户 + 计件汇总</td><td>结算单</td><td>否</td></tr>
+        </tbody>
+      </table>
+    </article>
+  </section>
+
+  <section id="panel-delivery" class="panel">
+    <article class="card">
+      <h1 style="font-family:var(--display);font-size:1.35rem;margin:0 0 12px">可交付检查清单</h1>
+      <table class="matrix">
+        <thead><tr><th>#</th><th>标准</th><th>命令 / 方式</th></tr></thead>
+        <tbody>
+          <tr><td>B1</td><td>过磅→过站→计件闭环</td><td><code>go run ./cmd/station_pass_smoke</code></td></tr>
+          <tr><td>B2</td><td>App 唯一现场写入</td><td>计件工零 Admin 录入</td></tr>
+          <tr><td>B3</td><td>Admin 报工只读</td><td>生产 Hub 无默认创建表单</td></tr>
+          <tr><td>E1</td><td>biz 单测</td><td><code>go test ./internal/biz/</code></td></tr>
+          <tr><td>E3–E5</td><td>Delivery Loop</td><td><code>bash scripts/delivery_loop.sh</code></td></tr>
+        </tbody>
+      </table>
+      <p class="hint" style="margin-top:14px">连续 2 次 <code>DELIVERY_LOOP_OK</code> + 角色手工走查 → 可签字 <code>GATE_SIGN_OFF.md</code></p>
+    </article>
+  </section>
+
+  <footer class="note">
+    本页为重构前理论与培训 Demo，不连接后端。产线步骤对齐当前种子工艺 RT-CASSAVA，并按需求文档用语做了可读命名。
+    评审通过后再拆 API / 表结构改造任务。
+  </footer>
+</div>
+
+<script>
+const STATIONS = [
+  {
+    id: "s0", no: "0", name: "入场过磅 + 质检",
+    tags: ["收货", "溯源"], chip: "recv",
+    type: "收货建批", piece: false,
+    tools: ["外磅纸质单 / 厂内叉车秤", "手机拍照存档", "快检器具"],
+    roles: ["过磅员", "质检员"],
+    warehouse: "合格 → 保鲜库(WH-RAW)；不合格留档不入库",
+    purpose: "建立追溯批（收货日+农户+产地+净重），作为后续全链路箱码源头，并驱动农户货款。",
+    steps: [
+      { t: "选择农户与产地", d: "绑定当日收货批次，生成/关联追溯码前缀" },
+      { t: "录入或拍摄过磅单", d: "双渠道：外部标准化磅单 / 厂内叉车秤读数" },
+      { t: "计算扣损净重", d: "净重 = 毛重 × (1 − 扣损率) 或 毛重 − 扣损重" },
+      { t: "质检判定", d: "合格进入保鲜库入库指令；不合格全量留档、不入账库存" },
+      { t: "打印箱码", d: "箱码挂 TraceLot，进入站 1" }
+    ],
+    formula: "net = gross × (1 − deduct_rate)\n合格 → 建箱入保鲜库；农户应付依据 = net",
+    sim: { mode: "receive", gross: 1200, deductRate: 0.05 }
+  },
+  {
+    id: "s1", no: "1", name: "入库 · 原料（保鲜库）",
+    tags: ["仓站"], chip: "wh",
+    type: "仓站过站", piece: false,
+    tools: ["叉车", "托盘", "箱码打印机"],
+    roles: ["仓管"],
+    warehouse: "auto_stock_in → WH-RAW",
+    purpose: "确认原料实物入保鲜库，箱码状态 open，等待清洗领出。",
+    steps: [
+      { t: "扫箱码", d: "核对 TraceLot / 净重与标签" },
+      { t: "确认入库过站", d: "写入库存流水，仓=保鲜库" },
+      { t: "流转到清洗", d: "current_process → 清洗；无需派工单" }
+    ],
+    formula: "stock_in(WH-RAW, qty=box.weight)\nnext = 清洗",
+    sim: { mode: "pass", input: 1140, output: 1140, rate: 0 }
+  },
+  {
+    id: "s2", no: "2", name: "清洗",
+    tags: ["加工"], chip: "fixed",
+    type: "加工过站", piece: false,
+    tools: ["清洗池 / 滚筒清洗线", "沥水架", "台秤"],
+    roles: ["清洗班（班次授权）"],
+    warehouse: "在制转序；泥沙损耗记废料",
+    purpose: "去除泥沙杂质。默认可不计件；若现场按斤计酬，打开 is_piecework 即可复用同一公式。",
+    steps: [
+      { t: "扫工牌（班次校验）", d: "在清洗工序授权名单内即可，不强制派工单" },
+      { t: "扫箱 + 称投料", d: "默认带出箱在库重为投料重 I" },
+      { t: "称完工重", d: "沥水后净重 O；损耗多为泥沙" },
+      { t: "确认过站", d: "L/U 入账；箱码进入去皮" }
+    ],
+    formula: "L = max(I − O, 0); U = O / I\n不计件（可配置）; next = 去皮",
+    sim: { mode: "pass", input: 1140, output: 1100, rate: 0 }
+  },
+  {
+    id: "s3", no: "3", name: "去皮（计件）",
+    tags: ["计件", "加工"], chip: "piece",
+    type: "计件过站", piece: true,
+    tools: ["去皮刀 / 去皮机", "料筐", "台秤"],
+    roles: ["临时工"],
+    warehouse: "可扣原料侧；皮渣 → 废料 peel_scrap",
+    purpose: "核心计件工位之一。工资只认确认过站的完工重，禁止旁路报工。",
+    steps: [
+      { t: "扫工牌 + 扫箱", d: "校验班次授权与箱当前工序=去皮" },
+      { t: "录投料 / 完工", d: "分次领料可多笔过站，日终累计" },
+      { t: "确认过站", d: "计件 += O×R；损耗写废料；转卡点" },
+      { t: "（下班）自助核对", d: "查看当日去皮累计公斤与预估工资" }
+    ],
+    formula: "L = max(I − O, 0); U = O / I\nwage = O × R_peel; scrap_type = peel_scrap",
+    sim: { mode: "pass", input: 1100, output: 920, rate: 0.18 }
+  },
+  {
+    id: "s4", no: "4", name: "收货卡点（去皮后）",
+    tags: ["卡点"], chip: "gate",
+    type: "质量闸门", piece: false,
+    tools: ["台秤", "平板 / 记录端"],
+    roles: ["固定工", "班组长"],
+    warehouse: "默认不换仓；不通过则退回",
+    purpose: "防止计件虚报与重量漂移。卡点失败整单不过账，箱挂待处理。",
+    steps: [
+      { t: "扫箱复核重量", d: "与上站完工重比对，超差告警" },
+      { t: "外观/抽检", d: "process_qc_result 必须 pass" },
+      { t: "放行过站", d: "进入切断；失败则退回去皮或待处理区" }
+    ],
+    formula: "QC != pass → 阻断过账\n放行 → next = 切断",
+    sim: { mode: "gate", input: 920, output: 920, rate: 0 }
+  },
+  {
+    id: "s5", no: "5", name: "切断（固定月薪）",
+    tags: ["月薪", "设备"], chip: "fixed",
+    type: "设备工位过站", piece: false,
+    tools: ["切断机", "输送带", "防护装置"],
+    roles: ["固定工"],
+    warehouse: "在制过站；可记设备损耗",
+    purpose: "产量与利用率仍要数字化，但不计件。可选派岗到「当日机台责任人」。后续可挂简易 OEE。",
+    steps: [
+      { t: "（可选）接收机台派岗", d: "例外/责任场景，不是每箱派工" },
+      { t: "扫码过站记产", d: "投料/完工/损耗照常采集" },
+      { t: "确认", d: "写入产量台账；不计件工资；转去芯" }
+    ],
+    formula: "记产: I, O, L, U\nwage = 0（月薪）; next = 去芯",
+    sim: { mode: "pass", input: 920, output: 900, rate: 0 }
+  },
+  {
+    id: "s6", no: "6", name: "去芯（计件）",
+    tags: ["计件", "加工"], chip: "piece",
+    type: "计件过站", piece: true,
+    tools: ["去芯台", "刀具", "分料筐"],
+    roles: ["临时工"],
+    warehouse: "芯料 → 废料/副产物；箱转下卡点",
+    purpose: "第二计件高峰工位。芯耗应体现在损耗与废料类型，便于班次利用率对比。",
+    steps: [
+      { t: "扫工牌 + 扫箱", d: "工序=去芯且班次授权" },
+      { t: "称重确认", d: "I 领料重，O 去芯肉重" },
+      { t: "过站入账", d: "wage += O×R_core；转卡点 2" }
+    ],
+    formula: "L = max(I − O, 0); U = O / I\nwage = O × R_core; scrap_type = core_scrap",
+    sim: { mode: "pass", input: 900, output: 780, rate: 0.25 }
+  },
+  {
+    id: "s7", no: "7", name: "收货卡点（去芯后）",
+    tags: ["卡点"], chip: "gate",
+    type: "质量闸门", piece: false,
+    tools: ["台秤"],
+    roles: ["固定工"],
+    warehouse: "半成品入库前复核",
+    purpose: "半成品入库前的第二道闸，保证入半成品库重量可信。",
+    steps: [
+      { t: "复核重量与品相", d: "与去芯完工比对" },
+      { t: "QC 放行", d: "通过后进入半成品入库" }
+    ],
+    formula: "QC pass → next = 半成品入库",
+    sim: { mode: "gate", input: 780, output: 780, rate: 0 }
+  },
+  {
+    id: "s8", no: "8", name: "入库 · 半成品库",
+    tags: ["仓站"], chip: "wh",
+    type: "仓站过站", piece: false,
+    tools: ["叉车", "库位标签"],
+    roles: ["仓管"],
+    warehouse: "auto_stock_in → WH-SEMI；外购半成品亦入此仓（来源=external）",
+    purpose: "自产与外购半成品分来源台账，统一存放于半成品库。",
+    steps: [
+      { t: "扫箱入库", d: "仓=半成品库，来源自产/外购" },
+      { t: "过站完成", d: "等待出库切块领用" }
+    ],
+    formula: "stock_in(WH-SEMI, O)\nsource ∈ {self, external}",
+    sim: { mode: "pass", input: 780, output: 780, rate: 0 }
+  },
+  {
+    id: "s9", no: "9", name: "出库切块（计件）",
+    tags: ["计件", "出库"], chip: "piece",
+    type: "计件过站", piece: true,
+    tools: ["切丁机", "出库复核秤"],
+    roles: ["临时工"],
+    warehouse: "出 WH-SEMI（投料 I）+ 完工 O 转在制/待装袋",
+    purpose: "半成品出库与切块计件合一。出库重量用投料重，计件用完工重。",
+    steps: [
+      { t: "半成品出库扫码", d: "stock_out 数量 = I" },
+      { t: "切块完工过磅", d: "O 为计件基数" },
+      { t: "确认过站", d: "wage += O×R_dice；转缓冲或装袋" }
+    ],
+    formula: "stock_out(WH-SEMI, I)\nwage = O × R_dice; L = max(I − O, 0)",
+    sim: { mode: "pass", input: 780, output: 750, rate: 0.22 }
+  },
+  {
+    id: "s10", no: "10", name: "入库 · 半成品缓冲（可配置）",
+    tags: ["仓站", "可选"], chip: "wh",
+    type: "缓冲仓站", piece: false,
+    tools: ["叉车"],
+    roles: ["仓管"],
+    warehouse: "可再次入 WH-SEMI；连续作业时可在工艺中 skip",
+    purpose: "兼容现网种子步骤 S10。现场若切块后直接装袋，评审时可合并或关闭本站。",
+    steps: [
+      { t: "判断是否需要暂存", d: "不需要则工艺配置跳过" },
+      { t: "扫码入缓冲", d: "入半成品库待装袋" }
+    ],
+    formula: "optional stock_in(WH-SEMI)\nor skip → 过筛装袋",
+    sim: { mode: "pass", input: 750, output: 750, rate: 0 }
+  },
+  {
+    id: "s11", no: "11", name: "过筛装袋",
+    tags: ["加工", "包装"], chip: "fixed",
+    type: "加工过站", piece: false,
+    tools: ["筛网", "装袋台", "封口机", "袋标"],
+    roles: ["包装班"],
+    warehouse: "在制 → 待成品；记录 bag_qty",
+    purpose: "粒度筛选与装袋。可按袋或按斤配置计件；须记录袋数便于成品出库。",
+    steps: [
+      { t: "扫箱过筛", d: "筛下物可记副产/损耗类型" },
+      { t: "装袋过磅", d: "O = 袋装合计净重；填写 bag_qty" },
+      { t: "确认过站", d: "转成品冷库入库" }
+    ],
+    formula: "L = max(I − O, 0); bag_qty = n\n(可选) wage = O × R_bag 或 按袋单价",
+    sim: { mode: "pass", input: 750, output: 735, rate: 0, bags: 30 }
+  },
+  {
+    id: "s12", no: "12", name: "入库 · 成品冷库",
+    tags: ["仓站", "终站"], chip: "wh",
+    type: "终站过站", piece: false,
+    tools: ["冷库叉车", "库位管理"],
+    roles: ["仓管"],
+    warehouse: "auto_stock_in → WH-FG；箱状态 finished",
+    purpose: "成品入库，追溯链闭合。销售出库为后续域，不在本 Demo 展开。",
+    steps: [
+      { t: "扫箱入库冷库", d: "核对袋数与净重" },
+      { t: "关闭在制", d: "status=finished；可反向追溯至农户批" }
+    ],
+    formula: "stock_in(WH-FG, O)\nbox.status = finished\ntrace: FG → … → TraceLot → 农户",
+    sim: { mode: "pass", input: 735, output: 735, rate: 0 }
+  }
+];
+
+let currentIdx = 0;
+let stepIdx = 0;
+let autoTimer = null;
+let boxState = { code: "BX-DEMO-0808", weight: 1140, process: "入场" };
+
+const chipClass = (s) => s.chip || "fixed";
+
+function $(id) { return document.getElementById(id); }
+
+function renderNav() {
+  const list = $("stationList");
+  const tl = $("timeline");
+  list.innerHTML = "";
+  tl.innerHTML = "";
+  STATIONS.forEach((s, i) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<button type="button" class="${i===currentIdx?"active":""}" data-i="${i}">
+      <span class="idx">STATION ${s.no}</span>
+      <span class="name">${s.name}</span>
+      <span class="meta">${s.type}${s.piece ? " · 计件" : ""}</span>
+    </button>`;
+    list.appendChild(li);
+
+    const t = document.createElement("div");
+    t.className = `tl-item ${i===currentIdx?"active":""}`;
+    t.dataset.i = i;
+    t.innerHTML = `<div class="no">S${s.no}</div><div class="nm">${s.name}</div><div class="tg">${s.piece?"计件":s.tags[0]}</div>`;
+    tl.appendChild(t);
+  });
+}
+
+function renderDetail() {
+  const s = STATIONS[currentIdx];
+  const chips = [
+    `<span class="chip ${chipClass(s)}">${s.type}</span>`,
+    s.piece ? `<span class="chip piece">计件</span>` : `<span class="chip">不计件</span>`,
+    ...s.tags.map(t => `<span class="chip">${t}</span>`)
+  ].join("");
+
+  $("stationDetail").innerHTML = `
+    <div class="title-row">
+      <h1>S${s.no} · ${s.name}</h1>
+      <div class="chips">${chips}</div>
+    </div>
+    <p class="desc">${s.purpose}</p>
+    <div class="grid-3">
+      <div class="mini"><h3>角色</h3><p>${s.roles.join("、")}</p></div>
+      <div class="mini"><h3>工具 / 设备</h3><ul>${s.tools.map(x=>`<li>${x}</li>`).join("")}</ul></div>
+      <div class="mini"><h3>仓 / 库存</h3><p>${s.warehouse}</p></div>
+    </div>
+  `;
+  resetSim(false);
+}
+
+function calc(s) {
+  const sim = s.sim;
+  if (sim.mode === "receive") {
+    const net = +(sim.gross * (1 - sim.deductRate)).toFixed(1);
+    return {
+      kpis: [
+        { label: "毛重 kg", value: sim.gross },
+        { label: "扣损率", value: (sim.deductRate*100).toFixed(1)+"%" },
+        { label: "净重 kg", value: net, cls: "ok" },
+        { label: "动作", value: "建批入库" }
+      ],
+      doneExtra: `净重 ${net} kg → 箱码 ${boxState.code}`
+    };
+  }
+  const I = sim.input, O = sim.output;
+  const L = Math.max(I - O, 0);
+  const U = I > 0 ? O / I : 0;
+  const wage = s.piece ? +(O * (sim.rate||0)).toFixed(2) : 0;
+  const kpis = [
+    { label: "投料 I", value: I + " kg" },
+    { label: "完工 O", value: O + " kg", cls: "ok" },
+    { label: "损耗 L", value: L.toFixed(1) + " kg", cls: L>0?"warn":"" },
+    { label: s.piece ? "计件工资" : "利用率 U", value: s.piece ? ("¥"+wage) : ((U*100).toFixed(1)+"%"), cls: s.piece?"ok":"" }
+  ];
+  return {
+    kpis,
+    I, O, L, U, wage,
+    doneExtra: s.piece ? `计件 +¥${wage}` : `U=${(U*100).toFixed(1)}%`
+  };
+}
+
+function resetSim(logClear = true) {
+  stepIdx = 0;
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+  const s = STATIONS[currentIdx];
+  $("simSteps").innerHTML = s.steps.map((st, i) => `
+    <div class="step ${i===0?"on":""}" data-step="${i}">
+      <div class="n">${i+1}</div>
+      <div><strong>${st.t}</strong><span>${st.d}</span></div>
+    </div>`).join("");
+  const c = calc(s);
+  $("simKpi").innerHTML = c.kpis.map(k => `
+    <div class="box"><div class="label">${k.label}</div>
+    <div class="value ${k.cls||""}">${k.value}</div></div>`).join("");
+  $("simFormula").innerHTML = s.formula.replace(/\n/g, "<br />").replace(/(L|U|I|O|wage|net|gross)/g, "<em>$1</em>");
+  if (logClear) $("simLog").innerHTML = `<div><span class="t">就绪</span> · 当前箱 ${boxState.code} · 演示工位 S${s.no}</div>`;
+  $("simHint").textContent = "点击「执行下一步」逐步演示本工位动作";
+}
+
+function nextStep() {
+  const s = STATIONS[currentIdx];
+  const steps = s.steps;
+  if (stepIdx >= steps.length) {
+    $("simHint").textContent = "本站已完成，可切换下一工位或重置";
+    return;
+  }
+  document.querySelectorAll("#simSteps .step").forEach((el, i) => {
+    el.classList.toggle("on", i <= stepIdx);
+  });
+  const st = steps[stepIdx];
+  const c = calc(s);
+  const isLast = stepIdx === steps.length - 1;
+  const line = `<div><span class="t">步骤 ${stepIdx+1}</span> ${st.t}${isLast ? " · " + c.doneExtra : ""}</div>`;
+  $("simLog").insertAdjacentHTML("afterbegin", line);
+
+  if (isLast) {
+    if (s.sim.mode === "receive") {
+      boxState.weight = +(s.sim.gross * (1 - s.sim.deductRate)).toFixed(1);
+    } else if (s.sim.output != null) {
+      boxState.weight = s.sim.output;
+    }
+    boxState.process = s.name;
+    $("simHint").textContent = `过站完成 → 箱重 ${boxState.weight} kg · 可进入下一工位`;
+    // refresh KPI flash
+    $("simKpi").querySelectorAll(".value").forEach(el => {
+      el.style.transition = "transform .25s";
+      el.style.transform = "scale(1.05)";
+      setTimeout(() => el.style.transform = "none", 250);
+    });
+  }
+  stepIdx += 1;
+}
+
+function selectStation(i) {
+  currentIdx = i;
+  renderNav();
+  renderDetail();
+  const active = document.querySelector(".tl-item.active");
+  if (active) active.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+}
+
+// tabs
+document.querySelectorAll(".tabs button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tabs button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+    $("panel-" + btn.dataset.tab).classList.add("active");
+  });
+});
+
+$("stationList").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-i]");
+  if (b) selectStation(+b.dataset.i);
+});
+$("timeline").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-i]");
+  if (b) selectStation(+b.dataset.i);
+});
+$("btnNext").addEventListener("click", nextStep);
+$("btnReset").addEventListener("click", () => resetSim(true));
+$("btnAuto").addEventListener("click", () => {
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; $("btnAuto").textContent = "自动演示"; return; }
+  resetSim(true);
+  $("btnAuto").textContent = "停止";
+  autoTimer = setInterval(() => {
+    if (stepIdx >= STATIONS[currentIdx].steps.length) {
+      clearInterval(autoTimer); autoTimer = null; $("btnAuto").textContent = "自动演示";
+      return;
+    }
+    nextStep();
+  }, 900);
+});
+
+renderNav();
+renderDetail();
+</script>
+</body>
+</html>

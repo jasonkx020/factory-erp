@@ -20,6 +20,20 @@ class MinePage extends StatefulWidget {
 }
 
 class _MinePageState extends State<MinePage> {
+  Map<String, dynamic>? _dailyWage;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDailyWage());
+  }
+
+  Future<void> _loadDailyWage() async {
+    final r = await context.read<AuthState>().api.get('/production/piecework-summaries/mine');
+    if (!mounted) return;
+    setState(() => _dailyWage = r.data is Map ? Map<String, dynamic>.from(r.data as Map) : null);
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
@@ -49,6 +63,24 @@ class _MinePageState extends State<MinePage> {
         padding: const EdgeInsets.all(16),
         children: [
           Card(
+            color: Colors.teal.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('今日产量与工钱', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 8),
+                  Text('¥${_dailyWage?['total_amount'] ?? 0}', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+                  Text('完工 ${_dailyWage?['total_output_weight'] ?? _dailyWage?['total_qty'] ?? 0} kg'),
+                  const SizedBox(height: 8),
+                  OutlinedButton(onPressed: _loadDailyWage, child: const Text('刷新核对')),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
             child: ListTile(
               leading: const CircleAvatar(child: Icon(Icons.person)),
               title: Text(auth.name?.isNotEmpty == true ? auth.name! : (auth.loginName ?? '-')),
@@ -62,6 +94,9 @@ class _MinePageState extends State<MinePage> {
           const SizedBox(height: 12),
           const Text('常用', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
+          _entry(Icons.menu_book_outlined, '资料中心', '知识库 / 图纸 / 公告', () {
+            Navigator.of(context).pushNamed('/knowledge');
+          }),
           _entry(Icons.fingerprint, '打卡', '上下班打卡 / 今日计件核对', () {
             Navigator.of(context).push(MaterialPageRoute(builder: (_) => const _PunchPage()));
           }),

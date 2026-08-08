@@ -73,9 +73,10 @@ func New(cfgPath string) (*App, error) {
 	biz.EnsurePayrollSchema(db.SQL)
 	notify.EnsureSchema(db.SQL)
 	biz.EnsureTicketSchema(db.SQL)
+	biz.EnsureDemoRoleUsers(db.SQL)
+	// SeedOpenShiftForToday also runs inside EnsureDemoRoleUsers after badges are set
 	if cfg.Seed.DemoEnabled() {
 		biz.EnsureDemoData(db.SQL)
-		biz.EnsureDemoRoleUsers(db.SQL)
 	}
 
 	hub := erpmqtt.NewHub(cfg)
