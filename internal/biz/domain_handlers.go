@@ -689,7 +689,7 @@ func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
 	case "list":
 		rows, err := s.DB.Query(`SELECT e.id, e.emp_no, e.name, COALESCE(e.org_id,0), COALESCE(e.dept_id,0), COALESCE(e.workshop_id,0), COALESCE(e.team_id,0),
 			COALESCE(e.job_title,''), e.emp_type, e.status, COALESCE(e.user_id,0), COALESCE(e.badge_code,''), COALESCE(e.mobile,''),
-			COALESCE(u.login_name,'')
+			COALESCE(e.id_card_no,''), COALESCE(u.login_name,'')
 			FROM hr_employee e
 			LEFT JOIN iam_user u ON u.id=e.user_id AND COALESCE(u.is_deleted,0)=0
 			WHERE COALESCE(e.is_deleted,0)=0 ORDER BY e.id`)
@@ -701,15 +701,16 @@ func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
 		list := []gin.H{}
 		for rows.Next() {
 			var id, org, dept, workshop, team, uid int64
-			var no, name, job, typ, status, badge, mobile, login string
-			_ = rows.Scan(&id, &no, &name, &org, &dept, &workshop, &team, &job, &typ, &status, &uid, &badge, &mobile, &login)
+			var no, name, job, typ, status, badge, mobile, idCard, login string
+			_ = rows.Scan(&id, &no, &name, &org, &dept, &workshop, &team, &job, &typ, &status, &uid, &badge, &mobile, &idCard, &login)
 			if login == "" && uid > 0 {
 				_ = s.DB.QueryRow(`SELECT COALESCE(login_name,'') FROM iam_user WHERE employee_id=? AND COALESCE(is_deleted,0)=0 LIMIT 1`, id).Scan(&login)
 			}
+			badge = s.ensureEmployeeBadge(id, no, badge)
 			list = append(list, gin.H{
 				"id": id, "emp_no": no, "name": name, "org_id": org, "dept_id": dept, "workshop_id": workshop, "team_id": team,
 				"job_title": job, "emp_type": typ, "status": status, "user_id": uid, "badge_code": badge, "mobile": mobile,
-				"login_name": login, "has_account": uid > 0 || login != "",
+				"id_card_no": idCard, "login_name": login, "has_account": uid > 0 || login != "",
 			})
 		}
 		api.OK(c, gin.H{"list": list, "total": len(list)})
@@ -721,7 +722,30 @@ func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
 			api.FailJSON(c, errMsg)
 			return true
 		}
-		api.OK(c, s.loadEmployeeMap(id))
+		m := s.loadEmployeeMap(id)
+		// 默认自动开户；批量导入可传 open_account=false
+		openAcc := true
+		if v, ok := body["open_account"].(bool); ok {
+			openAcc = v
+		} else if flag := strings.TrimSpace(strOr(body["open_account"])); flag == "0" || strings.EqualFold(flag, "false") {
+			openAcc = false
+		}
+		if openAcc {
+			login, pass, err := s.openAccountForEmployeeEx(id, "[]", "", "")
+			if err != nil {
+				m["has_account"] = false
+				m["account_error"] = err.Error()
+			} else {
+				m["has_account"] = true
+				m["login_name"] = login
+				if pass != "" {
+					m["initial_password"] = pass
+				}
+			}
+		} else {
+			m["has_account"] = false
+		}
+		api.OK(c, m)
 		return true
 	case "get", "update", "delete":
 		id := paramID(c)
@@ -731,6 +755,7 @@ func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
 				api.FailJSON(c, "NOT_FOUND")
 				return true
 			}
+			m["badge_code"] = s.ensureEmployeeBadge(id, fmt.Sprint(m["emp_no"]), fmt.Sprint(m["badge_code"]))
 			api.OK(c, m)
 			return true
 		}

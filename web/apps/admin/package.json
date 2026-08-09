@@ -20,6 +20,7 @@
     "@vue/devtools-kit": "^8.2.1",
     "element-plus": "^2.14.3",
     "jspdf": "^4.2.1",
+    "nostics": "^1.1.4",
     "pinia": "^4.0.2",
     "qrcode": "^1.5.4",
     "vue": "^3.5.40",

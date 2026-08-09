@@ -47,6 +47,7 @@ const TITLE_MAP: Record<string, string> = {
   mrp: 'MRP物料分析',
   requisitions: '联动式领料',
   workbench: '车间工作台',
+  'process-wip': '工序在制',
   workshops: '车间管理',
   outsources: '委外加工',
   consignments: '受托加工',
@@ -80,6 +81,11 @@ const overview = ref<Row | null>(null)
 const processReports = ref<Row[]>([])
 const shiftDetail = ref<Row | null>(null)
 const scrapTypeFilter = ref('')
+const wipProductId = ref<number | null>(null)
+const wipSummary = ref<Row | null>(null)
+const wipDrawer = ref(false)
+const wipBoxes = ref<Row[]>([])
+const wipDrawerTitle = ref('')
 
 const shiftForm = reactive({ workshop_id: 1, remark: '产线开工' })
 const shiftMemberForm = reactive({ employee_id: 2, process_id: 0 })
@@ -187,6 +193,14 @@ async function refresh() {
         ])
         overview.value = (ov.data as Row) || null
         list.value = ((today.data as { list?: Row[] })?.list) || []
+        return
+      }
+      case 'process-wip': {
+        const qs = wipProductId.value ? `product_id=${wipProductId.value}` : ''
+        res = await productionApi.processWip(qs || undefined)
+        if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
+        wipSummary.value = (res.data as Row) || null
+        list.value = ((res.data as { steps?: Row[] })?.steps) || []
         return
       }
       case 'workshops':
@@ -378,6 +392,18 @@ async function createWorkshop() {
   await refresh()
 }
 
+async function openWipBoxes(stepId: number, title: string, unassigned: boolean) {
+  const parts = [
+    unassigned ? 'unassigned=1' : `step_id=${stepId}`,
+    wipProductId.value ? `product_id=${wipProductId.value}` : '',
+  ].filter(Boolean)
+  const res = await productionApi.processWipBoxes(parts.join('&'))
+  if (res.code !== 1) return ElMessage.error(res.msg || '加载箱明细失败')
+  wipBoxes.value = ((res.data as { list?: Row[] })?.list) || []
+  wipDrawerTitle.value = `${title || '箱明细'}（${wipBoxes.value.length}）`
+  wipDrawer.value = true
+}
+
 async function createBom() {
   const res = await productionApi.createBom({ ...bomForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
@@ -553,6 +579,9 @@ watch(active, () => {
   reportTab.value = 'ledger'
   shiftDetail.value = null
   refresh()
+})
+watch(wipProductId, () => {
+  if (active.value === 'process-wip') refresh()
 })
 onMounted(async () => {
   await loadMeta()
@@ -916,6 +945,57 @@ onMounted(async () => {
         </el-card>
       </template>
 
+      <!-- 工序在制 -->
+      <template v-else-if="active==='process-wip'">
+        <div class="row mb">
+          <ProductSelect v-model="wipProductId" clearable placeholder="按产品筛选（默认鲜木薯工艺）" style="width:240px" />
+          <el-button @click="refresh">刷新</el-button>
+          <span v-if="wipSummary" class="hint">工艺 {{ wipSummary.routing_code || '-' }}</span>
+        </div>
+        <el-row v-if="wipSummary" :gutter="12" class="mb">
+          <el-col :span="6"><el-card shadow="never"><div class="kpi">在制箱数</div><div class="kpi-n">{{ wipSummary.total_boxes ?? 0 }}</div></el-card></el-col>
+          <el-col :span="6"><el-card shadow="never"><div class="kpi">在制重量 kg</div><div class="kpi-n">{{ Number(wipSummary.total_weight || 0).toFixed(1) }}</div></el-card></el-col>
+          <el-col :span="6"><el-card shadow="never"><div class="kpi">待确认过站</div><div class="kpi-n">{{ wipSummary.pending_confirm_reports ?? 0 }}</div></el-card></el-col>
+          <el-col :span="6"><el-card shadow="never"><div class="kpi">待确认重量</div><div class="kpi-n">{{ Number(wipSummary.pending_confirm_weight || 0).toFixed(1) }}</div></el-card></el-col>
+        </el-row>
+        <p v-if="wipSummary?.unassigned" class="hint mb">
+          未挂工序箱 {{ (wipSummary.unassigned as Row).box_count || 0 }} ·
+          重量 {{ Number((wipSummary.unassigned as Row).wip_weight || 0).toFixed(1) }} kg
+          <el-button
+            v-if="Number((wipSummary.unassigned as Row).box_count || 0) > 0"
+            link
+            type="primary"
+            @click="openWipBoxes(0, '未挂工序', true)"
+          >查看</el-button>
+        </p>
+        <el-table :data="list" size="small" border stripe @row-click="(row: Row) => openWipBoxes(Number(row.step_id), String(row.step_name || ''), false)">
+          <el-table-column prop="seq_no" label="序" width="60" />
+          <el-table-column prop="step_code" label="步骤码" width="90" />
+          <el-table-column prop="step_name" label="步骤" min-width="140" />
+          <el-table-column prop="process_name" label="工序" width="120" />
+          <el-table-column prop="box_count" label="箱数" width="80" />
+          <el-table-column label="在制重量 kg" width="120">
+            <template #default="{ row }">{{ Number(row.wip_weight || 0).toFixed(2) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="90">
+            <template #default="{ row }">
+              <el-button link type="primary" @click.stop="openWipBoxes(Number(row.step_id), String(row.step_name || ''), false)">箱明细</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <el-drawer v-model="wipDrawer" :title="wipDrawerTitle" size="480px">
+          <el-table :data="wipBoxes" size="small" border>
+            <el-table-column prop="code" label="箱码" min-width="140" />
+            <el-table-column prop="product_name" label="产品" width="100" />
+            <el-table-column label="重量" width="90">
+              <template #default="{ row }">{{ Number(row.weight || 0).toFixed(2) }}</template>
+            </el-table-column>
+            <el-table-column prop="trace_code" label="溯源" width="110" />
+            <el-table-column prop="status" label="状态" width="80" />
+          </el-table>
+        </el-drawer>
+      </template>
+
       <!-- 车间 -->
       <template v-else-if="active==='workshops'">
         <el-card header="新建车间" class="mb">
@@ -1164,6 +1244,7 @@ onMounted(async () => {
 .hint { color: #667; font-size: 13px; margin: 0 0 12px; }
 .mode-hint { color: #714b67; font-size: 13px; margin: 0 0 12px; background: #f5eef8; padding: 8px 12px; border-radius: 6px; }
 .mb { margin-bottom: 12px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .multi-line { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .detail { background: #f6f8fa; padding: 12px; border-radius: 8px; max-height: 420px; overflow: auto; font-size: 12px; }
 .kpi { color: #667; font-size: 12px; }

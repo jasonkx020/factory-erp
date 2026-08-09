@@ -1,6 +1,17 @@
 /// Mirrors web/packages/shared employeeModules.ts
-/// 木薯产线试点：仅保留现场工序相关模块。
-enum EmployeeModule { station, receiving, warehouse, workshop, mine }
+/// 木薯产线试点：默认入口仅保留现场工序相关模块；其余成员供路由页权限校验使用。
+enum EmployeeModule {
+  station,
+  receiving,
+  warehouse,
+  workshop,
+  worker,
+  sales,
+  assets,
+  collab,
+  knowledge,
+  mine,
+}
 
 class EmployeeModuleInfo {
   const EmployeeModuleInfo(this.key, this.title, this.desc, this.route, this.icon);
@@ -53,6 +64,29 @@ bool canAccessEmployeeModule(EmployeeModule module, List<String> permissions, Li
       return _matchAny(permissions, ['生产管理', '派工', '车间', 'production']) ||
           roles.contains('foreman') ||
           roles.contains('车间主任');
+    case EmployeeModule.worker:
+      return _matchAny(permissions, ['生产管理', '扫码报工', '计件', '工资管理', 'payroll', '报工']) ||
+          roles.contains('piece') ||
+          roles.contains('fixed') ||
+          roles.contains('计件工') ||
+          roles.contains('固定工');
+    case EmployeeModule.sales:
+      return roles.contains('sales') ||
+          roles.contains('销售员') ||
+          _matchAny(permissions, ['销售管理', '客户', '询价', '订单', 'sales', 'crm', 'CRM']);
+    case EmployeeModule.assets:
+      return _matchAny(permissions, ['固定资产', 'asset', 'fixed']) ||
+          roles.contains('warehouse') ||
+          roles.contains('仓管员') ||
+          roles.contains('foreman');
+    case EmployeeModule.collab:
+      return roles.contains('sales') ||
+          roles.contains('销售员') ||
+          roles.contains('finance') ||
+          roles.contains('财务') ||
+          _matchAny(permissions, ['财务', '认款', '收款', 'finance', 'sales']);
+    case EmployeeModule.knowledge:
+      return true;
     case EmployeeModule.mine:
       return true;
   }

@@ -2,6 +2,7 @@ package biz
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -70,9 +71,19 @@ func (s *Services) handleScan(c *gin.Context, resolveOnly bool) bool {
 	if woID > 0 {
 		_ = s.DB.QueryRow(`SELECT id FROM pd_dispatch WHERE work_order_id=? AND status IN ('dispatched','received','open') ORDER BY id DESC LIMIT 1`, woID).Scan(&dispatchID)
 	}
-	if processID == 0 {
-		// bootstrap first step — advance box only, do not spawn per-box dispatch
-		step := s.firstStep(1)
+	// stale step after routing recompile
+	if stepID > 0 && s.loadStep(stepID) == nil {
+		stepID = 0
+	}
+	if processID == 0 || stepID == 0 {
+		rid := s.resolveRoutingID(taskID, productID)
+		var step *routingStep
+		if processID > 0 {
+			step = s.stepByProcess(rid, processID)
+		}
+		if step == nil {
+			step = s.firstStep(rid)
+		}
 		if step != nil {
 			processID = step.ProcessID
 			stepID = step.ID
@@ -151,6 +162,46 @@ func (s *Services) handleScan(c *gin.Context, resolveOnly bool) bool {
 	return true
 }
 
+
+func (s *Services) resolveRoutingID(taskID, productID int64) int64 {
+	if taskID > 0 {
+		var rid int64
+		_ = s.DB.QueryRow(`SELECT COALESCE(routing_id,0) FROM pd_production_task WHERE id=?`, taskID).Scan(&rid)
+		if rid > 0 {
+			return rid
+		}
+	}
+	if productID > 0 {
+		var rid int64
+		_ = s.DB.QueryRow(`SELECT id FROM pd_routing WHERE product_id=? AND status='active' AND COALESCE(is_deleted,0)=0 ORDER BY id DESC LIMIT 1`, productID).Scan(&rid)
+		if rid > 0 {
+			return rid
+		}
+	}
+	var rid int64
+	_ = s.DB.QueryRow(`SELECT COALESCE(routing_id,0) FROM pd_flow_graph WHERE kind='production' AND status='active' AND COALESCE(is_deleted,0)=0 ORDER BY id DESC LIMIT 1`).Scan(&rid)
+	if rid > 0 {
+		return rid
+	}
+	_ = s.DB.QueryRow(`SELECT id FROM pd_routing WHERE code='RT-CASSAVA' AND COALESCE(is_deleted,0)=0 ORDER BY id LIMIT 1`).Scan(&rid)
+	if rid > 0 {
+		return rid
+	}
+	return 1
+}
+
+func (s *Services) stepByProcess(routingID, processID int64) *routingStep {
+	if routingID <= 0 || processID <= 0 {
+		return nil
+	}
+	var id int64
+	err := s.DB.QueryRow(`SELECT id FROM pd_routing_step WHERE routing_id=? AND process_id=? ORDER BY seq_no LIMIT 1`, routingID, processID).Scan(&id)
+	if err != nil {
+		return nil
+	}
+	return s.loadStep(id)
+}
+
 func (s *Services) firstStep(routingID int64) *routingStep {
 	var id int64
 	err := s.DB.QueryRow(`SELECT id FROM pd_routing_step WHERE routing_id=? ORDER BY seq_no LIMIT 1`, routingID).Scan(&id)
@@ -160,19 +211,44 @@ func (s *Services) firstStep(routingID int64) *routingStep {
 	return s.loadStep(id)
 }
 
+// resolveInboundEntryStep 按产品绑定的 active 工艺取首步；无产品/无工艺则失败（不静默回退成品线）。
+func (s *Services) resolveInboundEntryStep(productID int64) (processID, stepID, warehouseID int64, errMsg string) {
+	if productID <= 0 {
+		return 0, 0, 0, "PRODUCT_REQUIRED"
+	}
+	var rid int64
+	_ = s.DB.QueryRow(`SELECT id FROM pd_routing WHERE product_id=? AND status='active' AND COALESCE(is_deleted,0)=0 ORDER BY id DESC LIMIT 1`, productID).Scan(&rid)
+	if rid <= 0 {
+		return 0, 0, 0, "ROUTING_REQUIRED"
+	}
+	step := s.firstStep(rid)
+	if step == nil {
+		return 0, 0, 0, "ROUTING_REQUIRED"
+	}
+	return step.ProcessID, step.ID, step.WarehouseID, ""
+}
+
 func (s *Services) handleBadge(c *gin.Context) bool {
 	id := paramID(c)
 	body := bindBody(c)
-	code, _ := body["badge_code"].(string)
-	if code == "" {
-		api.FailJSON(c, "BADGE_REQUIRED")
+	var empNo, cur string
+	err := s.DB.QueryRow(`SELECT COALESCE(emp_no,''), COALESCE(badge_code,'') FROM hr_employee WHERE id=? AND COALESCE(is_deleted,0)=0`, id).
+		Scan(&empNo, &cur)
+	if err != nil {
+		api.FailJSON(c, "NOT_FOUND")
 		return true
 	}
-	_, err := s.DB.Exec(`UPDATE hr_employee SET badge_code=? WHERE id=?`, code, id)
+	// 默认自动生成/重新生成；仅当显式传入非空 badge_code 且未要求 regenerate 时沿用（兼容旧调用）
+	code := strings.TrimSpace(strOr(body["badge_code"]))
+	regenerate := boolOr(body["regenerate"], false) || code == ""
+	if regenerate {
+		code = s.allocBadgeCode(empNo, id)
+	}
+	_, err = s.DB.Exec(`UPDATE hr_employee SET badge_code=?, updated_at=datetime('now') WHERE id=?`, code, id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR")
 		return true
 	}
-	api.OK(c, gin.H{"id": id, "badge_code": code})
+	api.OK(c, gin.H{"id": id, "badge_code": code, "previous_badge_code": cur})
 	return true
 }

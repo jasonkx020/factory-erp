@@ -159,7 +159,9 @@ INSERT OR IGNORE INTO pay_process_wage_rate(process_id, rate, effective_from, st
 
 -- 木薯产线 12 步工艺路线（对齐 pic）
 INSERT OR IGNORE INTO pd_routing(id, code, name, product_id, version_no, status) VALUES
- (1, 'RT-CASSAVA', '木薯丁产线', 3, 'V1', 'active');
+ (1, 'RT-CASSAVA', '木薯丁产线', 3, 'V1', 'active'),
+ (2, 'RT-CASSAVA-RAW', '鲜木薯入厂产线', 1, 'V1', 'active'),
+ (3, 'RT-CASSAVA-SEMI', '去芯薯肉入厂产线', 2, 'V1', 'active');
 
 INSERT OR IGNORE INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
  (1, 1, 8, 'S1', '入库-原料', 0, 0, 1, 1, 0, 1, 1),
@@ -173,7 +175,26 @@ INSERT OR IGNORE INTO pd_routing_step(routing_id, seq_no, process_id, step_code,
  (1, 9, 10, 'S9', '出库切块-计件', 1, 0, 1, 0, 1, 2, 1),
  (1, 10, 9, 'S10', '入库-半成品库', 0, 0, 1, 1, 0, 2, 1),
  (1, 11, 6, 'S11', '过滤装袋', 0, 0, 1, 0, 0, NULL, 1),
- (1, 12, 11, 'S12', '入库-成品库销售', 0, 0, 0, 1, 0, 3, 1);
+ (1, 12, 11, 'S12', '入库-成品库销售', 0, 0, 0, 1, 0, 3, 1),
+ -- 鲜木薯入厂（routing 2）
+ (2, 1, 8, 'S1', '入库-原料', 0, 0, 1, 1, 0, 1, 1),
+ (2, 2, 7, 'S2', '清洗', 0, 0, 1, 0, 0, 1, 1),
+ (2, 3, 1, 'S3', '去皮-计件领料', 1, 0, 1, 0, 1, 1, 1),
+ (2, 4, 2, 'S4', '收货-固定工', 0, 1, 1, 0, 0, NULL, 1),
+ (2, 5, 3, 'S5', '切断-固定工', 0, 0, 1, 0, 0, NULL, 1),
+ (2, 6, 4, 'S6', '去芯-计件', 1, 0, 1, 0, 0, NULL, 1),
+ (2, 7, 2, 'S7', '收货-固定工', 0, 1, 1, 0, 0, NULL, 1),
+ (2, 8, 9, 'S8', '入库-半成品库', 0, 0, 1, 1, 0, 2, 1),
+ (2, 9, 10, 'S9', '出库切块-计件', 1, 0, 1, 0, 1, 2, 1),
+ (2, 10, 9, 'S10', '入库-半成品库', 0, 0, 1, 1, 0, 2, 1),
+ (2, 11, 6, 'S11', '过滤装袋', 0, 0, 1, 0, 0, NULL, 1),
+ (2, 12, 11, 'S12', '入库-成品库销售', 0, 0, 0, 1, 0, 3, 1),
+ -- 半成品入厂（routing 3）
+ (3, 1, 9, 'S1', '入库-半成品库', 0, 0, 1, 1, 0, 2, 1),
+ (3, 2, 10, 'S2', '出库切块-计件', 1, 0, 1, 0, 1, 2, 1),
+ (3, 3, 9, 'S3', '入库-半成品库', 0, 0, 1, 1, 0, 2, 1),
+ (3, 4, 6, 'S4', '过滤装袋', 0, 0, 1, 0, 0, NULL, 1),
+ (3, 5, 11, 'S5', '入库-成品库销售', 0, 0, 0, 1, 0, 3, 1);
 
 INSERT OR IGNORE INTO hr_employee(id, emp_no, name, org_id, dept_id, workshop_id, emp_type, badge_code, status) VALUES
  (2, 'E0301', '陈某', 1, 1, 1, 'piece', 'EMP0301', 'active'),

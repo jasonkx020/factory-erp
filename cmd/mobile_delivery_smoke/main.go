@@ -138,6 +138,7 @@ func main() {
 			"channel": "internal", "product_id": 1, "variety": "鲜木薯",
 			"gross_weight": 1000, "deduct_rate": 5, "unit_price": 1.2, "grade": "A",
 			"image_url": imgURL, "biz_date": bizDate, "source_type": "self",
+			"activate": true,
 		}, &created); err != nil {
 			fail("weigh_create_gate", err)
 			failed++
@@ -153,20 +154,15 @@ func main() {
 				} else {
 					ok("batch_locked")
 				}
-				if err := call(base, token, "POST", fmt.Sprintf("/purchase/weigh-tickets/%d/qc", id), map[string]any{
-					"qc_result": "pass", "grade": "A",
-				}); err != nil {
-					fail("weigh_qc", err)
-					failed++
+				if st, _ := created["status"].(string); st != "weighed" {
+					if tc, _ := created["trace_code"].(string); tc == "" {
+						fail("weigh_activate", fmt.Errorf("expected weighed+trace, status=%v trace=%v", created["status"], created["trace_code"]))
+						failed++
+					} else {
+						ok("weigh_activate")
+					}
 				} else {
-					ok("weigh_qc")
-				}
-				if err := call(base, token, "POST", fmt.Sprintf("/purchase/weigh-tickets/%d/confirm", id), map[string]any{
-					"confirmed": true, "grade": "A",
-				}); err != nil {
-					warn("weigh_confirm", err)
-				} else {
-					ok("weigh_confirm")
+					ok("weigh_activate")
 				}
 			}
 		}
@@ -175,7 +171,7 @@ func main() {
 			"receive_kind": "stockin", "batch_no": codes[1], "farmer_id": farmerID,
 			"product_id": 1, "variety": "鲜木薯", "net_weight": 200, "bag_qty": 10,
 			"cold_store_type": "fresh", "origin": "广西田东", "image_url": imgURL,
-			"biz_date": bizDate, "source_type": "self",
+			"biz_date": bizDate, "source_type": "self", "activate": true,
 		}, &stockin); err != nil {
 			fail("weigh_create_stockin", err)
 			failed++

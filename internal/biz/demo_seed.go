@@ -342,9 +342,12 @@ func seedDemoPurchase(db *sql.DB, today, now string) {
 	_, _ = db.Exec(`INSERT INTO pur_supplier_price_history(supplier_id, product_id, price, biz_date)
 		SELECT 1, 1, 1.78, date('now','-30 day') WHERE NOT EXISTS (SELECT 1 FROM pur_supplier_price_history WHERE supplier_id=1 AND product_id=1 AND price=1.78)`)
 
-	_, _ = db.Exec(`INSERT OR IGNORE INTO pur_weigh_ticket(doc_no, farmer_id, product_id, gross_weight, deduct_weight, net_weight, qc_result, status, biz_date, remark) VALUES
- ('DEMO-WT-001', 1, 1, 12500, 2500, 10000, 'A', 'posted', ?, '过磅收货演示'),
- ('DEMO-WT-002', 2, 1, 8200, 2000, 6200, 'B', 'draft', ?, '待确认')`, today, today)
+	// 清理旧流程演示单（draft/待确认出码等），新流程仅保留已生效演示
+	_, _ = db.Exec(`DELETE FROM pur_trace_lot WHERE weigh_ticket_id IN (SELECT id FROM pur_weigh_ticket WHERE doc_no IN ('DEMO-WT-002') OR (doc_no LIKE 'DEMO-%' AND status IN ('draft','pending_confirm','qc_pending','qc_pass')))`)
+	_, _ = db.Exec(`DELETE FROM pur_farmer_settlement WHERE weigh_ticket_id IN (SELECT id FROM pur_weigh_ticket WHERE doc_no='DEMO-WT-002')`)
+	_, _ = db.Exec(`DELETE FROM pur_weigh_ticket WHERE doc_no='DEMO-WT-002' OR (doc_no LIKE 'DEMO-%' AND status IN ('draft','pending_confirm','qc_pending','qc_pass'))`)
+	_, _ = db.Exec(`INSERT OR IGNORE INTO pur_weigh_ticket(doc_no, farmer_id, product_id, gross_weight, deduct_weight, net_weight, qc_result, status, biz_date, remark, receive_kind, batch_no, trace_code) VALUES
+ ('DEMO-WT-001', 1, 1, 12500, 2500, 10000, 'pass', 'weighed', ?, '过磅收货演示（批号即溯源码已绑定）', 'gate', 'DEMO-B001', 'DEMO-B001')`, today)
 	wt1 := demoID(db, `SELECT id FROM pur_weigh_ticket WHERE doc_no='DEMO-WT-001'`)
 
 	_, _ = db.Exec(`INSERT OR IGNORE INTO pur_farmer_settlement(doc_no, farmer_id, weigh_ticket_id, biz_date, net_weight, unit_price, amount, status, remark) VALUES
@@ -353,8 +356,9 @@ func seedDemoPurchase(db *sql.DB, today, now string) {
 	_, _ = db.Exec(`INSERT OR IGNORE INTO pur_inbound_arrival(doc_no, farmer_id, origin, variety, estimate_weight, status, biz_date, remark) VALUES
  ('DEMO-ARR-001', 1, '广西武鸣', '鲜木薯', 10000, 'confirmed', ?, '到货登记演示')`, today)
 
+	_, _ = db.Exec(`DELETE FROM pur_trace_lot WHERE trace_code IN ('LOT-DEMO-001','DEMO-B001')`)
 	_, _ = db.Exec(`INSERT OR IGNORE INTO pur_trace_lot(trace_code, biz_date, batch_no, farmer_id, grade, weigh_ticket_id, net_weight, payload_canonical, signature, status) VALUES
- ('LOT-DEMO-001', ?, 'B0801', 1, 'A', ?, 10000, '{"demo":true}', 'demo-sig', 'open')`, today, nullIf0(wt1))
+ ('DEMO-B001', ?, 'DEMO-B001', 1, 'A', ?, 10000, '{"demo":true,"bind":"batch_as_trace"}', 'demo-sig', 'open')`, today, nullIf0(wt1))
 }
 
 func seedDemoProduction(db *sql.DB, today, now string) {

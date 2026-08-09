@@ -5,7 +5,7 @@ import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 import { ElMessage } from 'element-plus'
-import { productionApi, inventoryApi } from '@erp/shared'
+import { productionApi, inventoryApi, productApi } from '@erp/shared'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
@@ -26,6 +26,7 @@ const meta = ref({
   kind: 'production' as string,
   status: 'draft',
   routing_id: 0,
+  product_id: 0,
   version_no: 'V1',
 })
 const nodes = ref<Node[]>([])
@@ -34,6 +35,8 @@ const selected = ref<Node | null>(null)
 const selectedEdge = ref<Edge | null>(null)
 const processes = ref<Row[]>([])
 const warehouses = ref<Row[]>([])
+const products = ref<Row[]>([])
+const compiledSteps = ref<Row[]>([])
 const loading = ref(false)
 const saving = ref(false)
 
@@ -107,10 +110,11 @@ async function loadLists() {
       : props.kindFilter
         ? `kind=${encodeURIComponent(props.kindFilter)}`
         : ''
-    const [g, p, w] = await Promise.all([
+    const [g, p, w, prod] = await Promise.all([
       productionApi.listFlowGraphs(q || undefined),
       productionApi.processes(),
       inventoryApi.warehouses(),
+      productApi.list(),
     ])
     let list = ((g.data as { list?: Row[] })?.list) || []
     if (props.kindFilter === 'purchase') {
@@ -119,6 +123,7 @@ async function loadLists() {
     graphs.value = list
     processes.value = ((p.data as { list?: Row[] })?.list) || []
     warehouses.value = ((w.data as { list?: Row[] })?.list) || []
+    products.value = ((prod.data as { list?: Row[] })?.list) || []
     if (graphs.value.length && !currentId.value) {
       await openGraph(Number(graphs.value[0].id))
     }
@@ -162,17 +167,35 @@ function parseGraph(raw: unknown): { nodes: Node[]; edges: Edge[] } {
   return { nodes: ns, edges: es }
 }
 
+
+async function loadCompiledSteps(routingId: number) {
+  compiledSteps.value = []
+  if (!routingId) return
+  const res = await productionApi.flowRules(routingId)
+  if (res.code !== 1) return
+  const data = (res.data || {}) as Row
+  const steps = (data.steps as Row[]) || []
+  compiledSteps.value = steps
+}
+
 async function openGraph(id: number) {
   const res = await productionApi.getFlowGraph(id)
   if (res.code !== 1) return ElMessage.error(res.msg)
   const d = (res.data || {}) as Row
   currentId.value = id
+  let graphProductId = Number(d.product_id || 0)
+  try {
+    const raw = typeof d.graph_json === 'string' ? JSON.parse(String(d.graph_json || '{}')) : (d.graph_json || {})
+    const gm = (raw as Row).meta as Row | undefined
+    if (!graphProductId && gm?.product_id) graphProductId = Number(gm.product_id)
+  } catch { /* ignore */ }
   meta.value = {
     code: String(d.code || ''),
     name: String(d.name || ''),
     kind: String(d.kind || 'production'),
     status: String(d.status || 'draft'),
     routing_id: Number(d.routing_id || 0),
+    product_id: graphProductId,
     version_no: String(d.version_no || 'V1'),
   }
   const parsed = parseGraph(d.graph_json)
@@ -180,6 +203,7 @@ async function openGraph(id: number) {
   edges.value = parsed.edges
   selected.value = null
   selectedEdge.value = null
+  await loadCompiledSteps(meta.value.routing_id)
 }
 
 function onNodeClick(ev: { node: Node }) {
@@ -336,7 +360,7 @@ function buildGraphJSON() {
     target: e.target,
     data: { is_default: (e.data as Row)?.is_default !== false },
   }))
-  return { nodes: outNodes, edges: outEdges }
+  return { nodes: outNodes, edges: outEdges, meta: { product_id: meta.value.product_id || 0 } }
 }
 
 async function save(publish = false) {
@@ -350,6 +374,7 @@ async function save(publish = false) {
       status: publish ? 'active' : meta.value.status,
       version_no: meta.value.version_no,
       routing_id: meta.value.routing_id || undefined,
+      product_id: meta.value.product_id || undefined,
       graph_json: buildGraphJSON(),
     }
     let res
@@ -359,7 +384,7 @@ async function save(publish = false) {
       res = await productionApi.createFlowGraph(body)
     }
     if (res.code !== 1) return ElMessage.error(res.msg)
-    ElMessage.success(publish ? '已发布' : '已保存')
+    ElMessage.success(publish ? '已发布并编译工艺步骤' : '已保存（草稿不编译过站步骤）')
     const id = Number((res.data as Row)?.id || currentId.value)
     await loadLists()
     if (id) await openGraph(id)
@@ -442,7 +467,35 @@ onBeforeUnmount(() => {
             <el-option label="启用" value="active" />
           </el-select>
         </el-form-item>
+        <el-form-item v-if="meta.kind === 'production'" label="绑定产品">
+          <el-select v-model="meta.product_id" clearable style="width:100%" placeholder="可选">
+            <el-option
+              v-for="p in products"
+              :key="String(p.id)"
+              :label="String(p.name || p.code || p.id)"
+              :value="Number(p.id)"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="meta.kind === 'production' && meta.routing_id" label="工艺ID">
+          <el-input :model-value="String(meta.routing_id)" disabled />
+        </el-form-item>
       </el-form>
+      <div v-if="meta.kind === 'production'" class="compiled-steps">
+        <h4>已编译步骤（发布后生效）</h4>
+        <p v-if="!compiledSteps.length" class="muted">尚未编译或仍为草稿。点「发布」后同步到过站。</p>
+        <el-table v-else :data="compiledSteps" size="small" max-height="220">
+          <el-table-column prop="seq_no" label="序" width="44" />
+          <el-table-column prop="step_code" label="编码" width="64" />
+          <el-table-column prop="step_name" label="名称" min-width="100" />
+          <el-table-column label="计件" width="50">
+            <template #default="{ row }">{{ row.is_piecework ? '是' : '' }}</template>
+          </el-table-column>
+          <el-table-column label="卡点" width="50">
+            <template #default="{ row }">{{ row.is_inbound_checkpoint ? '是' : '' }}</template>
+          </el-table-column>
+        </el-table>
+      </div>
       <el-table
         :data="graphs"
         size="small"
@@ -606,5 +659,20 @@ h3 { margin: 0 0 8px; font-size: 14px; }
 .canvas :deep(.vue-flow__edge-text) {
   z-index: 6;
   pointer-events: none;
+}
+
+.compiled-steps {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+.compiled-steps h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.compiled-steps .muted {
+  margin: 0;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 </style>

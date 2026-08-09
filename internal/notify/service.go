@@ -96,6 +96,7 @@ func EnsureSchema(db *sql.DB) {
 	}
 	_, _ = db.Exec(`INSERT OR IGNORE INTO sys_notify_rule(event_key, channel, template_text, receivers_json) VALUES
  ('purchase.weigh_confirmed','mqtt+inbox','过磅已确认出码 {{doc_no}} 溯源 {{trace_code}}，请仓管入库','{"roles":["warehouse"]}'),
+ ('purchase.weigh_returned','mqtt+inbox','仓管退回过磅单 {{doc_no}}，请采购处理','{"roles":["purchase"]}'),
  ('purchase.stocked','mqtt+inbox','仓管已入库 {{doc_no}} 箱码待结算，请财务支付','{"roles":["finance"]}'),
  ('purchase.settle_paid','mqtt+inbox','农户结算已支付 {{doc_no}}','{"roles":["purchase"]}'),
  ('production.report_confirmed','mqtt+inbox','报工已确认过账 {{doc_no}}','{"roles":["foreman"]}'),
@@ -183,6 +184,8 @@ func (s *Service) renderTemplate(eventKey, docNo, traceCode string) (title, body
 	switch eventKey {
 	case "purchase.weigh_confirmed":
 		title = "待仓管入库"
+	case "purchase.weigh_returned":
+		title = "仓管退回过磅单"
 	case "purchase.stocked":
 		title = "待财务支付"
 	case "purchase.settle_paid":

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../widgets/form_row.dart';
+import '../../widgets/form_section_header.dart';
+import '../../widgets/form_sticky_actions.dart';
 import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
 import '../../core/employee_modules.dart';
@@ -137,21 +140,33 @@ class _CollabFinancePageState extends State<CollabFinancePage> {
             ],
           ),
           ListView(
-            padding: const EdgeInsets.all(16),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
             children: [
-              const Text('销售认款', style: TextStyle(fontWeight: FontWeight.bold)),
-              DropdownButtonFormField<int>(
-                value: _customerId,
-                decoration: const InputDecoration(labelText: '客户'),
-                items: _customers.map((e) {
-                  final m = Map<String, dynamic>.from(e as Map);
-                  return DropdownMenuItem(value: (m['id'] as num?)?.toInt(), child: Text('${m['name'] ?? m['id']}'));
-                }).toList(),
-                onChanged: (v) => setState(() => _customerId = v),
+              const FormSectionHeader('销售认款'),
+              FormRow(
+                label: '客户',
+                requiredMark: true,
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    isExpanded: true,
+                    value: _customerId,
+                    alignment: Alignment.centerRight,
+                    hint: const Text('请选择', textAlign: TextAlign.right),
+                    items: _customers.map((e) {
+                      final m = Map<String, dynamic>.from(e as Map);
+                      return DropdownMenuItem(
+                        value: (m['id'] as num?)?.toInt(),
+                        child: Text('${m['name'] ?? m['id']}', textAlign: TextAlign.right),
+                      );
+                    }).toList(),
+                    onChanged: (v) => setState(() => _customerId = v),
+                  ),
+                ),
               ),
-              TextField(controller: _amount, decoration: const InputDecoration(labelText: '金额'), keyboardType: TextInputType.number),
-              TextField(controller: _remark, decoration: const InputDecoration(labelText: '备注')),
-              FilledButton(onPressed: _createRecognition, child: const Text('新建认款')),
+              FormRow.text(label: '金额', controller: _amount, keyboardType: TextInputType.number, requiredMark: true),
+              FormRow.text(label: '备注', controller: _remark),
+              FormStickyActions(primaryLabel: '新建认款', onPrimary: _createRecognition),
               if (_msg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_msg)),
               const Divider(),
               ..._recognitions.map((e) {

@@ -188,90 +188,50 @@ func (s *Services) putUserDataScope(c *gin.Context) bool {
 func (s *Services) openEmployeeAccount(c *gin.Context) bool {
 	empID := paramID(c)
 	body := bindBody(c)
-	var empNo, name, empType string
-	var userID int64
-	err := s.DB.QueryRow(`SELECT emp_no, name, COALESCE(emp_type,'piece'), COALESCE(user_id,0) FROM hr_employee WHERE id=? AND COALESCE(is_deleted,0)=0`, empID).
-		Scan(&empNo, &name, &empType, &userID)
-	if err != nil {
+	var existingUID int64
+	if err := s.DB.QueryRow(`SELECT COALESCE(user_id,0) FROM hr_employee WHERE id=? AND COALESCE(is_deleted,0)=0`, empID).Scan(&existingUID); err != nil {
 		api.FailJSON(c, "EMPLOYEE_NOT_FOUND")
 		return true
 	}
-	if userID > 0 {
+	if existingUID > 0 {
 		api.FailJSON(c, "ACCOUNT_ALREADY_EXISTS")
 		return true
 	}
-	login, _ := body["login_name"].(string)
-	if login == "" {
-		login = empNo
-		if login == "" {
-			login = fmt.Sprintf("u%d", empID)
-		}
-	}
-	pass, _ := body["password"].(string)
-	if pass == "" {
-		pass = "ChangeMe123"
-	}
-	ut, _ := body["user_type"].(string)
-	if ut == "" {
-		ut = "biz"
-	}
-	hash, err := security.HashPassword(pass)
-	if err != nil {
-		api.FailJSON(c, "HASH_ERROR")
-		return true
-	}
-	res, err := s.DB.Exec(`INSERT INTO iam_user(login_name, password_hash, employee_id, user_type, status, is_deleted) VALUES(?,?,?,?,'active',0)`,
-		login, hash, empID, ut)
-	if err != nil {
-		api.FailJSON(c, "DB_ERROR:"+err.Error())
-		return true
-	}
-	uid, _ := res.LastInsertId()
-	_, _ = s.DB.Exec(`UPDATE hr_employee SET user_id=? WHERE id=?`, uid, empID)
-
-	roleIDs := []int64{}
+	loginHint := strOr(body["login_name"])
+	pass := strOr(body["password"])
+	roleJSON := "[]"
 	if raw, ok := body["role_ids"].([]interface{}); ok && len(raw) > 0 {
-		for _, x := range raw {
-			if id, ok := asInt64(x); ok && id > 0 {
-				roleIDs = append(roleIDs, id)
-			}
-		}
-	} else {
-		rows, _ := s.DB.Query(`SELECT role_id FROM iam_onboard_role_template WHERE emp_type=?`, empType)
-		if rows != nil {
-			for rows.Next() {
-				var rid int64
-				_ = rows.Scan(&rid)
-				roleIDs = append(roleIDs, rid)
-			}
-			rows.Close()
-		}
-		if len(roleIDs) == 0 {
-			// fallback: line worker role if exists
-			var rid int64
-			_ = s.DB.QueryRow(`SELECT id FROM iam_role WHERE code IN ('line_worker','biz_user','sys_admin') ORDER BY CASE code WHEN 'line_worker' THEN 1 WHEN 'biz_user' THEN 2 ELSE 3 END LIMIT 1`).Scan(&rid)
-			if rid > 0 {
-				roleIDs = append(roleIDs, rid)
-			}
-		}
+		b, _ := json.Marshal(raw)
+		roleJSON = string(b)
 	}
-	for _, rid := range roleIDs {
-		_, _ = s.DB.Exec(`INSERT OR IGNORE INTO iam_user_role(user_id, role_id) VALUES(?,?)`, uid, rid)
+	// 未传密码时：优先身份证后 6 位
+	if pass == "" {
+		var idCard string
+		_ = s.DB.QueryRow(`SELECT COALESCE(id_card_no,'') FROM hr_employee WHERE id=?`, empID).Scan(&idCard)
+		pass = initialPasswordFromIDCard(idCard)
 	}
-	security.InvalidateUserRBAC(uid)
-	// default data scope from employee workshop
+	login, initialPass, err := s.openAccountForEmployeeEx(empID, roleJSON, loginHint, pass)
+	if err != nil {
+		msg := err.Error()
+		if strings.HasPrefix(msg, "DB_ERROR:") || msg == "EMPLOYEE_NOT_FOUND" || msg == "ACCOUNT_ALREADY_EXISTS" || msg == "HASH_ERROR" {
+			api.FailJSON(c, msg)
+			return true
+		}
+		api.FailJSON(c, "DB_ERROR:"+msg)
+		return true
+	}
 	var workshopID int64
 	_ = s.DB.QueryRow(`SELECT COALESCE(workshop_id,0) FROM hr_employee WHERE id=?`, empID).Scan(&workshopID)
 	scopeType := "self"
 	if workshopID > 0 {
 		scopeType = "workshop"
 	}
-	_, _ = s.DB.Exec(`INSERT OR IGNORE INTO iam_user_data_scope(user_id, data_scope_type, workshop_id) VALUES(?,?,?)`,
-		uid, scopeType, nullIf0(workshopID))
-
+	var uid int64
+	_ = s.DB.QueryRow(`SELECT COALESCE(user_id,0) FROM hr_employee WHERE id=?`, empID).Scan(&uid)
 	api.OK(c, gin.H{
-		"user_id": uid, "employee_id": empID, "login_name": login, "role_ids": roleIDs,
-		"data_scope_type": scopeType, "workshop_id": workshopID,
+		"user_id": uid, "employee_id": empID, "login_name": login,
+		"initial_password": initialPass,
+		"data_scope_type":  scopeType, "workshop_id": workshopID,
 	})
 	return true
 }
@@ -536,12 +496,184 @@ func (s *Services) loadEmployeeMap(id int64) gin.H {
 	}
 }
 
-func (s *Services) createEmployeeFromBody(body map[string]interface{}, status string) (int64, string) {
-	no := strOr(body["emp_no"])
-	name := strOr(body["name"])
-	if no == "" || name == "" {
-		return 0, "EMP_NO_NAME_REQUIRED"
+// allocEmpNo 生成唯一工号：E + yyMMdd + 4 位序号。
+func (s *Services) allocEmpNo() string {
+	prefix := "E" + time.Now().Format("060102")
+	var last string
+	_ = s.DB.QueryRow(`SELECT emp_no FROM hr_employee WHERE emp_no LIKE ? ORDER BY emp_no DESC LIMIT 1`, prefix+"%").Scan(&last)
+	seq := 1
+	if strings.HasPrefix(last, prefix) && len(last) > len(prefix) {
+		var n int
+		if _, err := fmt.Sscanf(last[len(prefix):], "%d", &n); err == nil {
+			seq = n + 1
+		}
 	}
+	for i := 0; i < 200; i++ {
+		no := fmt.Sprintf("%s%04d", prefix, seq+i)
+		var cnt int
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_employee WHERE emp_no=? AND COALESCE(is_deleted,0)=0`, no).Scan(&cnt)
+		if cnt == 0 {
+			return no
+		}
+	}
+	return fmt.Sprintf("E%d", time.Now().UnixNano()%1e12)
+}
+
+func normalizeMobile(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.ReplaceAll(s, " ", "")
+	s = strings.ReplaceAll(s, "-", "")
+	return s
+}
+
+func normalizeIDCard(s string) string {
+	return strings.ToUpper(strings.TrimSpace(s))
+}
+
+func validMobileCN(mobile string) bool {
+	if len(mobile) != 11 {
+		return false
+	}
+	if mobile[0] != '1' {
+		return false
+	}
+	for i := 0; i < 11; i++ {
+		if mobile[i] < '0' || mobile[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func validIDCardCN(id string) bool {
+	n := len(id)
+	if n != 15 && n != 18 {
+		return false
+	}
+	for i := 0; i < n; i++ {
+		c := id[i]
+		if c >= '0' && c <= '9' {
+			continue
+		}
+		if n == 18 && i == 17 && (c == 'X' || c == 'x') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// initialPasswordFromIDCard 初始密码取身份证后 6 位；不足则 ChangeMe123。
+func initialPasswordFromIDCard(idCard string) string {
+	id := normalizeIDCard(idCard)
+	if len(id) >= 6 {
+		return id[len(id)-6:]
+	}
+	return "ChangeMe123"
+}
+
+// allocLoginName 优先手机号，冲突则用工号，再退回 u{id}。
+func (s *Services) allocLoginName(mobile, empNo string, empID int64) string {
+	candidates := []string{
+		strings.TrimSpace(mobile),
+		strings.TrimSpace(empNo),
+		fmt.Sprintf("u%d", empID),
+	}
+	for _, c := range candidates {
+		if c == "" {
+			continue
+		}
+		var n int
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM iam_user WHERE login_name=? AND COALESCE(is_deleted,0)=0`, c).Scan(&n)
+		if n == 0 {
+			return c
+		}
+	}
+	return fmt.Sprintf("u%d_%d", empID, time.Now().UnixNano()%1e6)
+}
+
+// allocBadgeCode 生成唯一工牌码（EMP-{工号}，冲突则加后缀；无工号则 EMP{id}）。
+func (s *Services) allocBadgeCode(empNo string, empID int64) string {
+	clean := strings.ToUpper(strings.TrimSpace(empNo))
+	var b strings.Builder
+	for _, r := range clean {
+		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	base := b.String()
+	if base == "" {
+		if empID > 0 {
+			base = fmt.Sprintf("%06d", empID)
+		} else {
+			base = fmt.Sprintf("%d", time.Now().UnixNano()%1e10)
+		}
+	}
+	candidates := []string{
+		"EMP-" + base,
+		fmt.Sprintf("EMP-%s-%d", base, empID),
+		fmt.Sprintf("EMP%d", time.Now().UnixNano()%1e12),
+	}
+	for _, code := range candidates {
+		if code == "" || code == "EMP-" {
+			continue
+		}
+		var n int
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_employee WHERE badge_code=? AND id<>? AND COALESCE(is_deleted,0)=0`, code, empID).Scan(&n)
+		if n == 0 {
+			return code
+		}
+	}
+	return fmt.Sprintf("EMP%d", time.Now().UnixNano())
+}
+
+// ensureEmployeeBadge 若员工无工牌则自动补全并写回。
+func (s *Services) ensureEmployeeBadge(empID int64, empNo, curBadge string) string {
+	curBadge = strings.TrimSpace(curBadge)
+	if curBadge != "" {
+		return curBadge
+	}
+	code := s.allocBadgeCode(empNo, empID)
+	_, _ = s.DB.Exec(`UPDATE hr_employee SET badge_code=?, updated_at=datetime('now') WHERE id=?`, code, empID)
+	return code
+}
+
+func (s *Services) createEmployeeFromBody(body map[string]interface{}, status string) (int64, string) {
+	name := strings.TrimSpace(strOr(body["name"]))
+	mobile := normalizeMobile(strOr(body["mobile"]))
+	idCard := normalizeIDCard(strOr(body["id_card_no"]))
+	if name == "" {
+		return 0, "NAME_REQUIRED"
+	}
+	if idCard == "" {
+		return 0, "ID_CARD_REQUIRED"
+	}
+	if !validIDCardCN(idCard) {
+		return 0, "ID_CARD_INVALID"
+	}
+	if mobile == "" {
+		return 0, "MOBILE_REQUIRED"
+	}
+	if !validMobileCN(mobile) {
+		return 0, "MOBILE_INVALID"
+	}
+	var dupID int64
+	_ = s.DB.QueryRow(`SELECT id FROM hr_employee WHERE id_card_no=? AND COALESCE(is_deleted,0)=0 LIMIT 1`, idCard).Scan(&dupID)
+	if dupID > 0 {
+		return 0, "ID_CARD_DUPLICATE"
+	}
+
+	no := strings.TrimSpace(strOr(body["emp_no"]))
+	if no != "" {
+		var exist int
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_employee WHERE emp_no=? AND COALESCE(is_deleted,0)=0`, no).Scan(&exist)
+		if exist > 0 {
+			return 0, "EMP_NO_DUPLICATE"
+		}
+	} else {
+		no = s.allocEmpNo()
+	}
+
 	if status == "" {
 		status = "active"
 	}
@@ -554,12 +686,17 @@ func (s *Services) createEmployeeFromBody(body map[string]interface{}, status st
 		orgID = 1
 	}
 	deptID, _ := asInt64(body["dept_id"])
+	if deptID == 0 {
+		deptID = 1
+	}
 	workshopID, _ := asInt64(body["workshop_id"])
+	if workshopID == 0 {
+		workshopID = 1
+	}
 	teamID, _ := asInt64(body["team_id"])
 	job := strOr(body["job_title"])
-	mobile := strOr(body["mobile"])
-	badge := strOr(body["badge_code"])
-	idCard := strOr(body["id_card_no"])
+	// 工牌由系统自动生成
+	badge := s.allocBadgeCode(no, 0)
 	res, err := s.DB.Exec(`INSERT INTO hr_employee(emp_no, name, org_id, dept_id, workshop_id, team_id, job_title, emp_type, mobile, badge_code, id_card_no, status)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
 		no, name, orgID, nullIf0(deptID), nullIf0(workshopID), nullIf0(teamID), job, typ, mobile, badge, idCard, status)
@@ -567,6 +704,12 @@ func (s *Services) createEmployeeFromBody(body map[string]interface{}, status st
 		return 0, "DB_ERROR:" + err.Error()
 	}
 	id, _ := res.LastInsertId()
+	var n int
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_employee WHERE badge_code=? AND id<>? AND COALESCE(is_deleted,0)=0`, badge, id).Scan(&n)
+	if n > 0 || badge == "" {
+		badge = s.allocBadgeCode(no, id)
+		_, _ = s.DB.Exec(`UPDATE hr_employee SET badge_code=? WHERE id=?`, badge, id)
+	}
 	return id, ""
 }
 
@@ -581,9 +724,23 @@ func (s *Services) updateEmployeeFromBody(id int64, body map[string]interface{})
 		return "INVALID_EMP_TYPE", fmt.Errorf("invalid emp_type")
 	}
 	job := strOrDef(body["job_title"], fmt.Sprint(cur["job_title"]))
-	mobile := strOrDef(body["mobile"], fmt.Sprint(cur["mobile"]))
-	badge := strOrDef(body["badge_code"], fmt.Sprint(cur["badge_code"]))
-	idCard := strOrDef(body["id_card_no"], fmt.Sprint(cur["id_card_no"]))
+	mobile := normalizeMobile(strOrDef(body["mobile"], fmt.Sprint(cur["mobile"])))
+	if mobile != "" && !validMobileCN(mobile) {
+		return "MOBILE_INVALID", fmt.Errorf("mobile invalid")
+	}
+	idCard := normalizeIDCard(strOrDef(body["id_card_no"], fmt.Sprint(cur["id_card_no"])))
+	if idCard != "" {
+		if !validIDCardCN(idCard) {
+			return "ID_CARD_INVALID", fmt.Errorf("id card invalid")
+		}
+		var dupID int64
+		_ = s.DB.QueryRow(`SELECT id FROM hr_employee WHERE id_card_no=? AND id<>? AND COALESCE(is_deleted,0)=0 LIMIT 1`, idCard, id).Scan(&dupID)
+		if dupID > 0 {
+			return "ID_CARD_DUPLICATE", fmt.Errorf("id card duplicate")
+		}
+	}
+	// 工牌不随普通编辑改写；缺失时自动补全；工号不可通过本接口改写
+	badge := s.ensureEmployeeBadge(id, fmt.Sprint(cur["emp_no"]), fmt.Sprint(cur["badge_code"]))
 	deptID, ok := asInt64(body["dept_id"])
 	if !ok {
 		deptID, _ = asInt64(cur["dept_id"])
@@ -603,14 +760,21 @@ func (s *Services) updateEmployeeFromBody(id int64, body map[string]interface{})
 }
 
 func (s *Services) openAccountForEmployee(empID int64, roleJSON, loginHint string) error {
+	_, _, err := s.openAccountForEmployeeEx(empID, roleJSON, loginHint, "")
+	return err
+}
+
+// openAccountForEmployeeEx 开通登录账号。password 空则用身份证后 6 位；loginHint 空则 allocLoginName。
+// 返回实际登录名与本次使用的明文初始密码（仅供当次响应展示）。
+func (s *Services) openAccountForEmployeeEx(empID int64, roleJSON, loginHint, password string) (loginName, initialPass string, err error) {
 	var userID, workshopID int64
-	var empNo, empType string
-	if err := s.DB.QueryRow(`SELECT COALESCE(user_id,0), COALESCE(emp_no,''), COALESCE(emp_type,'piece'), COALESCE(workshop_id,0) FROM hr_employee WHERE id=?`, empID).
-		Scan(&userID, &empNo, &empType, &workshopID); err != nil {
-		return fmt.Errorf("EMPLOYEE_NOT_FOUND")
+	var empNo, empType, mobile, idCard string
+	if err = s.DB.QueryRow(`SELECT COALESCE(user_id,0), COALESCE(emp_no,''), COALESCE(emp_type,'piece'), COALESCE(workshop_id,0),
+		COALESCE(mobile,''), COALESCE(id_card_no,'') FROM hr_employee WHERE id=?`, empID).
+		Scan(&userID, &empNo, &empType, &workshopID, &mobile, &idCard); err != nil {
+		return "", "", fmt.Errorf("EMPLOYEE_NOT_FOUND")
 	}
 	if userID > 0 {
-		// still apply roles if provided
 		var arr []interface{}
 		_ = jsonUnmarshal(roleJSON, &arr)
 		for _, x := range arr {
@@ -618,23 +782,32 @@ func (s *Services) openAccountForEmployee(empID int64, roleJSON, loginHint strin
 				_, _ = s.DB.Exec(`INSERT OR IGNORE INTO iam_user_role(user_id, role_id) VALUES(?,?)`, userID, rid)
 			}
 		}
-		return nil
+		var existingLogin string
+		_ = s.DB.QueryRow(`SELECT COALESCE(login_name,'') FROM iam_user WHERE id=?`, userID).Scan(&existingLogin)
+		return existingLogin, "", nil
 	}
-	login := loginHint
+	login := strings.TrimSpace(loginHint)
 	if login == "" {
-		login = empNo
-		if login == "" {
-			login = fmt.Sprintf("u%d", empID)
+		login = s.allocLoginName(mobile, empNo, empID)
+	} else {
+		var n int
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM iam_user WHERE login_name=? AND COALESCE(is_deleted,0)=0`, login).Scan(&n)
+		if n > 0 {
+			login = s.allocLoginName(mobile, empNo, empID)
 		}
 	}
-	hash, err := security.HashPassword("ChangeMe123")
-	if err != nil {
-		return fmt.Errorf("HASH_ERROR")
+	pass := password
+	if pass == "" {
+		pass = initialPasswordFromIDCard(idCard)
 	}
-	res, err := s.DB.Exec(`INSERT INTO iam_user(login_name, password_hash, employee_id, user_type, status, is_deleted) VALUES(?,?,?,'biz','active',0)`,
+	hash, herr := security.HashPassword(pass)
+	if herr != nil {
+		return "", "", fmt.Errorf("HASH_ERROR")
+	}
+	res, ierr := s.DB.Exec(`INSERT INTO iam_user(login_name, password_hash, employee_id, user_type, status, is_deleted) VALUES(?,?,?,'biz','active',0)`,
 		login, hash, empID)
-	if err != nil {
-		return fmt.Errorf("DB_ERROR:%s", err.Error())
+	if ierr != nil {
+		return "", "", fmt.Errorf("DB_ERROR:%s", ierr.Error())
 	}
 	uid, _ := res.LastInsertId()
 	_, _ = s.DB.Exec(`UPDATE hr_employee SET user_id=? WHERE id=?`, uid, empID)
@@ -667,13 +840,14 @@ func (s *Services) openAccountForEmployee(empID int64, roleJSON, loginHint strin
 	for _, rid := range roleIDs {
 		_, _ = s.DB.Exec(`INSERT OR IGNORE INTO iam_user_role(user_id, role_id) VALUES(?,?)`, uid, rid)
 	}
+	security.InvalidateUserRBAC(uid)
 	scopeType := "self"
 	if workshopID > 0 {
 		scopeType = "workshop"
 	}
 	_, _ = s.DB.Exec(`INSERT OR IGNORE INTO iam_user_data_scope(user_id, data_scope_type, workshop_id) VALUES(?,?,?)`,
 		uid, scopeType, nullIf0(workshopID))
-	return nil
+	return login, pass, nil
 }
 
 func jsonUnmarshal(s string, v interface{}) error {

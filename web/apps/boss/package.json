@@ -15,6 +15,7 @@
     "@vue/devtools-api": "^8.1.5",
     "@vue/devtools-kit": "^8.2.1",
     "element-plus": "^2.14.3",
+    "nostics": "^1.1.4",
     "pinia": "^4.0.2",
     "vue": "^3.5.40",
     "vue-router": "^5.2.0"

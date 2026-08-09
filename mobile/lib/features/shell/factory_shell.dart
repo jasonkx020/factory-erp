@@ -11,6 +11,7 @@ import '../warehouse/warehouse_page.dart';
 import '../workshop/workshop_page.dart';
 
 /// 木薯产线默认壳：按角色裁剪底部 Tab（过站 / 收货 / 仓管 / 班组 / 我的）。
+/// 无外层标题栏，小屏把高度留给业务表单。
 class FactoryShell extends StatefulWidget {
   const FactoryShell({super.key});
 
@@ -31,10 +32,26 @@ class _FactoryShellState extends State<FactoryShell> {
 
   List<_TabSpec> _tabsFor(WorkbenchRole role) {
     final tabs = <_TabSpec>[];
-    void addStation() => tabs.add(_TabSpec(label: '过站', icon: Icons.qr_code_scanner, builder: () => const StationPassPage()));
-    void addReceiving() => tabs.add(_TabSpec(label: '收货', icon: Icons.scale, builder: () => const ReceivingPage()));
-    void addWarehouse() => tabs.add(_TabSpec(label: '仓管', icon: Icons.warehouse, builder: () => const WarehousePage()));
-    void addTeam() => tabs.add(_TabSpec(label: '班组', icon: Icons.groups, builder: () => const WorkshopPage()));
+    void addStation() => tabs.add(_TabSpec(
+          label: '过站',
+          icon: Icons.qr_code_scanner,
+          builder: () => const StationPassPage(asTab: true),
+        ));
+    void addReceiving() => tabs.add(_TabSpec(
+          label: '收货',
+          icon: Icons.scale,
+          builder: () => const ReceivingPage(asTab: true),
+        ));
+    void addWarehouse() => tabs.add(_TabSpec(
+          label: '仓管',
+          icon: Icons.warehouse,
+          builder: () => const WarehousePage(asTab: true),
+        ));
+    void addTeam() => tabs.add(_TabSpec(
+          label: '班组',
+          icon: Icons.groups,
+          builder: () => const WorkshopPage(asTab: true),
+        ));
 
     switch (role) {
       case WorkbenchRole.worker:
@@ -69,6 +86,7 @@ class _FactoryShellState extends State<FactoryShell> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
+    final notify = context.watch<NotifyService>();
     final role = auth.primaryRole;
     if (_builtFor != role) {
       _builtFor = role;
@@ -79,26 +97,47 @@ class _FactoryShellState extends State<FactoryShell> {
 
     final switchable = auth.switchableRoles;
     return Scaffold(
-      appBar: AppBar(
-        title: Text('${workbenchRoleLabel(role)} · ${tabs[_index].label}'),
-        actions: [
-          if (switchable.length > 1)
-            PopupMenuButton<WorkbenchRole>(
-              tooltip: '切换角色',
-              onSelected: auth.setPrimaryRole,
-              itemBuilder: (ctx) => switchable.map((r) => PopupMenuItem(value: r, child: Text(workbenchRoleLabel(r)))).toList(),
-              icon: const Icon(Icons.swap_horiz),
+      body: Stack(
+        children: [
+          IndexedStack(
+            index: _index,
+            children: tabs.map((t) => t.builder()).toList(),
+          ),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topRight,
+              child: Material(
+                color: Colors.transparent,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (switchable.length > 1)
+                      PopupMenuButton<WorkbenchRole>(
+                        tooltip: '切换角色',
+                        onSelected: auth.setPrimaryRole,
+                        itemBuilder: (ctx) => switchable
+                            .map((r) => PopupMenuItem(value: r, child: Text(workbenchRoleLabel(r))))
+                            .toList(),
+                        icon: const Icon(Icons.swap_horiz, size: 22),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                      ),
+                    IconButton(
+                      tooltip: '消息',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => Navigator.of(context).pushNamed('/inbox'),
+                      icon: Badge(
+                        isLabelVisible: notify.unread > 0,
+                        label: Text('${notify.unread > 99 ? '99+' : notify.unread}'),
+                        child: const Icon(Icons.notifications_outlined, size: 22),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          IconButton(
-            tooltip: '消息',
-            onPressed: () => Navigator.of(context).pushNamed('/inbox'),
-            icon: const Icon(Icons.notifications_outlined),
           ),
         ],
-      ),
-      body: IndexedStack(
-        index: _index,
-        children: tabs.map((t) => t.builder()).toList(),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,

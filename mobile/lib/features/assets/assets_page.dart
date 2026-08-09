@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../widgets/form_row.dart';
+import '../../widgets/form_section_header.dart';
+import '../../widgets/form_sticky_actions.dart';
 import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
 import '../../core/employee_modules.dart';
@@ -135,25 +138,34 @@ class _AssetsPageState extends State<AssetsPage> with SingleTickerProviderStateM
                   ],
                 ),
                 ListView(
-                  padding: const EdgeInsets.all(16),
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
                   children: [
-                    DropdownButtonFormField<int>(
-                      value: _assetId,
-                      decoration: const InputDecoration(labelText: '资产'),
-                      items: _assets.map((e) {
-                        final m = Map<String, dynamic>.from(e as Map);
-                        return DropdownMenuItem(
-                          value: (m['id'] as num?)?.toInt(),
-                          child: Text('${m['code'] ?? ''} ${m['name'] ?? m['id']}'),
-                        );
-                      }).toList(),
-                      onChanged: (v) => setState(() => _assetId = v),
+                    const FormSectionHeader('资产转移'),
+                    FormRow(
+                      label: '资产',
+                      requiredMark: true,
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<int>(
+                          isExpanded: true,
+                          value: _assetId,
+                          alignment: Alignment.centerRight,
+                          hint: const Text('请选择', textAlign: TextAlign.right),
+                          items: _assets.map((e) {
+                            final m = Map<String, dynamic>.from(e as Map);
+                            return DropdownMenuItem(
+                              value: (m['id'] as num?)?.toInt(),
+                              child: Text('${m['code'] ?? ''} ${m['name'] ?? m['id']}', textAlign: TextAlign.right),
+                            );
+                          }).toList(),
+                          onChanged: (v) => setState(() => _assetId = v),
+                        ),
+                      ),
                     ),
-                    TextField(controller: _toDept, decoration: const InputDecoration(labelText: '调入部门')),
-                    TextField(controller: _toLoc, decoration: const InputDecoration(labelText: '调入位置')),
-                    TextField(controller: _remark, decoration: const InputDecoration(labelText: '备注')),
-                    const SizedBox(height: 8),
-                    FilledButton(onPressed: _createTransfer, child: const Text('提交转移申请')),
+                    FormRow.text(label: '调入部门', controller: _toDept, requiredMark: true),
+                    FormRow.text(label: '调入位置', controller: _toLoc),
+                    FormRow.text(label: '备注', controller: _remark),
+                    FormStickyActions(primaryLabel: '提交转移申请', onPrimary: _createTransfer),
                     if (_msg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_msg)),
                     const Divider(),
                     ..._transfers.map((e) {

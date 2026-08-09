@@ -185,6 +185,9 @@ export const productionApi = {
   updateWorkshop: (id: number, body: Record<string, unknown>) => api.put(`/production/workshops/${id}`, body),
   workbenchOverview: () => api.get('/production/workshop-workbench/overview'),
   workbenchToday: () => api.get('/production/workshop-workbench/today-tasks'),
+  processWip: (params?: string) =>
+    api.get(params ? `/production/process-wip?${params}` : '/production/process-wip'),
+  processWipBoxes: (params: string) => api.get<PageData>(`/production/process-wip/boxes?${params}`),
   shifts: () => api.get<PageData>('/production/shifts'),
   getShift: (id: number) => api.get(`/production/shifts/${id}`),
   createShift: (body: Record<string, unknown>) => api.post('/production/shifts', body),
@@ -285,8 +288,22 @@ export const hrApi = {
   getEmployee: (id: number) => api.get(`/hr/employees/${id}`),
   createEmployee: (body: Record<string, unknown>) => api.post('/hr/employees', body),
   updateEmployee: (id: number, body: Record<string, unknown>) => api.put(`/hr/employees/${id}`, body),
+  departments: () => api.get<PageData>('/hr/departments'),
+  createDepartment: (body: Record<string, unknown>) => api.post('/hr/departments', body),
+  updateDepartment: (id: number, body: Record<string, unknown>) => api.put(`/hr/departments/${id}`, body),
+  removeDepartment: (id: number) => api.del(`/hr/departments/${id}`),
+  workTeams: (workshopId?: number) =>
+    api.get<PageData>(
+      workshopId && workshopId > 0
+        ? `/hr/work-teams?workshop_id=${workshopId}`
+        : '/hr/work-teams',
+    ),
   batchImportEmployees: (body: Record<string, unknown>) => api.post('/hr/employee-imports', body),
-  setBadge: (id: number, badge_code: string) => api.put(`/hr/employees/${id}/badge`, { badge_code }),
+  setBadge: (id: number, badge_code?: string, opts?: { regenerate?: boolean }) =>
+    api.put(`/hr/employees/${id}/badge`, {
+      badge_code: badge_code || '',
+      regenerate: opts?.regenerate === true || !badge_code,
+    }),
   openAccount: (id: number, body?: Record<string, unknown>) =>
     api.post(`/hr/employees/${id}/open-account`, body || {}),
   onboards: (params?: string) => api.get<PageData>(`/hr/onboards${params ? `?${params}` : ''}`),
@@ -641,6 +658,10 @@ export const purchaseApi = {
   labelWeighTicket: (id: number) => api.get(`/purchase/weigh-tickets/${id}/label`),
   warehouseConfirmWeigh: (id: number, body?: Record<string, unknown>) =>
     api.post(`/purchase/weigh-tickets/${id}/warehouse-confirm`, body || {}),
+  warehouseReturnWeigh: (id: number, body: Record<string, unknown>) =>
+    api.post(`/purchase/weigh-tickets/${id}/warehouse-return`, body),
+  purchaseRoleUsers: (role = 'purchase') =>
+    api.get<{ list?: Array<Record<string, unknown>> }>(`/purchase/role-users?role=${encodeURIComponent(role)}`),
   stockInWeighTicket: (id: number) => api.post(`/purchase/weigh-tickets/${id}/stock-in`, {}),
   weighVarieties: (params?: string) =>
     api.get<PageData>(`/purchase/weigh-varieties${params ? `?${params}` : ''}`),

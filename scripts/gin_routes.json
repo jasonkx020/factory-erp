@@ -1,6 +1,46 @@
 [
   {
     "method": "GET",
+    "path": "/api/v1/production/process-wip"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/process-wip/boxes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/process-reports"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/processes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/processes/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/progress"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/piecework-summaries"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/piecework-summaries/mine"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/piece-issue-sheets"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/piece-issue-sheets/:id"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/production/report-works"
   },
   {
@@ -34,38 +74,6 @@
   {
     "method": "GET",
     "path": "/api/v1/production/routings/:id/steps"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/piecework-summaries"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/piecework-summaries/mine"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/piece-issue-sheets"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/piece-issue-sheets/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/processes"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/processes/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/process-reports"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/progress"
   },
   {
     "method": "GET",
@@ -322,6 +330,10 @@
   {
     "method": "GET",
     "path": "/api/v1/purchase/returns/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/purchase/role-users"
   },
   {
     "method": "GET",
@@ -1161,6 +1173,14 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/hr/departments"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/departments/:id"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/hr/leave-requests"
   },
   {
@@ -1198,6 +1218,10 @@
   {
     "method": "GET",
     "path": "/api/v1/hr/tool-issues"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/work-teams"
   },
   {
     "method": "GET",
@@ -1497,6 +1521,10 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/_debug/routes"
+  },
+  {
+    "method": "GET",
     "path": "/files/*filepath"
   },
   {
@@ -1685,6 +1713,38 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/by-trace"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/warehouse-confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/warehouse-return"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/qc"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/stock-in"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-varieties"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/purchase/inbounds"
   },
   {
@@ -1710,34 +1770,6 @@
   {
     "method": "POST",
     "path": "/api/v1/purchase/incoming-qcs/:id/pass"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/by-trace"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/:id/qc"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/:id/stock-in"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/:id/warehouse-confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-varieties"
   },
   {
     "method": "POST",
@@ -2485,6 +2517,10 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/hr/departments"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/hr/memos"
   },
   {
@@ -2837,6 +2873,30 @@
   },
   {
     "method": "DELETE",
+    "path": "/api/v1/hr/attendance/rules/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/hr/departments/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/hr/employees/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/hr/memos/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/hr/performance/schemes/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/hr/shifts/:id"
+  },
+  {
+    "method": "DELETE",
     "path": "/api/v1/crm/customers/:id"
   },
   {
@@ -2854,26 +2914,6 @@
   {
     "method": "DELETE",
     "path": "/api/v1/crm/task-reminders/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/hr/attendance/rules/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/hr/employees/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/hr/memos/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/hr/performance/schemes/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/hr/shifts/:id"
   },
   {
     "method": "DELETE",
@@ -3394,6 +3434,10 @@
   {
     "method": "PUT",
     "path": "/api/v1/hr/attendance/rules/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/hr/departments/:id"
   },
   {
     "method": "PUT",

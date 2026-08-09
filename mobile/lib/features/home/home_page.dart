@@ -32,10 +32,20 @@ class _HomePageState extends State<HomePage> {
         return Icons.qr_code_scanner;
       case EmployeeModule.workshop:
         return Icons.groups;
+      case EmployeeModule.worker:
+        return Icons.badge;
       case EmployeeModule.receiving:
         return Icons.scale;
       case EmployeeModule.warehouse:
         return Icons.warehouse;
+      case EmployeeModule.sales:
+        return Icons.storefront;
+      case EmployeeModule.assets:
+        return Icons.handyman;
+      case EmployeeModule.collab:
+        return Icons.payments;
+      case EmployeeModule.knowledge:
+        return Icons.menu_book;
       case EmployeeModule.mine:
         return Icons.person;
     }

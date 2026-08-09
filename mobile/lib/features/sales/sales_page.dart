@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
+import '../../widgets/form_row.dart';
+import '../../widgets/form_section_header.dart';
+import '../../widgets/form_sticky_actions.dart';
 import '../../core/auth_state.dart';
 import '../../core/employee_modules.dart';
 import '../../core/notify_service.dart';
@@ -261,33 +264,55 @@ class _SalesPageState extends State<SalesPage> {
   }
 
   Widget _customerPicker() {
-    return DropdownButtonFormField<int>(
-      value: _customerId,
-      decoration: const InputDecoration(labelText: '客户'),
-      items: _customers.map((e) {
-        final m = Map<String, dynamic>.from(e as Map);
-        return DropdownMenuItem(value: (m['id'] as num?)?.toInt(), child: Text('${m['name'] ?? m['code'] ?? m['id']}'));
-      }).toList(),
-      onChanged: (v) => setState(() => _customerId = v),
+    return FormRow(
+      label: '客户',
+      requiredMark: true,
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int>(
+          isExpanded: true,
+          value: _customerId,
+          alignment: Alignment.centerRight,
+          hint: const Text('请选择', textAlign: TextAlign.right),
+          items: _customers.map((e) {
+            final m = Map<String, dynamic>.from(e as Map);
+            return DropdownMenuItem(
+              value: (m['id'] as num?)?.toInt(),
+              child: Text('${m['name'] ?? m['code'] ?? m['id']}', textAlign: TextAlign.right),
+            );
+          }).toList(),
+          onChanged: (v) => setState(() => _customerId = v),
+        ),
+      ),
     );
   }
 
   Widget _productPicker() {
-    return DropdownButtonFormField<int>(
-      value: _productId,
-      decoration: const InputDecoration(labelText: '产品'),
-      items: _products.map((e) {
-        final m = Map<String, dynamic>.from(e as Map);
-        return DropdownMenuItem(value: (m['id'] as num?)?.toInt(), child: Text('${m['name'] ?? m['code'] ?? m['id']}'));
-      }).toList(),
-      onChanged: (v) {
-        setState(() => _productId = v);
-        final hit = _products.cast<dynamic>().map((e) => Map<String, dynamic>.from(e as Map)).where((m) => (m['id'] as num?)?.toInt() == v);
-        if (hit.isNotEmpty) {
-          _settleProduct.text = hit.first['name']?.toString() ?? '';
-          _productName.text = hit.first['name']?.toString() ?? '';
-        }
-      },
+    return FormRow(
+      label: '产品',
+      requiredMark: true,
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int>(
+          isExpanded: true,
+          value: _productId,
+          alignment: Alignment.centerRight,
+          hint: const Text('请选择', textAlign: TextAlign.right),
+          items: _products.map((e) {
+            final m = Map<String, dynamic>.from(e as Map);
+            return DropdownMenuItem(
+              value: (m['id'] as num?)?.toInt(),
+              child: Text('${m['name'] ?? m['code'] ?? m['id']}', textAlign: TextAlign.right),
+            );
+          }).toList(),
+          onChanged: (v) {
+            setState(() => _productId = v);
+            final hit = _products.cast<dynamic>().map((e) => Map<String, dynamic>.from(e as Map)).where((m) => (m['id'] as num?)?.toInt() == v);
+            if (hit.isNotEmpty) {
+              _settleProduct.text = hit.first['name']?.toString() ?? '';
+              _productName.text = hit.first['name']?.toString() ?? '';
+            }
+          },
+        ),
+      ),
     );
   }
 
@@ -299,13 +324,14 @@ class _SalesPageState extends State<SalesPage> {
         index: _tab,
         children: [
           ListView(
-            padding: const EdgeInsets.all(16),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
             children: [
               _customerPicker(),
               _productPicker(),
-              TextField(controller: _qty, decoration: const InputDecoration(labelText: '数量'), keyboardType: TextInputType.number),
-              TextField(controller: _remark, decoration: const InputDecoration(labelText: '备注')),
-              FilledButton(onPressed: _createOrder, child: const Text('新建订单')),
+              FormRow.text(label: '数量', controller: _qty, keyboardType: TextInputType.number, requiredMark: true),
+              FormRow.text(label: '备注', controller: _remark),
+              FormStickyActions(primaryLabel: '新建订单', onPrimary: _createOrder),
               if (_msg.isNotEmpty) Text(_msg),
               const Divider(),
               ..._orders.map((e) {
@@ -319,13 +345,14 @@ class _SalesPageState extends State<SalesPage> {
             ],
           ),
           ListView(
-            padding: const EdgeInsets.all(16),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
             children: [
               _customerPicker(),
               _productPicker(),
-              TextField(controller: _qty, decoration: const InputDecoration(labelText: '数量'), keyboardType: TextInputType.number),
-              TextField(controller: _remark, decoration: const InputDecoration(labelText: '备注')),
-              FilledButton(onPressed: _createInquiry, child: const Text('提交询价')),
+              FormRow.text(label: '数量', controller: _qty, keyboardType: TextInputType.number, requiredMark: true),
+              FormRow.text(label: '备注', controller: _remark),
+              FormStickyActions(primaryLabel: '提交询价', onPrimary: _createInquiry),
               if (_msg.isNotEmpty) Text(_msg),
               const Divider(),
               ..._inquiries.map((e) {
@@ -338,18 +365,20 @@ class _SalesPageState extends State<SalesPage> {
             ],
           ),
           ListView(
-            padding: const EdgeInsets.all(16),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
             children: [
-              const Text('补录出厂结算；金额=重量×单价+运/装/磅费', style: TextStyle(fontSize: 12, color: Colors.black54)),
+              const FormSectionHeader('出厂结算补录'),
+              Text('金额=重量×单价+运/装/磅费', style: TextStyle(fontSize: 12, color: Colors.black54)),
               _productPicker(),
-              TextField(controller: _settleProduct, decoration: const InputDecoration(labelText: '产品名称')),
-              TextField(controller: _plate, decoration: const InputDecoration(labelText: '车牌')),
-              TextField(controller: _weight, decoration: const InputDecoration(labelText: '重量'), keyboardType: TextInputType.number),
-              TextField(controller: _unitPrice, decoration: const InputDecoration(labelText: '单价'), keyboardType: TextInputType.number),
-              TextField(controller: _freight, decoration: const InputDecoration(labelText: '运费'), keyboardType: TextInputType.number),
-              TextField(controller: _loadingFee, decoration: const InputDecoration(labelText: '装卸'), keyboardType: TextInputType.number),
-              TextField(controller: _weighFee, decoration: const InputDecoration(labelText: '过磅费'), keyboardType: TextInputType.number),
-              FilledButton(onPressed: _createSettle, child: const Text('保存补录')),
+              FormRow.text(label: '产品名称', controller: _settleProduct),
+              FormRow.text(label: '车牌', controller: _plate),
+              FormRow.text(label: '重量', controller: _weight, keyboardType: TextInputType.number, requiredMark: true),
+              FormRow.text(label: '单价', controller: _unitPrice, keyboardType: TextInputType.number, requiredMark: true),
+              FormRow.text(label: '运费', controller: _freight, keyboardType: TextInputType.number),
+              FormRow.text(label: '装卸', controller: _loadingFee, keyboardType: TextInputType.number),
+              FormRow.text(label: '过磅费', controller: _weighFee, keyboardType: TextInputType.number),
+              FormStickyActions(primaryLabel: '保存补录', onPrimary: _createSettle),
               if (_msg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_msg)),
               const Divider(),
               ..._settles.map((e) {
@@ -388,19 +417,20 @@ class _SalesPageState extends State<SalesPage> {
             ],
           ),
           ListView(
-            padding: const EdgeInsets.all(16),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
             children: [
-              const Text('报价试算（成本×(1+毛利率)）', style: TextStyle(fontSize: 12, color: Colors.black54)),
+              const FormSectionHeader('报价试算'),
+              Text('成本×(1+毛利率)', style: TextStyle(fontSize: 12, color: Colors.black54)),
               _customerPicker(),
               _productPicker(),
-              TextField(controller: _qty, decoration: const InputDecoration(labelText: '数量'), keyboardType: TextInputType.number),
-              TextField(controller: _baseCost, decoration: const InputDecoration(labelText: '成本单价'), keyboardType: TextInputType.number),
-              TextField(controller: _margin, decoration: const InputDecoration(labelText: '毛利率(如0.2)'), keyboardType: TextInputType.number),
-              Row(
+              FormRow.text(label: '数量', controller: _qty, keyboardType: TextInputType.number, requiredMark: true),
+              FormRow.text(label: '成本单价', controller: _baseCost, keyboardType: TextInputType.number, requiredMark: true),
+              FormRow.text(label: '毛利率', controller: _margin, keyboardType: TextInputType.number, hint: '如 0.2'),
+              FormStickyButtonBar(
                 children: [
-                  Expanded(child: FilledButton(onPressed: _calcQuote, child: const Text('试算'))),
-                  const SizedBox(width: 8),
-                  Expanded(child: OutlinedButton(onPressed: _applyQuote, child: const Text('保存报价'))),
+                  FilledButton(onPressed: _calcQuote, child: const Text('试算')),
+                  OutlinedButton(onPressed: _applyQuote, child: const Text('保存报价')),
                 ],
               ),
               if (_quote != null)
@@ -420,11 +450,12 @@ class _SalesPageState extends State<SalesPage> {
             ],
           ),
           ListView(
-            padding: const EdgeInsets.all(16),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
             children: [
               _customerPicker(),
-              TextField(controller: _followContent, decoration: const InputDecoration(labelText: '跟进内容'), maxLines: 3),
-              FilledButton(onPressed: _createFollow, child: const Text('登记跟进')),
+              FormRow.text(label: '跟进内容', controller: _followContent, maxLines: 3, requiredMark: true),
+              FormStickyActions(primaryLabel: '登记跟进', onPrimary: _createFollow),
               if (_msg.isNotEmpty) Text(_msg),
               const Divider(),
               ..._follows.map((e) {

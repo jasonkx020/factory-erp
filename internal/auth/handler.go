@@ -176,16 +176,21 @@ func (h *Handler) Me(c *gin.Context) {
 	menus := h.loadMenus(claims.UserID)
 	fields := h.loadFieldPolicies(claims.UserID)
 	var empID sql.NullInt64
-	var empName string
-	_ = h.DB.QueryRow(`SELECT u.employee_id, COALESCE(e.name,'') FROM iam_user u
-		LEFT JOIN hr_employee e ON e.id=u.employee_id WHERE u.id=?`, claims.UserID).Scan(&empID, &empName)
+	var empName, empNo, badgeCode string
+	_ = h.DB.QueryRow(`SELECT u.employee_id, COALESCE(e.name,''), COALESCE(e.emp_no,''), COALESCE(e.badge_code,'')
+		FROM iam_user u
+		LEFT JOIN hr_employee e ON e.id=u.employee_id WHERE u.id=?`, claims.UserID).
+		Scan(&empID, &empName, &empNo, &badgeCode)
 	api.OK(c, gin.H{
 		"user": gin.H{
-			"id":          claims.UserID,
-			"login_name":  claims.LoginName,
-			"user_type":   claims.UserType,
-			"employee_id": empID.Int64,
-			"name":        empName,
+			"id":            claims.UserID,
+			"login_name":    claims.LoginName,
+			"user_type":     claims.UserType,
+			"employee_id":   empID.Int64,
+			"name":          empName,
+			"employee_name": empName,
+			"emp_no":        empNo,
+			"badge_code":    badgeCode,
 		},
 		"client_type":    claims.ClientType,
 		"roles":          roles,

@@ -5,11 +5,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
 import '../../core/employee_modules.dart';
+import '../../widgets/form_sticky_actions.dart';
+import '../../widgets/form_section_header.dart';
+import '../../widgets/form_row.dart';
 import '../../core/notify_service.dart';
 
 /// 车间主任工作台：报工 + 任务派工 + 灵活派发 + 质检/返修/废料
 class WorkshopPage extends StatefulWidget {
-  const WorkshopPage({super.key});
+  const WorkshopPage({super.key, this.asTab = false});
+
+  /// 作为产线壳 Tab 时隐藏标题，仅保留 TabBar / 操作。
+  final bool asTab;
 
   @override
   State<WorkshopPage> createState() => _WorkshopPageState();
@@ -318,7 +324,8 @@ class _WorkshopPageState extends State<WorkshopPage> with SingleTickerProviderSt
     final mqtt = context.watch<NotifyService>().mqttStatus;
     return Scaffold(
       appBar: AppBar(
-        title: Text('车间 · $mqtt'),
+        title: widget.asTab ? null : Text('车间 · $mqtt'),
+        toolbarHeight: widget.asTab ? 0 : kToolbarHeight,
         bottom: TabBar(
           controller: _tabs,
           isScrollable: true,
@@ -338,43 +345,57 @@ class _WorkshopPageState extends State<WorkshopPage> with SingleTickerProviderSt
       body: TabBarView(
         controller: _tabs,
         children: [
-          ListView(
-            padding: const EdgeInsets.all(16),
+          Column(
             children: [
-              TextField(controller: _badge, decoration: const InputDecoration(labelText: '工牌码')),
-              TextField(controller: _box, decoration: const InputDecoration(labelText: '箱码')),
-              TextField(controller: _weight, decoration: const InputDecoration(labelText: '净重(kg)'), keyboardType: TextInputType.number),
-              TextField(controller: _bag, decoration: const InputDecoration(labelText: '袋数'), keyboardType: TextInputType.number),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final e in const [
-                    MapEntry('', '无次品'),
-                    MapEntry('cut_defect', '切断次品'),
-                    MapEntry('core_defect', '去芯次品'),
-                    MapEntry('dice_defect', '切块次品'),
-                    MapEntry('sieve_bag_defect', '过筛装袋次品'),
-                  ])
-                    ChoiceChip(
-                      label: Text(e.value),
-                      selected: _scrapType == e.key,
-                      onSelected: (_) => setState(() => _scrapType = e.key),
+              Expanded(
+                child: ListView(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
+                  children: [
+                    const FormSectionHeader('扫码过站'),
+                    FormRow.text(label: '工牌码', controller: _badge, requiredMark: true),
+                    FormRow.text(label: '箱码', controller: _box, requiredMark: true),
+                    FormRow.text(label: '净重(kg)', controller: _weight, keyboardType: TextInputType.number, requiredMark: true),
+                    FormRow.text(label: '袋数', controller: _bag, keyboardType: TextInputType.number),
+                    const FormSectionHeader('次品类型'),
+                    FormRow(
+                      label: '次品',
+                      child: Wrap(
+                        alignment: WrapAlignment.end,
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          for (final e in const [
+                            MapEntry('', '无次品'),
+                            MapEntry('cut_defect', '切断次品'),
+                            MapEntry('core_defect', '去芯次品'),
+                            MapEntry('dice_defect', '切块次品'),
+                            MapEntry('sieve_bag_defect', '过筛装袋次品'),
+                          ])
+                            ChoiceChip(
+                              label: Text(e.value, style: const TextStyle(fontSize: 12)),
+                              selected: _scrapType == e.key,
+                              visualDensity: VisualDensity.compact,
+                              onSelected: (_) => setState(() => _scrapType = e.key),
+                            ),
+                        ],
+                      ),
                     ),
-                ],
+                    if (_msg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_msg)),
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
-              Row(
+              FormStickyButtonBar(
                 children: [
-                  Expanded(child: OutlinedButton(onPressed: () => _scan(resolveOnly: true), child: const Text('预解析'))),
-                  const SizedBox(width: 8),
-                  Expanded(child: FilledButton(onPressed: () => _scan(resolveOnly: false), child: const Text('提交草稿'))),
+                  OutlinedButton(onPressed: () => _scan(resolveOnly: true), child: const Text('预解析')),
+                  FilledButton(onPressed: () => _scan(resolveOnly: false), child: const Text('提交草稿')),
                 ],
               ),
-              if (_pendingId != null) ...[
-                const SizedBox(height: 8),
-                FilledButton.tonal(onPressed: _confirm, child: const Text('确认过账')),
-              ],
-              if (_msg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_msg)),
+              if (_pendingId != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: FilledButton.tonal(onPressed: _confirm, child: const Text('确认过账')),
+                ),
             ],
           ),
           ListView(
@@ -421,29 +442,45 @@ class _WorkshopPageState extends State<WorkshopPage> with SingleTickerProviderSt
             trailing: (m) => TextButton(onPressed: () => _receiveDispatch(m), child: const Text('接收')),
           ),
           ListView(
-            padding: const EdgeInsets.all(16),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
             children: [
-              DropdownButtonFormField<int>(
-                value: _taskId,
-                decoration: const InputDecoration(labelText: '任务'),
-                items: _tasks.map((e) {
-                  final m = Map<String, dynamic>.from(e as Map);
-                  return DropdownMenuItem(value: (m['id'] as num?)?.toInt(), child: Text('${m['doc_no'] ?? m['id']}'));
-                }).toList(),
-                onChanged: (v) => setState(() => _taskId = v),
+              const FormSectionHeader('灵活派发'),
+              FormRow(
+                label: '任务',
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    isExpanded: true,
+                    value: _taskId,
+                    alignment: Alignment.centerRight,
+                    hint: const Text('请选择', textAlign: TextAlign.right),
+                    items: _tasks.map((e) {
+                      final m = Map<String, dynamic>.from(e as Map);
+                      return DropdownMenuItem(value: (m['id'] as num?)?.toInt(), child: Text('${m['doc_no'] ?? m['id']}', textAlign: TextAlign.right));
+                    }).toList(),
+                    onChanged: (v) => setState(() => _taskId = v),
+                  ),
+                ),
               ),
-              DropdownButtonFormField<int>(
-                value: _processId,
-                decoration: const InputDecoration(labelText: '工序'),
-                items: _processes.map((e) {
-                  final m = Map<String, dynamic>.from(e as Map);
-                  return DropdownMenuItem(value: (m['id'] as num?)?.toInt(), child: Text('${m['name'] ?? m['id']}'));
-                }).toList(),
-                onChanged: (v) => setState(() => _processId = v),
+              FormRow(
+                label: '工序',
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    isExpanded: true,
+                    value: _processId,
+                    alignment: Alignment.centerRight,
+                    hint: const Text('请选择', textAlign: TextAlign.right),
+                    items: _processes.map((e) {
+                      final m = Map<String, dynamic>.from(e as Map);
+                      return DropdownMenuItem(value: (m['id'] as num?)?.toInt(), child: Text('${m['name'] ?? m['id']}', textAlign: TextAlign.right));
+                    }).toList(),
+                    onChanged: (v) => setState(() => _processId = v),
+                  ),
+                ),
               ),
-              TextField(controller: _flexWorker, decoration: const InputDecoration(labelText: '工人员工ID'), keyboardType: TextInputType.number),
-              TextField(controller: _flexQty, decoration: const InputDecoration(labelText: '计划数量'), keyboardType: TextInputType.number),
-              FilledButton(onPressed: _createFlex, child: const Text('灵活派发')),
+              FormRow.text(label: '工人员工ID', controller: _flexWorker, keyboardType: TextInputType.number, requiredMark: true),
+              FormRow.text(label: '计划数量', controller: _flexQty, keyboardType: TextInputType.number, requiredMark: true),
+              FormStickyActions(primaryLabel: '灵活派发', onPrimary: _createFlex),
               const Divider(),
               ..._flex.map((e) {
                 final m = Map<String, dynamic>.from(e as Map);
@@ -456,11 +493,12 @@ class _WorkshopPageState extends State<WorkshopPage> with SingleTickerProviderSt
             ],
           ),
           ListView(
-            padding: const EdgeInsets.all(16),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
             children: [
-              const Text('质检', style: TextStyle(fontWeight: FontWeight.bold)),
-              TextField(controller: _qcQty, decoration: const InputDecoration(labelText: '质检数量'), keyboardType: TextInputType.number),
-              FilledButton(onPressed: _createQc, child: const Text('新建质检单')),
+              const FormSectionHeader('质检'),
+              FormRow.text(label: '质检数量', controller: _qcQty, keyboardType: TextInputType.number, requiredMark: true),
+              FormStickyActions(primaryLabel: '新建质检单', onPrimary: _createQc),
               ..._qcs.take(8).map((e) {
                 final m = Map<String, dynamic>.from(e as Map);
                 return ListTile(
@@ -474,17 +512,17 @@ class _WorkshopPageState extends State<WorkshopPage> with SingleTickerProviderSt
                 );
               }),
               const Divider(),
-              const Text('废料', style: TextStyle(fontWeight: FontWeight.bold)),
-              TextField(controller: _scrapQty, decoration: const InputDecoration(labelText: '废料重量/数量'), keyboardType: TextInputType.number),
-              FilledButton.tonal(onPressed: _createScrap, child: const Text('登记废料')),
+              const FormSectionHeader('废料'),
+              FormRow.text(label: '废料重量/数量', controller: _scrapQty, keyboardType: TextInputType.number, requiredMark: true),
+              FormStickyActions(primaryLabel: '登记废料', onPrimary: _createScrap),
               ..._scraps.take(5).map((e) {
                 final m = Map<String, dynamic>.from(e as Map);
                 return ListTile(title: Text('${m['doc_no']}'), subtitle: Text('qty ${m['qty']} · ${m['status']}'));
               }),
               const Divider(),
-              const Text('返修', style: TextStyle(fontWeight: FontWeight.bold)),
-              TextField(controller: _reworkQty, decoration: const InputDecoration(labelText: '返修数量'), keyboardType: TextInputType.number),
-              FilledButton.tonal(onPressed: _createRework, child: const Text('新建返修')),
+              const FormSectionHeader('返修'),
+              FormRow.text(label: '返修数量', controller: _reworkQty, keyboardType: TextInputType.number, requiredMark: true),
+              FormStickyActions(primaryLabel: '新建返修', onPrimary: _createRework),
               ..._reworks.take(5).map((e) {
                 final m = Map<String, dynamic>.from(e as Map);
                 return ListTile(

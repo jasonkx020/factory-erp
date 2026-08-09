@@ -75,6 +75,10 @@ export const usePermStore = defineStore('perm', () => {
     return module === '员工档案'
   }
 
+  function isDeptModule(module: string) {
+    return module === '部门管理'
+  }
+
   function isHrOpsModule(module: string) {
     return [
       '离职登记', '考勤管理', '班次管理', '绩效管理', '请假管理', '考勤明细',
@@ -107,6 +111,7 @@ export const usePermStore = defineStore('perm', () => {
     isFarmerInboundModule,
     isOnboardModule,
     isEmployeeModule,
+    isDeptModule,
     isHrOpsModule,
     isSystemAdminModule,
     isPayrollModule,

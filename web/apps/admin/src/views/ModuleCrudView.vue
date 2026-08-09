@@ -19,6 +19,7 @@ import FarmerInboundView from './purchase/FarmerInboundView.vue'
 import OnboardView from './hr/OnboardView.vue'
 import HrOpsView from './hr/HrOpsView.vue'
 import EmployeeView from './hr/EmployeeView.vue'
+import DeptView from './hr/DeptView.vue'
 import SystemAdminView from './system/SystemAdminView.vue'
 import PayrollView from './payroll/PayrollView.vue'
 import {
@@ -99,7 +100,7 @@ function visibleColumns() {
 }
 
 async function load() {
-  if (perm.isIamModule(moduleName.value) || perm.isSupplierModule(moduleName.value) || perm.isFarmerInboundModule(moduleName.value) || perm.isOnboardModule(moduleName.value) || perm.isEmployeeModule(moduleName.value) || perm.isHrOpsModule(moduleName.value) || perm.isSystemAdminModule(moduleName.value) || perm.isPayrollModule(moduleName.value)) return
+  if (perm.isIamModule(moduleName.value) || perm.isSupplierModule(moduleName.value) || perm.isFarmerInboundModule(moduleName.value) || perm.isOnboardModule(moduleName.value) || perm.isEmployeeModule(moduleName.value) || perm.isDeptModule(moduleName.value) || perm.isHrOpsModule(moduleName.value) || perm.isSystemAdminModule(moduleName.value) || perm.isPayrollModule(moduleName.value)) return
   const m = meta.value
   if (!m?.list) {
     list.value = []
@@ -224,6 +225,7 @@ watch(() => route.fullPath, load)
   />
   <OnboardView v-else-if="perm.isOnboardModule(moduleName)" />
   <EmployeeView v-else-if="perm.isEmployeeModule(moduleName)" />
+  <DeptView v-else-if="perm.isDeptModule(moduleName)" />
   <HrOpsView v-else-if="perm.isHrOpsModule(moduleName)" :module="moduleName" />
   <SystemAdminView
     v-else-if="perm.isSystemAdminModule(moduleName)"

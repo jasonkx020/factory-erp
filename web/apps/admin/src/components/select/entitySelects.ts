@@ -47,6 +47,14 @@ export async function loadWorkshops(): Promise<Row[]> {
   return asList(await productionApi.workshops())
 }
 
+export async function loadDepartments(): Promise<Row[]> {
+  return asList(await hrApi.departments())
+}
+
+export async function loadWorkTeams(workshopId?: number): Promise<Row[]> {
+  return asList(await hrApi.workTeams(workshopId))
+}
+
 export async function loadProcesses(): Promise<Row[]> {
   return asList(await productionApi.processes())
 }

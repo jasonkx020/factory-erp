@@ -261,6 +261,7 @@ func (s *Services) batchImportEmployees(c *gin.Context) bool {
 		if _, ok := m["status"]; !ok {
 			m["status"] = "active"
 		}
+		// 批量走 createEmployeeFromBody，不开户；需要时由 auto_open_account 再开
 		id, errMsg := s.createEmployeeFromBody(m, strOrDef(m["status"], "active"))
 		if errMsg != "" {
 			skipped++
@@ -270,7 +271,7 @@ func (s *Services) batchImportEmployees(c *gin.Context) bool {
 		created++
 		ids = append(ids, id)
 		if autoOpen {
-			_, _ = s.openEmployeeAccountByID(id, m)
+			_, _, _ = s.openAccountForEmployeeEx(id, "[]", strOr(m["login_name"]), strOr(m["password"]))
 		}
 	}
 	api.OK(c, gin.H{"created": created, "skipped": skipped, "errors": errors, "ids": ids, "total": len(raw)})

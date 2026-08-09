@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { DEFAULT_EMP_TYPE, EMP_TYPE_OPTIONS, empTypeLabel, hrApi, iamApi } from '@erp/shared'
-import { WorkshopSelect } from '../../components/select'
+import { DeptSelect, TeamSelect, WorkshopSelect } from '../../components/select'
 
 type Row = Record<string, unknown>
 
@@ -127,6 +127,7 @@ async function openEdit(row: Row) {
 async function save() {
   if (!form.emp_no || !form.name) return ElMessage.warning('请填写工号与姓名')
   const body: Record<string, unknown> = { ...form }
+  delete body.badge_code // 工牌由建档时后端自动生成
   if (!form.login_name) body.login_name = form.emp_no
   let res
   if (isEdit.value && editingId.value) {
@@ -294,23 +295,30 @@ onMounted(load)
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="部门ID">
-              <el-input-number v-model="form.dept_id" :min="0" placeholder="暂无部门主数据，请填ID" style="width:100%" />
+            <el-form-item label="部门">
+              <DeptSelect v-model="form.dept_id" allow-zero zero-label="未设置" style="width:100%" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
             <el-form-item label="车间">
-              <WorkshopSelect v-model="form.workshop_id" style="width:100%" />
+              <WorkshopSelect v-model="form.workshop_id" allow-zero zero-label="未设置" style="width:100%" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="班组ID">
-              <el-input-number v-model="form.team_id" :min="0" placeholder="暂无部门主数据，请填ID" style="width:100%" />
+            <el-form-item label="班组">
+              <TeamSelect
+                v-model="form.team_id"
+                :workshop-id="form.workshop_id"
+                allow-zero
+                zero-label="未设置"
+                style="width:100%"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="工牌码">
-              <el-input v-model="form.badge_code" placeholder="可选，用于扫码报工" />
+              <span v-if="form.badge_code" class="badge-ro">{{ form.badge_code }}（自动生成）</span>
+              <span v-else class="hint">确认入职建档时系统自动生成，无需填写</span>
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -364,6 +372,7 @@ onMounted(load)
 .stat .label { font-size: 12px; color: #5c6b75; }
 .stat .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
 .hint { margin: 4px 0 0; font-size: 12px; color: #8a9aa3; }
+.badge-ro { font-size: 13px; font-weight: 600; }
 @media (max-width: 800px) {
   .stats { grid-template-columns: repeat(2, 1fr); }
 }

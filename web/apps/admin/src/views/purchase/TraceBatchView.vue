@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
 import { purchaseApi } from '@erp/shared'
+
+const router = useRouter()
 
 type Row = Record<string, unknown>
 
@@ -99,6 +102,15 @@ async function openPreview(row: Row) {
   previewCode.value = code
   previewQr.value = qrMap.value[code] || ''
   previewVisible.value = true
+}
+
+function openInboundInfo(row: Row) {
+  const code = String(row.code || '').trim()
+  if (!code) {
+    ElMessage.warning('无溯源批号')
+    return
+  }
+  void router.push({ path: '/purchase/hub/trace', query: { code } })
 }
 
 function printLabels() {
@@ -261,9 +273,10 @@ onMounted(refresh)
         <el-table-column prop="status" label="状态" width="90" />
         <el-table-column prop="weigh_ticket_id" label="过磅单" width="90" />
         <el-table-column prop="created_at" label="生成时间" width="160" />
-        <el-table-column label="操作" width="140">
+        <el-table-column label="操作" width="220">
           <template #default="{ row }">
             <el-button link type="primary" @click="openPreview(row)">查看</el-button>
+            <el-button link type="primary" @click="openInboundInfo(row)">入库信息</el-button>
             <el-button v-if="row.status === 'available'" link type="danger" @click="voidCode(row)">作废</el-button>
           </template>
         </el-table-column>

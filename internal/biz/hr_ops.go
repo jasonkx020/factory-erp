@@ -157,6 +157,10 @@ func ensureHROpsTables(db *sql.DB) {
 func (s *Services) handleHROps(c *gin.Context, method, openapiPath, action string) bool {
 	ensureHROpsTables(s.DB)
 	switch {
+	case strings.HasPrefix(openapiPath, "/api/v1/hr/departments"):
+		return s.handleDepartments(c, method, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/hr/work-teams"):
+		return s.handleWorkTeams(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/hr/shifts"):
 		return s.handleShifts(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/hr/attendance/rules"):
@@ -1189,5 +1193,224 @@ func (s *Services) handleJournals(c *gin.Context, method, action string) bool {
 		api.OK(c, gin.H{"id": id, "employee_id": eid, "biz_date": date, "content": content, "created_at": created})
 		return true
 	}
+	return true
+}
+
+func ensureOrgMaster(db *sql.DB) {
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS sys_organization (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  is_deleted INTEGER NOT NULL DEFAULT 0
+)`)
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS sys_department (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  org_id INTEGER NOT NULL,
+  parent_id INTEGER,
+  code TEXT NOT NULL,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  is_deleted INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(org_id, code)
+)`)
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS pd_workshop (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  org_id INTEGER,
+  dept_id INTEGER,
+  code TEXT NOT NULL,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  is_deleted INTEGER NOT NULL DEFAULT 0
+)`)
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS pd_work_team (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workshop_id INTEGER NOT NULL,
+  code TEXT NOT NULL,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  is_deleted INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(workshop_id, code)
+)`)
+	var orgCnt int
+	_ = db.QueryRow(`SELECT COUNT(1) FROM sys_organization`).Scan(&orgCnt)
+	if orgCnt == 0 {
+		_, _ = db.Exec(`INSERT INTO sys_organization(id, code, name, status) VALUES(1,'ORG001','加工厂演示组织','active')`)
+	}
+	var deptCnt int
+	_ = db.QueryRow(`SELECT COUNT(1) FROM sys_department WHERE COALESCE(is_deleted,0)=0`).Scan(&deptCnt)
+	if deptCnt == 0 {
+		_, _ = db.Exec(`INSERT INTO sys_department(id, org_id, code, name, status) VALUES(1,1,'D001','生产部','active')`)
+	}
+	var wsCnt int
+	_ = db.QueryRow(`SELECT COUNT(1) FROM pd_workshop WHERE COALESCE(is_deleted,0)=0`).Scan(&wsCnt)
+	if wsCnt == 0 {
+		_, _ = db.Exec(`INSERT INTO pd_workshop(id, org_id, dept_id, code, name, status) VALUES(1,1,1,'WS01','一车间','active')`)
+	}
+	var teamCnt int
+	_ = db.QueryRow(`SELECT COUNT(1) FROM pd_work_team WHERE COALESCE(is_deleted,0)=0`).Scan(&teamCnt)
+	if teamCnt == 0 {
+		_, _ = db.Exec(`INSERT INTO pd_work_team(id, workshop_id, code, name, status) VALUES(1,1,'T01','去皮一组','active')`)
+	}
+}
+
+func (s *Services) allocDeptCode(orgID int64) string {
+	for i := 0; i < 200; i++ {
+		code := fmt.Sprintf("D%03d", i+1)
+		var n int
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM sys_department WHERE org_id=? AND code=? AND COALESCE(is_deleted,0)=0`, orgID, code).Scan(&n)
+		if n == 0 {
+			return code
+		}
+	}
+	return fmt.Sprintf("D%d", time.Now().UnixNano()%1e10)
+}
+
+func (s *Services) handleDepartments(c *gin.Context, method, action string) bool {
+	_ = method
+	ensureOrgMaster(s.DB)
+	switch action {
+	case "list":
+		rows, err := s.DB.Query(`SELECT id, COALESCE(org_id,0), COALESCE(code,''), COALESCE(name,''), COALESCE(status,'active')
+			FROM sys_department WHERE COALESCE(is_deleted,0)=0 ORDER BY id`)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
+			return true
+		}
+		defer rows.Close()
+		list := []gin.H{}
+		for rows.Next() {
+			var id, orgID int64
+			var code, name, status string
+			if err := rows.Scan(&id, &orgID, &code, &name, &status); err != nil {
+				continue
+			}
+			list = append(list, gin.H{"id": id, "org_id": orgID, "code": code, "name": name, "status": status})
+		}
+		api.OK(c, gin.H{"list": list, "total": len(list)})
+		return true
+	case "create":
+		body := bindBody(c)
+		name := strings.TrimSpace(strOr(body["name"]))
+		if name == "" {
+			api.FailJSON(c, "NAME_REQUIRED")
+			return true
+		}
+		orgID, _ := asInt64(body["org_id"])
+		if orgID == 0 {
+			orgID = 1
+		}
+		code := strings.TrimSpace(strOr(body["code"]))
+		if code == "" {
+			code = s.allocDeptCode(orgID)
+		}
+		var n int
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM sys_department WHERE org_id=? AND code=? AND COALESCE(is_deleted,0)=0`, orgID, code).Scan(&n)
+		if n > 0 {
+			api.FailJSON(c, "CODE_DUPLICATE")
+			return true
+		}
+		status := strOrDef(body["status"], "active")
+		res, err := s.DB.Exec(`INSERT INTO sys_department(org_id, code, name, status) VALUES(?,?,?,?)`,
+			orgID, code, name, status)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
+			return true
+		}
+		id, _ := res.LastInsertId()
+		api.OK(c, gin.H{"id": id, "org_id": orgID, "code": code, "name": name, "status": status})
+		return true
+	case "get":
+		id := paramID(c)
+		var orgID int64
+		var code, name, status string
+		err := s.DB.QueryRow(`SELECT COALESCE(org_id,0), COALESCE(code,''), COALESCE(name,''), COALESCE(status,'active')
+			FROM sys_department WHERE id=? AND COALESCE(is_deleted,0)=0`, id).Scan(&orgID, &code, &name, &status)
+		if err != nil {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		api.OK(c, gin.H{"id": id, "org_id": orgID, "code": code, "name": name, "status": status})
+		return true
+	case "update", "replace":
+		id := paramID(c)
+		body := bindBody(c)
+		var curName, curStatus string
+		if err := s.DB.QueryRow(`SELECT COALESCE(name,''), COALESCE(status,'active') FROM sys_department WHERE id=? AND COALESCE(is_deleted,0)=0`, id).
+			Scan(&curName, &curStatus); err != nil {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		name := strings.TrimSpace(strOrDef(body["name"], curName))
+		if name == "" {
+			api.FailJSON(c, "NAME_REQUIRED")
+			return true
+		}
+		status := strOrDef(body["status"], curStatus)
+		if status == "" {
+			status = "active"
+		}
+		_, err := s.DB.Exec(`UPDATE sys_department SET name=?, status=? WHERE id=?`, name, status, id)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
+			return true
+		}
+		api.OK(c, gin.H{"id": id, "name": name, "status": status})
+		return true
+	case "delete":
+		id := paramID(c)
+		var n int
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_employee WHERE dept_id=? AND COALESCE(status,'')<>'left' AND COALESCE(is_deleted,0)=0`, id).Scan(&n)
+		if n > 0 {
+			api.FailJSON(c, "DEPT_IN_USE")
+			return true
+		}
+		_, err := s.DB.Exec(`UPDATE sys_department SET is_deleted=1, status='inactive' WHERE id=?`, id)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
+			return true
+		}
+		api.OK(c, gin.H{"id": id})
+		return true
+	}
+	api.FailJSON(c, "METHOD_NOT_ALLOWED")
+	return true
+}
+
+func (s *Services) handleWorkTeams(c *gin.Context, method, action string) bool {
+	_ = method
+	ensureOrgMaster(s.DB)
+	if action != "list" {
+		api.FailJSON(c, "METHOD_NOT_ALLOWED")
+		return true
+	}
+	workshopID := int64(0)
+	if v := strings.TrimSpace(c.Query("workshop_id")); v != "" {
+		fmt.Sscanf(v, "%d", &workshopID)
+	}
+	q := `SELECT id, COALESCE(workshop_id,0), COALESCE(code,''), COALESCE(name,''), COALESCE(status,'active')
+		FROM pd_work_team WHERE COALESCE(is_deleted,0)=0`
+	args := []interface{}{}
+	if workshopID > 0 {
+		q += ` AND workshop_id=?`
+		args = append(args, workshopID)
+	}
+	q += ` ORDER BY id`
+	rows, err := s.DB.Query(q, args...)
+	if err != nil {
+		api.FailJSON(c, "DB_ERROR:"+err.Error())
+		return true
+	}
+	defer rows.Close()
+	list := []gin.H{}
+	for rows.Next() {
+		var id, wsID int64
+		var code, name, status string
+		if err := rows.Scan(&id, &wsID, &code, &name, &status); err != nil {
+			continue
+		}
+		list = append(list, gin.H{"id": id, "workshop_id": wsID, "code": code, "name": name, "status": status})
+	}
+	api.OK(c, gin.H{"list": list, "total": len(list)})
 	return true
 }

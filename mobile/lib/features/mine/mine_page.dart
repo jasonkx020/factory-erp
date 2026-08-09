@@ -7,6 +7,7 @@ import '../../core/employee_modules.dart';
 import '../../core/notify_service.dart';
 import '../hr/hr_onboard_page.dart';
 import 'account_center_page.dart';
+import 'badge_show_page.dart';
 
 /// 个人中心：列表入口（无页内底栏）
 class MinePage extends StatefulWidget {
@@ -38,30 +39,41 @@ class _MinePageState extends State<MinePage> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
     return Scaffold(
-      appBar: AppBar(
-        title: Text('我的 · ${auth.name ?? auth.loginName ?? ''}'),
-        automaticallyImplyLeading: !widget.asTab,
-        actions: [
-          if (!widget.asTab)
-            IconButton(
-              tooltip: '账户',
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AccountCenterPage()),
-              ),
-              icon: const Icon(Icons.manage_accounts_outlined),
+      appBar: widget.asTab
+          ? null
+          : AppBar(
+              title: Text('我的 · ${auth.name ?? auth.loginName ?? ''}'),
+              actions: [
+                IconButton(
+                  tooltip: '账户',
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AccountCenterPage()),
+                  ),
+                  icon: const Icon(Icons.manage_accounts_outlined),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    await context.read<NotifyService>().stop();
+                    await auth.logout();
+                  },
+                  child: const Text('退出'),
+                ),
+              ],
             ),
-          TextButton(
-            onPressed: () async {
-              await context.read<NotifyService>().stop();
-              await auth.logout();
-            },
-            child: const Text('退出'),
-          ),
-        ],
-      ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.fromLTRB(16, widget.asTab ? 40 : 16, 16, 16),
         children: [
+          if (widget.asTab)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () async {
+                  await context.read<NotifyService>().stop();
+                  await auth.logout();
+                },
+                child: const Text('退出'),
+              ),
+            ),
           Card(
             color: Colors.teal.shade50,
             child: Padding(
@@ -94,6 +106,9 @@ class _MinePageState extends State<MinePage> {
           const SizedBox(height: 12),
           const Text('常用', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
+          _entry(Icons.badge_outlined, '我的工牌', '出示工牌二维码供过站扫码', () {
+            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BadgeShowPage()));
+          }),
           _entry(Icons.menu_book_outlined, '资料中心', '知识库 / 图纸 / 公告', () {
             Navigator.of(context).pushNamed('/knowledge');
           }),
@@ -622,6 +637,8 @@ class _ModulesPage extends StatelessWidget {
 
   IconData _icon(EmployeeModule m) {
     switch (m) {
+      case EmployeeModule.station:
+        return Icons.qr_code_scanner;
       case EmployeeModule.workshop:
         return Icons.precision_manufacturing;
       case EmployeeModule.worker:

@@ -7,11 +7,47 @@ import '../../widgets/form_row.dart';
 import '../../widgets/trace_code_field.dart';
 import 'gate_inbound_prefs.dart';
 
+Future<void> _showPhotoPreview(BuildContext context, String url) async {
+  await showDialog<void>(
+    context: context,
+    barrierColor: Colors.black87,
+    builder: (ctx) => Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(12),
+      child: Stack(
+        children: [
+          Center(
+            child: InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 4,
+              child: Image.network(
+                url,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('图片加载失败', style: TextStyle(color: Colors.white)),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 0,
+            right: 0,
+            child: IconButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              icon: const Icon(Icons.close, color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 typedef GateSubmitFn = Future<bool> Function({
   required String? nextRole,
   String? nextNodeId,
   int? nextAssigneeUserId,
-  required bool qualified,
 });
 
 /// 过磅入厂四步向导（仅 gate）。
@@ -21,7 +57,6 @@ class GateInboundWizard extends StatefulWidget {
     required this.batchNo,
     required this.unitPrice,
     required this.deductRate,
-    required this.reject,
     required this.freight,
     required this.loadingFee,
     required this.weighFee,
@@ -44,6 +79,7 @@ class GateInboundWizard extends StatefulWidget {
     required this.farmerHits,
     required this.searchingFarmer,
     required this.msg,
+    this.msgIsError = false,
     required this.onBatchChanged,
     required this.onValidateBatch,
     required this.onFarmerSearchChanged,
@@ -64,7 +100,6 @@ class GateInboundWizard extends StatefulWidget {
   final TextEditingController batchNo;
   final TextEditingController unitPrice;
   final TextEditingController deductRate;
-  final TextEditingController reject;
   final TextEditingController freight;
   final TextEditingController loadingFee;
   final TextEditingController weighFee;
@@ -88,6 +123,7 @@ class GateInboundWizard extends StatefulWidget {
   final List<dynamic> farmerHits;
   final bool searchingFarmer;
   final String msg;
+  final bool msgIsError;
 
   final ValueChanged<String> onBatchChanged;
   final Future<void> Function() onValidateBatch;
@@ -112,7 +148,6 @@ class GateInboundWizard extends StatefulWidget {
 class _GateInboundWizardState extends State<GateInboundWizard> {
   final _pages = PageController();
   int _step = 0;
-  bool _qualified = true;
   bool _busy = false;
   bool _prefsLoaded = false;
 
@@ -122,7 +157,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
   int? _nextAssignee;
   bool _loadingOptions = false;
 
-  static const _titles = ['扫码与常用项', '照片与过磅', '关联农户', '下一部门'];
+  static const _titles = ['扫码与常用项', '照片与过磅', '关联农户', '预览确认'];
 
   @override
   void initState() {
@@ -224,20 +259,18 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
   String? _validateStep(int step) {
     switch (step) {
       case 0:
-        if (!widget.batchOk) return '请先校验溯源批号';
-        if (!_qualified) {
-          final rj = double.tryParse(widget.reject.text) ?? 0;
-          if (rj <= 0) return '不合格时请填写不合格重量';
-        }
+        if (widget.batchNo.text.trim().isEmpty) return '请填写溯源批号';
+        if (!widget.batchOk) return '请先校验溯源批号（输入后点完成或扫码）';
+        if (widget.varieties.isEmpty) return '暂无过磅品种，请先在后台配置';
+        if (widget.varietyId == null) return '请选择品种';
         return null;
       case 1:
-        if (widget.photoUrls.isEmpty) return '请现场拍照留底';
-        if ((double.tryParse(widget.gross.text) ?? 0) <= 0) return '请输入入场重量';
-        if (widget.varietyId == null && widget.varieties.isNotEmpty) return '请选择品种';
+        if ((double.tryParse(widget.gross.text) ?? 0) <= 0) return '请填写入场重量（kg）';
+        if (widget.photoUrls.isEmpty) return '请拍摄现场照片';
         return null;
       case 2:
         if ((widget.farmerId == null || widget.farmerId! <= 0) && widget.partyName.text.trim().isEmpty) {
-          return '请关联农户或现场录入姓名';
+          return '请关联农户或填写农户姓名';
         }
         return null;
       case 3:
@@ -249,6 +282,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
   }
 
   Future<void> _goNext() async {
+    FormRow.dismissKeyboard();
     final err = _validateStep(_step);
     if (err != null) {
       widget.onMsg(err);
@@ -265,7 +299,6 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
       nextRole: _nextRole,
       nextNodeId: (_nextNodeId != null && _nextNodeId!.isNotEmpty) ? _nextNodeId : null,
       nextAssigneeUserId: _nextAssignee,
-      qualified: _qualified,
     );
     if (!mounted) return;
     setState(() => _busy = false);
@@ -278,18 +311,51 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
         weighFee: widget.weighFee.text,
         nextRole: _nextRole,
       );
-      setState(() {
-        _step = 0;
-        _qualified = true;
-      });
+      setState(() => _step = 0);
       _pages.jumpToPage(0);
     }
   }
 
   Future<void> _goPrev() async {
     if (_step <= 0) return;
+    FormRow.dismissKeyboard();
     setState(() => _step--);
     await _pages.animateToPage(_step, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+  }
+
+  Future<void> _jumpToStep(int step) async {
+    if (step < 0 || step > 3 || step == _step) return;
+    setState(() => _step = step);
+    await _pages.animateToPage(_step, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+  }
+
+  String _varietyLabel() {
+    for (final e in widget.varieties) {
+      final m = Map<String, dynamic>.from(e as Map);
+      if ((m['id'] as num?)?.toInt() == widget.varietyId) {
+        return m['name']?.toString() ?? m['code']?.toString() ?? '-';
+      }
+    }
+    return '-';
+  }
+
+  String _coldLabel(String v) {
+    switch (v) {
+      case 'semi':
+        return '半成品库';
+      case 'fg':
+        return '成品库';
+      default:
+        return '保鲜库';
+    }
+  }
+
+  double _previewNet() {
+    final gross = double.tryParse(widget.gross.text) ?? 0;
+    var rate = double.tryParse(widget.deductRate.text) ?? 0;
+    if (rate > 1) rate = rate / 100;
+    final net = gross - gross * rate;
+    return net < 0 ? 0 : net;
   }
 
   @override
@@ -341,7 +407,14 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text(widget.msg, style: const TextStyle(color: Colors.black54, fontSize: 13)),
+              child: Text(
+                widget.msg,
+                style: TextStyle(
+                  color: widget.msgIsError ? Theme.of(context).colorScheme.error : Colors.black54,
+                  fontSize: 13,
+                  fontWeight: widget.msgIsError ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
             ),
           ),
         SafeArea(
@@ -355,7 +428,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
                 Expanded(
                   child: FilledButton(
                     onPressed: _busy ? null : _goNext,
-                    child: Text(_busy ? '提交中…' : (_step < 3 ? '下一步' : '创建入厂草稿')),
+                    child: Text(_busy ? '提交中…' : (_step < 3 ? '下一步' : '确认创建并绑定')),
                   ),
                 ),
               ],
@@ -373,22 +446,18 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
     TextInputType? keyboardType,
     bool requiredMark = false,
   }) {
-    return FormRow(
+    return FormRow.text(
       label: label,
+      controller: c,
+      hint: hint,
+      keyboardType: keyboardType,
       requiredMark: requiredMark,
-      child: TextField(
-        controller: c,
-        textAlign: TextAlign.right,
-        keyboardType: keyboardType,
-        style: const TextStyle(fontSize: 15),
-        decoration: FormRow.fieldDecoration(hint: hint),
-        onTap: () => FormRow.moveCursorToEnd(c),
-      ),
     );
   }
 
   Widget _stepScanPrefs() {
     return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
       children: [
         TraceCodeField(
@@ -405,54 +474,9 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
             await widget.onValidateBatch();
           },
         ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(4, 14, 4, 6),
-          child: Text('常用项（本地记忆）', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-        ),
-        _textRow('单价（元）', widget.unitPrice, hint: '0', keyboardType: const TextInputType.numberWithOptions(decimal: true)),
-        _textRow('扣损率（%）', widget.deductRate, hint: '0', keyboardType: const TextInputType.numberWithOptions(decimal: true)),
-        FormRow(
-          label: '是否合格',
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: SegmentedButton<bool>(
-              style: const ButtonStyle(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-              segments: const [
-                ButtonSegment(value: true, label: Text('合格')),
-                ButtonSegment(value: false, label: Text('不合格')),
-              ],
-              selected: {_qualified},
-              onSelectionChanged: (s) {
-                setState(() {
-                  _qualified = s.first;
-                  if (_qualified) widget.reject.text = '0';
-                });
-              },
-            ),
-          ),
-        ),
-        if (!_qualified)
-          _textRow(
-            '不合格重（kg）',
-            widget.reject,
-            hint: '0',
-            requiredMark: true,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          ),
-        _textRow('运费（元）', widget.freight, hint: '0', keyboardType: const TextInputType.numberWithOptions(decimal: true)),
-        _textRow('装卸费（元）', widget.loadingFee, hint: '0', keyboardType: const TextInputType.numberWithOptions(decimal: true)),
-        _textRow('过磅费（元）', widget.weighFee, hint: '0', keyboardType: const TextInputType.numberWithOptions(decimal: true)),
-      ],
-    );
-  }
-
-  Widget _stepWeighPhotos() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-      children: [
         if (widget.varieties.isEmpty)
           const Padding(
-            padding: EdgeInsets.all(8),
+            padding: EdgeInsets.symmetric(vertical: 8),
             child: Text('暂无过磅品种，请先在后台配置', style: TextStyle(color: Colors.orange)),
           )
         else
@@ -484,6 +508,24 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
               ),
             ),
           ),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(4, 14, 4, 6),
+          child: Text('常用项（本地记忆）', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        ),
+        _textRow('单价（元）', widget.unitPrice, hint: '0', keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+        _textRow('扣损率（%）', widget.deductRate, hint: '0', keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+        _textRow('运费（元）', widget.freight, hint: '0', keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+        _textRow('装卸费（元）', widget.loadingFee, hint: '0', keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+        _textRow('过磅费（元）', widget.weighFee, hint: '0', keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+      ],
+    );
+  }
+
+  Widget _stepWeighPhotos() {
+    return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+      children: [
         FormRow(
           label: '过磅方式',
           child: Align(
@@ -555,25 +597,73 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
             ],
           ),
         ),
-        if (widget.photoUrls.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(left: 108, top: 4, bottom: 4),
-            child: Wrap(
-              spacing: 8,
-              alignment: WrapAlignment.end,
-              children: [
-                for (var i = 0; i < widget.photoUrls.length; i++)
-                  Chip(label: Text('图${i + 1}'), onDeleted: () => widget.onRemovePhoto(i), visualDensity: VisualDensity.compact),
-              ],
-            ),
-          ),
+        if (widget.photoUrls.isNotEmpty) _photoThumbRow(),
         _textRow('备注', widget.remark, hint: '选填'),
       ],
     );
   }
 
+  Widget _photoThumbRow() {
+    final api = context.read<AuthState>().api;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 4),
+      child: SizedBox(
+        height: 96,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: widget.photoUrls.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (_, i) {
+            final url = api.resolveMediaUrl(widget.photoUrls[i]);
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Material(
+                  color: Colors.black12,
+                  borderRadius: BorderRadius.circular(8),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: url.isEmpty ? null : () => _showPhotoPreview(context, url),
+                    child: Image.network(
+                      url,
+                      width: 96,
+                      height: 96,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox(
+                        width: 96,
+                        height: 96,
+                        child: Center(child: Icon(Icons.broken_image_outlined)),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: -6,
+                  right: -6,
+                  child: Material(
+                    color: Colors.black54,
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: () => widget.onRemovePhoto(i),
+                      child: const Padding(
+                        padding: EdgeInsets.all(4),
+                        child: Icon(Icons.close, size: 14, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   Widget _stepFarmer() {
     return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
       children: [
         FormRow(
@@ -652,15 +742,94 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
     );
   }
 
+  Widget _previewSection(String title, int editStep, List<Widget> rows) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
+            TextButton(
+              onPressed: () => _jumpToStep(editStep),
+              child: const Text('修改'),
+            ),
+          ],
+        ),
+        ...rows,
+        const Divider(height: 20),
+      ],
+    );
+  }
+
+  Widget _previewRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 108,
+            child: Text(label, style: TextStyle(fontSize: 13, color: Colors.black.withValues(alpha: 0.6))),
+          ),
+          Expanded(child: Text(value, textAlign: TextAlign.right, style: const TextStyle(fontSize: 14))),
+        ],
+      ),
+    );
+  }
+
   Widget _stepNextDept() {
     if (_loadingOptions) {
       return const Center(child: CircularProgressIndicator());
     }
     final users = _usersForRole;
+    final net = _previewNet();
+    final gross = double.tryParse(widget.gross.text) ?? 0;
+    final rate = double.tryParse(widget.deductRate.text) ?? 0;
+    final unit = double.tryParse(widget.unitPrice.text) ?? 0;
+    final freight = double.tryParse(widget.freight.text) ?? 0;
+    final loading = double.tryParse(widget.loadingFee.text) ?? 0;
+    final weigh = double.tryParse(widget.weighFee.text) ?? 0;
+    final settle = net * unit + freight + loading + weigh;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
       children: [
-        const Text('选择下一处理部门', style: TextStyle(fontWeight: FontWeight.w600)),
+        const Text('请核对单据，有误请点「修改」或底栏「上一步」', style: TextStyle(fontSize: 12, color: Colors.black54)),
+        const SizedBox(height: 8),
+        _previewSection('扫码与常用项', 0, [
+          _previewRow('溯源批号', widget.batchNo.text.trim().toUpperCase()),
+          _previewRow('品种', _varietyLabel()),
+          _previewRow('扣损率(%)', widget.deductRate.text),
+          _previewRow('单价', unit.toString()),
+          _previewRow('运/装/磅费', '$freight / $loading / $weigh'),
+          _previewRow('渠道', widget.channel == 'external' ? '外磅' : '厂内'),
+        ]),
+        _previewSection('照片与过磅', 1, [
+          _previewRow('入场重量(kg)', gross.toString()),
+          _previewRow('预估净重(kg)', net.toStringAsFixed(2)),
+          _previewRow('预估结算', settle.toStringAsFixed(2)),
+          _previewRow('车牌', widget.plate.text.trim().isEmpty ? '-' : widget.plate.text.trim()),
+          _previewRow('收货地址', widget.recvAddr.text.trim().isEmpty ? '-' : widget.recvAddr.text.trim()),
+          _previewRow('目标库', _coldLabel(widget.coldStore)),
+          _previewRow('等级', widget.grade),
+          _previewRow('现场照片', '${widget.photoUrls.length} 张'),
+          _previewRow('备注', widget.remark.text.trim().isEmpty ? '-' : widget.remark.text.trim()),
+        ]),
+        _previewSection('关联农户', 2, [
+          _previewRow('农户ID', widget.farmerId == null ? '-' : '#${widget.farmerId}'),
+          _previewRow('姓名', widget.partyName.text.trim().isEmpty ? '-' : widget.partyName.text.trim()),
+          _previewRow('电话', widget.partyMobile.text.trim().isEmpty ? '-' : widget.partyMobile.text.trim()),
+          _previewRow('产地', widget.origin.text.trim().isEmpty ? '-' : widget.origin.text.trim()),
+        ]),
+        Text.rich(
+          TextSpan(
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.black87),
+            children: const [
+              TextSpan(text: '下一处理部门'),
+              TextSpan(text: ' *', style: TextStyle(color: Colors.redAccent)),
+            ],
+          ),
+        ),
         const SizedBox(height: 8),
         if (_options.isEmpty)
           const Text('暂无部门选项，请检查流程图或角色用户', style: TextStyle(color: Colors.orange))
@@ -686,8 +855,16 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
                 }),
             ],
           ),
-        const SizedBox(height: 16),
-        const Text('处理人', style: TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
+        Text.rich(
+          TextSpan(
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.black87),
+            children: const [
+              TextSpan(text: '处理人'),
+              TextSpan(text: ' *', style: TextStyle(color: Colors.redAccent)),
+            ],
+          ),
+        ),
         const SizedBox(height: 8),
         if (users.isEmpty)
           const Text('该部门暂无可指派用户', style: TextStyle(color: Colors.orange))
@@ -696,6 +873,8 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
             final uid = (u['user_id'] as num?)?.toInt();
             final selected = uid != null && uid == _nextAssignee;
             return ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
               leading: Icon(selected ? Icons.radio_button_checked : Icons.radio_button_off),
               title: Text('${u['name'] ?? u['login_name'] ?? uid}'),
               subtitle: Text('${u['login_name'] ?? ''}'),
@@ -703,8 +882,11 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
               onTap: uid == null ? null : () => setState(() => _nextAssignee = uid),
             );
           }),
-        const SizedBox(height: 12),
-        const Text('确认后将创建入厂草稿，并指派协作工单给所选处理人。', style: TextStyle(fontSize: 12, color: Colors.black54)),
+        const SizedBox(height: 8),
+        Text(
+          '确认后溯源码（批号）与农户/本单唯一绑定并推仓管；扣损率按 $rate${rate > 1 ? '%' : ''} 估算净重。',
+          style: const TextStyle(fontSize: 12, color: Colors.black54),
+        ),
       ],
     );
   }

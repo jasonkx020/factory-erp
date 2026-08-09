@@ -57,6 +57,11 @@ func maskWeighPayloadForWarehouse(src map[string]interface{}) map[string]interfa
 		"biz_date": true, "ticket_id": true, "id": true, "weigh_ticket_id": true, "stockin_ready": true, "reason": true,
 		"box_code": true, "qc_result": true, "grade": true,
 		"evidences": true, "verify_images": true, "site_photos": true,
+		"process_phase": true, "settlement_status": true, "current_assignee_name": true,
+		"party_name": true, "farmer_name": true, "settle_amount": true, "date_from": true, "date_to": true,
+		"process_logs": true, "applicant_name": true, "currency": true, "currency_label": true,
+		"settlement_doc_no": true, "settlement_amount": true, "wf_ticket_id": true, "wf_ticket_status": true,
+		"next_handler_name": true, "next_handler_hint": true,
 	}
 	out := map[string]interface{}{}
 	for k, v := range src {

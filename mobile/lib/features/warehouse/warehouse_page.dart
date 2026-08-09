@@ -6,9 +6,16 @@ import '../../core/auth_state.dart';
 import '../../core/employee_modules.dart';
 import '../../core/notify_service.dart';
 import '../../widgets/trace_code_field.dart';
+import '../../widgets/form_sticky_actions.dart';
+import '../../widgets/form_section_header.dart';
+import '../../widgets/form_row.dart';
+import 'warehouse_verify_page.dart';
 
 class WarehousePage extends StatefulWidget {
-  const WarehousePage({super.key});
+  const WarehousePage({super.key, this.asTab = false});
+
+  /// 作为产线壳 Tab 时隐藏标题栏。
+  final bool asTab;
 
   @override
   State<WarehousePage> createState() => _WarehousePageState();
@@ -25,8 +32,6 @@ class _WarehousePageState extends State<WarehousePage> {
   List<dynamic> _txns = [];
   String? _error;
   bool _loading = false;
-  Map<String, dynamic>? _active;
-  Map<String, dynamic>? _scanHit;
   final _verify = TextEditingController();
   final _boxQuery = TextEditingController();
   final _countQty = TextEditingController(text: '0');
@@ -39,6 +44,14 @@ class _WarehousePageState extends State<WarehousePage> {
   String _txnDirection = 'in';
   Map<String, dynamic>? _boxTrace;
   NotifyService? _notify;
+
+  String _taskReceiveKind(Map t) {
+    final p = NotifyService.parsePayload(t['payload'] ?? t['payload_json']);
+    final k = (t['receive_kind'] ?? p['receive_kind'] ?? 'gate').toString().toLowerCase();
+    return k == 'stockin' ? 'stockin' : 'gate';
+  }
+
+  String _kindChipLabel(String kind) => kind == 'stockin' ? '入库' : '入厂';
 
   @override
   void initState() {
@@ -231,41 +244,27 @@ class _WarehousePageState extends State<WarehousePage> {
     }
   }
 
-  Future<void> _claim(Map row) async {
-    final id = row['id'];
-    final res = await context.read<AuthState>().api.post('/workflow/tasks/$id/claim', {});
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res.ok ? '已认领' : res.msg)));
-    if (res.ok) await _loadTasks();
-  }
-
-  Future<void> _confirm() async {
-    final row = _active;
-    if (row == null) return;
-    if (_verify.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请先扫码/输入溯源码定位单据')));
-      return;
-    }
-    final bizId = row['weigh_ticket_id'] ?? row['biz_id'] ?? row['id'];
-    if (bizId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('未定位到过磅单')));
-      return;
-    }
-    final res = await context.read<AuthState>().api.post(
-      '/purchase/weigh-tickets/$bizId/warehouse-confirm',
-      {'verified': true, 'match_confirmed': true},
+  Future<void> _openVerifyPage(Map<String, dynamic> ticket) async {
+    final ok = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => WarehouseVerifyPage(ticket: ticket)),
     );
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res.ok ? '入库完成' : res.msg)));
-    if (res.ok) {
-      setState(() {
-        _active = null;
-        _verify.clear();
-        _scanHit = null;
-      });
+    if (ok == true) {
+      _verify.clear();
       await _loadTasks();
       await _loadBalances();
     }
+  }
+
+  Future<void> _openVerifyFromTask(Map t) async {
+    final p = NotifyService.parsePayload(t['payload'] ?? t['payload_json']);
+    final code = (t['trace_code'] ?? p['trace_code'] ?? p['batch_no'] ?? '').toString().trim();
+    if (code.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('待办无溯源码，请手动扫码定位')));
+      return;
+    }
+    _verify.text = code;
+    await _scanLocate();
   }
 
   Future<void> _scanLocate() async {
@@ -283,15 +282,7 @@ class _WarehousePageState extends State<WarehousePage> {
       return;
     }
     final m = Map<String, dynamic>.from(res.data as Map);
-    setState(() {
-      _scanHit = m;
-      _active = m;
-    });
-    if (m['stockin_ready'] != true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('单据未就绪：${m['reason'] ?? m['status'] ?? ''}')),
-      );
-    }
+    await _openVerifyPage(m);
   }
 
   Future<void> _traceBox() async {
@@ -308,161 +299,110 @@ class _WarehousePageState extends State<WarehousePage> {
   @override
   Widget build(BuildContext context) {
     final notify = context.watch<NotifyService>();
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    Future<void> refresh() async {
+      await notify.refresh();
+      if (_tab == 0) await _loadTasks();
+      if (_tab == 1) await _loadBalances();
+      if (_tab == 2) await _loadBoxes();
+      if (_tab == 3) await _loadStocktakes();
+      if (_tab == 4) await _loadTxns();
+    }
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text('仓管作业 · ${notify.mqttStatus}'),
-        actions: [
-          IconButton(
-            onPressed: () async {
-              await notify.refresh();
-              if (_tab == 0) await _loadTasks();
-              if (_tab == 1) await _loadBalances();
-              if (_tab == 2) await _loadBoxes();
-              if (_tab == 3) await _loadStocktakes();
-              if (_tab == 4) await _loadTxns();
-            },
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-      body: _error != null
-          ? Center(child: Text(_error!))
-          :             IndexedStack(
-              index: _tab,
-              children: [
-                _loading
-                    ? const Center(child: CircularProgressIndicator())
-                    : ListView(
-                        padding: const EdgeInsets.all(12),
-                        children: [
-                          Text('扫码入库 · 待办 ${_tasks.length}', style: const TextStyle(color: Colors.black54)),
-                          const SizedBox(height: 8),
-                          TraceCodeField(
-                            controller: _verify,
-                            label: '扫溯源码定位',
-                            hint: '扫码或输入溯源码/批号',
-                            scannerTitle: '扫描溯源码',
-                            textCapitalization: TextCapitalization.none,
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              FilledButton.tonal(onPressed: _scanLocate, child: const Text('定位单据')),
-                              const SizedBox(width: 8),
-                              FilledButton(
-                                onPressed: (_active != null && _active!['stockin_ready'] == true) ? _confirm : null,
-                                child: const Text('核对相符并入库'),
-                              ),
-                            ],
-                          ),
-                          if (_scanHit != null) ...[
-                            const Divider(),
-                            Text('单据 ${_scanHit!['doc_no'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                            Text('批号 ${_scanHit!['batch_no'] ?? '-'} · 溯源 ${_scanHit!['trace_code'] ?? '-'}'),
-                            Text(
-                              '品种 ${_scanHit!['variety'] ?? _scanHit!['product_name'] ?? '-'} · '
-                              '净重 ${_scanHit!['net_weight'] ?? '-'}kg · '
-                              '扣损 ${_scanHit!['deduct_weight'] ?? '-'}',
-                            ),
-                            if (_scanHit!['stockin_ready'] != true)
-                              Text('未就绪：${_scanHit!['reason'] ?? _scanHit!['status']}', style: const TextStyle(color: Colors.orange)),
-                            Builder(builder: (_) {
-                              final api = context.read<AuthState>().api;
-                              final imgs = <String>[];
-                              void add(dynamic v) {
-                                final s = api.resolveMediaUrl(v?.toString() ?? '');
-                                if (s.isNotEmpty && !imgs.contains(s)) imgs.add(s);
-                              }
-                              add(_scanHit!['image_url']);
-                              for (final k in ['verify_images', 'site_photos', 'image_urls']) {
-                                final raw = _scanHit![k];
-                                if (raw is List) {
-                                  for (final e in raw) {
-                                    add(e);
-                                  }
-                                }
-                              }
-                              final evidences = _scanHit!['evidences'];
-                              if (evidences is List) {
-                                for (final e in evidences) {
-                                  if (e is Map) add(e['file_url'] ?? e['url']);
-                                }
-                              }
-                              if (imgs.isEmpty) return const SizedBox.shrink();
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const SizedBox(height: 8),
-                                  const Text('现场照片', style: TextStyle(fontWeight: FontWeight.w600)),
-                                  const SizedBox(height: 6),
-                                  SizedBox(
-                                    height: 96,
-                                    child: ListView.separated(
-                                      scrollDirection: Axis.horizontal,
-                                      itemCount: imgs.length,
-                                      separatorBuilder: (_, __) => const SizedBox(width: 8),
-                                      itemBuilder: (_, i) => ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: Image.network(
-                                          imgs[i],
-                                          width: 96,
-                                          height: 96,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) => Container(
-                                            width: 96,
-                                            height: 96,
-                                            color: Colors.black12,
-                                            child: const Icon(Icons.broken_image),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
+      appBar: widget.asTab
+          ? null
+          : AppBar(
+              title: Text('仓管作业 · '),
+              actions: [
+                IconButton(onPressed: refresh, icon: const Icon(Icons.refresh)),
+              ],
+            ),
+      body: Column(
+        children: [
+          if (widget.asTab)
+            SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 48, 0),
+                child: Row(
+                  children: [
+                    Text('仓管 · ', style: const TextStyle(fontSize: 13, color: Colors.black54)),
+                    const Spacer(),
+                    IconButton(
+                      tooltip: '刷新',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: refresh,
+                      icon: const Icon(Icons.refresh, size: 22),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          Expanded(
+            child: _error != null
+                ? Center(child: Text(_error!))
+                : IndexedStack(
+                    index: _tab,
+                    children: [
+                      _loading
+                          ? const Center(child: CircularProgressIndicator())
+                          : ListView(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                              padding: EdgeInsets.fromLTRB(12, 12, 12, 12 + bottomInset),
+                              children: [
+                                const FormSectionHeader('溯源码搜索'),
+                                TraceCodeField(
+                                  controller: _verify,
+                                  label: '溯源码',
+                                  hint: '扫码或输入溯源码/批号后进入核对',
+                                  scannerTitle: '扫描溯源码',
+                                  compact: true,
+                                  textCapitalization: TextCapitalization.none,
+                                  onEditingComplete: _scanLocate,
+                                  onScanned: (_) => _scanLocate(),
+                                ),
+                                const SizedBox(height: 12),
+                                const Text('待办列表', style: TextStyle(fontWeight: FontWeight.w600)),
+                                if (_tasks.isEmpty)
+                                  const Padding(
+                                    padding: EdgeInsets.all(16),
+                                    child: Center(child: Text('暂无待办')),
                                   ),
-                                ],
-                              );
-                            }),
-                          ],
-                          const Divider(),
-                          Text('推送待办', style: const TextStyle(fontWeight: FontWeight.w600)),
-                          if (_tasks.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Center(child: Text('暂无过磅推送待办'))),
-                          ..._tasks.map((e) {
-                            final t = Map<String, dynamic>.from(e as Map);
-                            final p = NotifyService.parsePayload(t['payload'] ?? t['payload_json']);
-                            return Card(
-                              child: ListTile(
-                                title: Text('${t['doc_no'] ?? ''}'),
-                                subtitle: Text(
-                                  '溯源 ${t['trace_code'] ?? p['trace_code'] ?? ''}\n'
-                                  '净重 ${p['net_weight'] ?? '-'}kg · ${p['variety'] ?? p['product_name'] ?? ''}',
-                                ),
-                                isThreeLine: true,
-                                trailing: Wrap(
-                                  spacing: 4,
-                                  children: [
-                                    TextButton(onPressed: () => _claim(t), child: const Text('认领')),
-                                    FilledButton(
-                                      onPressed: () {
-                                        final code = (t['trace_code'] ?? p['trace_code'] ?? '').toString();
-                                        setState(() {
-                                          _verify.text = code;
-                                          _active = {
-                                            ...t,
-                                            ...p,
-                                            'weigh_ticket_id': t['biz_id'],
-                                            'stockin_ready': true,
-                                          };
-                                          _scanHit = _active;
-                                        });
-                                      },
-                                      child: const Text('核对'),
+                                ..._tasks.map((e) {
+                                  final t = Map<String, dynamic>.from(e as Map);
+                                  final p = NotifyService.parsePayload(t['payload'] ?? t['payload_json']);
+                                  final kind = _taskReceiveKind(t);
+                                  final trace = (t['trace_code'] ?? p['trace_code'] ?? p['batch_no'] ?? '').toString();
+                                  return Card(
+                                    child: ListTile(
+                                      title: Row(
+                                        children: [
+                                          Expanded(child: Text('${t['doc_no'] ?? ''}')),
+                                          Chip(
+                                            label: Text(
+                                              _kindChipLabel(kind),
+                                              style: const TextStyle(fontSize: 12, color: Colors.white),
+                                            ),
+                                            backgroundColor: kind == 'stockin' ? Colors.teal : Colors.indigo,
+                                            visualDensity: VisualDensity.compact,
+                                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                            padding: EdgeInsets.zero,
+                                            labelPadding: const EdgeInsets.symmetric(horizontal: 8),
+                                          ),
+                                        ],
+                                      ),
+                                      subtitle: Text(
+                                        '溯源 $trace · 净重 ${p['net_weight'] ?? '-'}kg'
+                                        '${(p['variety'] ?? p['product_name']) != null ? ' · ${p['variety'] ?? p['product_name']}' : ''}',
+                                      ),
+                                      trailing: const Icon(Icons.chevron_right),
+                                      onTap: () => _openVerifyFromTask(t),
                                     ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }),
-                        ],
-                      ),
+                                  );
+                                }),
+                              ],
+                            ),
                 ListView(
                   padding: const EdgeInsets.all(12),
                   children: [
@@ -501,11 +441,13 @@ class _WarehousePageState extends State<WarehousePage> {
                   ],
                 ),
                 ListView(
-                  padding: const EdgeInsets.all(12),
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
                   children: [
+                    const FormSectionHeader('箱码查询'),
                     TraceCodeField(
                       controller: _boxQuery,
-                      label: '箱码查询/追溯',
+                      label: '箱码',
                       hint: '点击输入，或点右侧图标扫码',
                       scannerTitle: '扫描箱码',
                       textCapitalization: TextCapitalization.none,
@@ -544,30 +486,46 @@ class _WarehousePageState extends State<WarehousePage> {
                   ],
                 ),
                 ListView(
-                  padding: const EdgeInsets.all(16),
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
                   children: [
-                    const Text('仓库盘点（扫码/录入实盘）', style: TextStyle(fontWeight: FontWeight.bold)),
-                    DropdownButtonFormField<int>(
-                      value: _stkWarehouseId,
-                      decoration: const InputDecoration(labelText: '仓库'),
-                      items: const [
-                        DropdownMenuItem(value: 1, child: Text('原料仓(1)')),
-                        DropdownMenuItem(value: 2, child: Text('半成品仓(2)')),
-                        DropdownMenuItem(value: 3, child: Text('成品仓(3)')),
-                      ],
-                      onChanged: (v) => setState(() => _stkWarehouseId = v ?? 1),
+                    const FormSectionHeader('仓库盘点'),
+                    FormRow(
+                      label: '仓库',
+                      requiredMark: true,
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<int>(
+                          isExpanded: true,
+                          value: _stkWarehouseId,
+                          alignment: Alignment.centerRight,
+                          items: const [
+                            DropdownMenuItem(value: 1, child: Text('原料仓(1)', textAlign: TextAlign.right)),
+                            DropdownMenuItem(value: 2, child: Text('半成品仓(2)', textAlign: TextAlign.right)),
+                            DropdownMenuItem(value: 3, child: Text('成品仓(3)', textAlign: TextAlign.right)),
+                          ],
+                          onChanged: (v) => setState(() => _stkWarehouseId = v ?? 1),
+                        ),
+                      ),
                     ),
-                    DropdownButtonFormField<int>(
-                      value: _stkProductId,
-                      decoration: const InputDecoration(labelText: '产品'),
-                      items: _products.map((e) {
-                        final m = Map<String, dynamic>.from(e as Map);
-                        return DropdownMenuItem(value: (m['id'] as num?)?.toInt(), child: Text('${m['name'] ?? m['id']}'));
-                      }).toList(),
-                      onChanged: (v) => setState(() => _stkProductId = v),
+                    FormRow(
+                      label: '产品',
+                      requiredMark: true,
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<int>(
+                          isExpanded: true,
+                          value: _stkProductId,
+                          alignment: Alignment.centerRight,
+                          hint: const Text('请选择', textAlign: TextAlign.right),
+                          items: _products.map((e) {
+                            final m = Map<String, dynamic>.from(e as Map);
+                            return DropdownMenuItem(value: (m['id'] as num?)?.toInt(), child: Text('${m['name'] ?? m['id']}', textAlign: TextAlign.right));
+                          }).toList(),
+                          onChanged: (v) => setState(() => _stkProductId = v),
+                        ),
+                      ),
                     ),
-                    TextField(controller: _countQty, decoration: const InputDecoration(labelText: '实盘数量'), keyboardType: TextInputType.number),
-                    FilledButton(onPressed: _createStocktake, child: const Text('新建盘点草稿')),
+                    FormRow.text(label: '实盘数量', controller: _countQty, keyboardType: TextInputType.number, requiredMark: true),
+                    FormStickyActions(primaryLabel: '新建盘点草稿', onPrimary: _createStocktake),
                     const Divider(),
                     ..._stocktakes.map((e) {
                       final m = Map<String, dynamic>.from(e as Map);
@@ -589,46 +547,68 @@ class _WarehousePageState extends State<WarehousePage> {
                   ],
                 ),
                 ListView(
-                  padding: const EdgeInsets.all(16),
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
                   children: [
-                    const Text('扫码出入库', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
+                    const FormSectionHeader('扫码出入库'),
                     TraceCodeField(
                       controller: _txnScan,
                       label: '箱码/条码',
                       hint: '点击输入，或点右侧图标扫码',
                       scannerTitle: '扫描箱码',
+                      compact: true,
                       textCapitalization: TextCapitalization.none,
                     ),
-                    SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(value: 'in', label: Text('入库')),
-                        ButtonSegment(value: 'out', label: Text('出库')),
-                      ],
-                      selected: {_txnDirection},
-                      onSelectionChanged: (s) => setState(() => _txnDirection = s.first),
+                    FormRow(
+                      label: '方向',
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment(value: 'in', label: Text('入库')),
+                            ButtonSegment(value: 'out', label: Text('出库')),
+                          ],
+                          selected: {_txnDirection},
+                          onSelectionChanged: (s) => setState(() => _txnDirection = s.first),
+                        ),
+                      ),
                     ),
-                    DropdownButtonFormField<int>(
-                      value: _txnWarehouseId,
-                      decoration: const InputDecoration(labelText: '仓库'),
-                      items: const [
-                        DropdownMenuItem(value: 1, child: Text('原料仓(1)')),
-                        DropdownMenuItem(value: 2, child: Text('半成品仓(2)')),
-                        DropdownMenuItem(value: 3, child: Text('成品仓(3)')),
-                      ],
-                      onChanged: (v) => setState(() => _txnWarehouseId = v ?? 1),
+                    FormRow(
+                      label: '仓库',
+                      requiredMark: true,
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<int>(
+                          isExpanded: true,
+                          value: _txnWarehouseId,
+                          alignment: Alignment.centerRight,
+                          items: const [
+                            DropdownMenuItem(value: 1, child: Text('原料仓(1)', textAlign: TextAlign.right)),
+                            DropdownMenuItem(value: 2, child: Text('半成品仓(2)', textAlign: TextAlign.right)),
+                            DropdownMenuItem(value: 3, child: Text('成品仓(3)', textAlign: TextAlign.right)),
+                          ],
+                          onChanged: (v) => setState(() => _txnWarehouseId = v ?? 1),
+                        ),
+                      ),
                     ),
-                    DropdownButtonFormField<int>(
-                      value: _txnProductId,
-                      decoration: const InputDecoration(labelText: '产品'),
-                      items: _products.map((e) {
-                        final m = Map<String, dynamic>.from(e as Map);
-                        return DropdownMenuItem(value: (m['id'] as num?)?.toInt(), child: Text('${m['name'] ?? m['id']}'));
-                      }).toList(),
-                      onChanged: (v) => setState(() => _txnProductId = v),
+                    FormRow(
+                      label: '产品',
+                      requiredMark: true,
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<int>(
+                          isExpanded: true,
+                          value: _txnProductId,
+                          alignment: Alignment.centerRight,
+                          hint: const Text('请选择', textAlign: TextAlign.right),
+                          items: _products.map((e) {
+                            final m = Map<String, dynamic>.from(e as Map);
+                            return DropdownMenuItem(value: (m['id'] as num?)?.toInt(), child: Text('${m['name'] ?? m['id']}', textAlign: TextAlign.right));
+                          }).toList(),
+                          onChanged: (v) => setState(() => _txnProductId = v),
+                        ),
+                      ),
                     ),
-                    TextField(controller: _txnQty, decoration: const InputDecoration(labelText: '数量'), keyboardType: TextInputType.number),
-                    FilledButton(onPressed: _createTxn, child: const Text('建单')),
+                    FormRow.text(label: '数量', controller: _txnQty, keyboardType: TextInputType.number, requiredMark: true),
+                    FormStickyActions(primaryLabel: '建单', onPrimary: _createTxn),
                     const Divider(),
                     ..._txns.take(30).map((e) {
                       final m = Map<String, dynamic>.from(e as Map);
@@ -645,8 +625,11 @@ class _WarehousePageState extends State<WarehousePage> {
                     }),
                   ],
                 ),
-              ],
-            ),
+                    ],
+                  ),
+          ),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: (i) {
@@ -657,12 +640,19 @@ class _WarehousePageState extends State<WarehousePage> {
           if (i == 3) _loadStocktakes();
           if (i == 4) _loadTxns();
         },
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.inbox), label: '待入库'),
-          NavigationDestination(icon: Icon(Icons.inventory), label: '库存'),
-          NavigationDestination(icon: Icon(Icons.qr_code_2), label: '箱码'),
-          NavigationDestination(icon: Icon(Icons.checklist), label: '盘点'),
-          NavigationDestination(icon: Icon(Icons.swap_horiz), label: '出入库'),
+        destinations: [
+          NavigationDestination(
+            icon: Badge(
+              isLabelVisible: _tasks.isNotEmpty,
+              label: Text('${_tasks.length}'),
+              child: const Icon(Icons.inbox),
+            ),
+            label: '待办',
+          ),
+          const NavigationDestination(icon: Icon(Icons.inventory), label: '库存'),
+          const NavigationDestination(icon: Icon(Icons.qr_code_2), label: '箱码'),
+          const NavigationDestination(icon: Icon(Icons.checklist), label: '盘点'),
+          const NavigationDestination(icon: Icon(Icons.swap_horiz), label: '出入库'),
         ],
       ),
     );

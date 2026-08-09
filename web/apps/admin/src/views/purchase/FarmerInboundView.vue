@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { purchaseApi, bizApi } from '@erp/shared'
 import ConfirmSnapshotCompare from '../../components/closed-loop/ConfirmSnapshotCompare.vue'
+
+const route = useRoute()
 
 type Row = Record<string, unknown>
 
@@ -458,7 +461,25 @@ async function doTrace() {
   traceResult.value = (res.data as Row) || null
 }
 
-onMounted(refresh)
+async function applyTraceQueryCode() {
+  if (!showTrace.value) return
+  const code = String(route.query.code || '').trim()
+  if (!code) return
+  traceCode.value = code
+  await doTrace()
+}
+
+onMounted(async () => {
+  await refresh()
+  await applyTraceQueryCode()
+})
+
+watch(
+  () => [route.query.code, props.section] as const,
+  () => {
+    void applyTraceQueryCode()
+  },
+)
 </script>
 
 <template>
@@ -727,7 +748,7 @@ onMounted(refresh)
       </el-col>
       <el-col v-if="showTrace" :span="showSettlements ? 10 : 24">
         <el-card header="溯源倒查时间轴">
-          <el-input v-model="traceCode" placeholder="T1-/箱码/过磅单号" style="max-width:260px;margin-right:8px" />
+          <el-input v-model="traceCode" placeholder="溯源批号 / T1- / 箱码 / 过磅单号" style="max-width:280px;margin-right:8px" />
           <el-button type="primary" @click="doTrace">倒查</el-button>
           <div v-if="traceResult" class="timeline">
             <div v-for="(ev, i) in ((traceResult.timeline as Row[]) || [])" :key="i" class="tl-item">

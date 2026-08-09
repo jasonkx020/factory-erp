@@ -198,6 +198,8 @@ func (s *Services) handleProductionExt(c *gin.Context, method, openapiPath, acti
 		return s.handleWorkshopWorkbench(c, openapiPath)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/progress"):
 		return s.handleProductionProgress(c)
+	case strings.HasPrefix(openapiPath, "/api/v1/production/process-wip"):
+		return s.handleProcessWip(c, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/workshops"):
 		return s.handleWorkshopsCRUD(c, method, action)
 	default:

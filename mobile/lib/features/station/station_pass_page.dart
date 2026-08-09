@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
+import '../../widgets/form_row.dart';
+import '../../widgets/form_section_header.dart';
+import '../../widgets/form_sticky_actions.dart';
 import '../../core/notify_service.dart';
 
 const _scrapOptions = <MapEntry<String, String>>[
@@ -16,7 +18,10 @@ const _scrapOptions = <MapEntry<String, String>>[
 
 /// 工序过站：扫工牌 + 扫箱 + 投料/完工 + 确认（合并原 worker/workshop 双扫）。
 class StationPassPage extends StatefulWidget {
-  const StationPassPage({super.key});
+  const StationPassPage({super.key, this.asTab = false});
+
+  /// 作为产线壳 Tab 时隐藏标题栏，把高度留给表单。
+  final bool asTab;
 
   @override
   State<StationPassPage> createState() => _StationPassPageState();
@@ -151,77 +156,87 @@ class _StationPassPageState extends State<StationPassPage> {
     });
   }
 
-  @override
+@override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final topPad = widget.asTab ? 40.0 : 8.0;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_isCheckpoint ? '工序过站 · 卡点复核' : '工序过站'),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          if (_isCheckpoint)
-            Card(
-              color: Colors.amber.shade50,
-              child: const ListTile(
-                leading: Icon(Icons.verified_user),
-                title: Text('收货卡点模式'),
-                subtitle: Text('复核重量与外观，QC 不合格将阻断过账'),
-              ),
+      appBar: widget.asTab
+          ? null
+          : AppBar(
+              title: Text(_isCheckpoint ? '工序过站 · 卡点复核' : '工序过站'),
             ),
-          TextField(controller: _badge, decoration: const InputDecoration(labelText: '工牌码')),
-          TextField(controller: _box, decoration: const InputDecoration(labelText: '箱码')),
-          TextField(
-            controller: _in,
-            decoration: const InputDecoration(labelText: '投料重 (kg)'),
-            keyboardType: TextInputType.number,
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.fromLTRB(12, topPad, 12, 16 + bottomInset),
+              children: [
+                if (_isCheckpoint)
+                  Card(
+                    color: Colors.amber.shade50,
+                    child: const ListTile(
+                      leading: Icon(Icons.verified_user),
+                      title: Text('收货卡点模式'),
+                      subtitle: Text('复核重量与外观，QC 不合格将阻断过账'),
+                    ),
+                  ),
+                const FormSectionHeader('扫码过站'),
+                FormRow.text(label: '工牌码', controller: _badge, requiredMark: true),
+                FormRow.text(label: '箱码', controller: _box, requiredMark: true),
+                FormRow.text(label: '投料重(kg)', controller: _in, keyboardType: TextInputType.number),
+                FormRow.text(label: '完工重(kg)', controller: _out, keyboardType: TextInputType.number, requiredMark: true),
+                FormRow.text(label: '袋数', controller: _bag, keyboardType: TextInputType.number, hint: '装袋工序'),
+                const FormSectionHeader('次品类型'),
+                FormRow(
+                  label: '次品',
+                  child: Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: _scrapOptions
+                        .map((e) => ChoiceChip(
+                              label: Text(e.value, style: const TextStyle(fontSize: 12)),
+                              selected: _scrapType == e.key,
+                              visualDensity: VisualDensity.compact,
+                              onSelected: (_) => setState(() => _scrapType = e.key),
+                            ))
+                        .toList(),
+                  ),
+                ),
+                if (_msg.isNotEmpty)
+                  Padding(padding: const EdgeInsets.only(top: 12), child: Text(_msg)),
+                if (_last != null && _last!['utilization'] != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      '利用率 ${(_last!['utilization'] as num?)?.toStringAsFixed(3) ?? '-'} · 损耗 ${_last!['loss'] ?? '-'} kg',
+                      style: const TextStyle(color: Colors.black54, fontSize: 13),
+                    ),
+                  ),
+              ],
+            ),
           ),
-          TextField(
-            controller: _out,
-            decoration: const InputDecoration(labelText: '完工重 (kg)'),
-            keyboardType: TextInputType.number,
-          ),
-          TextField(
-            controller: _bag,
-            decoration: const InputDecoration(labelText: '袋数（装袋工序）'),
-            keyboardType: TextInputType.number,
-          ),
-          const SizedBox(height: 8),
-          const Text('次品类型', style: TextStyle(fontSize: 12, color: Colors.black54)),
-          Wrap(
-            spacing: 8,
-            children: _scrapOptions
-                .map((e) => ChoiceChip(
-                      label: Text(e.value),
-                      selected: _scrapType == e.key,
-                      onSelected: (_) => setState(() => _scrapType = e.key),
-                    ))
-                .toList(),
-          ),
-          const SizedBox(height: 12),
-          Row(
+          FormStickyButtonBar(
             children: [
-              Expanded(child: OutlinedButton(onPressed: () => _scan(resolveOnly: true), child: const Text('预览'))),
-              const SizedBox(width: 8),
-              Expanded(child: FilledButton(onPressed: () => _scan(resolveOnly: false), child: const Text('提交草稿'))),
+              OutlinedButton(onPressed: () => _scan(resolveOnly: true), child: const Text('预览')),
+              FilledButton(onPressed: () => _scan(resolveOnly: false), child: const Text('提交草稿')),
             ],
           ),
-          if (_pendingReportId != null) ...[
-            const SizedBox(height: 8),
-            FilledButton(onPressed: () => _confirm(qcPass: true), child: const Text('确认过站（QC 合格）')),
-            if (_isCheckpoint)
-              OutlinedButton(
-                onPressed: () => _confirm(qcPass: false),
-                child: const Text('QC 不合格（阻断）'),
-              ),
-          ],
-          if (_msg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_msg)),
-          if (_last != null && _last!['utilization'] != null)
+          if (_pendingReportId != null)
             Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                '利用率 ${(_last!['utilization'] as num?)?.toStringAsFixed(3) ?? '-'} · 损耗 ${_last!['loss'] ?? '-'} kg',
-                style: const TextStyle(color: Colors.black54),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FilledButton(onPressed: () => _confirm(qcPass: true), child: const Text('确认过站（QC 合格）')),
+                  if (_isCheckpoint)
+                    OutlinedButton(
+                      onPressed: () => _confirm(qcPass: false),
+                      child: const Text('QC 不合格（阻断）'),
+                    ),
+                ],
               ),
             ),
         ],

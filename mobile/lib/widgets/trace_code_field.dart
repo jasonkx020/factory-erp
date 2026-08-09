@@ -16,8 +16,8 @@ class TraceCodeField extends StatelessWidget {
     this.onEditingComplete,
     this.onScanned,
     this.scannerTitle = '扫描溯源号',
-    /// true：左标签右输入（单行）
-    this.compact = false,
+    /// 现场默认紧凑（左标签右输入，对齐过磅入厂）；管理向可传 false。
+    this.compact = true,
   });
 
   final TextEditingController controller;
@@ -66,15 +66,24 @@ class TraceCodeField extends StatelessWidget {
           textAlign: TextAlign.right,
           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
           decoration: FormRow.fieldDecoration(hint: hint, suffixIcon: scanIcon),
+          textInputAction: TextInputAction.done,
           onTap: () => FormRow.moveCursorToEnd(controller),
           onChanged: onChanged,
-          onEditingComplete: onEditingComplete,
+          onEditingComplete: () {
+            onEditingComplete?.call();
+            FormRow.dismissKeyboard();
+          },
+          onSubmitted: (_) {
+            onEditingComplete?.call();
+            FormRow.dismissKeyboard();
+          },
         ),
       );
     }
     return TextField(
       controller: controller,
       textCapitalization: textCapitalization,
+      textInputAction: TextInputAction.done,
       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       decoration: InputDecoration(
         labelText: label,
@@ -85,7 +94,14 @@ class TraceCodeField extends StatelessWidget {
         suffixIcon: scanIcon,
       ),
       onChanged: onChanged,
-      onEditingComplete: onEditingComplete,
+      onEditingComplete: () {
+        onEditingComplete?.call();
+        FormRow.dismissKeyboard();
+      },
+      onSubmitted: (_) {
+        onEditingComplete?.call();
+        FormRow.dismissKeyboard();
+      },
     );
   }
 }

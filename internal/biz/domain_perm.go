@@ -28,6 +28,7 @@ var resourceDomainModule = map[string]domainModule{
 	// purchase
 	"purchase/suppliers": {"采购管理", "供应商管理"}, "purchase/farmers": {"采购管理", "农户档案"},
 	"purchase/weigh-tickets": {"采购管理", "过磅收货"}, "purchase/weigh-varieties": {"采购管理", "过磅品种"}, "purchase/trace-batch-codes": {"采购管理", "溯源批号"}, "purchase/farmer-settlements": {"采购管理", "农户结算"},
+	"purchase/role-users": {"采购管理", "过磅收货"},
 	"purchase/trace": {"采购管理", "原料溯源"}, "purchase/requests": {"采购管理", "采购申请"},
 	"purchase/plans": {"采购管理", "采购计划单"}, "purchase/inbounds": {"采购管理", "采购入库"},
 	"purchase/qcs": {"采购管理", "来料质检"}, "purchase/returns": {"采购管理", "采购退货"},
@@ -37,6 +38,7 @@ var resourceDomainModule = map[string]domainModule{
 	"production/shifts": {"生产管理", "产线班次"},
 	"production/dispatches": {"生产管理", "例外派岗"}, "production/report-works": {"生产管理", "过站记录"},
 	"production/workshop-workbench": {"生产管理", "车间工作台"},
+	"production/process-wip":        {"生产管理", "工序在制"},
 	"production/scan":               {"生产管理", "过站记录"},
 	"production/scan/resolve":       {"生产管理", "过站记录"},
 	"production/piecework-summaries": {"生产管理", "计件工资"}, "production/requisitions": {"生产管理", "联动式领料"},
@@ -65,6 +67,7 @@ var resourceDomainModule = map[string]domainModule{
 	"finance/cost-traces": {"财务管理", "成本明细溯源表"}, "finance/month-closes": {"财务管理", "月度结转"},
 	// hr / payroll
 	"hr/employees": {"人事管理", "员工档案"}, "hr/onboards": {"人事管理", "入职登记"},
+	"hr/departments": {"人事管理", "部门管理"}, "hr/work-teams": {"人事管理", "员工档案"},
 	"hr/tool-issues": {"人事管理", "工具领还"}, "payroll/wage-rates": {"工资管理", "工序工资"},
 	"payroll/sheets": {"工资管理", "薪酬核算"},
 	// crm / product / asset / approval / report
@@ -101,13 +104,13 @@ var allDomainMenus = []struct {
 	{"销售管理", []string{"销售订单", "自助下单", "询价管理", "合同管理", "修改订单", "发货审批", "预发货管理", "单据打印", "订单复购", "数据排行榜", "销售锁价", "询价审批", "历史报价查询", "销售BOM", "我的订单", "成本预算", "报价计算器", "出厂结算"}},
 	{"客户管理", []string{"CRM客户管理", "商机管理", "客户档案", "客户跟进", "资源分配", "保护机制", "释放机制", "询价管理", "导入客户", "线索锁定", "线索隐藏", "任务提醒"}},
 	{"采购管理", []string{"供应商管理", "农户档案", "过磅收货", "过磅品种", "溯源批号", "农户结算", "原料溯源", "采购申请", "采购计划单", "采购入库", "来料质检", "采购退货", "采购分析", "历史价格查看", "采购任务管理"}},
-	{"生产管理", []string{"多单整合管理", "生产任务单", "图纸分发", "工序定义", "工艺流程", "产线班次", "例外派岗", "灵活派发工单", "过站记录", "计件工资", "计件领料表", "自动BOM", "MRP物料分析", "联动式领料", "车间工作台", "车间管理", "委外加工", "受托加工生产流程管控", "成本隐藏", "一单多商品", "进度跟踪", "质检管理", "返修单", "废料管理"}},
+	{"生产管理", []string{"多单整合管理", "生产任务单", "图纸分发", "工序定义", "工艺流程", "产线班次", "例外派岗", "灵活派发工单", "过站记录", "计件工资", "计件领料表", "自动BOM", "MRP物料分析", "联动式领料", "车间工作台", "工序在制", "车间管理", "委外加工", "受托加工生产流程管控", "成本隐藏", "一单多商品", "进度跟踪", "质检管理", "返修单", "废料管理"}},
 	{"库存管理", []string{"库存查询", "仓管待入库", "地磅台账", "亏料预警", "过量预警", "入库质检", "仓库盘点", "车间盘点", "仓库盘点记录", "销售退皮", "物料调拨耗用", "商品调价组装拆分", "物料转应付", "在途量统计", "待用量统计", "可用量分析", "期初入库", "出入库记录汇总", "采购退货", "箱码管理"}},
 	{"产品管理", []string{"产品档案", "产品单位管理", "APP产品排序", "生产规格绑定"}},
 	{"固定资产管理", []string{"固定资产类别", "固定资产项目", "固定资产内部转移", "固定资产统计"}},
 	{"财务管理", []string{"账目管理", "交易流水账", "收入支出明细", "订单管理", "小程序管理", "凭证管理", "发票管理", "收款核单", "外币结汇", "结汇查询", "分摊撤销", "收款预警", "出纳对账", "预收预付管理", "成本核算", "合同利润", "销售认款", "销售退货退单", "往来调整单", "财务审批", "资金管理", "财务报表", "成本明细溯源表", "月度结转"}},
 	{"工资管理", []string{"工人信息管理", "工资批量管理", "工序工资", "薪酬核算", "销售提成"}},
-	{"人事管理", []string{"员工档案", "权限分配", "入职登记", "离职登记", "工具领还", "考勤管理", "班次管理", "绩效管理", "请假管理", "考勤明细", "加班补卡统计", "考勤月度统计", "考勤绩效汇总", "外访明细", "备忘录管理", "员工日志"}},
+	{"人事管理", []string{"员工档案", "部门管理", "权限分配", "入职登记", "离职登记", "工具领还", "考勤管理", "班次管理", "绩效管理", "请假管理", "考勤明细", "加班补卡统计", "考勤月度统计", "考勤绩效汇总", "外访明细", "备忘录管理", "员工日志"}},
 	{"统计报表", []string{"企业报表", "老板驾驶舱", "生产看板", "生产实况", "客户询价查询", "CRM统计", "日统计报表", "毛利润统计", "质检报表", "账目统计", "出入库查询", "收发存明细", "跟进记录查询", "销售重量统计", "产品销售查询", "系统物流查询", "成本利润表", "资产负债表", "现金流量表", "利润表"}},
 	{"审批管理", []string{"任务管理", "单据审核", "费用财务审批", "询价财务审批", "询价明细审批", "采购审批", "采购计划单审批", "事务申请审批", "费用申请", "考勤审批"}},
 }
@@ -190,11 +193,14 @@ func isWeighWarehouseAPI(resourceKey, action string) bool {
 	if resourceKey == "purchase/weigh-tickets/by-trace" {
 		return true
 	}
+	if resourceKey == "purchase/role-users" && (action == "list" || action == "get") {
+		return true
+	}
 	if resourceKey != "purchase/weigh-tickets" {
 		return false
 	}
 	switch action {
-	case "action:warehouse-confirm", "action:stock-in", "get", "list":
+	case "action:warehouse-confirm", "action:warehouse-return", "action:stock-in", "get", "list":
 		return true
 	default:
 		return false
@@ -263,6 +269,17 @@ func CheckAPIPerm(c *gin.Context, resourceKey, action, method string) bool {
 	// App 现场过站：计件/固定/班组长角色可访问 scan / confirm / 我的计件
 	if isProductionFieldAPI(resourceKey, action) && claimsHasProductionFieldRole(claims) {
 		return true
+	}
+	// 部门下拉：员工档案/入职可查看列表；写操作仍走「部门管理」
+	if resourceKey == "hr/departments" && !write {
+		codes := append(modulePermCodes("人事管理", "部门管理", false), modulePermCodes("人事管理", "部门管理", true)...)
+		codes = append(codes, modulePermCodes("人事管理", "员工档案", false)...)
+		codes = append(codes, modulePermCodes("人事管理", "员工档案", true)...)
+		codes = append(codes, modulePermCodes("人事管理", "入职登记", false)...)
+		codes = append(codes, modulePermCodes("人事管理", "入职登记", true)...)
+		if claimsHasCode(claims.Permissions, codes...) {
+			return true
+		}
 	}
 	if dm.Module != "" {
 		viewCodes := modulePermCodes(dm.Domain, dm.Module, false)

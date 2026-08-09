@@ -6,6 +6,12 @@
     "apps/*",
     "packages/*"
   ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "overrides": {
+    "pinia": "^4.0.2"
+  },
   "scripts": {
     "dev": "npm run dev -w @erp/portal",
     "dev:portal": "npm run dev -w @erp/portal",

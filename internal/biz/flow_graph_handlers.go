@@ -93,9 +93,14 @@ func (s *Services) loadFlowGraphRow(id int64) gin.H {
 	if err != nil {
 		return nil
 	}
+	var productID int64
+	if rid > 0 {
+		_ = s.DB.QueryRow(`SELECT COALESCE(product_id,0) FROM pd_routing WHERE id=?`, rid).Scan(&productID)
+	}
 	return gin.H{
 		"id": id, "code": code, "name": name, "kind": kind, "status": status,
-		"routing_id": rid, "graph_json": gjson, "version_no": ver, "created_at": created, "updated_at": updated,
+		"routing_id": rid, "product_id": productID, "graph_json": gjson, "version_no": ver,
+		"created_at": created, "updated_at": updated,
 	}
 }
 
@@ -131,7 +136,7 @@ func (s *Services) createFlowGraph(c *gin.Context) bool {
 		s.deactivateOtherFlowGraphs(kind, 0)
 	}
 
-	if kind == "production" {
+	if kind == "production" && status == "active" {
 		rid, errMsg := s.compileProductionGraph(routingID, code, name, gjson, body)
 		if errMsg != "" {
 			api.FailJSON(c, errMsg)
@@ -180,7 +185,7 @@ func (s *Services) updateFlowGraph(c *gin.Context) bool {
 		s.deactivateOtherFlowGraphs(kind, id)
 	}
 
-	if kind == "production" {
+	if kind == "production" && status == "active" {
 		rid, errMsg := s.compileProductionGraph(routingID, code, name, gjson, body)
 		if errMsg != "" {
 			api.FailJSON(c, errMsg)
@@ -275,17 +280,84 @@ func (s *Services) compileProductionGraph(routingID int64, code, name, gjson str
 			_, _ = s.DB.Exec(`UPDATE pd_routing SET product_id=? WHERE id=?`, productID, routingID)
 		}
 	}
-	_, _ = s.DB.Exec(`DELETE FROM pd_routing_step WHERE routing_id=?`, routingID)
+	if errMsg := s.upsertRoutingSteps(routingID, steps); errMsg != "" {
+		return 0, errMsg
+	}
+	return routingID, ""
+}
+
+// upsertRoutingSteps updates steps by step_code (fallback seq_no) to preserve IDs referenced by inv_box_code.
+func (s *Services) upsertRoutingSteps(routingID int64, steps []compiledStep) string {
+	type exist struct {
+		id   int64
+		code string
+		seq  int64
+	}
+	rows, err := s.DB.Query(`SELECT id, COALESCE(step_code,''), seq_no FROM pd_routing_step WHERE routing_id=?`, routingID)
+	if err != nil {
+		return "DB_ERROR:" + err.Error()
+	}
+	var existing []exist
+	for rows.Next() {
+		var e exist
+		_ = rows.Scan(&e.id, &e.code, &e.seq)
+		existing = append(existing, e)
+	}
+	_ = rows.Close()
+
+	byCode := map[string]int64{}
+	bySeq := map[int64]int64{}
+	for _, e := range existing {
+		if e.code != "" {
+			byCode[e.code] = e.id
+		}
+		bySeq[e.seq] = e.id
+	}
+
+	keep := map[int64]bool{}
 	for _, st := range steps {
-		_, err := s.DB.Exec(`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id)
+		id := byCode[st.Code]
+		if id <= 0 {
+			id = bySeq[st.Seq]
+		}
+		if id > 0 {
+			_, err := s.DB.Exec(`UPDATE pd_routing_step SET seq_no=?, process_id=?, step_code=?, step_name=?,
+				is_piecework=?, is_inbound_checkpoint=?, auto_next=?, auto_stock_in=?, auto_stock_out=?, warehouse_id=? WHERE id=?`,
+				st.Seq, st.ProcessID, st.Code, st.Name, boolToInt(st.Piece), boolToInt(st.Checkpoint),
+				boolToInt(st.AutoNext), boolToInt(st.StockIn), boolToInt(st.StockOut), nullIf0(st.WarehouseID), id)
+			if err != nil {
+				return "DB_ERROR:" + err.Error()
+			}
+			keep[id] = true
+			continue
+		}
+		res, err := s.DB.Exec(`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id)
 			VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
 			routingID, st.Seq, st.ProcessID, st.Code, st.Name, boolToInt(st.Piece), boolToInt(st.Checkpoint),
 			boolToInt(st.AutoNext), boolToInt(st.StockIn), boolToInt(st.StockOut), nullIf0(st.WarehouseID))
 		if err != nil {
-			return 0, "DB_ERROR:" + err.Error()
+			return "DB_ERROR:" + err.Error()
+		}
+		nid, _ := res.LastInsertId()
+		if nid > 0 {
+			keep[nid] = true
 		}
 	}
-	return routingID, ""
+
+	for _, e := range existing {
+		if keep[e.id] {
+			continue
+		}
+		var refs int
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM inv_box_code WHERE current_step_id=? AND COALESCE(is_deleted,0)=0`, e.id).Scan(&refs)
+		if refs > 0 {
+			// keep orphaned step row so WIP boxes stay valid; clear from active path by bumping seq high
+			_, _ = s.DB.Exec(`UPDATE pd_routing_step SET seq_no=seq_no+1000, step_name=COALESCE(step_name,'')||'(archived)' WHERE id=? AND seq_no<1000`, e.id)
+			continue
+		}
+		_, _ = s.DB.Exec(`DELETE FROM pd_routing_step WHERE id=?`, e.id)
+	}
+	return ""
 }
 
 type compiledStep struct {
@@ -630,6 +702,37 @@ func (s *Services) listUsersByRoleCode(roleCode string) []gin.H {
 		out = append(out, gin.H{"user_id": uid, "login_name": login, "name": disp})
 	}
 	return out
+}
+
+func (s *Services) userHasRoleCode(userID int64, roleCode string) bool {
+	if userID <= 0 || roleCode == "" {
+		return false
+	}
+	var n int
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM iam_user_role ur
+		JOIN iam_role r ON r.id=ur.role_id
+		WHERE ur.user_id=? AND (r.code=? OR r.name=?)`, userID, roleCode, roleCode).Scan(&n)
+	return n > 0
+}
+
+// handlePurchaseRoleUsers GET /purchase/role-users?role=purchase
+func (s *Services) handlePurchaseRoleUsers(c *gin.Context) bool {
+	if !s.requireAnyRole(c, "warehouse", "purchase") {
+		return true
+	}
+	role := strings.TrimSpace(c.Query("role"))
+	if role == "" {
+		role = "purchase"
+	}
+	list := s.listUsersByRoleCode(role)
+	if role == "purchase" && len(list) == 0 {
+		// 兼容中文角色码
+		for _, alt := range []string{"采购", "采购员"} {
+			list = append(list, s.listUsersByRoleCode(alt)...)
+		}
+	}
+	api.OK(c, gin.H{"list": list, "role": role})
+	return true
 }
 
 // listNextRoleOptionsAfterAction returns selectable next role_task nodes after fromAction.

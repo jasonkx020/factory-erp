@@ -10,6 +10,8 @@ class AuthState extends ChangeNotifier {
 
   String? name;
   String? loginName;
+  String? empNo;
+  String? badgeCode;
   int userId = 0;
   int employeeId = 0;
   List<String> roles = [];
@@ -36,10 +38,19 @@ class AuthState extends ChangeNotifier {
 
   void _applyUser(Map<String, dynamic>? user) {
     if (user == null) return;
-    name = user['name']?.toString().isNotEmpty == true ? user['name']?.toString() : name;
+    final displayName = user['name']?.toString().isNotEmpty == true
+        ? user['name']?.toString()
+        : user['employee_name']?.toString();
+    if (displayName != null && displayName.isNotEmpty) name = displayName;
     loginName = user['login_name']?.toString() ?? loginName;
     userId = (user['id'] as num?)?.toInt() ?? userId;
     employeeId = (user['employee_id'] as num?)?.toInt() ?? employeeId;
+    if (user.containsKey('emp_no')) {
+      empNo = user['emp_no']?.toString().trim() ?? '';
+    }
+    if (user.containsKey('badge_code')) {
+      badgeCode = user['badge_code']?.toString().trim() ?? '';
+    }
   }
 
   void _refreshPrimaryRole({bool keepSelection = false}) {
@@ -143,6 +154,8 @@ class AuthState extends ChangeNotifier {
     await api.clearTokens();
     name = null;
     loginName = null;
+    empNo = null;
+    badgeCode = null;
     userId = 0;
     employeeId = 0;
     roles = [];
