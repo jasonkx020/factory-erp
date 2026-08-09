@@ -20,10 +20,11 @@ func (s *Services) handleProductionShifts(c *gin.Context, method, openapiPath, a
 	}
 	switch action {
 	case "list":
-		return s.listDocTable(c, `SELECT s.*, w.name AS workshop_name,
+		return s.listDocTable(c, `SELECT * FROM (
+			SELECT s.*, w.name AS workshop_name,
 			(SELECT COUNT(1) FROM pd_shift_member m WHERE m.shift_id=s.id) AS member_count
 			FROM pd_shift s LEFT JOIN pd_workshop w ON w.id=s.workshop_id
-			ORDER BY s.id DESC LIMIT 200`)
+		)`)
 	case "create":
 		body := bindBody(c)
 		workshopID := asInt64Or0(body["workshop_id"])
