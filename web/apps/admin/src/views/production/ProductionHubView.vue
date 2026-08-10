@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   productionApi,
   productApi,
   hrApi,
   fieldLedgerApi,
+  inventoryApi,
   PROCESS_TYPE_OPTIONS,
   QC_TYPE_OPTIONS,
   CONSIGNMENT_PROGRESS_OPTIONS,
@@ -586,6 +587,28 @@ async function openWipBoxes(stepId: number, title: string, unassigned: boolean) 
   wipBoxes.value = ((res.data as { list?: Row[] })?.list) || []
   wipDrawerTitle.value = `${title || '箱明细'}（${wipBoxes.value.length}）`
   wipDrawer.value = true
+}
+
+async function destroyWipBox(row: Row) {
+  const id = Number(row.id)
+  if (!id) return
+  try {
+    const { value } = await ElMessageBox.prompt('填写销毁原因（损耗等用不了的箱须标注销毁）', `销毁 ${row.code || ''}`, {
+      confirmButtonText: '确认销毁',
+      cancelButtonText: '取消',
+      inputPattern: /\S+/,
+      inputErrorMessage: '原因必填',
+      type: 'warning',
+    })
+    const res = await inventoryApi.destroyBox(id, { reason: String(value || '').trim() })
+    if (res.code !== 1) return ElMessage.error(res.msg)
+    ElMessage.success('已销毁')
+    wipBoxes.value = wipBoxes.value.filter((b) => Number(b.id) !== id)
+    wipDrawerTitle.value = wipDrawerTitle.value.replace(/\（\d+\）/, `（${wipBoxes.value.length}）`)
+    await refresh()
+  } catch {
+    /* cancel */
+  }
 }
 
 async function createBom() {
@@ -1297,9 +1320,17 @@ onMounted(async () => {
               </el-table-column>
               <el-table-column prop="trace_code" label="溯源" width="110" />
               <el-table-column prop="status" label="状态" width="80" />
+              <el-table-column label="操作" width="80" fixed="right">
+                <template #default="{ row }">
+                  <el-button link type="danger" @click="destroyWipBox(row)">销毁</el-button>
+                </template>
+              </el-table-column>
             </el-table>
             <template #extra="{ row }">
               <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+            </template>
+            <template #actions="{ row }">
+              <el-button link type="danger" @click="destroyWipBox(row)">销毁</el-button>
             </template>
           </TableOrCards>
         </el-drawer>

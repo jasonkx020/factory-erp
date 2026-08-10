@@ -201,7 +201,7 @@ func isWeighWarehouseAPI(resourceKey, action string) bool {
 		return false
 	}
 	switch action {
-	case "action:warehouse-confirm", "action:warehouse-return", "action:stock-in", "get", "list":
+	case "action:warehouse-confirm", "action:warehouse-return", "action:stock-in", "action:box-stock-in", "get", "list":
 		return true
 	default:
 		return false

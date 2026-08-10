@@ -1196,11 +1196,16 @@ class _ReceivingPageState extends State<ReceivingPage> {
           onTap: () => _chooseReceiveKind('gate'),
         ),
         HubEntryTile(
-          enabled: _canRecv || _canWh,
-          icon: Icons.warehouse_outlined,
-          title: '过磅入库',
-          subtitle: '凭入厂已绑定溯源码入库过磅',
-          onTap: () => _chooseReceiveKind('stockin'),
+          enabled: _canWh,
+          icon: Icons.qr_code_scanner,
+          title: '扫溯源分箱',
+          subtitle: '入厂后由仓管扫溯源码分箱入库',
+          onTap: () {
+            // 引导仓管去仓管作业页扫码
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('请到「仓管作业」扫溯源码分箱入库')),
+            );
+          },
         ),
         HubEntryTile(
           icon: Icons.receipt_long_outlined,

@@ -57,9 +57,15 @@ async function claim(id: number) {
 
 async function confirmInbound(row: Row) {
   const bizId = Number(row.biz_id)
-  const res = await purchaseApi.warehouseConfirmWeigh(bizId)
+  const p = payloadOf(row)
+  const kind = String(p.receive_kind || row.receive_kind || '').toLowerCase()
+  if (kind === 'stockin') {
+    return ElMessage.warning('入库须在 App 仓管核对页分箱复磅后确认（本页仅支持入厂接收）')
+  }
+  const res = await purchaseApi.warehouseConfirmWeigh(bizId, { verified: true, match_confirmed: true })
   if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success(`入库完成 箱码=${(res.data as Row)?.box_code || '-'}`)
+  const data = (res.data as Row) || {}
+  ElMessage.success(`入厂接收完成 溯源=${data.trace_code || '-'}`)
   await refresh()
 }
 
@@ -68,8 +74,8 @@ onMounted(refresh)
 
 <template>
   <div class="page" v-loading="loading">
-    <h2>仓管待入库</h2>
-    <p class="hint">采购确认出码后推送溯源码与过磅单号至此；仓管核对车牌/溯源等后确认入库。</p>
+    <h2>仓管待办</h2>
+    <p class="hint">采购出码后推送至此：先核对入厂接收；入厂后扫同一溯源码分箱入库（App）。</p>
     <el-button type="primary" @click="refresh">刷新待办</el-button>
     <TableOrCards :data="tasksForCards" :loading="loading" :columns="taskCols" style="margin-top:12px">
       <el-table :data="tasks" size="small" style="margin-top:12px">
@@ -94,13 +100,13 @@ onMounted(refresh)
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="claim(Number(row.id))">认领</el-button>
-            <el-button link type="success" @click="confirmInbound(row)">确认入库</el-button>
+            <el-button link type="success" @click="confirmInbound(row)">确认接收/入库</el-button>
           </template>
         </el-table-column>
       </el-table>
       <template #actions="{ row }">
         <el-button link type="primary" @click="claim(Number(row.id))">认领</el-button>
-        <el-button link type="success" @click="confirmInbound(row)">确认入库</el-button>
+        <el-button link type="success" @click="confirmInbound(row)">确认接收/入库</el-button>
       </template>
     </TableOrCards>
   </div>

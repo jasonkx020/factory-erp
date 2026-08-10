@@ -333,6 +333,7 @@ async function uploadSitePhoto(file: File) {
 }
 
 async function createWeigh() {
+  weighForm.receive_kind = 'gate'
   if (!weighForm.batch_no) return ElMessage.warning('溯源批号必填')
   if (!batchValid.value) {
     await validateBatch()
@@ -340,11 +341,11 @@ async function createWeigh() {
   }
   if (!weighForm.image_url) return ElMessage.warning('请上传现场照片')
   if (!weighForm.variety_id && !weighForm.variety) return ElMessage.warning('请选择过磅品种')
-  if (weighForm.receive_kind === 'gate' && !weighForm.farmer_id && !String(weighForm.party_name || '').trim()) {
+  if (!weighForm.farmer_id && !String(weighForm.party_name || '').trim()) {
     return ElMessage.warning('入厂须选择或现场录入农户')
   }
   const body: Record<string, unknown> = {
-    receive_kind: weighForm.receive_kind,
+    receive_kind: 'gate',
     batch_no: weighForm.batch_no,
     channel: weighForm.channel,
     product_id: weighForm.product_id,
@@ -357,24 +358,18 @@ async function createWeigh() {
     reject_weight: weighForm.reject_weight,
   }
   if (weighForm.arrival_id) body.arrival_id = weighForm.arrival_id
-  if (weighForm.receive_kind === 'gate') {
-    body.farmer_id = weighForm.farmer_id || 0
-    body.party_name = weighForm.party_name
-    body.party_mobile = weighForm.party_mobile
-    body.origin = weighForm.origin
-    body.gross_weight = weighForm.gross_weight
-    body.deduct_rate = weighForm.deduct_rate
-    body.unit_price = weighForm.unit_price
-    body.plate_no = weighForm.plate_no
-    body.receive_address = weighForm.receive_address
-    body.freight_fee = weighForm.freight_fee
-    body.loading_fee = weighForm.loading_fee
-    body.weigh_fee = weighForm.weigh_fee
-  } else {
-    body.net_weight = weighForm.net_weight
-    body.bag_qty = weighForm.bag_qty
-    body.cold_store_type = weighForm.cold_store_type
-  }
+  body.farmer_id = weighForm.farmer_id || 0
+  body.party_name = weighForm.party_name
+  body.party_mobile = weighForm.party_mobile
+  body.origin = weighForm.origin
+  body.gross_weight = weighForm.gross_weight
+  body.deduct_rate = weighForm.deduct_rate
+  body.unit_price = weighForm.unit_price
+  body.plate_no = weighForm.plate_no
+  body.receive_address = weighForm.receive_address
+  body.freight_fee = weighForm.freight_fee
+  body.loading_fee = weighForm.loading_fee
+  body.weigh_fee = weighForm.weigh_fee
   if (weighForm.ocr_draft_json) {
     try {
       body.ocr_draft_json = JSON.parse(weighForm.ocr_draft_json)
@@ -384,7 +379,7 @@ async function createWeigh() {
   }
   const res = await purchaseApi.createWeighTicket(body)
   if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success(`草稿已建 ${weighForm.receive_kind === 'gate' ? '入厂' : '入库'}，净重 ${(res.data as Row)?.net_weight}`)
+  ElMessage.success(`草稿已建入厂，净重 ${(res.data as Row)?.net_weight}`)
   weighForm.batch_no = ''
   weighForm.image_url = ''
   weighForm.image_urls = []
@@ -571,21 +566,16 @@ watch(
           </el-card>
         </el-col>
         <el-col :span="showFarmers ? 8 : 12" :xs="24">
-          <el-card header="过磅草稿（入厂/入库）">
+          <el-card header="过磅草稿（入厂）">
             <el-form label-width="100px" size="small">
-              <el-form-item label="模式">
-                <el-radio-group v-model="weighForm.receive_kind" @change="onReceiveKindChange">
-                  <el-radio-button value="gate">过磅入厂</el-radio-button>
-                  <el-radio-button value="stockin">过磅入库</el-radio-button>
-                </el-radio-group>
-                <div class="hint">
-                  {{
-                    weighForm.receive_kind === 'gate'
-                      ? '入厂须绑定农户并占用溯源批号'
-                      : '入库凭溯源批号跟踪，自动带出入厂关联农户'
-                  }}
-                </div>
-              </el-form-item>
+              <el-alert
+                type="info"
+                :closable="false"
+                show-icon
+                class="mb"
+                title="入厂后由仓管扫溯源分箱入库；农户结算环节可在「系统管理 → 基础设置」配置"
+                style="margin-bottom:12px"
+              />
               <el-form-item label="溯源批号">
                 <div style="width:100%">
                   <el-radio-group v-model="batchInputMode" size="small" style="margin-bottom:8px" @change="batchValid = false; batchBoundFarmer = ''">
@@ -596,11 +586,9 @@ watch(
                     <el-input
                       v-model="weighForm.batch_no"
                       :placeholder="
-                        weighForm.receive_kind === 'stockin'
-                          ? '扫/输已入厂绑定的批号'
-                          : batchInputMode === 'scan'
-                            ? '扫码枪扫入后回车校验'
-                            : '手输批号后点校验'
+                        batchInputMode === 'scan'
+                          ? '扫码枪扫入后回车校验'
+                          : '手输批号后点校验'
                       "
                       @change="batchValid = false; batchBoundFarmer = ''"
                       @keyup.enter="onBatchScanEnter"
@@ -608,12 +596,9 @@ watch(
                     <el-button @click="validateBatch">校验</el-button>
                   </div>
                   <div v-if="batchInputMode === 'scan'" class="hint">扫描模式：光标在输入框内，扫码枪楔入后回车自动校验</div>
-                  <div v-if="weighForm.receive_kind === 'stockin' && batchValid && batchBoundFarmer" class="hint" style="color:#0d7a6f">
-                    关联农户（入厂绑定）：{{ batchBoundFarmer }}
-                  </div>
                 </div>
               </el-form-item>
-              <el-form-item v-if="weighForm.receive_kind === 'gate'" label="到货单">
+              <el-form-item label="到货单">
                 <el-select v-model="weighForm.arrival_id" clearable style="width:100%" placeholder="可选">
                   <el-option
                     v-for="a in arrivals.filter((x) => x.status === 'qc_pass')"
@@ -623,7 +608,7 @@ watch(
                   />
                 </el-select>
               </el-form-item>
-              <template v-if="weighForm.receive_kind === 'gate'">
+              <template>
                 <el-form-item label="农户搜索">
                   <div style="display:flex;gap:8px;width:100%">
                     <el-select
@@ -662,7 +647,7 @@ watch(
                   <el-option v-for="x in varieties" :key="String(x.id)" :label="String(x.name)" :value="Number(x.id)" />
                 </el-select>
               </el-form-item>
-              <template v-if="weighForm.receive_kind === 'gate'">
+              <template>
                 <el-form-item label="入场重量"><el-input-number v-model="weighForm.gross_weight" :min="0" /></el-form-item>
                 <el-form-item label="扣损率"><el-input-number v-model="weighForm.deduct_rate" :min="0" :max="1" :step="0.01" /></el-form-item>
                 <el-form-item label="不合格重"><el-input-number v-model="weighForm.reject_weight" :min="0" /></el-form-item>
@@ -672,17 +657,6 @@ watch(
                 <el-form-item label="运费"><el-input-number v-model="weighForm.freight_fee" :min="0" /></el-form-item>
                 <el-form-item label="装卸费"><el-input-number v-model="weighForm.loading_fee" :min="0" /></el-form-item>
                 <el-form-item label="过磅费"><el-input-number v-model="weighForm.weigh_fee" :min="0" /></el-form-item>
-              </template>
-              <template v-else>
-                <el-form-item label="重量kg"><el-input-number v-model="weighForm.net_weight" :min="0" /></el-form-item>
-                <el-form-item label="袋数"><el-input-number v-model="weighForm.bag_qty" :min="0" /></el-form-item>
-                <el-form-item label="冷库">
-                  <el-radio-group v-model="weighForm.cold_store_type">
-                    <el-radio-button value="fresh">保鲜库</el-radio-button>
-                    <el-radio-button value="semi">半成品库</el-radio-button>
-                    <el-radio-button value="fg">成品库</el-radio-button>
-                  </el-radio-group>
-                </el-form-item>
               </template>
               <el-form-item label="现场照片">
                 <el-upload :show-file-list="false" :before-upload="uploadSitePhoto" accept="image/*">
@@ -769,14 +743,18 @@ watch(
           <el-table-column label="操作" width="280" fixed="right">
             <template #default="{ row }">
               <el-button v-if="row.status==='draft' || row.status==='qc_pass'" link type="primary" @click="openConfirm(row)">对照确认出码</el-button>
-              <el-button v-if="row.status==='weighed'" link type="info" disabled>等待仓管入库</el-button>
+              <el-button v-if="row.status==='weighed'" link type="info" disabled>等待仓管入厂接收</el-button>
+              <el-button v-if="row.status==='gate_accepted'" link type="warning" disabled>待仓管分箱</el-button>
+              <el-button v-if="row.status==='stocked'" link type="success" disabled>已分箱入库</el-button>
               <el-button link type="warning" @click="openCorrect(row, 'weigh_ticket')">纠错</el-button>
             </template>
           </el-table-column>
         </el-table>
         <template #actions="{ row }">
           <el-button v-if="row.status==='draft' || row.status==='qc_pass'" link type="primary" @click="openConfirm(row)">对照确认出码</el-button>
-          <el-button v-if="row.status==='weighed'" link type="info" disabled>等待仓管入库</el-button>
+          <el-button v-if="row.status==='weighed'" link type="info" disabled>等待仓管入厂接收</el-button>
+          <el-button v-if="row.status==='gate_accepted'" link type="warning" disabled>待仓管分箱</el-button>
+          <el-button v-if="row.status==='stocked'" link type="success" disabled>已分箱入库</el-button>
           <el-button link type="warning" @click="openCorrect(row, 'weigh_ticket')">纠错</el-button>
         </template>
       </TableOrCards>

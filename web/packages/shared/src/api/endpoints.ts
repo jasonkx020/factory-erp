@@ -61,6 +61,8 @@ export const inventoryApi = {
   createBox: (body: Record<string, unknown>) => api.post('/inventory/box-codes', body),
   bindBox: (id: number, body?: Record<string, unknown>) =>
     api.post(`/inventory/box-codes/${id}/bind`, body || {}),
+  destroyBox: (id: number, body: { reason: string }) =>
+    api.post(`/inventory/box-codes/${id}/destroy`, body),
   // 盘点
   stocktakes: (workshop = false) =>
     api.get<PageData>(workshop ? '/inventory/workshop-stocktakes' : '/inventory/stocktakes'),
@@ -673,6 +675,8 @@ export const purchaseApi = {
   labelWeighTicket: (id: number) => api.get(`/purchase/weigh-tickets/${id}/label`),
   warehouseConfirmWeigh: (id: number, body?: Record<string, unknown>) =>
     api.post(`/purchase/weigh-tickets/${id}/warehouse-confirm`, body || {}),
+  boxStockInWeigh: (id: number, body: Record<string, unknown>) =>
+    api.post(`/purchase/weigh-tickets/${id}/box-stock-in`, body),
   warehouseReturnWeigh: (id: number, body: Record<string, unknown>) =>
     api.post(`/purchase/weigh-tickets/${id}/warehouse-return`, body),
   purchaseRoleUsers: (role = 'purchase') =>

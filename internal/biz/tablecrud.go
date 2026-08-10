@@ -88,6 +88,12 @@ func (s *Services) tableGet(c *gin.Context, spec *tablespec.Spec) {
 
 func (s *Services) tableCreate(c *gin.Context, spec *tablespec.Spec) {
 	body := bindBody(c)
+	if spec.Table == "inv_box_code" {
+		if strings.TrimSpace(strOr(body["trace_code"])) == "" {
+			api.FailJSON(c, "TRACE_CODE_REQUIRED")
+			return
+		}
+	}
 	if spec.DocNo != "" {
 		if v, _ := body[spec.DocNo].(string); v == "" {
 			body[spec.DocNo] = fmt.Sprintf("%s-%d", strings.ReplaceAll(spec.Table, "_", ""), time.Now().UnixNano()%1e12)

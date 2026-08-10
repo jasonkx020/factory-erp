@@ -5,7 +5,7 @@ import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
 import '../../widgets/form_sticky_actions.dart';
 
-/// 仓管核对页：选产品、分箱复磅后确认入厂/入库，或退回采购。
+/// 仓管核对页：入厂接收；已入厂则扫溯源分箱入库。
 class WarehouseVerifyPage extends StatefulWidget {
   const WarehouseVerifyPage({super.key, required this.ticket});
 
@@ -28,8 +28,11 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
     'BOX_WEIGHT_REQUIRED': '每箱复磅重量须大于 0',
     'PRODUCT_REQUIRED': '请选择入库产品',
     'ROUTING_REQUIRED': '该产品未配置入厂工艺，请先在工艺流程绑定',
-    'WEIGHT_MISMATCH': '分箱合计与票净重偏差过大（允许 ±3% 或 ±5kg）',
+    'WEIGHT_MISMATCH': '分箱合计超过票净重过多（允许超重 ±3% 或 5kg）',
+    'TRACE_CODE_REQUIRED': '缺少溯源码，无法建箱',
     'VERIFY_REQUIRED': '请确认核对相符',
+    'GATE_ACCEPT_REQUIRED': '请先完成入厂接收后再分箱',
+    'USE_WAREHOUSE_BOX_STOCKIN': '请仓管扫溯源分箱入库',
   };
 
   @override
@@ -39,7 +42,9 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
     final pid = (_ticket['product_id'] as num?)?.toInt() ?? 0;
     _productId = pid > 0 ? pid : null;
     _boxCtrls.add(TextEditingController());
-    _loadProducts();
+    if (_isBoxMode) {
+      _loadProducts();
+    }
   }
 
   @override
@@ -50,16 +55,18 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
     super.dispose();
   }
 
-  String get _kind {
-    final k = (_ticket['receive_kind'] ?? '').toString().toLowerCase();
-    return k == 'stockin' ? 'stockin' : 'gate';
-  }
+  String get _status => (_ticket['status'] ?? '').toString().toLowerCase();
 
-  String get _kindLabel => _kind == 'stockin' ? '入库' : '入厂';
+  /// 分箱入库：已入厂待分箱
+  bool get _isBoxMode =>
+      _ticket['box_stockin_ready'] == true || _status == 'gate_accepted';
 
-  String get _confirmLabel => _kind == 'stockin' ? '确认入库' : '确认入厂';
+  String get _kindLabel => _isBoxMode ? '分箱入库' : '入厂接收';
 
-  bool get _ready => _ticket['stockin_ready'] == true;
+  String get _confirmLabel => _isBoxMode ? '确认分箱入库' : '确认入厂接收';
+
+  bool get _ready =>
+      _isBoxMode || _ticket['stockin_ready'] == true;
 
   Object? get _bizId => _ticket['weigh_ticket_id'] ?? _ticket['biz_id'] ?? _ticket['id'];
 
@@ -73,17 +80,31 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
     return s;
   }
 
+  double get _inboundLoss {
+    final loss = _ticketNet - _boxSum;
+    return loss > 0 ? loss : 0;
+  }
+
+  double get _lossRate {
+    if (_ticketNet <= 0 || _inboundLoss <= 0) return 0;
+    return _inboundLoss / _ticketNet * 100;
+  }
+
   bool get _weightOk {
+    if (!_isBoxMode) return true;
     final net = _ticketNet;
-    if (net <= 0) return _boxSum > 0;
-    final diff = (_boxSum - net).abs();
+    if (_boxSum <= 0) return false;
+    if (net <= 0) return true;
+    if (_boxSum <= net) return true;
+    final diff = _boxSum - net;
     var tol = net * 0.03;
     if (tol < 5) tol = 5;
-    return diff <= tol && _boxSum > 0;
+    return diff <= tol;
   }
 
   bool get _canConfirm {
     if (_busy || !_ready) return false;
+    if (!_isBoxMode) return true;
     if (_productId == null || _productId! <= 0) return false;
     if (_boxCtrls.isEmpty) return false;
     for (final c in _boxCtrls) {
@@ -159,38 +180,58 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
       );
       return;
     }
-    if (_productId == null || _productId! <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请选择入库产品')));
-      return;
-    }
-    final boxes = <Map<String, dynamic>>[];
-    for (final c in _boxCtrls) {
-      final w = double.tryParse(c.text.trim()) ?? 0;
-      if (w <= 0) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('每箱复磅重量须大于 0')));
+
+    setState(() => _busy = true);
+    late final dynamic res;
+    if (_isBoxMode) {
+      if (_productId == null || _productId! <= 0) {
+        setState(() => _busy = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请选择入库产品')));
         return;
       }
-      boxes.add({'weight': w});
-    }
-    if (!_weightOk) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('分箱合计与票净重偏差过大（允许 ±3% 或 ±5kg）')),
+      final boxes = <Map<String, dynamic>>[];
+      for (final c in _boxCtrls) {
+        final w = double.tryParse(c.text.trim()) ?? 0;
+        if (w <= 0) {
+          setState(() => _busy = false);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('每箱复磅重量须大于 0')));
+          return;
+        }
+        boxes.add({'weight': w});
+      }
+      if (!_weightOk) {
+        setState(() => _busy = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('分箱合计超过票净重过多（允许超重 ±3% 或 5kg）')),
+        );
+        return;
+      }
+      res = await context.read<AuthState>().api.post(
+        '/purchase/weigh-tickets/$bizId/box-stock-in',
+        {'product_id': _productId, 'boxes': boxes},
       );
-      return;
+    } else {
+      res = await context.read<AuthState>().api.post(
+        '/purchase/weigh-tickets/$bizId/warehouse-confirm',
+        {'verified': true, 'match_confirmed': true},
+      );
     }
-    setState(() => _busy = true);
-    final res = await context.read<AuthState>().api.post(
-      '/purchase/weigh-tickets/$bizId/warehouse-confirm',
-      {
-        'verified': true,
-        'match_confirmed': true,
-        'product_id': _productId,
-        'boxes': boxes,
-      },
-    );
     if (!mounted) return;
     setState(() => _busy = false);
-    final okMsg = _kind == 'stockin' ? '入库完成' : '入厂确认完成';
+
+    var okMsg = _isBoxMode ? '分箱入库完成' : '入厂接收完成';
+    if (res.ok && res.data is Map) {
+      final data = res.data as Map;
+      final loss = data['inbound_loss_kg'];
+      final rate = data['inbound_loss_rate'];
+      if (loss is num && loss > 0) {
+        final pct = rate is num ? (rate * 100) : (loss / (_ticketNet > 0 ? _ticketNet : 1) * 100);
+        okMsg = '分箱入库完成（仓前损耗 ${loss.toStringAsFixed(2)} kg，扣损率 ${pct.toStringAsFixed(1)}%）';
+      }
+      if (data['settlement_id'] != null) {
+        okMsg = '$okMsg；已生成结算';
+      }
+    }
     final msg = res.ok ? okMsg : (_errLabel[res.msg] ?? res.msg);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     if (res.ok) Navigator.of(context).pop(true);
@@ -285,9 +326,10 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     final net = _ticketNet;
     final sum = _boxSum;
-    final diffPct = net > 0 ? ((sum - net) / net * 100) : 0.0;
+    final loss = _inboundLoss;
+    final overPct = net > 0 && sum > net ? ((sum - net) / net * 100) : 0.0;
     return Scaffold(
-      appBar: AppBar(title: Text('核对$_kindLabel')),
+      appBar: AppBar(title: Text(_isBoxMode ? '扫溯源分箱入库' : '入厂接收核对')),
       body: ListView(
         padding: EdgeInsets.fromLTRB(16, 12, 16, 24 + bottomInset),
         children: [
@@ -301,16 +343,23 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
               ),
               Chip(
                 label: Text(_kindLabel, style: const TextStyle(fontSize: 12, color: Colors.white)),
-                backgroundColor: _kind == 'stockin' ? Colors.teal : Colors.indigo,
+                backgroundColor: _isBoxMode ? Colors.teal : Colors.indigo,
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          Text(
+            _isBoxMode
+                ? '对已入厂溯源批次分箱复磅；完成后得到真实仓前扣损率'
+                : '核对后确认接收进场；本环节不分箱。入厂后可再扫溯源分箱。',
+            style: TextStyle(fontSize: 13, color: Colors.blueGrey.shade700),
+          ),
           const SizedBox(height: 12),
           _kv('溯源码', '${_ticket['trace_code'] ?? '-'}'),
           _kv('批号', '${_ticket['batch_no'] ?? '-'}'),
-          _kv('票净重', '${_ticket['net_weight'] ?? '-'} kg（参考）'),
+          _kv('票净重', '${_ticket['net_weight'] ?? '-'} kg'),
           _kv('扣损', '${_ticket['deduct_weight'] ?? '-'}'),
           if (!_ready)
             Padding(
@@ -320,73 +369,79 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                 style: TextStyle(color: Colors.orange.shade800),
               ),
             ),
-          const SizedBox(height: 16),
-          const Text('入库产品', style: TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          DropdownButtonFormField<int>(
-            value: _productId,
-            decoration: const InputDecoration(
-              border: OutlineInputBorder(),
-              hintText: '必选：原料或半成品',
+          if (_isBoxMode) ...[
+            const SizedBox(height: 16),
+            const Text('入库产品', style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<int>(
+              value: _productId,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: '必选：原料或半成品',
+              ),
+              items: [
+                for (final p in _products)
+                  DropdownMenuItem(
+                    value: (p['id'] as num?)?.toInt(),
+                    child: Text('${p['name'] ?? p['code'] ?? p['id']}'),
+                  ),
+              ],
+              onChanged: (v) => setState(() => _productId = v),
             ),
-            items: [
-              for (final p in _products)
-                DropdownMenuItem(
-                  value: (p['id'] as num?)?.toInt(),
-                  child: Text('${p['name'] ?? p['code'] ?? p['id']}'),
-                ),
-            ],
-            onChanged: (v) => setState(() => _productId = v),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              const Expanded(child: Text('分箱复磅', style: TextStyle(fontWeight: FontWeight.w600))),
-              TextButton.icon(onPressed: _addBox, icon: const Icon(Icons.add, size: 18), label: const Text('加箱')),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text('每箱现场复磅后录入重量（kg）', style: TextStyle(fontSize: 12, color: Colors.black54)),
-          const SizedBox(height: 8),
-          for (var i = 0; i < _boxCtrls.length; i++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  SizedBox(width: 56, child: Text('箱 ${i + 1}', style: const TextStyle(fontWeight: FontWeight.w500))),
-                  Expanded(
-                    child: TextField(
-                      controller: _boxCtrls[i],
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                        suffixText: 'kg',
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Expanded(child: Text('分箱复磅', style: TextStyle(fontWeight: FontWeight.w600))),
+                TextButton.icon(onPressed: _addBox, icon: const Icon(Icons.add, size: 18), label: const Text('加箱')),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text('每箱现场复磅后录入；箱码自动绑定本溯源', style: TextStyle(fontSize: 12, color: Colors.black54)),
+            const SizedBox(height: 8),
+            for (var i = 0; i < _boxCtrls.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    SizedBox(width: 56, child: Text('箱 ${i + 1}', style: const TextStyle(fontWeight: FontWeight.w500))),
+                    Expanded(
+                      child: TextField(
+                        controller: _boxCtrls[i],
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                          suffixText: 'kg',
+                        ),
+                        onChanged: (_) => setState(() {}),
                       ),
-                      onChanged: (_) => setState(() {}),
                     ),
-                  ),
-                  IconButton(
-                    onPressed: _boxCtrls.length > 1 ? () => _removeBox(i) : null,
-                    icon: const Icon(Icons.delete_outline),
-                  ),
-                ],
+                    IconButton(
+                      onPressed: _boxCtrls.length > 1 ? () => _removeBox(i) : null,
+                      icon: const Icon(Icons.delete_outline),
+                    ),
+                  ],
+                ),
+              ),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: _weightOk ? const Color(0xFFEEF8F4) : const Color(0xFFFFF4E5),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _weightOk ? const Color(0xFFB7E0CD) : const Color(0xFFFFD8A8)),
+              ),
+              child: Text(
+                loss > 0
+                    ? '已录合计 ${sum.toStringAsFixed(2)} kg · 票净重 ${net.toStringAsFixed(2)} kg\n'
+                        '将记仓前损耗 ${loss.toStringAsFixed(2)} kg，扣损率 ${_lossRate.toStringAsFixed(1)}%'
+                    : '已录合计 ${sum.toStringAsFixed(2)} kg · 票净重 ${net.toStringAsFixed(2)} kg'
+                        '${sum > net ? ' · 超重 ${overPct.toStringAsFixed(1)}%' : ''}\n'
+                        '欠重自动记仓前损耗；超重允许 ±3% 或 5kg',
+                style: TextStyle(fontSize: 13, color: _weightOk ? Colors.teal.shade900 : Colors.orange.shade900),
               ),
             ),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: _weightOk ? const Color(0xFFEEF8F4) : const Color(0xFFFFF4E5),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: _weightOk ? const Color(0xFFB7E0CD) : const Color(0xFFFFD8A8)),
-            ),
-            child: Text(
-              '已录合计 ${sum.toStringAsFixed(2)} kg · 票净重 ${net.toStringAsFixed(2)} kg · 偏差 ${diffPct.toStringAsFixed(1)}%\n'
-              '允许偏差：±3% 或 ±5kg（取较宽）',
-              style: TextStyle(fontSize: 13, color: _weightOk ? Colors.teal.shade900 : Colors.orange.shade900),
-            ),
-          ),
+          ],
           if (imgs.isNotEmpty) ...[
             const SizedBox(height: 16),
             const Text('现场照片', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -419,10 +474,11 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
       ),
       bottomNavigationBar: FormStickyButtonBar(
         children: [
-          OutlinedButton(
-            onPressed: _busy ? null : _returnToPurchase,
-            child: const Text('退回采购'),
-          ),
+          if (!_isBoxMode)
+            OutlinedButton(
+              onPressed: _busy ? null : _returnToPurchase,
+              child: const Text('退回采购'),
+            ),
           FilledButton(
             onPressed: _canConfirm ? _confirm : null,
             child: Text(_busy ? '处理中…' : _confirmLabel),

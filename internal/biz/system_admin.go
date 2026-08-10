@@ -33,6 +33,8 @@ var sysSettingDefaults = map[string]map[string]interface{}{
 	"base": {
 		"company_name": "加工厂ERP", "timezone": "Asia/Shanghai", "currency": "CNY",
 		"date_format": "YYYY-MM-DD", "default_page_size": 20, "enable_mqtt_notify": true,
+		// gate=入厂确认后结算；box_stockin=分箱入库后按箱合计结算
+		"farmer_settle_point": "gate",
 	},
 	"sales": {
 		"default_tax_rate": 0.13, "allow_negative_stock": false, "require_pre_ship": true,
@@ -235,9 +237,27 @@ func (s *Services) loadSysSetting(key string) map[string]interface{} {
 			out[k] = v
 		}
 	}
+	// merge missing defaults so new keys appear after upgrades
+	if def, ok := sysSettingDefaults[key]; ok {
+		for k, v := range def {
+			if _, exists := out[k]; !exists {
+				out[k] = v
+			}
+		}
+	}
 	out["setting_key"] = key
 	out["id"] = 1
 	return out
+}
+
+// farmerSettlePoint returns gate | box_stockin from system base settings.
+func (s *Services) farmerSettlePoint() string {
+	m := s.loadSysSetting("base")
+	v := strings.ToLower(strings.TrimSpace(strOr(m["farmer_settle_point"])))
+	if v == "box_stockin" {
+		return "box_stockin"
+	}
+	return "gate"
 }
 
 func (s *Services) saveSysSetting(key string, body map[string]interface{}, userID int64) {

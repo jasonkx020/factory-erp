@@ -135,9 +135,10 @@ func (s *Services) attachWeighVerifyMedia(out gin.H, weighID int64, imageURL str
 	}
 }
 
-func (s *Services) ensureGateSettlement(weighID int64, m gin.H) (int64, gin.H, string) {
+// ensureGateSettlement creates farmer settlement once. settleNetOverride when non-nil uses that weight (分箱合计).
+func (s *Services) ensureGateSettlement(weighID int64, m gin.H, settleNetOverride *float64) (int64, gin.H, string) {
 	kind := strings.ToLower(strOr(m["receive_kind"]))
-	if kind != "gate" {
+	if kind == "stockin" {
 		return 0, nil, ""
 	}
 	var existID int64
@@ -147,6 +148,11 @@ func (s *Services) ensureGateSettlement(weighID int64, m gin.H) (int64, gin.H, s
 	}
 	farmerID := asInt64Or0(m["farmer_id"])
 	net := asFloatOr0(m["net_weight"])
+	remark := "auto from weigh net_weight"
+	if settleNetOverride != nil {
+		net = *settleNetOverride
+		remark = "auto from box_stockin sum"
+	}
 	bizDate := strOr(m["biz_date"])
 	var unitPrice float64
 	grade := strOr(m["grade"])
@@ -166,7 +172,7 @@ func (s *Services) ensureGateSettlement(weighID int64, m gin.H) (int64, gin.H, s
 	res, err := s.DB.Exec(`INSERT INTO pur_farmer_settlement(doc_no, farmer_id, weigh_ticket_id, biz_date, net_weight, unit_price, amount, status, remark,
 		freight_fee, loading_fee, weigh_fee, goods_amount)
 		VALUES(?,?,?,?,?,?,?,'settle_pending',?,?,?,?,?)`,
-		docNo, farmerID, weighID, bizDate, net, unitPrice, total, "auto from weigh net_weight",
+		docNo, farmerID, weighID, bizDate, net, unitPrice, total, remark,
 		freight, loading, weighFee, goods)
 	if err != nil {
 		return 0, nil, "SETTLEMENT_ERROR:" + err.Error()
@@ -254,13 +260,23 @@ func (s *Services) resolveWeighByTraceCode(c *gin.Context) bool {
 	out["ticket_id"] = ticketID
 	out["weigh_ticket_id"] = id
 	s.attachWeighVerifyMedia(out, id, strOr(m["image_url"]))
-	// weighed 可直接入库；pending_confirm/qc_pass 允许仓管一键出码+入库
+	out["box_stockin_ready"] = false
+	out["stockin_ready"] = false
+
+	// 已入厂：仓管扫溯源分箱入库
+	if st == "gate_accepted" {
+		out["box_stockin_ready"] = true
+		out["reason"] = "AWAIT_BOX_STOCKIN"
+		api.OK(c, out)
+		return true
+	}
+
+	// weighed 可入厂接收；pending_confirm/qc_pass 允许仓管一键出码+接收
 	ready := st == "weighed" || st == "pending_confirm" || st == "qc_pass"
 	if st == "draft" && strings.ToLower(strOr(m["receive_kind"])) == "gate" {
 		ready = true
 	}
 	if !ready {
-		out["stockin_ready"] = false
 		if strOr(m["trace_code"]) == "" && st != "weighed" {
 			out["reason"] = "WEIGH_CONFIRM_REQUIRED"
 		} else {

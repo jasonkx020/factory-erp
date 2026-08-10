@@ -7047,6 +7047,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkAnyResponse"
 
+  /api/v1/inventory/box-codes/{id}/destroy:
+    post:
+      tags: [库存管理]
+      summary: 箱码-销毁
+      operationId: post_api_v1_inventory_box_codes_id_destroy
+      description: |
+        功能模块：箱码管理；分期：1
+        因损耗等用不了的箱码标注销毁，退出在制并扣减库存。
+      x-erp-phase: 1
+      x-erp-module: 箱码管理
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
   /api/v1/inventory/consumes:
     get:
       tags: [库存管理]
@@ -13952,11 +13988,12 @@ paths:
   /api/v1/purchase/weigh-tickets/{id}/warehouse-confirm:
     post:
       tags: [采购管理]
-      summary: 过磅单-仓管确认入库
+      summary: 过磅单-仓管确认入厂接收
       operationId: post_api_v1_purchase_weigh_tickets_id_warehouse_confirm
       description: |
         功能模块：过磅收货；分期：2
-        须 body.verified=true（扫码核对相符后）方可入库；gate 入厂单会幂等生成农户结算并通知财务。
+        须 body.verified=true；gate 入厂确认后状态 gate_accepted。
+        农户结算是否在此触发由系统设置 farmer_settle_point 决定（gate / box_stockin）。
       x-erp-phase: 2
       x-erp-module: 过磅收货
       parameters:
@@ -13970,6 +14007,39 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/purchase/weigh-tickets/{id}/box-stock-in:
+    post:
+      tags: [采购管理]
+      summary: 过磅单-仓管扫溯源分箱入库
+      operationId: post_api_v1_purchase_weigh_tickets_id_box_stock_in
+      description: |
+        功能模块：过磅收货；分期：2
+        仅 gate_accepted 可调用；body 需 product_id + boxes[{weight}]。
+        建箱强绑溯源，返回 inbound_loss_kg / inbound_loss_rate；
+        farmer_settle_point=box_stockin 时按箱合计生成农户结算。
+      x-erp-phase: 2
+      x-erp-module: 过磅收货
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product_id, boxes]
               additionalProperties: true
       responses:
         "200":

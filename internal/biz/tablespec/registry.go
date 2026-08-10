@@ -69,7 +69,8 @@ var Registry = map[string]*Spec{
 			{"code", TypeStr}, {"product_id", TypeInt}, {"warehouse_id", TypeInt}, {"batch_no", TypeStr},
 			{"qty", TypeFloat}, {"weight", TypeFloat}, {"parent_box_id", TypeInt},
 			{"current_process_id", TypeInt}, {"current_step_id", TypeInt}, {"task_id", TypeInt},
-			{"work_order_id", TypeInt}, {"status", TypeStr},
+			{"work_order_id", TypeInt}, {"farmer_id", TypeInt}, {"trace_code", TypeStr},
+			{"origin", TypeStr}, {"receive_date", TypeStr}, {"source_type", TypeStr}, {"status", TypeStr},
 		},
 	},
 	"system/data-repairs": {

@@ -250,7 +250,7 @@ func (s *Services) resolveGateBindingByBatch(batchNo string) (gin.H, string) {
 		LEFT JOIN pur_farmer f ON f.id=w.farmer_id
 		WHERE UPPER(w.batch_no)=? AND LOWER(COALESCE(w.receive_kind,''))='gate'
 		  AND COALESCE(w.is_deleted,0)=0
-		ORDER BY CASE WHEN LOWER(w.status)='weighed' OR LOWER(w.status)='stocked' THEN 0 ELSE 1 END, w.id DESC
+		ORDER BY CASE WHEN LOWER(w.status) IN ('weighed','stocked','gate_accepted') THEN 0 ELSE 1 END, w.id DESC
 		LIMIT 1`, batchNo).
 		Scan(&gateID, &farmerID, &partyName, &partyMobile, &origin, &channel, &farmerName,
 			&productID, &variety, &grade, &unitPrice, &plate, &recvAddr)

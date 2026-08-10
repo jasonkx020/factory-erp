@@ -62,6 +62,15 @@ const SETTINGS: Record<string, { title: string; fields: FieldDef[] }> = {
       { key: 'date_format', label: '日期格式', type: 'select', options: DATE_FORMAT_OPTIONS },
       { key: 'default_page_size', label: '默认分页', type: 'number' },
       { key: 'enable_mqtt_notify', label: 'MQTT 通知', type: 'switch' },
+      {
+        key: 'farmer_settle_point',
+        label: '农户结算环节',
+        type: 'select',
+        options: [
+          { value: 'gate', label: '入厂确认后（按票净重）' },
+          { value: 'box_stockin', label: '分箱入库后（按箱合计）' },
+        ],
+      },
     ],
   },
   销售设置: {

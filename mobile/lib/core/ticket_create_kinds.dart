@@ -32,12 +32,6 @@ const creatableTicketKinds = [
     subtitle: '与「过磅收货·入厂」同一套表单',
     receiveKind: 'gate',
   ),
-  CreatableTicketKind(
-    code: 'stock_inbound',
-    title: '过磅入库',
-    subtitle: '与「过磅收货·入库」同一套表单',
-    receiveKind: 'stockin',
-  ),
 ];
 
 bool canCreateTicketKind(String code, List<String> permissions, List<String> roles) {
@@ -49,9 +43,6 @@ bool canCreateTicketKind(String code, List<String> permissions, List<String> rol
   switch (code) {
     case 'farm_inbound':
       return canAccessEmployeeModule(EmployeeModule.receiving, permissions, roles);
-    case 'stock_inbound':
-      return canAccessEmployeeModule(EmployeeModule.warehouse, permissions, roles) ||
-          canAccessEmployeeModule(EmployeeModule.receiving, permissions, roles);
     default:
       return false;
   }

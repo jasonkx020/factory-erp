@@ -6543,6 +6543,41 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkAnyResponse"
 
+  /api/v1/inventory/box-codes/{id}/destroy:
+    post:
+      tags: [库存管理]
+      summary: 箱码-销毁
+      operationId: post_api_v1_inventory_box_codes_id_destroy
+      description: |
+        功能模块：箱码管理；分期：1
+      x-erp-phase: 1
+      x-erp-module: 箱码管理
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
   /api/v1/inventory/consumes:
     get:
       tags: [库存管理]

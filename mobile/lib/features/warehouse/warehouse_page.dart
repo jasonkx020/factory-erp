@@ -297,6 +297,53 @@ class _WarehousePageState extends State<WarehousePage> {
     });
   }
 
+  Future<void> _destroyBox(Map m) async {
+    final id = (m['id'] as num?)?.toInt();
+    if (id == null || id <= 0) return;
+    final st = (m['status'] ?? '').toString().toLowerCase();
+    if (st == 'destroyed' || st == 'finished') {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('该箱不可销毁')));
+      return;
+    }
+    final reasonCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('销毁箱码 ${m['code'] ?? ''}'),
+        content: TextField(
+          controller: reasonCtrl,
+          decoration: const InputDecoration(
+            labelText: '销毁原因',
+            hintText: '如：仓前损耗用不了',
+            border: OutlineInputBorder(),
+          ),
+          maxLines: 2,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确认销毁')),
+        ],
+      ),
+    );
+    final reason = reasonCtrl.text.trim();
+    reasonCtrl.dispose();
+    if (ok != true || !mounted) return;
+    if (reason.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请填写销毁原因')));
+      return;
+    }
+    final r = await context.read<AuthState>().api.post('/inventory/box-codes/$id/destroy', {'reason': reason});
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已销毁' : r.msg)));
+    if (r.ok) {
+      await _loadBoxes();
+      if (_boxTrace != null &&
+          (_boxTrace!['code']?.toString() == m['code']?.toString() || _boxTrace!['id'] == id)) {
+        setState(() => _boxTrace = null);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final notify = context.watch<NotifyService>();
@@ -489,10 +536,25 @@ class _WarehousePageState extends State<WarehousePage> {
                     const Text('最近箱码', style: TextStyle(fontWeight: FontWeight.bold)),
                     ..._boxes.map((e) {
                       final m = Map<String, dynamic>.from(e as Map);
+                      final st = (m['status'] ?? '').toString().toLowerCase();
+                      final canDestroy = st != 'destroyed' && st != 'finished';
                       return ListTile(
                         title: Text('${m['code']}'),
-                        subtitle: Text('${m['status'] ?? ''} · ${m['product_name'] ?? m['product_id'] ?? ''}'),
-                        trailing: Text('${m['weight'] ?? m['qty'] ?? ''}'),
+                        subtitle: Text(
+                          '${m['status'] ?? ''} · ${m['trace_code'] ?? '-'} · ${m['product_name'] ?? m['product_id'] ?? ''}',
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('${m['weight'] ?? m['qty'] ?? ''}'),
+                            if (canDestroy)
+                              IconButton(
+                                tooltip: '销毁',
+                                icon: const Icon(Icons.delete_forever_outlined, color: Colors.redAccent),
+                                onPressed: () => _destroyBox(m),
+                              ),
+                          ],
+                        ),
                         onTap: () {
                           _boxQuery.text = m['code']?.toString() ?? '';
                           _traceBox();

@@ -127,6 +127,8 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		if s.handleSystemAdmin(c, method, openapiPath, resourceKey, action) {
 			return true
 		}
+	case strings.Contains(openapiPath, "/inventory/box-codes/") && strings.HasSuffix(openapiPath, "/destroy") && method == "POST":
+		return s.destroyBoxCode(c)
 	case strings.Contains(openapiPath, "/inventory/box-codes/trace/"):
 		return s.handleBoxTrace(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/payroll/"):

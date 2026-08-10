@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { inventoryApi, productApi } from '@erp/shared'
 import {
   WarehouseSelect,
@@ -248,7 +248,7 @@ const payableForm = reactive({
   amount: 100,
   consume_txn_id: 0 as number,
 })
-const boxForm = reactive({ code: '', product_id: 1, warehouse_id: 1, weight: 0, batch_no: '' })
+const boxForm = reactive({ code: '', product_id: 1, warehouse_id: 1, weight: 0, batch_no: '', trace_code: '' })
 
 async function loadMeta() {
   const p = await productApi.list()
@@ -562,11 +562,35 @@ async function submitPayable(id: number) {
 
 async function createBox() {
   if (!boxForm.code) return ElMessage.warning('填写箱码')
+  if (!String(boxForm.trace_code || '').trim()) return ElMessage.warning('箱码须绑定溯源码')
   const res = await inventoryApi.createBox({ ...boxForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success('箱码已建')
   boxForm.code = ''
+  boxForm.trace_code = ''
   await refresh()
+}
+
+async function destroyBox(row: Row) {
+  const id = Number(row.id)
+  if (!id) return
+  const st = String(row.status || '').toLowerCase()
+  if (st === 'destroyed' || st === 'finished') return ElMessage.warning('该箱不可销毁')
+  try {
+    const { value } = await ElMessageBox.prompt('填写销毁原因（损耗等用不了的箱须标注销毁）', '销毁箱码', {
+      confirmButtonText: '确认销毁',
+      cancelButtonText: '取消',
+      inputPattern: /\S+/,
+      inputErrorMessage: '原因必填',
+      type: 'warning',
+    })
+    const res = await inventoryApi.destroyBox(id, { reason: String(value || '').trim() })
+    if (res.code !== 1) return ElMessage.error(res.msg)
+    ElMessage.success('已销毁')
+    await refresh()
+  } catch {
+    /* cancel */
+  }
 }
 
 async function doBoxTrace() {
@@ -1140,6 +1164,7 @@ watch([active, transferTab, assembleTab], refresh)
         <el-card header="新建箱码" class="mb">
           <el-form inline size="small">
             <el-form-item label="箱码"><el-input v-model="boxForm.code" style="width:160px" /></el-form-item>
+            <el-form-item label="溯源码"><el-input v-model="boxForm.trace_code" style="width:160px" placeholder="必填" /></el-form-item>
             <el-form-item label="物料">
               <el-select v-model="boxForm.product_id" style="width:160px" filterable>
                 <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
@@ -1165,9 +1190,27 @@ watch([active, transferTab, assembleTab], refresh)
             <el-table-column prop="weight" label="重量" width="90" />
             <el-table-column prop="status" label="状态" width="90" />
             <el-table-column prop="trace_code" label="溯源码" min-width="140" />
+            <el-table-column label="操作" width="90" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  v-if="!['destroyed','finished'].includes(String(row.status||'').toLowerCase())"
+                  link
+                  type="danger"
+                  @click="destroyBox(row)"
+                >销毁</el-button>
+              </template>
+            </el-table-column>
           </el-table>
           <template #extra="{ row }">
             <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+          </template>
+          <template #actions="{ row }">
+            <el-button
+              v-if="!['destroyed','finished'].includes(String(row.status||'').toLowerCase())"
+              link
+              type="danger"
+              @click="destroyBox(row)"
+            >销毁</el-button>
           </template>
         </TableOrCards>
       </template>
