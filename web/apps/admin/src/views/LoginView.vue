@@ -55,11 +55,25 @@ async function onSubmit() {
 }
 .login-card {
   width: 380px;
+  max-width: calc(100vw - 32px);
   background: #fff;
   border-radius: 12px;
   padding: 32px;
   box-shadow: 0 12px 40px rgba(0,0,0,.25);
   position: relative;
+  box-sizing: border-box;
+}
+@media (max-width: 768px) {
+  .login-wrap {
+    padding: 16px;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+    align-items: flex-start;
+    padding-top: max(48px, env(safe-area-inset-top));
+  }
+  .login-card {
+    width: 100%;
+    padding: 24px 20px;
+  }
 }
 .back {
   display: inline-block;

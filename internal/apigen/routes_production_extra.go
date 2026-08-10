@@ -15,4 +15,14 @@ func RegisterProductionExtra(r *gin.RouterGroup, h Handler) {
 	r.POST("/production/shifts/:id/members", h.Dispatch("POST", "/api/v1/production/shifts/{id}/members", "/production/shifts/:id/members", "production/shifts", "action:add-member"))
 	r.DELETE("/production/shifts/:id/members/:memberId", h.Dispatch("DELETE", "/api/v1/production/shifts/{id}/members/{memberId}", "/production/shifts/:id/members/:memberId", "production/shifts", "action:remove-member"))
 	r.PUT("/production/flow-rules", h.Dispatch("PUT", "/api/v1/production/flow-rules", "/production/flow-rules", "production/flow-rules", "update"))
+
+	r.GET("/production/process-returns", h.Dispatch("GET", "/api/v1/production/process-returns", "/production/process-returns", "production/process-returns", "list"))
+	r.POST("/production/process-returns", h.Dispatch("POST", "/api/v1/production/process-returns", "/production/process-returns", "production/process-returns", "create"))
+	r.GET("/production/process-returns/:id", h.Dispatch("GET", "/api/v1/production/process-returns/{id}", "/production/process-returns/:id", "production/process-returns", "get"))
+	r.POST("/production/process-returns/:id/submit", h.Dispatch("POST", "/api/v1/production/process-returns/{id}/submit", "/production/process-returns/:id/submit", "production/process-returns", "action:submit"))
+	r.POST("/production/process-returns/:id/approve", h.Dispatch("POST", "/api/v1/production/process-returns/{id}/approve", "/production/process-returns/:id/approve", "production/process-returns", "action:approve"))
+	r.POST("/production/process-returns/:id/reject", h.Dispatch("POST", "/api/v1/production/process-returns/{id}/reject", "/production/process-returns/:id/reject", "production/process-returns", "action:reject"))
+	r.POST("/production/process-returns/:id/transfer", h.Dispatch("POST", "/api/v1/production/process-returns/{id}/transfer", "/production/process-returns/:id/transfer", "production/process-returns", "action:transfer"))
+	r.POST("/production/process-returns/:id/warehouse-confirm", h.Dispatch("POST", "/api/v1/production/process-returns/{id}/warehouse-confirm", "/production/process-returns/:id/warehouse-confirm", "production/process-returns", "action:warehouse-confirm"))
+	r.POST("/production/report-works/:id/void", h.Dispatch("POST", "/api/v1/production/report-works/{id}/void", "/production/report-works/:id/void", "production/report-works", "action:void"))
 }

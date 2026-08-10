@@ -12,8 +12,115 @@ import {
 } from '../../components/select'
 import WarehouseInboundView from '../warehouse/WarehouseInboundView.vue'
 import StockLedgerView from './StockLedgerView.vue'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
+
+const balanceCols: MobileCardColumn[] = [
+  { prop: 'product_name', label: '名称', primary: true },
+  { prop: 'warehouse_name', label: '仓库' },
+  { prop: 'product_code', label: '料号' },
+  { prop: 'batch_no', label: '批次' },
+  { prop: 'qty', label: '结存' },
+]
+const availabilityCols: MobileCardColumn[] = [
+  { prop: 'product_id', label: '物料', primary: true },
+  { prop: 'warehouse_id', label: '仓' },
+  { prop: 'on_hand', label: '在手' },
+  { prop: 'reserved', label: '占用' },
+  { prop: 'available', label: '可用' },
+]
+const txnCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'doc_type', label: '类型' },
+  { prop: 'warehouse_id', label: '仓' },
+  { prop: 'status', label: '状态' },
+  { prop: 'remark', label: '备注' },
+]
+const stocktakeCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'stocktake_type', label: '类型' },
+  { prop: 'warehouse_id', label: '仓' },
+  { prop: 'biz_date', label: '日期' },
+  { prop: 'status', label: '状态' },
+]
+const hitCols: MobileCardColumn[] = [
+  { prop: 'product_id', label: '物料', primary: true },
+  { prop: 'warehouse_id', label: '仓' },
+  { prop: 'qty', label: '结存' },
+  { prop: 'min_qty', label: '下限' },
+  { prop: 'max_qty', label: '上限' },
+]
+const alertRuleCols: MobileCardColumn[] = [
+  { prop: 'id', label: 'ID', primary: true },
+  { prop: 'product_id', label: '物料' },
+  { prop: 'warehouse_id', label: '仓' },
+  { prop: 'min_qty', label: '下限' },
+  { prop: 'max_qty', label: '上限' },
+  { prop: 'is_enabled', label: '启用' },
+]
+const inboundQcCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'product_id', label: '物料' },
+  { prop: 'qty_check', label: '抽检' },
+  { prop: 'qty_pass', label: '合格' },
+  { prop: 'qty_fail', label: '不合格' },
+  { prop: 'result', label: '结果' },
+  { prop: 'status', label: '状态' },
+]
+const transitCols: MobileCardColumn[] = [
+  { prop: 'id', label: 'ID', primary: true },
+  { prop: 'product_id', label: '物料' },
+  { prop: 'warehouse_id', label: '目标仓' },
+  { prop: 'qty', label: '在途量' },
+  { prop: 'transit_type', label: '类型' },
+  { prop: 'source_doc_type', label: '来源' },
+  { prop: 'status', label: '状态' },
+]
+const reservationCols: MobileCardColumn[] = [
+  { prop: 'id', label: 'ID', primary: true },
+  { prop: 'warehouse_id', label: '仓' },
+  { prop: 'product_id', label: '物料' },
+  { prop: 'qty', label: '占用' },
+  { prop: 'source_doc_type', label: '来源类型' },
+  { prop: 'source_doc_id', label: '来源ID' },
+  { prop: 'status', label: '状态' },
+]
+const openingCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'warehouse_id', label: '仓' },
+  { prop: 'status', label: '状态' },
+  { prop: 'created_at', label: '创建时间' },
+]
+const peelCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'product_id', label: '物料' },
+  { prop: 'peel_qty', label: '退皮量' },
+  { prop: 'status', label: '状态' },
+]
+const payableCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'supplier_id', label: '供应商' },
+  { prop: 'product_id', label: '物料' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'status', label: '状态' },
+]
+const purchaseReturnCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'supplier_id', label: '供应商' },
+  { prop: 'warehouse_id', label: '仓' },
+  { prop: 'status', label: '状态' },
+  { prop: 'reason', label: '原因' },
+]
+const boxCols: MobileCardColumn[] = [
+  { prop: 'code', label: '箱码', primary: true },
+  { prop: 'product_id', label: '物料' },
+  { prop: 'warehouse_id', label: '仓' },
+  { prop: 'weight', label: '重量' },
+  { prop: 'status', label: '状态' },
+  { prop: 'trace_code', label: '溯源码' },
+]
 
 const route = useRoute()
 const router = useRouter()
@@ -55,6 +162,38 @@ const transferTab = ref<'transfer' | 'consume'>('transfer')
 const assembleTab = ref<'assemble' | 'price'>('assemble')
 const boxCode = ref('')
 const boxTrace = ref<Row | null>(null)
+
+const transferCols = computed<MobileCardColumn[]>(() =>
+  transferTab.value === 'transfer'
+    ? [
+        { prop: 'doc_no', label: '单号', primary: true },
+        { prop: 'from_warehouse_id', label: '出仓' },
+        { prop: 'to_warehouse_id', label: '入仓' },
+        { prop: 'biz_date', label: '日期' },
+        { prop: 'status', label: '状态' },
+      ]
+    : [
+        { prop: 'doc_no', label: '单号', primary: true },
+        { prop: 'warehouse_id', label: '仓' },
+        { prop: 'biz_date', label: '日期' },
+        { prop: 'status', label: '状态' },
+      ],
+)
+const assembleCols = computed<MobileCardColumn[]>(() =>
+  assembleTab.value === 'assemble'
+    ? [
+        { prop: 'doc_no', label: '单号', primary: true },
+        { prop: 'biz_type', label: '类型' },
+        { prop: 'status', label: '状态' },
+      ]
+    : [
+        { prop: 'doc_no', label: '单号', primary: true },
+        { prop: 'product_id', label: '物料' },
+        { prop: 'old_price', label: '原价' },
+        { prop: 'new_price', label: '新价' },
+        { prop: 'status', label: '状态' },
+      ],
+)
 
 const txnForm = reactive({
   warehouse_id: 1,
@@ -457,24 +596,28 @@ watch([active, transferTab, assembleTab], refresh)
     <template v-else>
       <!-- 库存查询 -->
       <template v-if="active === 'balances'">
-        <el-table :data="list" size="small">
-          <el-table-column prop="warehouse_name" label="仓库" width="120" />
-          <el-table-column prop="product_code" label="料号" width="110" />
-          <el-table-column prop="product_name" label="名称" min-width="160" />
-          <el-table-column prop="batch_no" label="批次" width="100" />
-          <el-table-column prop="qty" label="结存" width="100" />
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="balanceCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="warehouse_name" label="仓库" width="120" />
+            <el-table-column prop="product_code" label="料号" width="110" />
+            <el-table-column prop="product_name" label="名称" min-width="160" />
+            <el-table-column prop="batch_no" label="批次" width="100" />
+            <el-table-column prop="qty" label="结存" width="100" />
+          </el-table>
+        </TableOrCards>
       </template>
 
       <!-- 可用量 -->
       <template v-else-if="active === 'availability'">
-        <el-table :data="list" size="small">
-          <el-table-column prop="warehouse_id" label="仓" width="80" />
-          <el-table-column prop="product_id" label="物料" width="90" />
-          <el-table-column prop="on_hand" label="在手" width="100" />
-          <el-table-column prop="reserved" label="占用" width="100" />
-          <el-table-column prop="available" label="可用" width="100" />
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="availabilityCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="warehouse_id" label="仓" width="80" />
+            <el-table-column prop="product_id" label="物料" width="90" />
+            <el-table-column prop="on_hand" label="在手" width="100" />
+            <el-table-column prop="reserved" label="占用" width="100" />
+            <el-table-column prop="available" label="可用" width="100" />
+          </el-table>
+        </TableOrCards>
       </template>
 
       <!-- 出入库 -->
@@ -506,20 +649,30 @@ watch([active, transferTab, assembleTab], refresh)
             <el-button type="primary" @click="createTxn">新建</el-button>
           </el-form>
         </el-card>
-        <el-table :data="list" size="small">
-          <el-table-column prop="doc_no" label="单号" width="160" />
-          <el-table-column prop="doc_type" label="类型" width="120" />
-          <el-table-column prop="warehouse_id" label="仓" width="70" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column prop="remark" label="备注" min-width="140" />
-          <el-table-column label="操作" width="220" fixed="right">
-            <template #default="{ row }">
-              <el-button link @click="openTxn(Number(row.id))">明细</el-button>
-              <el-button v-if="row.status==='draft'" link type="primary" @click="postTxn(Number(row.id))">过账</el-button>
-              <el-button v-if="row.status==='draft'" link type="danger" @click="cancelTxn(Number(row.id))">作废</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="txnCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="doc_no" label="单号" width="160" />
+            <el-table-column prop="doc_type" label="类型" width="120" />
+            <el-table-column prop="warehouse_id" label="仓" width="70" />
+            <el-table-column prop="status" label="状态" width="90" />
+            <el-table-column prop="remark" label="备注" min-width="140" />
+            <el-table-column label="操作" width="220" fixed="right">
+              <template #default="{ row }">
+                <el-button link @click="openTxn(Number(row.id))">明细</el-button>
+                <el-button v-if="row.status==='draft'" link type="primary" @click="postTxn(Number(row.id))">过账</el-button>
+                <el-button v-if="row.status==='draft'" link type="danger" @click="cancelTxn(Number(row.id))">作废</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+          </template>
+          <template #actions="{ row }">
+            <el-button link @click="openTxn(Number(row.id))">明细</el-button>
+            <el-button v-if="row.status==='draft'" link type="primary" @click="postTxn(Number(row.id))">过账</el-button>
+            <el-button v-if="row.status==='draft'" link type="danger" @click="cancelTxn(Number(row.id))">作废</el-button>
+          </template>
+        </TableOrCards>
       </template>
 
       <!-- 盘点 -->
@@ -539,35 +692,53 @@ watch([active, transferTab, assembleTab], refresh)
             <el-button type="primary" @click="createStocktake">新建</el-button>
           </el-form>
         </el-card>
-        <el-table :data="list" size="small">
-          <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column prop="stocktake_type" label="类型" width="100" />
-          <el-table-column prop="warehouse_id" label="仓" width="70" />
-          <el-table-column prop="biz_date" label="日期" width="110" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column label="操作" width="260" fixed="right">
-            <template #default="{ row }">
-              <el-button link @click="openStocktake(Number(row.id))">明细</el-button>
-              <el-button v-if="row.status==='draft'" link type="primary" @click="submitStocktake(Number(row.id))">提交</el-button>
-              <el-button v-if="row.status==='draft' || row.status==='submitted'" link type="success" @click="postStocktake(Number(row.id))">过账</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="stocktakeCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="doc_no" label="单号" width="150" />
+            <el-table-column prop="stocktake_type" label="类型" width="100" />
+            <el-table-column prop="warehouse_id" label="仓" width="70" />
+            <el-table-column prop="biz_date" label="日期" width="110" />
+            <el-table-column prop="status" label="状态" width="90" />
+            <el-table-column label="操作" width="260" fixed="right">
+              <template #default="{ row }">
+                <el-button link @click="openStocktake(Number(row.id))">明细</el-button>
+                <el-button v-if="row.status==='draft'" link type="primary" @click="submitStocktake(Number(row.id))">提交</el-button>
+                <el-button v-if="row.status==='draft' || row.status==='submitted'" link type="success" @click="postStocktake(Number(row.id))">过账</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+          </template>
+          <template #actions="{ row }">
+            <el-button link @click="openStocktake(Number(row.id))">明细</el-button>
+            <el-button v-if="row.status==='draft'" link type="primary" @click="submitStocktake(Number(row.id))">提交</el-button>
+            <el-button v-if="row.status==='draft' || row.status==='submitted'" link type="success" @click="postStocktake(Number(row.id))">过账</el-button>
+          </template>
+        </TableOrCards>
       </template>
 
       <template v-else-if="active === 'stocktake-records'">
-        <el-table :data="list" size="small">
-          <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column prop="stocktake_type" label="类型" width="100" />
-          <el-table-column prop="warehouse_id" label="仓" width="70" />
-          <el-table-column prop="biz_date" label="日期" width="110" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column label="操作" width="100">
-            <template #default="{ row }">
-              <el-button link @click="openStocktake(Number(row.id))">明细</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="stocktakeCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="doc_no" label="单号" width="150" />
+            <el-table-column prop="stocktake_type" label="类型" width="100" />
+            <el-table-column prop="warehouse_id" label="仓" width="70" />
+            <el-table-column prop="biz_date" label="日期" width="110" />
+            <el-table-column prop="status" label="状态" width="90" />
+            <el-table-column label="操作" width="100">
+              <template #default="{ row }">
+                <el-button link @click="openStocktake(Number(row.id))">明细</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+          </template>
+          <template #actions="{ row }">
+            <el-button link @click="openStocktake(Number(row.id))">明细</el-button>
+          </template>
+        </TableOrCards>
       </template>
 
       <!-- 调拨耗用 -->
@@ -601,24 +772,37 @@ watch([active, transferTab, assembleTab], refresh)
             <el-button type="primary" @click="createConsume">新建</el-button>
           </el-form>
         </el-card>
-        <el-table :data="list" size="small">
-          <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column v-if="transferTab==='transfer'" prop="from_warehouse_id" label="出仓" width="80" />
-          <el-table-column v-if="transferTab==='transfer'" prop="to_warehouse_id" label="入仓" width="80" />
-          <el-table-column v-else prop="warehouse_id" label="仓" width="80" />
-          <el-table-column prop="biz_date" label="日期" width="110" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column label="操作" width="120">
-            <template #default="{ row }">
-              <el-button
-                v-if="row.status==='draft'"
-                link
-                type="primary"
-                @click="transferTab==='transfer' ? postTransfer(Number(row.id)) : postConsume(Number(row.id))"
-              >过账</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="transferCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="doc_no" label="单号" width="150" />
+            <el-table-column v-if="transferTab==='transfer'" prop="from_warehouse_id" label="出仓" width="80" />
+            <el-table-column v-if="transferTab==='transfer'" prop="to_warehouse_id" label="入仓" width="80" />
+            <el-table-column v-else prop="warehouse_id" label="仓" width="80" />
+            <el-table-column prop="biz_date" label="日期" width="110" />
+            <el-table-column prop="status" label="状态" width="90" />
+            <el-table-column label="操作" width="120">
+              <template #default="{ row }">
+                <el-button
+                  v-if="row.status==='draft'"
+                  link
+                  type="primary"
+                  @click="transferTab==='transfer' ? postTransfer(Number(row.id)) : postConsume(Number(row.id))"
+                >过账</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+          </template>
+          <template #actions="{ row }">
+            <el-button
+              v-if="row.status==='draft'"
+              link
+              type="primary"
+              @click="transferTab==='transfer' ? postTransfer(Number(row.id)) : postConsume(Number(row.id))"
+            >过账</el-button>
+          </template>
+        </TableOrCards>
       </template>
 
       <!-- 预警 -->
@@ -639,22 +823,26 @@ watch([active, transferTab, assembleTab], refresh)
           </el-form>
         </el-card>
         <h4>当前命中</h4>
-        <el-table :data="hits" size="small" class="mb">
-          <el-table-column prop="warehouse_id" label="仓" width="80" />
-          <el-table-column prop="product_id" label="物料" width="90" />
-          <el-table-column prop="qty" label="结存" width="100" />
-          <el-table-column prop="min_qty" label="下限" width="100" />
-          <el-table-column prop="max_qty" label="上限" width="100" />
-        </el-table>
+        <TableOrCards :data="hits" :loading="loading" :columns="hitCols" class="mb">
+          <el-table :data="hits" size="small" class="mb">
+            <el-table-column prop="warehouse_id" label="仓" width="80" />
+            <el-table-column prop="product_id" label="物料" width="90" />
+            <el-table-column prop="qty" label="结存" width="100" />
+            <el-table-column prop="min_qty" label="下限" width="100" />
+            <el-table-column prop="max_qty" label="上限" width="100" />
+          </el-table>
+        </TableOrCards>
         <h4>规则列表</h4>
-        <el-table :data="list" size="small">
-          <el-table-column prop="id" label="ID" width="70" />
-          <el-table-column prop="product_id" label="物料" width="90" />
-          <el-table-column prop="warehouse_id" label="仓" width="80" />
-          <el-table-column prop="min_qty" label="下限" width="100" />
-          <el-table-column prop="max_qty" label="上限" width="100" />
-          <el-table-column prop="is_enabled" label="启用" width="80" />
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="alertRuleCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="id" label="ID" width="70" />
+            <el-table-column prop="product_id" label="物料" width="90" />
+            <el-table-column prop="warehouse_id" label="仓" width="80" />
+            <el-table-column prop="min_qty" label="下限" width="100" />
+            <el-table-column prop="max_qty" label="上限" width="100" />
+            <el-table-column prop="is_enabled" label="启用" width="80" />
+          </el-table>
+        </TableOrCards>
       </template>
 
       <!-- 入库质检 -->
@@ -671,52 +859,74 @@ watch([active, transferTab, assembleTab], refresh)
             <el-button type="primary" @click="createQc">新建</el-button>
           </el-form>
         </el-card>
-        <el-table :data="list" size="small">
-          <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column prop="product_id" label="物料" width="90" />
-          <el-table-column prop="qty_check" label="抽检" width="90" />
-          <el-table-column prop="qty_pass" label="合格" width="90" />
-          <el-table-column prop="qty_fail" label="不合格" width="90" />
-          <el-table-column prop="result" label="结果" width="80" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column label="操作" width="160">
-            <template #default="{ row }">
-              <el-button v-if="row.status==='draft'" link type="success" @click="passQc(Number(row.id))">通过</el-button>
-              <el-button v-if="row.status==='draft'" link type="danger" @click="failQc(Number(row.id))">不合格</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="inboundQcCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="doc_no" label="单号" width="150" />
+            <el-table-column prop="product_id" label="物料" width="90" />
+            <el-table-column prop="qty_check" label="抽检" width="90" />
+            <el-table-column prop="qty_pass" label="合格" width="90" />
+            <el-table-column prop="qty_fail" label="不合格" width="90" />
+            <el-table-column prop="result" label="结果" width="80" />
+            <el-table-column prop="status" label="状态" width="90" />
+            <el-table-column label="操作" width="160">
+              <template #default="{ row }">
+                <el-button v-if="row.status==='draft'" link type="success" @click="passQc(Number(row.id))">通过</el-button>
+                <el-button v-if="row.status==='draft'" link type="danger" @click="failQc(Number(row.id))">不合格</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+          </template>
+          <template #actions="{ row }">
+            <el-button v-if="row.status==='draft'" link type="success" @click="passQc(Number(row.id))">通过</el-button>
+            <el-button v-if="row.status==='draft'" link type="danger" @click="failQc(Number(row.id))">不合格</el-button>
+          </template>
+        </TableOrCards>
       </template>
 
       <!-- 在途 -->
       <template v-else-if="active === 'in-transits'">
-        <el-table :data="list" size="small">
-          <el-table-column prop="id" label="ID" width="70" />
-          <el-table-column prop="product_id" label="物料" width="90" />
-          <el-table-column prop="warehouse_id" label="目标仓" width="90" />
-          <el-table-column prop="qty" label="在途量" width="100" />
-          <el-table-column prop="transit_type" label="类型" width="100" />
-          <el-table-column prop="source_doc_type" label="来源" width="120" />
-          <el-table-column prop="status" label="状态" width="90" />
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="transitCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="id" label="ID" width="70" />
+            <el-table-column prop="product_id" label="物料" width="90" />
+            <el-table-column prop="warehouse_id" label="目标仓" width="90" />
+            <el-table-column prop="qty" label="在途量" width="100" />
+            <el-table-column prop="transit_type" label="类型" width="100" />
+            <el-table-column prop="source_doc_type" label="来源" width="120" />
+            <el-table-column prop="status" label="状态" width="90" />
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+          </template>
+        </TableOrCards>
       </template>
 
       <!-- 待用占用 -->
       <template v-else-if="active === 'reservations'">
-        <el-table :data="list" size="small">
-          <el-table-column prop="id" label="ID" width="70" />
-          <el-table-column prop="warehouse_id" label="仓" width="80" />
-          <el-table-column prop="product_id" label="物料" width="90" />
-          <el-table-column prop="qty" label="占用" width="100" />
-          <el-table-column prop="source_doc_type" label="来源类型" width="120" />
-          <el-table-column prop="source_doc_id" label="来源ID" width="90" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column label="操作" width="100">
-            <template #default="{ row }">
-              <el-button v-if="row.status==='active'" link type="warning" @click="releaseRsv(Number(row.id))">释放</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="reservationCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="id" label="ID" width="70" />
+            <el-table-column prop="warehouse_id" label="仓" width="80" />
+            <el-table-column prop="product_id" label="物料" width="90" />
+            <el-table-column prop="qty" label="占用" width="100" />
+            <el-table-column prop="source_doc_type" label="来源类型" width="120" />
+            <el-table-column prop="source_doc_id" label="来源ID" width="90" />
+            <el-table-column prop="status" label="状态" width="90" />
+            <el-table-column label="操作" width="100">
+              <template #default="{ row }">
+                <el-button v-if="row.status==='active'" link type="warning" @click="releaseRsv(Number(row.id))">释放</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+          </template>
+          <template #actions="{ row }">
+            <el-button v-if="row.status==='active'" link type="warning" @click="releaseRsv(Number(row.id))">释放</el-button>
+          </template>
+        </TableOrCards>
       </template>
 
       <!-- 期初 -->
@@ -733,17 +943,25 @@ watch([active, transferTab, assembleTab], refresh)
             <el-button type="primary" @click="createOpening">新建</el-button>
           </el-form>
         </el-card>
-        <el-table :data="list" size="small">
-          <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column prop="warehouse_id" label="仓" width="80" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column prop="created_at" label="创建时间" width="160" />
-          <el-table-column label="操作" width="100">
-            <template #default="{ row }">
-              <el-button v-if="row.status==='draft'" link type="primary" @click="postOpening(Number(row.id))">过账</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="openingCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="doc_no" label="单号" width="150" />
+            <el-table-column prop="warehouse_id" label="仓" width="80" />
+            <el-table-column prop="status" label="状态" width="90" />
+            <el-table-column prop="created_at" label="创建时间" width="160" />
+            <el-table-column label="操作" width="100">
+              <template #default="{ row }">
+                <el-button v-if="row.status==='draft'" link type="primary" @click="postOpening(Number(row.id))">过账</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+          </template>
+          <template #actions="{ row }">
+            <el-button v-if="row.status==='draft'" link type="primary" @click="postOpening(Number(row.id))">过账</el-button>
+          </template>
+        </TableOrCards>
       </template>
 
       <!-- 退皮 -->
@@ -761,17 +979,25 @@ watch([active, transferTab, assembleTab], refresh)
             <el-button type="primary" @click="createPeel">新建</el-button>
           </el-form>
         </el-card>
-        <el-table :data="list" size="small">
-          <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column prop="product_id" label="物料" width="90" />
-          <el-table-column prop="peel_qty" label="退皮量" width="100" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column label="操作" width="100">
-            <template #default="{ row }">
-              <el-button v-if="row.status==='draft'" link type="primary" @click="postPeel(Number(row.id))">过账入库</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="peelCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="doc_no" label="单号" width="150" />
+            <el-table-column prop="product_id" label="物料" width="90" />
+            <el-table-column prop="peel_qty" label="退皮量" width="100" />
+            <el-table-column prop="status" label="状态" width="90" />
+            <el-table-column label="操作" width="100">
+              <template #default="{ row }">
+                <el-button v-if="row.status==='draft'" link type="primary" @click="postPeel(Number(row.id))">过账入库</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+          </template>
+          <template #actions="{ row }">
+            <el-button v-if="row.status==='draft'" link type="primary" @click="postPeel(Number(row.id))">过账入库</el-button>
+          </template>
+        </TableOrCards>
       </template>
 
       <!-- 组装调价 -->
@@ -816,24 +1042,37 @@ watch([active, transferTab, assembleTab], refresh)
             <el-button type="primary" @click="createPrice">新建</el-button>
           </el-form>
         </el-card>
-        <el-table :data="list" size="small">
-          <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column v-if="assembleTab==='assemble'" prop="biz_type" label="类型" width="90" />
-          <el-table-column v-if="assembleTab==='price'" prop="product_id" label="物料" width="90" />
-          <el-table-column v-if="assembleTab==='price'" prop="old_price" label="原价" width="90" />
-          <el-table-column v-if="assembleTab==='price'" prop="new_price" label="新价" width="90" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column label="操作" width="100">
-            <template #default="{ row }">
-              <el-button
-                v-if="assembleTab==='assemble' && row.status==='draft'"
-                link
-                type="primary"
-                @click="postAssemble(Number(row.id))"
-              >过账</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="assembleCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="doc_no" label="单号" width="150" />
+            <el-table-column v-if="assembleTab==='assemble'" prop="biz_type" label="类型" width="90" />
+            <el-table-column v-if="assembleTab==='price'" prop="product_id" label="物料" width="90" />
+            <el-table-column v-if="assembleTab==='price'" prop="old_price" label="原价" width="90" />
+            <el-table-column v-if="assembleTab==='price'" prop="new_price" label="新价" width="90" />
+            <el-table-column prop="status" label="状态" width="90" />
+            <el-table-column label="操作" width="100">
+              <template #default="{ row }">
+                <el-button
+                  v-if="assembleTab==='assemble' && row.status==='draft'"
+                  link
+                  type="primary"
+                  @click="postAssemble(Number(row.id))"
+                >过账</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+          </template>
+          <template #actions="{ row }">
+            <el-button
+              v-if="assembleTab==='assemble' && row.status==='draft'"
+              link
+              type="primary"
+              @click="postAssemble(Number(row.id))"
+            >过账</el-button>
+          </template>
+        </TableOrCards>
       </template>
 
       <!-- 转应付 -->
@@ -851,18 +1090,26 @@ watch([active, transferTab, assembleTab], refresh)
             <el-button type="primary" @click="createPayable">新建</el-button>
           </el-form>
         </el-card>
-        <el-table :data="list" size="small">
-          <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column prop="supplier_id" label="供应商" width="90" />
-          <el-table-column prop="product_id" label="物料" width="90" />
-          <el-table-column prop="amount" label="金额" width="100" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column label="操作" width="100">
-            <template #default="{ row }">
-              <el-button v-if="row.status==='draft'" link type="primary" @click="submitPayable(Number(row.id))">提交</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="payableCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="doc_no" label="单号" width="150" />
+            <el-table-column prop="supplier_id" label="供应商" width="90" />
+            <el-table-column prop="product_id" label="物料" width="90" />
+            <el-table-column prop="amount" label="金额" width="100" />
+            <el-table-column prop="status" label="状态" width="90" />
+            <el-table-column label="操作" width="100">
+              <template #default="{ row }">
+                <el-button v-if="row.status==='draft'" link type="primary" @click="submitPayable(Number(row.id))">提交</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+          </template>
+          <template #actions="{ row }">
+            <el-button v-if="row.status==='draft'" link type="primary" @click="submitPayable(Number(row.id))">提交</el-button>
+          </template>
+        </TableOrCards>
       </template>
 
       <!-- 采购退货视图 -->
@@ -874,13 +1121,18 @@ watch([active, transferTab, assembleTab], refresh)
           title="库存侧只读视图；办理退货过账请使用采购管理 → 采购退货"
         />
         <el-button class="mb" type="primary" size="small" @click="router.push('/purchase/hub/returns')">前往采购退货</el-button>
-        <el-table :data="list" size="small">
-          <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column prop="supplier_id" label="供应商" width="90" />
-          <el-table-column prop="warehouse_id" label="仓" width="80" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column prop="reason" label="原因" min-width="160" />
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="purchaseReturnCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="doc_no" label="单号" width="150" />
+            <el-table-column prop="supplier_id" label="供应商" width="90" />
+            <el-table-column prop="warehouse_id" label="仓" width="80" />
+            <el-table-column prop="status" label="状态" width="90" />
+            <el-table-column prop="reason" label="原因" min-width="160" />
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+          </template>
+        </TableOrCards>
       </template>
 
       <!-- 箱码 -->
@@ -905,14 +1157,19 @@ watch([active, transferTab, assembleTab], refresh)
           </el-form>
           <pre v-if="boxTrace" class="trace">{{ boxTrace }}</pre>
         </el-card>
-        <el-table :data="list" size="small">
-          <el-table-column prop="code" label="箱码" width="160" />
-          <el-table-column prop="product_id" label="物料" width="90" />
-          <el-table-column prop="warehouse_id" label="仓" width="80" />
-          <el-table-column prop="weight" label="重量" width="90" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column prop="trace_code" label="溯源码" min-width="140" />
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="boxCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="code" label="箱码" width="160" />
+            <el-table-column prop="product_id" label="物料" width="90" />
+            <el-table-column prop="warehouse_id" label="仓" width="80" />
+            <el-table-column prop="weight" label="重量" width="90" />
+            <el-table-column prop="status" label="状态" width="90" />
+            <el-table-column prop="trace_code" label="溯源码" min-width="140" />
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+          </template>
+        </TableOrCards>
       </template>
     </template>
 

@@ -3,9 +3,114 @@ import { onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { hrApi, LEAVE_TYPE_OPTIONS, OVERTIME_BIZ_OPTIONS } from '@erp/shared'
 import { EmployeeSelect, WorkshopSelect, CustomerSelect, EnumSelect } from '../../components/select'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
 const props = defineProps<{ module: string }>()
+
+const offboardCols: MobileCardColumn[] = [
+  { prop: 'name', label: '姓名', primary: true },
+  { prop: 'id', label: '单号' },
+  { prop: 'offboard_date', label: '离职日' },
+  { prop: 'emp_no', label: '工号' },
+  { prop: 'reason', label: '原因' },
+  { prop: 'revoke_permission', label: '收回权限' },
+  { prop: 'status', label: '状态' },
+]
+const shiftCols: MobileCardColumn[] = [
+  { prop: 'name', label: '名称', primary: true },
+  { prop: 'code', label: '编码' },
+  { prop: 'start_time', label: '开始' },
+  { prop: 'end_time', label: '结束' },
+  { prop: 'workshop_id', label: '车间' },
+  { prop: 'status', label: '状态' },
+]
+const attRuleCols: MobileCardColumn[] = [
+  { prop: 'name', label: '规则名', primary: true },
+  { prop: 'shift_id', label: '班次' },
+  { prop: 'late_minutes', label: '迟到阈值(分)' },
+  { prop: 'early_minutes', label: '早退阈值(分)' },
+  { prop: 'status', label: '状态' },
+]
+const attRecordCols: MobileCardColumn[] = [
+  { prop: 'name', label: '姓名', primary: true },
+  { prop: 'emp_no', label: '工号' },
+  { prop: 'biz_date', label: '日期' },
+  { prop: 'check_in_at', label: '上班' },
+  { prop: 'check_out_at', label: '下班' },
+  { prop: 'shift_id', label: '班次' },
+  { prop: 'source', label: '来源' },
+]
+const leaveCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'emp_no', label: '工号' },
+  { prop: 'name', label: '姓名' },
+  { prop: 'leave_type', label: '类型' },
+  { prop: 'start_at', label: '开始' },
+  { prop: 'end_at', label: '结束' },
+  { prop: 'status', label: '状态' },
+]
+const otCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'emp_no', label: '工号' },
+  { prop: 'name', label: '姓名' },
+  { prop: 'biz_type', label: '类型' },
+  { prop: 'biz_date', label: '日期' },
+  { prop: 'minutes', label: '分钟' },
+  { prop: 'status', label: '状态' },
+  { prop: 'remark', label: '备注' },
+]
+const monthStatCols: MobileCardColumn[] = [
+  { prop: 'name', label: '姓名', primary: true },
+  { prop: 'emp_no', label: '工号' },
+  { prop: 'year', label: '年' },
+  { prop: 'month', label: '月' },
+  { prop: 'work_days', label: '出勤天' },
+  { prop: 'late_times', label: '迟到次' },
+  { prop: 'ot_hours', label: '加班时' },
+  { prop: 'leave_days', label: '请假天' },
+]
+const schemeCols: MobileCardColumn[] = [
+  { prop: 'name', label: '名称', primary: true },
+  { prop: 'id', label: 'ID' },
+  { prop: 'status', label: '状态' },
+]
+const perfResultCols: MobileCardColumn[] = [
+  { prop: 'period', label: '周期', primary: true },
+  { prop: 'scheme_id', label: '方案' },
+  { prop: 'employee_id', label: '员工ID' },
+  { prop: 'score', label: '得分' },
+  { prop: 'amount', label: '金额' },
+]
+const attPerfCols: MobileCardColumn[] = [
+  { prop: 'name', label: '姓名', primary: true },
+  { prop: 'emp_no', label: '工号' },
+  { prop: 'period', label: '周期' },
+  { prop: 'attendance_score', label: '考勤分' },
+  { prop: 'perf_score', label: '绩效分' },
+  { prop: 'summary_json', label: '摘要' },
+]
+const visitCols: MobileCardColumn[] = [
+  { prop: 'name', label: '姓名', primary: true },
+  { prop: 'emp_no', label: '工号' },
+  { prop: 'customer_id', label: '客户ID' },
+  { prop: 'visit_at', label: '时间' },
+  { prop: 'location', label: '地点' },
+  { prop: 'content', label: '内容' },
+]
+const memoCols: MobileCardColumn[] = [
+  { prop: 'title', label: '标题', primary: true },
+  { prop: 'biz_date', label: '日期' },
+  { prop: 'content', label: '内容' },
+]
+const journalCols: MobileCardColumn[] = [
+  { prop: 'name', label: '姓名', primary: true },
+  { prop: 'emp_no', label: '工号' },
+  { prop: 'biz_date', label: '日期' },
+  { prop: 'content', label: '内容' },
+  { prop: 'created_at', label: '创建时间' },
+]
 
 const loading = ref(false)
 const list = ref<Row[]>([])
@@ -246,174 +351,231 @@ onMounted(load)
       <el-button @click="load">刷新</el-button>
     </div>
 
-    <el-table v-if="module === '离职登记'" :data="list" border stripe>
-      <el-table-column prop="id" label="单号" width="70" />
-      <el-table-column prop="offboard_date" label="离职日" width="110" />
-      <el-table-column prop="emp_no" label="工号" width="110" />
-      <el-table-column prop="name" label="姓名" />
-      <el-table-column prop="reason" label="原因" />
-      <el-table-column label="收回权限" width="90">
-        <template #default="{ row }">{{ row.revoke_permission ? '是' : '否' }}</template>
-      </el-table-column>
-      <el-table-column prop="status" label="状态" width="90" />
-      <el-table-column label="操作" width="110">
-        <template #default="{ row }">
-          <el-button v-if="row.status === 'draft'" link type="danger" @click="confirmOffboard(row)">确认离职</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <el-table v-else-if="module === '班次管理'" :data="list" border stripe>
-      <el-table-column prop="code" label="编码" />
-      <el-table-column prop="name" label="名称" />
-      <el-table-column prop="start_time" label="开始" width="90" />
-      <el-table-column prop="end_time" label="结束" width="90" />
-      <el-table-column prop="workshop_id" label="车间" width="80" />
-      <el-table-column prop="status" label="状态" width="90" />
-      <el-table-column label="操作" width="140">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="danger" @click="removeShift(row)">停用</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <el-table v-else-if="module === '考勤管理'" :data="list" border stripe>
-      <el-table-column prop="name" label="规则名" />
-      <el-table-column label="班次" width="120">
-        <template #default="{ row }">{{ shiftName(row.shift_id) }}</template>
-      </el-table-column>
-      <el-table-column prop="late_minutes" label="迟到阈值(分)" width="120" />
-      <el-table-column prop="early_minutes" label="早退阈值(分)" width="120" />
-      <el-table-column prop="status" label="状态" width="90" />
-      <el-table-column label="操作" width="90">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <el-table v-else-if="module === '考勤明细'" :data="list" border stripe>
-      <el-table-column prop="emp_no" label="工号" width="100" />
-      <el-table-column prop="name" label="姓名" width="90" />
-      <el-table-column prop="biz_date" label="日期" width="110" />
-      <el-table-column prop="check_in_at" label="上班" />
-      <el-table-column prop="check_out_at" label="下班" />
-      <el-table-column label="班次" width="100">
-        <template #default="{ row }">{{ shiftName(row.shift_id) }}</template>
-      </el-table-column>
-      <el-table-column prop="source" label="来源" width="90" />
-    </el-table>
-
-    <el-table v-else-if="module === '请假管理'" :data="list" border stripe>
-      <el-table-column prop="doc_no" label="单号" width="140" />
-      <el-table-column prop="emp_no" label="工号" width="100" />
-      <el-table-column prop="name" label="姓名" width="90" />
-      <el-table-column prop="leave_type" label="类型" width="90" />
-      <el-table-column prop="start_at" label="开始" />
-      <el-table-column prop="end_at" label="结束" />
-      <el-table-column prop="status" label="状态" width="90" />
-      <el-table-column label="操作" width="200">
-        <template #default="{ row }">
-          <template v-if="row.status === 'pending' || row.status === 'draft'">
-            <el-button link type="success" @click="approveLeave(row)">批准</el-button>
-            <el-button link type="warning" @click="rejectLeave(row)">驳回</el-button>
-            <el-button link type="danger" @click="cancelLeave(row)">撤销</el-button>
+    <TableOrCards v-if="module === '离职登记'" :data="list" :loading="loading" :columns="offboardCols">
+      <el-table :data="list" border stripe>
+        <el-table-column prop="id" label="单号" width="70" />
+        <el-table-column prop="offboard_date" label="离职日" width="110" />
+        <el-table-column prop="emp_no" label="工号" width="110" />
+        <el-table-column prop="name" label="姓名" />
+        <el-table-column prop="reason" label="原因" />
+        <el-table-column label="收回权限" width="90">
+          <template #default="{ row }">{{ row.revoke_permission ? '是' : '否' }}</template>
+        </el-table-column>
+        <el-table-column prop="status" label="状态" width="90" />
+        <el-table-column label="操作" width="110">
+          <template #default="{ row }">
+            <el-button v-if="row.status === 'draft'" link type="danger" @click="confirmOffboard(row)">确认离职</el-button>
           </template>
-        </template>
-      </el-table-column>
-    </el-table>
+        </el-table-column>
+      </el-table>
+      <template #actions="{ row }">
+        <el-button v-if="row.status === 'draft'" link type="danger" @click="confirmOffboard(row)">确认离职</el-button>
+      </template>
+    </TableOrCards>
 
-    <el-table v-else-if="module === '加班补卡统计'" :data="list" border stripe>
-      <el-table-column prop="doc_no" label="单号" width="140" />
-      <el-table-column prop="emp_no" label="工号" width="100" />
-      <el-table-column prop="name" label="姓名" width="90" />
-      <el-table-column prop="biz_type" label="类型" width="90" />
-      <el-table-column prop="biz_date" label="日期" width="110" />
-      <el-table-column prop="minutes" label="分钟" width="80" />
-      <el-table-column prop="status" label="状态" width="90" />
-      <el-table-column prop="remark" label="备注" />
-      <el-table-column label="操作" width="200">
-        <template #default="{ row }">
-          <template v-if="row.status === 'pending' || row.status === 'draft'">
-            <el-button link type="success" @click="approveOT(row)">批准</el-button>
-            <el-button link type="warning" @click="rejectOT(row)">驳回</el-button>
-            <el-button link type="danger" @click="cancelOT(row)">撤销</el-button>
+    <TableOrCards v-else-if="module === '班次管理'" :data="list" :loading="loading" :columns="shiftCols">
+      <el-table :data="list" border stripe>
+        <el-table-column prop="code" label="编码" />
+        <el-table-column prop="name" label="名称" />
+        <el-table-column prop="start_time" label="开始" width="90" />
+        <el-table-column prop="end_time" label="结束" width="90" />
+        <el-table-column prop="workshop_id" label="车间" width="80" />
+        <el-table-column prop="status" label="状态" width="90" />
+        <el-table-column label="操作" width="140">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+            <el-button link type="danger" @click="removeShift(row)">停用</el-button>
           </template>
-        </template>
-      </el-table-column>
-    </el-table>
+        </el-table-column>
+      </el-table>
+      <template #actions="{ row }">
+        <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+        <el-button link type="danger" @click="removeShift(row)">停用</el-button>
+      </template>
+    </TableOrCards>
 
-    <el-table v-else-if="module === '考勤月度统计'" :data="list" border stripe>
-      <el-table-column prop="emp_no" label="工号" width="100" />
-      <el-table-column prop="name" label="姓名" width="90" />
-      <el-table-column prop="year" label="年" width="70" />
-      <el-table-column prop="month" label="月" width="60" />
-      <el-table-column prop="work_days" label="出勤天" width="90" />
-      <el-table-column prop="late_times" label="迟到次" width="90" />
-      <el-table-column prop="ot_hours" label="加班时" width="90" />
-      <el-table-column prop="leave_days" label="请假天" width="90" />
-    </el-table>
+    <TableOrCards v-else-if="module === '考勤管理'" :data="list" :loading="loading" :columns="attRuleCols">
+      <el-table :data="list" border stripe>
+        <el-table-column prop="name" label="规则名" />
+        <el-table-column label="班次" width="120">
+          <template #default="{ row }">{{ shiftName(row.shift_id) }}</template>
+        </el-table-column>
+        <el-table-column prop="late_minutes" label="迟到阈值(分)" width="120" />
+        <el-table-column prop="early_minutes" label="早退阈值(分)" width="120" />
+        <el-table-column prop="status" label="状态" width="90" />
+        <el-table-column label="操作" width="90">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #actions="{ row }">
+        <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+      </template>
+    </TableOrCards>
+
+    <TableOrCards v-else-if="module === '考勤明细'" :data="list" :loading="loading" :columns="attRecordCols">
+      <el-table :data="list" border stripe>
+        <el-table-column prop="emp_no" label="工号" width="100" />
+        <el-table-column prop="name" label="姓名" width="90" />
+        <el-table-column prop="biz_date" label="日期" width="110" />
+        <el-table-column prop="check_in_at" label="上班" />
+        <el-table-column prop="check_out_at" label="下班" />
+        <el-table-column label="班次" width="100">
+          <template #default="{ row }">{{ shiftName(row.shift_id) }}</template>
+        </el-table-column>
+        <el-table-column prop="source" label="来源" width="90" />
+      </el-table>
+    </TableOrCards>
+
+    <TableOrCards v-else-if="module === '请假管理'" :data="list" :loading="loading" :columns="leaveCols">
+      <el-table :data="list" border stripe>
+        <el-table-column prop="doc_no" label="单号" width="140" />
+        <el-table-column prop="emp_no" label="工号" width="100" />
+        <el-table-column prop="name" label="姓名" width="90" />
+        <el-table-column prop="leave_type" label="类型" width="90" />
+        <el-table-column prop="start_at" label="开始" />
+        <el-table-column prop="end_at" label="结束" />
+        <el-table-column prop="status" label="状态" width="90" />
+        <el-table-column label="操作" width="200">
+          <template #default="{ row }">
+            <template v-if="row.status === 'pending' || row.status === 'draft'">
+              <el-button link type="success" @click="approveLeave(row)">批准</el-button>
+              <el-button link type="warning" @click="rejectLeave(row)">驳回</el-button>
+              <el-button link type="danger" @click="cancelLeave(row)">撤销</el-button>
+            </template>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #actions="{ row }">
+        <template v-if="row.status === 'pending' || row.status === 'draft'">
+          <el-button link type="success" @click="approveLeave(row)">批准</el-button>
+          <el-button link type="warning" @click="rejectLeave(row)">驳回</el-button>
+          <el-button link type="danger" @click="cancelLeave(row)">撤销</el-button>
+        </template>
+      </template>
+    </TableOrCards>
+
+    <TableOrCards v-else-if="module === '加班补卡统计'" :data="list" :loading="loading" :columns="otCols">
+      <el-table :data="list" border stripe>
+        <el-table-column prop="doc_no" label="单号" width="140" />
+        <el-table-column prop="emp_no" label="工号" width="100" />
+        <el-table-column prop="name" label="姓名" width="90" />
+        <el-table-column prop="biz_type" label="类型" width="90" />
+        <el-table-column prop="biz_date" label="日期" width="110" />
+        <el-table-column prop="minutes" label="分钟" width="80" />
+        <el-table-column prop="status" label="状态" width="90" />
+        <el-table-column prop="remark" label="备注" />
+        <el-table-column label="操作" width="200">
+          <template #default="{ row }">
+            <template v-if="row.status === 'pending' || row.status === 'draft'">
+              <el-button link type="success" @click="approveOT(row)">批准</el-button>
+              <el-button link type="warning" @click="rejectOT(row)">驳回</el-button>
+              <el-button link type="danger" @click="cancelOT(row)">撤销</el-button>
+            </template>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #actions="{ row }">
+        <template v-if="row.status === 'pending' || row.status === 'draft'">
+          <el-button link type="success" @click="approveOT(row)">批准</el-button>
+          <el-button link type="warning" @click="rejectOT(row)">驳回</el-button>
+          <el-button link type="danger" @click="cancelOT(row)">撤销</el-button>
+        </template>
+      </template>
+    </TableOrCards>
+
+    <TableOrCards v-else-if="module === '考勤月度统计'" :data="list" :loading="loading" :columns="monthStatCols">
+      <el-table :data="list" border stripe>
+        <el-table-column prop="emp_no" label="工号" width="100" />
+        <el-table-column prop="name" label="姓名" width="90" />
+        <el-table-column prop="year" label="年" width="70" />
+        <el-table-column prop="month" label="月" width="60" />
+        <el-table-column prop="work_days" label="出勤天" width="90" />
+        <el-table-column prop="late_times" label="迟到次" width="90" />
+        <el-table-column prop="ot_hours" label="加班时" width="90" />
+        <el-table-column prop="leave_days" label="请假天" width="90" />
+      </el-table>
+    </TableOrCards>
 
     <template v-else-if="module === '绩效管理'">
       <h3 class="sub">绩效方案</h3>
-      <el-table :data="schemes" border size="small" style="margin-bottom:12px">
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="name" label="名称" />
-        <el-table-column prop="status" label="状态" width="90" />
-      </el-table>
+      <TableOrCards :data="schemes" :loading="loading" :columns="schemeCols" style="margin-bottom:12px">
+        <el-table :data="schemes" border size="small">
+          <el-table-column prop="id" label="ID" width="70" />
+          <el-table-column prop="name" label="名称" />
+          <el-table-column prop="status" label="状态" width="90" />
+        </el-table>
+      </TableOrCards>
       <h3 class="sub">绩效结果</h3>
-      <el-table :data="list" border stripe>
-        <el-table-column prop="scheme_id" label="方案" width="80" />
-        <el-table-column prop="employee_id" label="员工ID" width="80" />
-        <el-table-column prop="period" label="周期" width="100" />
-        <el-table-column prop="score" label="得分" width="80" />
-        <el-table-column prop="amount" label="金额" width="100" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="perfResultCols">
+        <el-table :data="list" border stripe>
+          <el-table-column prop="scheme_id" label="方案" width="80" />
+          <el-table-column prop="employee_id" label="员工ID" width="80" />
+          <el-table-column prop="period" label="周期" width="100" />
+          <el-table-column prop="score" label="得分" width="80" />
+          <el-table-column prop="amount" label="金额" width="100" />
+        </el-table>
+      </TableOrCards>
     </template>
 
-    <el-table v-else-if="module === '考勤绩效汇总'" :data="list" border stripe>
-      <el-table-column prop="emp_no" label="工号" width="100" />
-      <el-table-column prop="name" label="姓名" width="90" />
-      <el-table-column prop="period" label="周期" width="110" />
-      <el-table-column prop="attendance_score" label="考勤分" width="100" />
-      <el-table-column prop="perf_score" label="绩效分" width="100" />
-      <el-table-column prop="summary_json" label="摘要" />
-    </el-table>
+    <TableOrCards v-else-if="module === '考勤绩效汇总'" :data="list" :loading="loading" :columns="attPerfCols">
+      <el-table :data="list" border stripe>
+        <el-table-column prop="emp_no" label="工号" width="100" />
+        <el-table-column prop="name" label="姓名" width="90" />
+        <el-table-column prop="period" label="周期" width="110" />
+        <el-table-column prop="attendance_score" label="考勤分" width="100" />
+        <el-table-column prop="perf_score" label="绩效分" width="100" />
+        <el-table-column prop="summary_json" label="摘要" />
+      </el-table>
+    </TableOrCards>
 
-    <el-table v-else-if="module === '外访明细'" :data="list" border stripe>
-      <el-table-column prop="emp_no" label="工号" width="100" />
-      <el-table-column prop="name" label="姓名" width="90" />
-      <el-table-column prop="customer_id" label="客户ID" width="90" />
-      <el-table-column prop="visit_at" label="时间" width="160" />
-      <el-table-column prop="location" label="地点" width="120" />
-      <el-table-column prop="content" label="内容" />
-      <el-table-column label="操作" width="80">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <TableOrCards v-else-if="module === '外访明细'" :data="list" :loading="loading" :columns="visitCols">
+      <el-table :data="list" border stripe>
+        <el-table-column prop="emp_no" label="工号" width="100" />
+        <el-table-column prop="name" label="姓名" width="90" />
+        <el-table-column prop="customer_id" label="客户ID" width="90" />
+        <el-table-column prop="visit_at" label="时间" width="160" />
+        <el-table-column prop="location" label="地点" width="120" />
+        <el-table-column prop="content" label="内容" />
+        <el-table-column label="操作" width="80">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #actions="{ row }">
+        <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+      </template>
+    </TableOrCards>
 
-    <el-table v-else-if="module === '备忘录管理'" :data="list" border stripe>
-      <el-table-column prop="title" label="标题" />
-      <el-table-column prop="biz_date" label="日期" width="110" />
-      <el-table-column prop="content" label="内容" />
-      <el-table-column label="操作" width="140">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="danger" @click="removeMemo(row)">删</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <TableOrCards v-else-if="module === '备忘录管理'" :data="list" :loading="loading" :columns="memoCols">
+      <el-table :data="list" border stripe>
+        <el-table-column prop="title" label="标题" />
+        <el-table-column prop="biz_date" label="日期" width="110" />
+        <el-table-column prop="content" label="内容" />
+        <el-table-column label="操作" width="140">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+            <el-button link type="danger" @click="removeMemo(row)">删</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #actions="{ row }">
+        <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+        <el-button link type="danger" @click="removeMemo(row)">删</el-button>
+      </template>
+    </TableOrCards>
 
-    <el-table v-else-if="module === '员工日志'" :data="list" border stripe>
-      <el-table-column prop="emp_no" label="工号" width="100" />
-      <el-table-column prop="name" label="姓名" width="90" />
-      <el-table-column prop="biz_date" label="日期" width="110" />
-      <el-table-column prop="content" label="内容" />
-      <el-table-column prop="created_at" label="创建时间" width="160" />
-    </el-table>
+    <TableOrCards v-else-if="module === '员工日志'" :data="list" :loading="loading" :columns="journalCols">
+      <el-table :data="list" border stripe>
+        <el-table-column prop="emp_no" label="工号" width="100" />
+        <el-table-column prop="name" label="姓名" width="90" />
+        <el-table-column prop="biz_date" label="日期" width="110" />
+        <el-table-column prop="content" label="内容" />
+        <el-table-column prop="created_at" label="创建时间" width="160" />
+      </el-table>
+    </TableOrCards>
 
     <el-dialog v-model="dlg" :title="editingId ? `编辑 · ${module}` : module" width="520px">
       <el-form label-width="100px">

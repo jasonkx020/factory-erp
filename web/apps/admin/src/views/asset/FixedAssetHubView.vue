@@ -3,8 +3,58 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { assetApi } from '@erp/shared'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
+
+const categoryCols: MobileCardColumn[] = [
+  { prop: 'code', label: '编码', primary: true },
+  { prop: 'name', label: '名称' },
+  { prop: 'parent_id', label: '上级ID' },
+  { prop: 'remark', label: '备注' },
+]
+const assetCols: MobileCardColumn[] = [
+  { prop: 'code', label: '编码', primary: true },
+  { prop: 'name', label: '名称' },
+  { prop: 'category_name', label: '类别' },
+  { prop: 'dept_name', label: '部门' },
+  { prop: 'location_text', label: '位置' },
+  { prop: 'original_value', label: '原值' },
+  { prop: 'net_value', label: '净值' },
+  { prop: 'purchase_date', label: '购入日' },
+  { prop: 'status', label: '状态' },
+]
+const transferCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'asset_code', label: '资产编码' },
+  { prop: 'asset_name', label: '资产名称' },
+  { prop: 'from_dept_name', label: '调出部门' },
+  { prop: 'from_location', label: '调出位置' },
+  { prop: 'to_dept_name', label: '调入部门' },
+  { prop: 'to_location', label: '调入位置' },
+  { prop: 'status', label: '状态' },
+  { prop: 'transferred_at', label: '确认时间' },
+]
+const byCategoryCols: MobileCardColumn[] = [
+  { prop: 'category_name', label: '类别', primary: true },
+  { prop: 'category_code', label: '类别编码' },
+  { prop: 'count', label: '数量' },
+  { prop: 'original_value', label: '原值' },
+  { prop: 'net_value', label: '净值' },
+]
+const byDeptCols: MobileCardColumn[] = [
+  { prop: 'dept_name', label: '部门', primary: true },
+  { prop: 'count', label: '数量' },
+  { prop: 'original_value', label: '原值' },
+  { prop: 'net_value', label: '净值' },
+]
+const byStatusCols: MobileCardColumn[] = [
+  { prop: 'status', label: '状态', primary: true },
+  { prop: 'count', label: '数量' },
+  { prop: 'original_value', label: '原值' },
+  { prop: 'net_value', label: '净值' },
+]
 
 const route = useRoute()
 const TITLE_MAP: Record<string, string> = {
@@ -207,17 +257,22 @@ watch(active, refresh)
           <el-button type="primary" @click="createCategory">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small" row-key="id">
-        <el-table-column prop="code" label="编码" width="140" />
-        <el-table-column prop="name" label="名称" min-width="160" />
-        <el-table-column prop="parent_id" label="上级ID" width="90" />
-        <el-table-column prop="remark" label="备注" min-width="140" />
-        <el-table-column label="操作" width="100">
-          <template #default="{ row }">
-            <el-button link type="danger" @click="removeCategory(Number(row.id))">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="categoryCols">
+        <el-table :data="list" size="small" row-key="id">
+          <el-table-column prop="code" label="编码" width="140" />
+          <el-table-column prop="name" label="名称" min-width="160" />
+          <el-table-column prop="parent_id" label="上级ID" width="90" />
+          <el-table-column prop="remark" label="备注" min-width="140" />
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button link type="danger" @click="removeCategory(Number(row.id))">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button link type="danger" @click="removeCategory(Number(row.id))">删除</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 资产项目 -->
@@ -254,22 +309,27 @@ watch(active, refresh)
         <el-input v-model="keyword" size="small" clearable placeholder="搜索编码/名称/位置" style="width:240px" @keyup.enter="refresh" />
         <el-button size="small" style="margin-left:8px" @click="refresh">查询</el-button>
       </div>
-      <el-table :data="list" size="small">
-        <el-table-column prop="code" label="编码" width="130" />
-        <el-table-column prop="name" label="名称" min-width="140" />
-        <el-table-column prop="category_name" label="类别" width="110" />
-        <el-table-column prop="dept_name" label="部门" width="100" />
-        <el-table-column prop="location_text" label="位置" width="120" />
-        <el-table-column prop="original_value" label="原值" width="100" />
-        <el-table-column prop="net_value" label="净值" width="100" />
-        <el-table-column prop="purchase_date" label="购入日" width="110" />
-        <el-table-column prop="status" label="状态" width="80" />
-        <el-table-column label="操作" width="100" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="danger" @click="removeAsset(Number(row.id))">报废</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="assetCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="code" label="编码" width="130" />
+          <el-table-column prop="name" label="名称" min-width="140" />
+          <el-table-column prop="category_name" label="类别" width="110" />
+          <el-table-column prop="dept_name" label="部门" width="100" />
+          <el-table-column prop="location_text" label="位置" width="120" />
+          <el-table-column prop="original_value" label="原值" width="100" />
+          <el-table-column prop="net_value" label="净值" width="100" />
+          <el-table-column prop="purchase_date" label="购入日" width="110" />
+          <el-table-column prop="status" label="状态" width="80" />
+          <el-table-column label="操作" width="100" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="danger" @click="removeAsset(Number(row.id))">报废</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button link type="danger" @click="removeAsset(Number(row.id))">报废</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 内部转移 -->
@@ -295,78 +355,94 @@ watch(active, refresh)
           <el-button type="primary" @click="createTransfer">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="150" />
-        <el-table-column prop="asset_code" label="资产编码" width="120" />
-        <el-table-column prop="asset_name" label="资产名称" min-width="120" />
-        <el-table-column prop="from_dept_name" label="调出部门" width="110" />
-        <el-table-column prop="from_location" label="调出位置" width="110" />
-        <el-table-column prop="to_dept_name" label="调入部门" width="110" />
-        <el-table-column prop="to_location" label="调入位置" width="110" />
-        <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column prop="transferred_at" label="确认时间" width="160" />
-        <el-table-column label="操作" width="100" fixed="right">
-          <template #default="{ row }">
-            <el-button
-              v-if="row.status==='draft' || row.status==='submitted'"
-              link
-              type="primary"
-              @click="confirmTransfer(Number(row.id))"
-            >确认</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="transferCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="150" />
+          <el-table-column prop="asset_code" label="资产编码" width="120" />
+          <el-table-column prop="asset_name" label="资产名称" min-width="120" />
+          <el-table-column prop="from_dept_name" label="调出部门" width="110" />
+          <el-table-column prop="from_location" label="调出位置" width="110" />
+          <el-table-column prop="to_dept_name" label="调入部门" width="110" />
+          <el-table-column prop="to_location" label="调入位置" width="110" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column prop="transferred_at" label="确认时间" width="160" />
+          <el-table-column label="操作" width="100" fixed="right">
+            <template #default="{ row }">
+              <el-button
+                v-if="row.status==='draft' || row.status==='submitted'"
+                link
+                type="primary"
+                @click="confirmTransfer(Number(row.id))"
+              >确认</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button
+            v-if="row.status==='draft' || row.status==='submitted'"
+            link
+            type="primary"
+            @click="confirmTransfer(Number(row.id))"
+          >确认</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 统计 -->
     <template v-else-if="active === 'stats'">
       <el-row :gutter="12" class="mb" v-if="stats">
-        <el-col :span="6">
+        <el-col :span="6" :xs="24">
           <el-card shadow="never"><div class="stat-label">资产数量</div><div class="stat-value">{{ stats.asset_count }}</div></el-card>
         </el-col>
-        <el-col :span="6">
+        <el-col :span="6" :xs="24">
           <el-card shadow="never"><div class="stat-label">原值合计</div><div class="stat-value">{{ Number(stats.original_value || 0).toFixed(2) }}</div></el-card>
         </el-col>
-        <el-col :span="6">
+        <el-col :span="6" :xs="24">
           <el-card shadow="never"><div class="stat-label">净值合计</div><div class="stat-value">{{ Number(stats.net_value || 0).toFixed(2) }}</div></el-card>
         </el-col>
-        <el-col :span="6">
+        <el-col :span="6" :xs="24">
           <el-card shadow="never"><div class="stat-label">累计折旧</div><div class="stat-value">{{ Number(stats.depreciation_value || 0).toFixed(2) }}</div></el-card>
         </el-col>
       </el-row>
       <el-row :gutter="12" class="mb" v-if="stats">
-        <el-col :span="12">
+        <el-col :span="12" :xs="24">
           <el-card shadow="never"><div class="stat-label">待确认转移</div><div class="stat-value">{{ stats.transfer_draft }}</div></el-card>
         </el-col>
-        <el-col :span="12">
+        <el-col :span="12" :xs="24">
           <el-card shadow="never"><div class="stat-label">已确认转移</div><div class="stat-value">{{ stats.transfer_confirmed }}</div></el-card>
         </el-col>
       </el-row>
 
       <h4>按类别</h4>
-      <el-table :data="byCategory" size="small" class="mb">
-        <el-table-column prop="category_code" label="类别编码" width="120" />
-        <el-table-column prop="category_name" label="类别" min-width="140" />
-        <el-table-column prop="count" label="数量" width="90" />
-        <el-table-column prop="original_value" label="原值" width="120" />
-        <el-table-column prop="net_value" label="净值" width="120" />
-      </el-table>
+      <TableOrCards :data="byCategory" :loading="loading" :columns="byCategoryCols" class="mb">
+        <el-table :data="byCategory" size="small" class="mb">
+          <el-table-column prop="category_code" label="类别编码" width="120" />
+          <el-table-column prop="category_name" label="类别" min-width="140" />
+          <el-table-column prop="count" label="数量" width="90" />
+          <el-table-column prop="original_value" label="原值" width="120" />
+          <el-table-column prop="net_value" label="净值" width="120" />
+        </el-table>
+      </TableOrCards>
 
       <h4>按部门</h4>
-      <el-table :data="byDept" size="small" class="mb">
-        <el-table-column prop="dept_name" label="部门" min-width="140" />
-        <el-table-column prop="count" label="数量" width="90" />
-        <el-table-column prop="original_value" label="原值" width="120" />
-        <el-table-column prop="net_value" label="净值" width="120" />
-      </el-table>
+      <TableOrCards :data="byDept" :loading="loading" :columns="byDeptCols" class="mb">
+        <el-table :data="byDept" size="small" class="mb">
+          <el-table-column prop="dept_name" label="部门" min-width="140" />
+          <el-table-column prop="count" label="数量" width="90" />
+          <el-table-column prop="original_value" label="原值" width="120" />
+          <el-table-column prop="net_value" label="净值" width="120" />
+        </el-table>
+      </TableOrCards>
 
       <h4>按状态</h4>
-      <el-table :data="byStatus" size="small">
-        <el-table-column prop="status" label="状态" width="120" />
-        <el-table-column prop="count" label="数量" width="90" />
-        <el-table-column prop="original_value" label="原值" width="120" />
-        <el-table-column prop="net_value" label="净值" width="120" />
-      </el-table>
+      <TableOrCards :data="byStatus" :loading="loading" :columns="byStatusCols">
+        <el-table :data="byStatus" size="small">
+          <el-table-column prop="status" label="状态" width="120" />
+          <el-table-column prop="count" label="数量" width="90" />
+          <el-table-column prop="original_value" label="原值" width="120" />
+          <el-table-column prop="net_value" label="净值" width="120" />
+        </el-table>
+      </TableOrCards>
     </template>
   </div>
 </template>

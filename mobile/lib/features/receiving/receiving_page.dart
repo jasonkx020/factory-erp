@@ -11,6 +11,7 @@ import '../../core/notify_service.dart';
 import '../../widgets/form_row.dart';
 import '../../widgets/form_section_header.dart';
 import '../../widgets/form_sticky_actions.dart';
+import '../../widgets/hub_entry_tile.dart';
 import '../../widgets/trace_code_field.dart';
 import 'gate_inbound_wizard.dart';
 
@@ -23,6 +24,7 @@ class ReceivingPage extends StatefulWidget {
     this.lockKind = false,
     this.popOnCreated = false,
     this.asTab = false,
+    this.initialSection = RecvHubSection.home,
   });
 
   /// `gate` 过磅入厂 · `stockin` 过磅入库
@@ -30,15 +32,17 @@ class ReceivingPage extends StatefulWidget {
   final bool lockKind;
   /// 从「+」快捷创建成功后 pop(true)
   final bool popOnCreated;
-  /// 作为产线壳 Tab 时隐藏标题栏。
+  /// 作为产线壳 Tab 时隐藏标题栏，仅展示入口首页。
   final bool asTab;
+  /// 非 home 时作为独立子页（Navigator.push），返回即销毁。
+  final RecvHubSection initialSection;
 
   @override
   State<ReceivingPage> createState() => _ReceivingPageState();
 }
 
 /// 收货首页四入口：入厂 / 入库 / 单据 / 任务（无顶栏 Tab）
-enum _RecvSection { home, gate, stockin, tickets, tasks }
+enum RecvHubSection { home, gate, stockin, tickets, tasks }
 
 class _ReceivingPageState extends State<ReceivingPage> {
   List<dynamic> _tickets = [];
@@ -53,7 +57,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
   String _grade = 'A';
   String _coldStore = 'fresh';
   bool _kindLocked = false;
-  _RecvSection _section = _RecvSection.home;
+  RecvHubSection _section = RecvHubSection.home;
   /// 入库：0 填表 · 1 预览
   int _stockinStep = 0;
   /// 重建入厂向导（回选择页 / 提交成功后）
@@ -246,8 +250,17 @@ class _ReceivingPageState extends State<ReceivingPage> {
     final locked = widget.lockKind && (init == 'stockin' || init == 'gate');
     _receiveKind = (init == 'stockin' || init == 'gate') ? init! : 'gate';
     _kindLocked = locked;
-    if (locked) {
-      _section = init == 'stockin' ? _RecvSection.stockin : _RecvSection.gate;
+    if (widget.initialSection != RecvHubSection.home) {
+      _section = widget.initialSection;
+      if (widget.initialSection == RecvHubSection.gate) {
+        _receiveKind = 'gate';
+        _kindLocked = true;
+      } else if (widget.initialSection == RecvHubSection.stockin) {
+        _receiveKind = 'stockin';
+        _kindLocked = true;
+      }
+    } else if (locked) {
+      _section = init == 'stockin' ? RecvHubSection.stockin : RecvHubSection.gate;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _boot());
   }
@@ -292,7 +305,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
       setState(() {
         _receiveKind = 'stockin';
         _kindLocked = true;
-        _section = _RecvSection.stockin;
+        _section = RecvHubSection.stockin;
       });
     }
     if (_kindLocked && _receiveKind == 'gate' && !canRecv) {
@@ -597,31 +610,44 @@ class _ReceivingPageState extends State<ReceivingPage> {
     });
   }
 
+  bool get _isSubPage =>
+      widget.initialSection != RecvHubSection.home || widget.lockKind;
+
   void _chooseReceiveKind(String kind) {
     _onReceiveKindChanged(kind);
-    setState(() {
-      _section = kind == 'stockin' ? _RecvSection.stockin : _RecvSection.gate;
-      _msg = '';
-      _msgIsError = false;
-      _formEpoch++;
-    });
+    final section = kind == 'stockin' ? RecvHubSection.stockin : RecvHubSection.gate;
+    _pushSection(section);
   }
 
-  void _openSection(_RecvSection section) {
-    setState(() {
-      _section = section;
-      _msg = '';
-      _msgIsError = false;
-    });
-    if (section == _RecvSection.tickets || section == _RecvSection.tasks) {
-      _refresh();
-    }
+  Future<void> _pushSection(RecvHubSection section) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ReceivingPage(
+          initialSection: section,
+          initialReceiveKind: section == RecvHubSection.stockin
+              ? 'stockin'
+              : section == RecvHubSection.gate
+                  ? 'gate'
+                  : null,
+          lockKind: section == RecvHubSection.gate || section == RecvHubSection.stockin,
+        ),
+      ),
+    );
+    if (mounted) await _refresh();
+  }
+
+  void _openSection(RecvHubSection section) {
+    _pushSection(section);
   }
 
   void _backToKindChooser() {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+      return;
+    }
     if (_kindLocked) return;
     setState(() {
-      _section = _RecvSection.home;
+      _section = RecvHubSection.home;
       _stockinStep = 0;
       _msg = '';
       _msgIsError = false;
@@ -801,7 +827,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
     final docNo = data['doc_no']?.toString() ?? '';
     final trace = data['trace_code']?.toString() ?? '';
     final okMsg = trace.isNotEmpty ? '已创建并绑定 · $docNo · 溯源码 $trace' : '已创建并绑定 · $docNo';
-    if (widget.popOnCreated) {
+    if (widget.popOnCreated || _isSubPage) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(okMsg)));
         Navigator.of(context).pop(true);
@@ -812,7 +838,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
     setState(() {
       _msg = okMsg;
       _msgIsError = false;
-      if (!_kindLocked) _section = _RecvSection.home;
+      if (!_kindLocked) _section = RecvHubSection.home;
       _stockinStep = 0;
       _formEpoch++;
     });
@@ -1142,12 +1168,11 @@ class _ReceivingPageState extends State<ReceivingPage> {
   }
 
   Widget _kindChooser() {
-    final topPad = widget.asTab ? 48.0 : 24.0;
     return ListView(
-      padding: EdgeInsets.fromLTRB(20, topPad, 20, 24),
+      padding: EdgeInsets.fromLTRB(16, widget.asTab ? 40 : 16, 16, 16),
       children: [
         const Text('过磅收货', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         const Text('选择业务入口；创建生效后回到本页', style: TextStyle(fontSize: 13, color: Colors.black54)),
         if (_msg.isNotEmpty) ...[
           const SizedBox(height: 12),
@@ -1160,100 +1185,59 @@ class _ReceivingPageState extends State<ReceivingPage> {
             ),
           ),
         ],
-        const SizedBox(height: 20),
-        _kindChoiceCard(
+        const SizedBox(height: 16),
+        const Text('常用', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        HubEntryTile(
           enabled: _canRecv,
           icon: Icons.login,
           title: '过磅入厂',
           subtitle: '扫溯源码过磅，建单即与农户绑定并推仓管',
           onTap: () => _chooseReceiveKind('gate'),
         ),
-        const SizedBox(height: 12),
-        _kindChoiceCard(
+        HubEntryTile(
           enabled: _canRecv || _canWh,
           icon: Icons.warehouse_outlined,
           title: '过磅入库',
           subtitle: '凭入厂已绑定溯源码入库过磅',
           onTap: () => _chooseReceiveKind('stockin'),
         ),
-        const SizedBox(height: 12),
-        _kindChoiceCard(
-          enabled: true,
+        HubEntryTile(
           icon: Icons.receipt_long_outlined,
           title: '单据',
           subtitle: '查看过磅单与绑定状态',
-          onTap: () => _openSection(_RecvSection.tickets),
+          onTap: () => _openSection(RecvHubSection.tickets),
         ),
-        const SizedBox(height: 12),
-        _kindChoiceCard(
-          enabled: true,
+        HubEntryTile(
           icon: Icons.assignment_outlined,
           title: '任务',
           subtitle: '现场采购任务认领与完成',
-          onTap: () => _openSection(_RecvSection.tasks),
+          onTap: () => _openSection(RecvHubSection.tasks),
         ),
       ],
     );
   }
 
-  Widget _kindChoiceCard({
-    required bool enabled,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: enabled ? Colors.teal.shade50 : Colors.black12,
-                child: Icon(icon, color: enabled ? Colors.teal.shade700 : Colors.black38),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: enabled ? null : Colors.black38)),
-                    const SizedBox(height: 4),
-                    Text(subtitle, style: TextStyle(fontSize: 12, color: enabled ? Colors.black54 : Colors.black26)),
-                    if (!enabled)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 4),
-                        child: Text('当前账号无此权限', style: TextStyle(fontSize: 11, color: Colors.orange)),
-                      ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right, color: enabled ? Colors.black45 : Colors.black26),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _backHomeBar({String label = '返回首页'}) {
-    if (_kindLocked) return const SizedBox.shrink();
+  Widget _backHomeBar({String? title}) {
+    if (_isSubPage || _kindLocked) return const SizedBox.shrink();
+    final heading = title ?? _sectionTitle;
     return Material(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-      child: InkWell(
-        onTap: _backToKindChooser,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            children: [
-              const Icon(Icons.arrow_back_ios_new, size: 16),
-              const SizedBox(width: 6),
-              Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
-            ],
-          ),
+      color: Theme.of(context).colorScheme.surface,
+      elevation: 0.5,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: '返回',
+              onPressed: _backToKindChooser,
+              icon: const Icon(Icons.arrow_back),
+            ),
+            Expanded(
+              child: Text(heading, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            ),
+            IconButton(tooltip: '刷新', onPressed: _refresh, icon: const Icon(Icons.refresh)),
+          ],
         ),
       ),
     );
@@ -1302,7 +1286,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
   Widget _gateFormBody() {
     return Column(
       children: [
-        _backHomeBar(label: '返回首页'),
+        _backHomeBar(),
         Expanded(child: _gateWizard()),
       ],
     );
@@ -1312,7 +1296,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     return Column(
       children: [
-        _backHomeBar(label: '返回首页'),
+        _backHomeBar(),
         Expanded(
           child: _stockinStep == 0
               ? ListView(
@@ -1711,45 +1695,45 @@ class _ReceivingPageState extends State<ReceivingPage> {
 
   Widget _sectionBody() {
     switch (_section) {
-      case _RecvSection.home:
+      case RecvHubSection.home:
         return _kindChooser();
-      case _RecvSection.gate:
+      case RecvHubSection.gate:
         return _gateFormBody();
-      case _RecvSection.stockin:
+      case RecvHubSection.stockin:
         return _stockinFormBody();
-      case _RecvSection.tickets:
+      case RecvHubSection.tickets:
         return _ticketsBody();
-      case _RecvSection.tasks:
+      case RecvHubSection.tasks:
         return _tasksBody();
     }
   }
 
   String get _sectionTitle {
     switch (_section) {
-      case _RecvSection.home:
+      case RecvHubSection.home:
         return '过磅收货';
-      case _RecvSection.gate:
+      case RecvHubSection.gate:
         return '过磅入厂';
-      case _RecvSection.stockin:
+      case RecvHubSection.stockin:
         return '过磅入库';
-      case _RecvSection.tickets:
+      case RecvHubSection.tickets:
         return '单据';
-      case _RecvSection.tasks:
+      case RecvHubSection.tasks:
         return '任务';
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final showBack = !widget.asTab && _section != _RecvSection.home && !_kindLocked;
+    final showAppBar = _isSubPage || !widget.asTab;
     return Scaffold(
-      appBar: AppBar(
-        title: widget.asTab ? null : Text(_sectionTitle),
-        toolbarHeight: widget.asTab ? 0 : kToolbarHeight,
-        leading: showBack ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: _backToKindChooser) : null,
-        actions: [IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh))],
-      ),
-      body: _loading && _section == _RecvSection.home && _tickets.isEmpty && _varieties.isEmpty
+      appBar: showAppBar
+          ? AppBar(
+              title: Text(_sectionTitle),
+              actions: [IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh))],
+            )
+          : AppBar(toolbarHeight: 0),
+      body: _loading && _section == RecvHubSection.home && _tickets.isEmpty && _varieties.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : _sectionBody(),
     );

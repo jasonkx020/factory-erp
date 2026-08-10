@@ -38,11 +38,17 @@ func CORS(origins []string) gin.HandlerFunc {
 	}
 }
 
-func JWT(secret string, db *sql.DB, permitAll []string) gin.HandlerFunc {
+func JWT(secret string, db *sql.DB, permitAll []string, skipPath ...func(string) bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 		for _, p := range permitAll {
 			if path == p || strings.HasPrefix(path, p) {
+				c.Next()
+				return
+			}
+		}
+		for _, skip := range skipPath {
+			if skip != nil && skip(path) {
 				c.Next()
 				return
 			}

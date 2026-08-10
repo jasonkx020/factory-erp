@@ -5,3 +5,111 @@ body,
   margin: 0;
   overflow: hidden;
 }
+
+/* —— Admin mobile overrides (≤768px) —— */
+@media (max-width: 768px) {
+  .admin-shell.is-mobile .content,
+  .admin-shell.is-mobile .content.full-width {
+    padding: 8px 10px;
+  }
+
+  .admin-shell.is-mobile .crumb-bar {
+    padding: 0 10px;
+  }
+
+  .admin-shell.is-mobile .crumb {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Inline forms → stacked */
+  .admin-shell.is-mobile .el-form--inline {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-shell.is-mobile .el-form--inline .el-form-item {
+    margin-right: 0;
+    width: 100%;
+  }
+
+  .admin-shell.is-mobile .el-form--inline .el-form-item__content {
+    width: 100%;
+    flex: 1;
+  }
+
+  .admin-shell.is-mobile .el-form--inline .el-input,
+  .admin-shell.is-mobile .el-form--inline .el-select,
+  .admin-shell.is-mobile .el-form--inline .el-date-editor,
+  .admin-shell.is-mobile .el-form--inline .el-cascader,
+  .admin-shell.is-mobile .el-form--inline .el-input-number,
+  .admin-shell.is-mobile .el-form--inline .el-autocomplete {
+    width: 100% !important;
+  }
+
+  /* Tabs scroll horizontally */
+  .admin-shell.is-mobile .el-tabs__nav-wrap {
+    overflow-x: auto;
+  }
+
+  .admin-shell.is-mobile .el-tabs__nav-scroll {
+    overflow: visible;
+  }
+
+  /* Dialogs near full-bleed */
+  .el-dialog {
+    --el-dialog-width: 95% !important;
+    width: 95% !important;
+    margin: 8vh auto !important;
+    max-width: 95vw;
+  }
+
+  .el-dialog.is-fullscreen {
+    width: 100% !important;
+    margin: 0 !important;
+  }
+
+  .el-overlay-dialog {
+    padding: 0 8px;
+  }
+
+  /* Drawers full width on phone */
+  .el-drawer.rtl,
+  .el-drawer.ltr {
+    width: min(100vw, 320px) !important;
+  }
+
+  .el-drawer.ttb,
+  .el-drawer.btt {
+    height: auto !important;
+    max-height: 85vh;
+  }
+
+  /* Cards / panels */
+  .admin-shell.is-mobile .el-card {
+    --el-card-padding: 12px;
+  }
+
+  .admin-shell.is-mobile .el-card__header {
+    padding: 10px 12px;
+  }
+
+  .admin-shell.is-mobile .mb {
+    margin-bottom: 10px;
+  }
+
+  /* Row grids collapse */
+  .admin-shell.is-mobile .el-row {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  .admin-shell.is-mobile .el-col {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    max-width: 100%;
+    flex: 0 0 100%;
+  }
+}

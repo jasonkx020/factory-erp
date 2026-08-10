@@ -134,6 +134,7 @@ export const ADMIN_SPECIAL_MODULE_PATHS: Record<string, string> = {
   '生产管理/质检管理': '/production/hub/qc',
   '生产管理/返修单': '/production/hub/reworks',
   '生产管理/废料管理': '/production/hub/scraps',
+  '生产管理/退库未用完还仓': '/production/hub/process-returns',
   '生产管理/生产任务单': '/production/hub/tasks',
   '生产管理/多单整合管理': '/production/hub/merges',
   '生产管理/图纸分发': '/production/hub/drawings',

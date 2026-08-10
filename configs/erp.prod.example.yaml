@@ -3,6 +3,8 @@ seed:
   demo: false
 server:
   addr: ":18080"
+  # 空=使用二进制内嵌的前端；需要热换时设为 web/dist 或绝对路径
+  web_root: ""
 database:
   driver: mysql
   mysql_dsn: "erp:erp@tcp(127.0.0.1:3306)/erp_factory?parseTime=true&charset=utf8mb4&loc=Local"

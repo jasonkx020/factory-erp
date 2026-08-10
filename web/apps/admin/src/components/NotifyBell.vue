@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotifyStore, adminRouteForEvent } from '@erp/shared'
 import { ElMessage } from 'element-plus'
+import { useIsMobile } from '../composables/useMediaQuery'
 
 const router = useRouter()
 const notify = useNotifyStore()
 const drawer = ref(false)
+const isMobile = useIsMobile()
+const drawerSize = computed(() => (isMobile.value ? '100%' : '360px'))
 
 async function openDrawer() {
   drawer.value = true
@@ -34,7 +37,7 @@ onUnmounted(() => {
     <el-badge :value="notify.unread" :hidden="!notify.unread" :max="99">
       <el-button link @click="openDrawer">通知</el-button>
     </el-badge>
-    <el-drawer v-model="drawer" title="实时通知 / 待办" size="360px">
+    <el-drawer v-model="drawer" title="实时通知 / 待办" :size="drawerSize">
       <div class="meta">MQTT: {{ notify.mqttStatus }}</div>
       <div v-if="!notify.inbox.length" class="empty">暂无通知</div>
       <div

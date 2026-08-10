@@ -10,6 +10,7 @@ import '../../widgets/form_sticky_actions.dart';
 import '../../widgets/form_section_header.dart';
 import '../../widgets/form_row.dart';
 import 'warehouse_verify_page.dart';
+import '../workshop/process_return_page.dart';
 
 class WarehousePage extends StatefulWidget {
   const WarehousePage({super.key, this.asTab = false});
@@ -361,6 +362,21 @@ class _WarehousePageState extends State<WarehousePage> {
                                   textCapitalization: TextCapitalization.none,
                                   onEditingComplete: _scanLocate,
                                   onScanned: (_) => _scanLocate(),
+                                ),
+                                const SizedBox(height: 8),
+                                ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: const Icon(Icons.undo_outlined),
+                                  title: const Text('工序退库确认'),
+                                  subtitle: const Text('未用完领料还仓 · 不回冲计件'),
+                                  trailing: const Icon(Icons.chevron_right),
+                                  onTap: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => const ProcessReturnPage(warehouseMode: true),
+                                      ),
+                                    );
+                                  },
                                 ),
                                 const SizedBox(height: 12),
                                 const Text('待办列表', style: TextStyle(fontWeight: FontWeight.w600)),

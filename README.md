@@ -149,15 +149,46 @@ go run ./cmd/erp-api -config configs/erp.dev.yaml
 
 ## Web 前端
 
+### 开发（多端口 Vite）
+
 ```bash
 cd web
 npm install
-npm run dev:portal     # 入口
-npm run dev:admin      # 管理后台  client_type=admin
-npm run dev:boss       # 老板驾驶舱  client_type=boss
+npm run dev:portal     # 入口 :5170
+npm run dev:admin      # 管理后台 :5173  client_type=admin
+npm run dev:boss       # 老板驾驶舱 :5177  client_type=boss
 ```
 
 员工现场作业**无 Web 前端**（原统一员工端已下线）；请使用 Flutter App。客户自助下单亦无 Web；相关销售/客户 API 仍保留在 OpenAPI 与后端。
+
+### 单端口发布（打进 exe + 可外置）
+
+三端源码不合并；`build:dist` 拼到 `web/dist/`，再 embed 进 `erp-api`：
+
+| 路径 | 内容 |
+|------|------|
+| `/` | 门户 portal |
+| `/admin/` | 管理后台 |
+| `/front/boss/` | 老板驾驶舱 |
+| `/api/v1/*` | API（同端口） |
+
+```powershell
+# Windows：构建前端并输出 dist-release/erp-api.exe
+powershell -File scripts/build_release.ps1
+```
+
+```bash
+# Linux/macOS
+chmod +x scripts/build_release.sh
+./scripts/build_release.sh
+```
+
+- **内嵌（默认生产）**：`server.web_root` 留空 → 使用二进制内前端；拷贝 exe + 配置 + `data/` 即可。
+- **外置**：配置 `server.web_root: web/dist`（或环境变量 `ERP_WEB_ROOT`）→ 优先读磁盘，改前端后无需重编。开发用 `configs/erp.dev.yaml` 已默认外置 `web/dist`（目录不存在时自动回退内嵌占位页）。
+
+本地仅预览静态：`cd web && npm run build:dist && npm run preview:dist`（:4173，API 仍需另开）。
+
+更细说明见 [docs/WEB_EMBED.md](docs/WEB_EMBED.md)。
 
 ## Flutter 员工 App
 
@@ -203,7 +234,8 @@ npm run e2e:onboard
 | `internal/biz` | 业务规则（IAM / 采购 / 生产 / 人事权限等） |
 | `internal/store` | 通用单据落库 |
 | `internal/auth` | 登录 / refresh / me（分端 `client_type` + 会话） |
-| `web/` | portal / admin / employee / boss |
+| `web/` | portal / admin / boss（构建后 embed 或外置） |
+| `internal/webui` | 静态站 go:embed + SPA 托管 |
 | `mobile/` | Flutter 员工 App（Android/iOS） |
 | `db/` | SQLite 开发脚本与 MySQL 生产 DDL |
 
@@ -213,6 +245,7 @@ npm run e2e:onboard
 
 1. 按 `db/schema`（及说明文档）建库并导入  
 2. 复制 `configs/erp.prod.example.yaml` 为本地配置并填写 DSN  
-3. 启动：`go run ./cmd/erp-api -config <你的生产配置文件>`
+3. 启动：`go run ./cmd/erp-api -config <你的生产配置文件>`  
+   或先 `scripts/build_release.*` 打出带内嵌 Web 的单二进制，`web_root` 留空即可只开 `:18080` 访问门户/Admin/Boss。
 
 密钥、DSN、本机绝对路径不要写入仓库；仅提交 example 配置。

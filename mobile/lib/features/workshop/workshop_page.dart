@@ -8,21 +8,32 @@ import '../../core/employee_modules.dart';
 import '../../widgets/form_sticky_actions.dart';
 import '../../widgets/form_section_header.dart';
 import '../../widgets/form_row.dart';
+import '../../widgets/hub_entry_tile.dart';
 import '../../core/notify_service.dart';
+import 'process_return_page.dart';
+
+/// 班组子页分区（hub 首页用 push 打开对应页，返回即销毁）。
+enum WorkshopHubSection { home, scan, overview, tasks, dispatch, flex, qcScrap, process, stock, processReturn }
 
 /// 车间主任工作台：报工 + 任务派工 + 灵活派发 + 质检/返修/废料
 class WorkshopPage extends StatefulWidget {
-  const WorkshopPage({super.key, this.asTab = false});
+  const WorkshopPage({
+    super.key,
+    this.asTab = false,
+    this.initialSection = WorkshopHubSection.home,
+  });
 
-  /// 作为产线壳 Tab 时隐藏标题，仅保留 TabBar / 操作。
+  /// 作为产线壳 Tab 时仅展示入口首页。
   final bool asTab;
+
+  /// 非 home 时作为独立子页（带 AppBar 返回），用于 Navigator.push。
+  final WorkshopHubSection initialSection;
 
   @override
   State<WorkshopPage> createState() => _WorkshopPageState();
 }
 
-class _WorkshopPageState extends State<WorkshopPage> with SingleTickerProviderStateMixin {
-  late final TabController _tabs;
+class _WorkshopPageState extends State<WorkshopPage> {
   final _badge = TextEditingController();
   final _box = TextEditingController();
   final _weight = TextEditingController();
@@ -50,10 +61,11 @@ class _WorkshopPageState extends State<WorkshopPage> with SingleTickerProviderSt
   List<dynamic> _drawings = [];
   Map<String, dynamic>? _overview;
 
+  bool get _isSubPage => widget.initialSection != WorkshopHubSection.home;
+
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 8, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final prefs = await SharedPreferences.getInstance();
       if (!mounted) return;
@@ -68,7 +80,6 @@ class _WorkshopPageState extends State<WorkshopPage> with SingleTickerProviderSt
     try {
       context.read<NotifyService>().removeListener(_onNotify);
     } catch (_) {}
-    _tabs.dispose();
     for (final c in [_badge, _box, _weight, _bag, _flexQty, _flexWorker, _qcQty, _scrapQty, _reworkQty]) {
       c.dispose();
     }
@@ -97,7 +108,7 @@ class _WorkshopPageState extends State<WorkshopPage> with SingleTickerProviderSt
     if (!canAccessEmployeeModule(EmployeeModule.workshop, auth.permissions, auth.roles)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无车间模块权限')));
-        Navigator.of(context).pop();
+        if (Navigator.of(context).canPop()) Navigator.of(context).pop();
       }
       return;
     }
@@ -140,6 +151,38 @@ class _WorkshopPageState extends State<WorkshopPage> with SingleTickerProviderSt
         _processId = (_processes.first as Map)['id'] is num ? ((_processes.first as Map)['id'] as num).toInt() : null;
       }
     });
+  }
+
+  Future<void> _pushSection(WorkshopHubSection section) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => WorkshopPage(initialSection: section)),
+    );
+    if (mounted) await _refresh();
+  }
+
+  String get _sectionTitle {
+    switch (widget.initialSection) {
+      case WorkshopHubSection.home:
+        return '班组';
+      case WorkshopHubSection.scan:
+        return '扫码过站';
+      case WorkshopHubSection.overview:
+        return '概览';
+      case WorkshopHubSection.tasks:
+        return '任务';
+      case WorkshopHubSection.dispatch:
+        return '派工';
+      case WorkshopHubSection.flex:
+        return '灵活派发';
+      case WorkshopHubSection.qcScrap:
+        return '质检废料';
+      case WorkshopHubSection.process:
+        return '工序';
+      case WorkshopHubSection.stock:
+        return '库存';
+      case WorkshopHubSection.processReturn:
+        return '剩余料退库';
+    }
   }
 
   Future<void> _scan({required bool resolveOnly}) async {
@@ -319,225 +362,343 @@ class _WorkshopPageState extends State<WorkshopPage> with SingleTickerProviderSt
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _homeBody() {
     final mqtt = context.watch<NotifyService>().mqttStatus;
-    return Scaffold(
-      appBar: AppBar(
-        title: widget.asTab ? null : Text('车间 · $mqtt'),
-        toolbarHeight: widget.asTab ? 0 : kToolbarHeight,
-        bottom: TabBar(
-          controller: _tabs,
-          isScrollable: true,
-          tabs: const [
-            Tab(text: '扫码'),
-            Tab(text: '概览'),
-            Tab(text: '任务'),
-            Tab(text: '派工'),
-            Tab(text: '灵活派发'),
-            Tab(text: '质检废料'),
-            Tab(text: '工序'),
-            Tab(text: '库存'),
-          ],
+    return ListView(
+      padding: EdgeInsets.fromLTRB(16, widget.asTab ? 40 : 16, 16, 16),
+      children: [
+        const Text('班组工作台', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        Text('MQTT · $mqtt', style: const TextStyle(fontSize: 13, color: Colors.black54)),
+        if (_overview != null) ...[
+          const SizedBox(height: 12),
+          Card(
+            color: Colors.teal.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('今日概览', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 8),
+                  Text(
+                    '任务 ${_overview!['open_tasks'] ?? 0} · 派工 ${_overview!['open_dispatches'] ?? 0} · 报工 ${_overview!['today_reports'] ?? 0}',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 16),
+        const Text('常用', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        HubEntryTile(
+          icon: Icons.qr_code_scanner,
+          title: '扫码过站',
+          subtitle: '工牌 + 箱码报工确认',
+          onTap: () => _pushSection(WorkshopHubSection.scan),
         ),
-        actions: [IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh))],
-      ),
-      body: TabBarView(
-        controller: _tabs,
-        children: [
-          Column(
+        HubEntryTile(
+          icon: Icons.dashboard_outlined,
+          title: '概览',
+          subtitle: '任务/派工/图纸/流转',
+          onTap: () => _pushSection(WorkshopHubSection.overview),
+        ),
+        HubEntryTile(
+          icon: Icons.assignment_outlined,
+          title: '任务',
+          subtitle: '生产任务列表，点选当前任务',
+          onTap: () => _pushSection(WorkshopHubSection.tasks),
+        ),
+        HubEntryTile(
+          icon: Icons.handshake_outlined,
+          title: '派工',
+          subtitle: '接收派工单',
+          onTap: () => _pushSection(WorkshopHubSection.dispatch),
+        ),
+        const SizedBox(height: 8),
+        const Text('更多业务', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        HubEntryTile(
+          icon: Icons.swap_horiz,
+          title: '灵活派发',
+          subtitle: '按任务/工序派工人',
+          onTap: () => _pushSection(WorkshopHubSection.flex),
+        ),
+        HubEntryTile(
+          icon: Icons.fact_check_outlined,
+          title: '质检废料',
+          subtitle: '质检 / 废料 / 返修',
+          onTap: () => _pushSection(WorkshopHubSection.qcScrap),
+        ),
+        HubEntryTile(
+          icon: Icons.account_tree_outlined,
+          title: '工序',
+          subtitle: '工序定义一览',
+          onTap: () => _pushSection(WorkshopHubSection.process),
+        ),
+        HubEntryTile(
+          icon: Icons.inventory_2_outlined,
+          title: '库存',
+          subtitle: '库存结存查询',
+          onTap: () => _pushSection(WorkshopHubSection.stock),
+        ),
+        HubEntryTile(
+          icon: Icons.undo_outlined,
+          title: '剩余料退库',
+          subtitle: '提前下班退未用完料（不回冲计件）',
+          onTap: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ProcessReturnPage()),
+            );
+            if (mounted) await _refresh();
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _scanBody() {
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
             children: [
-              Expanded(
-                child: ListView(
-                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
+              const FormSectionHeader('扫码过站'),
+              FormRow.text(label: '工牌码', controller: _badge, requiredMark: true),
+              FormRow.text(label: '箱码', controller: _box, requiredMark: true),
+              FormRow.text(label: '净重(kg)', controller: _weight, keyboardType: TextInputType.number, requiredMark: true),
+              FormRow.text(label: '袋数', controller: _bag, keyboardType: TextInputType.number),
+              const FormSectionHeader('次品类型'),
+              FormRow(
+                label: '次品',
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 6,
+                  runSpacing: 4,
                   children: [
-                    const FormSectionHeader('扫码过站'),
-                    FormRow.text(label: '工牌码', controller: _badge, requiredMark: true),
-                    FormRow.text(label: '箱码', controller: _box, requiredMark: true),
-                    FormRow.text(label: '净重(kg)', controller: _weight, keyboardType: TextInputType.number, requiredMark: true),
-                    FormRow.text(label: '袋数', controller: _bag, keyboardType: TextInputType.number),
-                    const FormSectionHeader('次品类型'),
-                    FormRow(
-                      label: '次品',
-                      child: Wrap(
-                        alignment: WrapAlignment.end,
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: [
-                          for (final e in const [
-                            MapEntry('', '无次品'),
-                            MapEntry('cut_defect', '切断次品'),
-                            MapEntry('core_defect', '去芯次品'),
-                            MapEntry('dice_defect', '切块次品'),
-                            MapEntry('sieve_bag_defect', '过筛装袋次品'),
-                          ])
-                            ChoiceChip(
-                              label: Text(e.value, style: const TextStyle(fontSize: 12)),
-                              selected: _scrapType == e.key,
-                              visualDensity: VisualDensity.compact,
-                              onSelected: (_) => setState(() => _scrapType = e.key),
-                            ),
-                        ],
+                    for (final e in const [
+                      MapEntry('', '无次品'),
+                      MapEntry('cut_defect', '切断次品'),
+                      MapEntry('core_defect', '去芯次品'),
+                      MapEntry('dice_defect', '切块次品'),
+                      MapEntry('sieve_bag_defect', '过筛装袋次品'),
+                    ])
+                      ChoiceChip(
+                        label: Text(e.value, style: const TextStyle(fontSize: 12)),
+                        selected: _scrapType == e.key,
+                        visualDensity: VisualDensity.compact,
+                        onSelected: (_) => setState(() => _scrapType = e.key),
                       ),
-                    ),
-                    if (_msg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_msg)),
                   ],
                 ),
               ),
-              FormStickyButtonBar(
-                children: [
-                  OutlinedButton(onPressed: () => _scan(resolveOnly: true), child: const Text('预解析')),
-                  FilledButton(onPressed: () => _scan(resolveOnly: false), child: const Text('提交草稿')),
-                ],
-              ),
-              if (_pendingId != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: FilledButton.tonal(onPressed: _confirm, child: const Text('确认过账')),
-                ),
+              if (_msg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_msg)),
             ],
           ),
-          ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              if (_overview == null) const Text('加载中…'),
-              if (_overview != null) ...[
-                ListTile(title: const Text('进行中任务'), trailing: Text('${_overview!['open_tasks'] ?? 0}')),
-                ListTile(title: const Text('未完派工'), trailing: Text('${_overview!['open_dispatches'] ?? 0}')),
-                ListTile(title: const Text('今日报工'), trailing: Text('${_overview!['today_reports'] ?? 0}')),
-                ListTile(title: const Text('流转失败'), trailing: Text('${_overview!['failed_flow_events'] ?? 0}')),
-                Text('${_overview!['hint'] ?? ''}', style: const TextStyle(color: Colors.black54, fontSize: 12)),
-              ],
-              const Divider(),
-              const Text('图纸分发', style: TextStyle(fontWeight: FontWeight.bold)),
-              if (_drawings.isEmpty) const Text('暂无图纸'),
-              ..._drawings.take(15).map((e) {
-                final m = Map<String, dynamic>.from(e as Map);
-                return ListTile(
-                  dense: true,
-                  title: Text('${m['drawing_name'] ?? m['drawing_code'] ?? m['id']}'),
-                  subtitle: Text('${m['file_url'] ?? m['status'] ?? ''} · 任务${m['task_id'] ?? '-'}'),
-                );
-              }),
-              const Divider(),
-              const Text('最近流转', style: TextStyle(fontWeight: FontWeight.bold)),
-              ..._flows.take(15).map((e) {
-                final m = Map<String, dynamic>.from(e as Map);
-                return ListTile(
-                  dense: true,
-                  title: Text('${m['event_type'] ?? m['status'] ?? m['id']}'),
-                  subtitle: Text('${m['box_code'] ?? m['doc_no'] ?? ''}'),
-                );
-              }),
-            ],
+        ),
+        FormStickyButtonBar(
+          children: [
+            OutlinedButton(onPressed: () => _scan(resolveOnly: true), child: const Text('预解析')),
+            FilledButton(onPressed: () => _scan(resolveOnly: false), child: const Text('提交草稿')),
+          ],
+        ),
+        if (_pendingId != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: FilledButton.tonal(onPressed: _confirm, child: const Text('确认过账')),
           ),
-          _list(_tasks, (m) => '${m['doc_no'] ?? m['id']} · ${m['status']}', onTap: (m) {
-            setState(() => _taskId = (m['id'] as num?)?.toInt());
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已选任务 $_taskId')));
-          }),
-          _list(
-            _dispatches,
-            (m) => '${m['doc_no'] ?? m['id']} · 工人${m['worker_id'] ?? '-'}',
-            trailing: (m) => TextButton(onPressed: () => _receiveDispatch(m), child: const Text('接收')),
-          ),
-          ListView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
-            children: [
-              const FormSectionHeader('灵活派发'),
-              FormRow(
-                label: '任务',
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<int>(
-                    isExpanded: true,
-                    value: _taskId,
-                    alignment: Alignment.centerRight,
-                    hint: const Text('请选择', textAlign: TextAlign.right),
-                    items: _tasks.map((e) {
-                      final m = Map<String, dynamic>.from(e as Map);
-                      return DropdownMenuItem(value: (m['id'] as num?)?.toInt(), child: Text('${m['doc_no'] ?? m['id']}', textAlign: TextAlign.right));
-                    }).toList(),
-                    onChanged: (v) => setState(() => _taskId = v),
-                  ),
-                ),
-              ),
-              FormRow(
-                label: '工序',
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<int>(
-                    isExpanded: true,
-                    value: _processId,
-                    alignment: Alignment.centerRight,
-                    hint: const Text('请选择', textAlign: TextAlign.right),
-                    items: _processes.map((e) {
-                      final m = Map<String, dynamic>.from(e as Map);
-                      return DropdownMenuItem(value: (m['id'] as num?)?.toInt(), child: Text('${m['name'] ?? m['id']}', textAlign: TextAlign.right));
-                    }).toList(),
-                    onChanged: (v) => setState(() => _processId = v),
-                  ),
-                ),
-              ),
-              FormRow.text(label: '工人员工ID', controller: _flexWorker, keyboardType: TextInputType.number, requiredMark: true),
-              FormRow.text(label: '计划数量', controller: _flexQty, keyboardType: TextInputType.number, requiredMark: true),
-              FormStickyActions(primaryLabel: '灵活派发', onPrimary: _createFlex),
-              const Divider(),
-              ..._flex.map((e) {
-                final m = Map<String, dynamic>.from(e as Map);
-                return ListTile(
-                  title: Text('${m['doc_no'] ?? m['id']}'),
-                  subtitle: Text('工人 ${m['worker_id']} · ${m['status']}'),
-                  trailing: TextButton(onPressed: () => _reassign(m), child: const Text('改派')),
-                );
-              }),
-            ],
-          ),
-          ListView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
-            children: [
-              const FormSectionHeader('质检'),
-              FormRow.text(label: '质检数量', controller: _qcQty, keyboardType: TextInputType.number, requiredMark: true),
-              FormStickyActions(primaryLabel: '新建质检单', onPrimary: _createQc),
-              ..._qcs.take(8).map((e) {
-                final m = Map<String, dynamic>.from(e as Map);
-                return ListTile(
-                  title: Text('${m['doc_no']} · ${m['status']}'),
-                  trailing: (m['status']?.toString() == 'draft' || m['status']?.toString() == 'open')
-                      ? Wrap(children: [
-                          TextButton(onPressed: () => _completeQc(m, 'pass'), child: const Text('合格')),
-                          TextButton(onPressed: () => _completeQc(m, 'fail'), child: const Text('不合格')),
-                        ])
-                      : Text('${m['result'] ?? ''}'),
-                );
-              }),
-              const Divider(),
-              const FormSectionHeader('废料'),
-              FormRow.text(label: '废料重量/数量', controller: _scrapQty, keyboardType: TextInputType.number, requiredMark: true),
-              FormStickyActions(primaryLabel: '登记废料', onPrimary: _createScrap),
-              ..._scraps.take(5).map((e) {
-                final m = Map<String, dynamic>.from(e as Map);
-                return ListTile(title: Text('${m['doc_no']}'), subtitle: Text('qty ${m['qty']} · ${m['status']}'));
-              }),
-              const Divider(),
-              const FormSectionHeader('返修'),
-              FormRow.text(label: '返修数量', controller: _reworkQty, keyboardType: TextInputType.number, requiredMark: true),
-              FormStickyActions(primaryLabel: '新建返修', onPrimary: _createRework),
-              ..._reworks.take(5).map((e) {
-                final m = Map<String, dynamic>.from(e as Map);
-                return ListTile(
-                  title: Text('${m['doc_no']} · ${m['status']}'),
-                  trailing: m['status']?.toString() != 'closed'
-                      ? TextButton(onPressed: () => _closeRework(m), child: const Text('关闭'))
-                      : null,
-                );
-              }),
-            ],
-          ),
-          _list(_processes, (m) => '${m['name'] ?? m['code'] ?? m['id']}'),
-          _list(_balances, (m) => '${m['product_name'] ?? m['product_id']} · ${m['qty']}'),
+      ],
+    );
+  }
+
+  Widget _overviewBody() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        if (_overview == null) const Text('加载中…'),
+        if (_overview != null) ...[
+          ListTile(title: const Text('进行中任务'), trailing: Text('${_overview!['open_tasks'] ?? 0}')),
+          ListTile(title: const Text('未完派工'), trailing: Text('${_overview!['open_dispatches'] ?? 0}')),
+          ListTile(title: const Text('今日报工'), trailing: Text('${_overview!['today_reports'] ?? 0}')),
+          ListTile(title: const Text('流转失败'), trailing: Text('${_overview!['failed_flow_events'] ?? 0}')),
+          Text('${_overview!['hint'] ?? ''}', style: const TextStyle(color: Colors.black54, fontSize: 12)),
         ],
-      ),
+        const Divider(),
+        const Text('图纸分发', style: TextStyle(fontWeight: FontWeight.bold)),
+        if (_drawings.isEmpty) const Text('暂无图纸'),
+        ..._drawings.take(15).map((e) {
+          final m = Map<String, dynamic>.from(e as Map);
+          return ListTile(
+            dense: true,
+            title: Text('${m['drawing_name'] ?? m['drawing_code'] ?? m['id']}'),
+            subtitle: Text('${m['file_url'] ?? m['status'] ?? ''} · 任务${m['task_id'] ?? '-'}'),
+          );
+        }),
+        const Divider(),
+        const Text('最近流转', style: TextStyle(fontWeight: FontWeight.bold)),
+        ..._flows.take(15).map((e) {
+          final m = Map<String, dynamic>.from(e as Map);
+          return ListTile(
+            dense: true,
+            title: Text('${m['event_type'] ?? m['status'] ?? m['id']}'),
+            subtitle: Text('${m['box_code'] ?? m['doc_no'] ?? ''}'),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _flexBody() {
+    return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
+      children: [
+        const FormSectionHeader('灵活派发'),
+        FormRow(
+          label: '任务',
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              isExpanded: true,
+              value: _taskId,
+              alignment: Alignment.centerRight,
+              hint: const Text('请选择', textAlign: TextAlign.right),
+              items: _tasks.map((e) {
+                final m = Map<String, dynamic>.from(e as Map);
+                return DropdownMenuItem(value: (m['id'] as num?)?.toInt(), child: Text('${m['doc_no'] ?? m['id']}', textAlign: TextAlign.right));
+              }).toList(),
+              onChanged: (v) => setState(() => _taskId = v),
+            ),
+          ),
+        ),
+        FormRow(
+          label: '工序',
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              isExpanded: true,
+              value: _processId,
+              alignment: Alignment.centerRight,
+              hint: const Text('请选择', textAlign: TextAlign.right),
+              items: _processes.map((e) {
+                final m = Map<String, dynamic>.from(e as Map);
+                return DropdownMenuItem(value: (m['id'] as num?)?.toInt(), child: Text('${m['name'] ?? m['id']}', textAlign: TextAlign.right));
+              }).toList(),
+              onChanged: (v) => setState(() => _processId = v),
+            ),
+          ),
+        ),
+        FormRow.text(label: '工人员工ID', controller: _flexWorker, keyboardType: TextInputType.number, requiredMark: true),
+        FormRow.text(label: '计划数量', controller: _flexQty, keyboardType: TextInputType.number, requiredMark: true),
+        FormStickyActions(primaryLabel: '灵活派发', onPrimary: _createFlex),
+        const Divider(),
+        ..._flex.map((e) {
+          final m = Map<String, dynamic>.from(e as Map);
+          return ListTile(
+            title: Text('${m['doc_no'] ?? m['id']}'),
+            subtitle: Text('工人 ${m['worker_id']} · ${m['status']}'),
+            trailing: TextButton(onPressed: () => _reassign(m), child: const Text('改派')),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _qcScrapBody() {
+    return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
+      children: [
+        const FormSectionHeader('质检'),
+        FormRow.text(label: '质检数量', controller: _qcQty, keyboardType: TextInputType.number, requiredMark: true),
+        FormStickyActions(primaryLabel: '新建质检单', onPrimary: _createQc),
+        ..._qcs.take(8).map((e) {
+          final m = Map<String, dynamic>.from(e as Map);
+          return ListTile(
+            title: Text('${m['doc_no']} · ${m['status']}'),
+            trailing: (m['status']?.toString() == 'draft' || m['status']?.toString() == 'open')
+                ? Wrap(children: [
+                    TextButton(onPressed: () => _completeQc(m, 'pass'), child: const Text('合格')),
+                    TextButton(onPressed: () => _completeQc(m, 'fail'), child: const Text('不合格')),
+                  ])
+                : Text('${m['result'] ?? ''}'),
+          );
+        }),
+        const Divider(),
+        const FormSectionHeader('废料'),
+        FormRow.text(label: '废料重量/数量', controller: _scrapQty, keyboardType: TextInputType.number, requiredMark: true),
+        FormStickyActions(primaryLabel: '登记废料', onPrimary: _createScrap),
+        ..._scraps.take(5).map((e) {
+          final m = Map<String, dynamic>.from(e as Map);
+          return ListTile(title: Text('${m['doc_no']}'), subtitle: Text('qty ${m['qty']} · ${m['status']}'));
+        }),
+        const Divider(),
+        const FormSectionHeader('返修'),
+        FormRow.text(label: '返修数量', controller: _reworkQty, keyboardType: TextInputType.number, requiredMark: true),
+        FormStickyActions(primaryLabel: '新建返修', onPrimary: _createRework),
+        ..._reworks.take(5).map((e) {
+          final m = Map<String, dynamic>.from(e as Map);
+          return ListTile(
+            title: Text('${m['doc_no']} · ${m['status']}'),
+            trailing: m['status']?.toString() != 'closed'
+                ? TextButton(onPressed: () => _closeRework(m), child: const Text('关闭'))
+                : null,
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _sectionContent() {
+    switch (widget.initialSection) {
+      case WorkshopHubSection.home:
+        return _homeBody();
+      case WorkshopHubSection.scan:
+        return _scanBody();
+      case WorkshopHubSection.overview:
+        return _overviewBody();
+      case WorkshopHubSection.tasks:
+        return _list(_tasks, (m) => '${m['doc_no'] ?? m['id']} · ${m['status']}', onTap: (m) {
+          setState(() => _taskId = (m['id'] as num?)?.toInt());
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已选任务 $_taskId')));
+        });
+      case WorkshopHubSection.dispatch:
+        return _list(
+          _dispatches,
+          (m) => '${m['doc_no'] ?? m['id']} · 工人${m['worker_id'] ?? '-'}',
+          trailing: (m) => TextButton(onPressed: () => _receiveDispatch(m), child: const Text('接收')),
+        );
+      case WorkshopHubSection.flex:
+        return _flexBody();
+      case WorkshopHubSection.qcScrap:
+        return _qcScrapBody();
+      case WorkshopHubSection.process:
+        return _list(_processes, (m) => '${m['name'] ?? m['code'] ?? m['id']}');
+      case WorkshopHubSection.stock:
+        return _list(_balances, (m) => '${m['product_name'] ?? m['product_id']} · ${m['qty']}');
+      case WorkshopHubSection.processReturn:
+        return const ProcessReturnPage(asTab: true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mqtt = context.watch<NotifyService>().mqttStatus;
+    // 子页 / 非 Tab：标准 AppBar + 返回 pop
+    if (_isSubPage || !widget.asTab) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(_isSubPage ? _sectionTitle : '车间 · $mqtt'),
+          actions: [IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh))],
+        ),
+        body: _sectionContent(),
+      );
+    }
+    // Tab 首页：无 AppBar，仅入口列表
+    return Scaffold(
+      body: _homeBody(),
     );
   }
 }

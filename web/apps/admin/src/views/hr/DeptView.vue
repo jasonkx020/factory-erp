@@ -2,8 +2,16 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { hrApi } from '@erp/shared'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
+
+const deptCols: MobileCardColumn[] = [
+  { prop: 'name', label: '名称', primary: true },
+  { prop: 'code', label: '编码' },
+  { prop: 'status', label: '状态' },
+]
 
 const loading = ref(false)
 const list = ref<Row[]>([])
@@ -101,24 +109,31 @@ onMounted(load)
       <el-button @click="load">刷新</el-button>
     </div>
 
-    <el-table :data="list" border stripe>
-      <el-table-column prop="code" label="编码" width="120" />
-      <el-table-column prop="name" label="名称" min-width="160" />
-      <el-table-column prop="status" label="状态" width="100">
-        <template #default="{ row }">
-          <el-tag :type="row.status === 'active' ? 'success' : 'info'" size="small">
-            {{ row.status === 'active' ? '启用' : '停用' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button v-if="row.status === 'active'" link @click="deactivate(row)">停用</el-button>
-          <el-button link type="danger" @click="remove(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <TableOrCards :data="list" :loading="loading" :columns="deptCols">
+      <el-table :data="list" border stripe>
+        <el-table-column prop="code" label="编码" width="120" />
+        <el-table-column prop="name" label="名称" min-width="160" />
+        <el-table-column prop="status" label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 'active' ? 'success' : 'info'" size="small">
+              {{ row.status === 'active' ? '启用' : '停用' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="200" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+            <el-button v-if="row.status === 'active'" link @click="deactivate(row)">停用</el-button>
+            <el-button link type="danger" @click="remove(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #actions="{ row }">
+        <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+        <el-button v-if="row.status === 'active'" link @click="deactivate(row)">停用</el-button>
+        <el-button link type="danger" @click="remove(row)">删除</el-button>
+      </template>
+    </TableOrCards>
 
     <el-dialog v-model="dlg" :title="editingId ? '编辑部门' : '新建部门'" width="440px">
       <el-form label-width="80px">

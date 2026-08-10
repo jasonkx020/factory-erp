@@ -3,6 +3,16 @@ import { onMounted, reactive, ref } from 'vue'
 import { systemApi, REPAIR_ACTION_OPTIONS, REPAIR_TARGET_TYPE_OPTIONS } from '@erp/shared'
 import { ElMessage } from 'element-plus'
 import { EnumSelect } from '../../components/select'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
+
+const repairCols: MobileCardColumn[] = [
+  { prop: 'id', label: 'ID', primary: true },
+  { prop: 'target_type', label: '类型' },
+  { prop: 'target_id', label: '目标' },
+  { prop: 'reason', label: '原因' },
+  { prop: 'status', label: '状态' },
+]
 
 const list = ref<Record<string, unknown>[]>([])
 const form = reactive({
@@ -60,18 +70,23 @@ onMounted(load)
         <el-form-item><el-button type="primary" @click="create">创建修复单</el-button></el-form-item>
       </el-form>
     </el-card>
-    <el-table :data="list" border size="small">
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="target_type" label="类型" />
-      <el-table-column prop="target_id" label="目标" width="80" />
-      <el-table-column prop="reason" label="原因" min-width="160" show-overflow-tooltip />
-      <el-table-column prop="status" label="状态" width="100" />
-      <el-table-column label="操作" width="100">
-        <template #default="{ row }">
-          <el-button v-if="row.status !== 'applied'" link type="danger" @click="apply(Number(row.id))">执行</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <TableOrCards :data="list" :columns="repairCols">
+      <el-table :data="list" border size="small">
+        <el-table-column prop="id" label="ID" width="70" />
+        <el-table-column prop="target_type" label="类型" />
+        <el-table-column prop="target_id" label="目标" width="80" />
+        <el-table-column prop="reason" label="原因" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="status" label="状态" width="100" />
+        <el-table-column label="操作" width="100">
+          <template #default="{ row }">
+            <el-button v-if="row.status !== 'applied'" link type="danger" @click="apply(Number(row.id))">执行</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #actions="{ row }">
+        <el-button v-if="row.status !== 'applied'" link type="danger" @click="apply(Number(row.id))">执行</el-button>
+      </template>
+    </TableOrCards>
   </div>
 </template>
 

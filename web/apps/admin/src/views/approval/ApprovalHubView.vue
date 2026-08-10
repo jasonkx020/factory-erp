@@ -9,8 +9,62 @@ import {
   OVERTIME_BIZ_OPTIONS,
 } from '@erp/shared'
 import { EmployeeSelect, EnumSelect, SalesOrderSelect } from '../../components/select'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
+
+const taskCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'title', label: '标题' },
+  { prop: 'doc_type', label: '类型' },
+  { prop: 'doc_id', label: '单据ID' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'status', label: '状态', hideOnCard: true },
+  { prop: 'comment', label: '意见' },
+  { prop: 'created_at', label: '创建' },
+]
+
+const queueCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'title', label: '标题' },
+  { prop: 'biz_type', label: '业务' },
+  { prop: 'biz_id', label: '业务ID' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'status', label: '状态', hideOnCard: true },
+  { prop: 'comment', label: '意见' },
+  { prop: 'acted_at', label: '审批时间' },
+]
+
+const expenseCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'category', label: '类别' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'status', label: '状态', hideOnCard: true },
+  { prop: 'remark', label: '备注' },
+  { prop: 'created_at', label: '创建' },
+]
+
+const affairCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'title', label: '标题' },
+  { prop: 'content', label: '内容' },
+  { prop: 'source', label: '来源' },
+  { prop: 'status', label: '状态', hideOnCard: true },
+  { prop: 'created_at', label: '创建' },
+]
+
+const attendanceCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'kind', label: '种类' },
+  { prop: 'title', label: '标题' },
+  { prop: 'employee_name', label: '员工' },
+  { prop: 'leave_type', label: '假别' },
+  { prop: 'biz_date', label: '日期' },
+  { prop: 'minutes', label: '分钟' },
+  { prop: 'status', label: '状态', hideOnCard: true },
+  { prop: 'remark', label: '备注' },
+]
 
 const route = useRoute()
 const TITLE_MAP: Record<string, string> = {
@@ -291,24 +345,35 @@ watch(active, () => {
           <el-button type="primary" @click="createTask">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="140" />
-        <el-table-column prop="title" label="标题" min-width="140" />
-        <el-table-column prop="doc_type" label="类型" width="110" />
-        <el-table-column prop="doc_id" label="单据ID" width="80" />
-        <el-table-column prop="amount" label="金额" width="100" />
-        <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column prop="comment" label="意见" min-width="120" show-overflow-tooltip />
-        <el-table-column prop="created_at" label="创建" width="160" />
-        <el-table-column label="操作" width="140" fixed="right">
-          <template #default="{ row }">
-            <template v-if="row.status === 'pending'">
-              <el-button link type="success" @click="decideQueue(Number(row.id), true)">通过</el-button>
-              <el-button link type="danger" @click="decideQueue(Number(row.id), false)">驳回</el-button>
+      <TableOrCards :data="list" :loading="loading" :columns="taskCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="140" />
+          <el-table-column prop="title" label="标题" min-width="140" />
+          <el-table-column prop="doc_type" label="类型" width="110" />
+          <el-table-column prop="doc_id" label="单据ID" width="80" />
+          <el-table-column prop="amount" label="金额" width="100" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column prop="comment" label="意见" min-width="120" show-overflow-tooltip />
+          <el-table-column prop="created_at" label="创建" width="160" />
+          <el-table-column label="操作" width="140" fixed="right">
+            <template #default="{ row }">
+              <template v-if="row.status === 'pending'">
+                <el-button link type="success" @click="decideQueue(Number(row.id), true)">通过</el-button>
+                <el-button link type="danger" @click="decideQueue(Number(row.id), false)">驳回</el-button>
+              </template>
             </template>
+          </el-table-column>
+        </el-table>
+        <template #extra="{ row }">
+          <el-tag size="small">{{ row.status }}</el-tag>
+        </template>
+        <template #actions="{ row }">
+          <template v-if="row.status === 'pending'">
+            <el-button link type="success" @click="decideQueue(Number(row.id), true)">通过</el-button>
+            <el-button link type="danger" @click="decideQueue(Number(row.id), false)">驳回</el-button>
           </template>
-        </el-table-column>
-      </el-table>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 通用队列审批 -->
@@ -324,24 +389,35 @@ watch(active, () => {
           <el-button type="primary" @click="createQueue">提交</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="140" />
-        <el-table-column prop="title" label="标题" min-width="160" />
-        <el-table-column prop="biz_type" label="业务" width="110" />
-        <el-table-column prop="biz_id" label="业务ID" width="80" />
-        <el-table-column prop="amount" label="金额" width="100" />
-        <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column prop="comment" label="意见" min-width="120" show-overflow-tooltip />
-        <el-table-column prop="acted_at" label="审批时间" width="160" />
-        <el-table-column label="操作" width="140" fixed="right">
-          <template #default="{ row }">
-            <template v-if="row.status === 'pending'">
-              <el-button link type="success" @click="decideQueue(Number(row.id), true)">通过</el-button>
-              <el-button link type="danger" @click="decideQueue(Number(row.id), false)">驳回</el-button>
+      <TableOrCards :data="list" :loading="loading" :columns="queueCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="140" />
+          <el-table-column prop="title" label="标题" min-width="160" />
+          <el-table-column prop="biz_type" label="业务" width="110" />
+          <el-table-column prop="biz_id" label="业务ID" width="80" />
+          <el-table-column prop="amount" label="金额" width="100" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column prop="comment" label="意见" min-width="120" show-overflow-tooltip />
+          <el-table-column prop="acted_at" label="审批时间" width="160" />
+          <el-table-column label="操作" width="140" fixed="right">
+            <template #default="{ row }">
+              <template v-if="row.status === 'pending'">
+                <el-button link type="success" @click="decideQueue(Number(row.id), true)">通过</el-button>
+                <el-button link type="danger" @click="decideQueue(Number(row.id), false)">驳回</el-button>
+              </template>
             </template>
+          </el-table-column>
+        </el-table>
+        <template #extra="{ row }">
+          <el-tag size="small">{{ row.status }}</el-tag>
+        </template>
+        <template #actions="{ row }">
+          <template v-if="row.status === 'pending'">
+            <el-button link type="success" @click="decideQueue(Number(row.id), true)">通过</el-button>
+            <el-button link type="danger" @click="decideQueue(Number(row.id), false)">驳回</el-button>
           </template>
-        </el-table-column>
-      </el-table>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 费用申请 -->
@@ -354,24 +430,37 @@ watch(active, () => {
           <el-button type="primary" @click="createExpense">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="150" />
-        <el-table-column prop="category" label="类别" width="110" />
-        <el-table-column prop="amount" label="金额" width="100" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
-        <el-table-column prop="created_at" label="创建" width="160" />
-        <el-table-column label="操作" width="100" fixed="right">
-          <template #default="{ row }">
-            <el-button
-              v-if="row.status === 'draft' || row.status === 'rejected'"
-              link
-              type="primary"
-              @click="submitExpense(Number(row.id))"
-            >提交</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="expenseCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="150" />
+          <el-table-column prop="category" label="类别" width="110" />
+          <el-table-column prop="amount" label="金额" width="100" />
+          <el-table-column prop="status" label="状态" width="100" />
+          <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
+          <el-table-column prop="created_at" label="创建" width="160" />
+          <el-table-column label="操作" width="100" fixed="right">
+            <template #default="{ row }">
+              <el-button
+                v-if="row.status === 'draft' || row.status === 'rejected'"
+                link
+                type="primary"
+                @click="submitExpense(Number(row.id))"
+              >提交</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #extra="{ row }">
+          <el-tag size="small">{{ row.status }}</el-tag>
+        </template>
+        <template #actions="{ row }">
+          <el-button
+            v-if="row.status === 'draft' || row.status === 'rejected'"
+            link
+            type="primary"
+            @click="submitExpense(Number(row.id))"
+          >提交</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 事务申请 -->
@@ -384,22 +473,33 @@ watch(active, () => {
           <el-button type="primary" @click="createAffair">提交申请</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="140" />
-        <el-table-column prop="title" label="标题" min-width="140" />
-        <el-table-column prop="content" label="内容" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="source" label="来源" width="80" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column prop="created_at" label="创建" width="160" />
-        <el-table-column label="操作" width="140" fixed="right">
-          <template #default="{ row }">
-            <template v-if="isPending(row) && row.status !== 'approved' && row.status !== 'rejected'">
-              <el-button link type="success" @click="decideQueue(Number(row.id), true)">通过</el-button>
-              <el-button link type="danger" @click="decideQueue(Number(row.id), false)">驳回</el-button>
+      <TableOrCards :data="list" :loading="loading" :columns="affairCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="140" />
+          <el-table-column prop="title" label="标题" min-width="140" />
+          <el-table-column prop="content" label="内容" min-width="160" show-overflow-tooltip />
+          <el-table-column prop="source" label="来源" width="80" />
+          <el-table-column prop="status" label="状态" width="100" />
+          <el-table-column prop="created_at" label="创建" width="160" />
+          <el-table-column label="操作" width="140" fixed="right">
+            <template #default="{ row }">
+              <template v-if="isPending(row) && row.status !== 'approved' && row.status !== 'rejected'">
+                <el-button link type="success" @click="decideQueue(Number(row.id), true)">通过</el-button>
+                <el-button link type="danger" @click="decideQueue(Number(row.id), false)">驳回</el-button>
+              </template>
             </template>
+          </el-table-column>
+        </el-table>
+        <template #extra="{ row }">
+          <el-tag size="small">{{ row.status }}</el-tag>
+        </template>
+        <template #actions="{ row }">
+          <template v-if="isPending(row) && row.status !== 'approved' && row.status !== 'rejected'">
+            <el-button link type="success" @click="decideQueue(Number(row.id), true)">通过</el-button>
+            <el-button link type="danger" @click="decideQueue(Number(row.id), false)">驳回</el-button>
           </template>
-        </el-table-column>
-      </el-table>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 考勤审批 -->
@@ -437,25 +537,36 @@ watch(active, () => {
           <el-button type="primary" @click="createAttendance">提交</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="kind" label="种类" width="110" />
-        <el-table-column prop="doc_no" label="单号" width="140" />
-        <el-table-column prop="title" label="标题" min-width="120" />
-        <el-table-column prop="employee_name" label="员工" width="100" />
-        <el-table-column prop="leave_type" label="假别" width="90" />
-        <el-table-column prop="biz_date" label="日期" width="110" />
-        <el-table-column prop="minutes" label="分钟" width="80" />
-        <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
-        <el-table-column label="操作" width="140" fixed="right">
-          <template #default="{ row }">
-            <template v-if="row.status === 'pending' || row.status === 'draft'">
-              <el-button link type="success" @click="decideQueue(Number(row.id), true, String(row.kind || 'leave'))">通过</el-button>
-              <el-button link type="danger" @click="decideQueue(Number(row.id), false, String(row.kind || 'leave'))">驳回</el-button>
+      <TableOrCards :data="list" :loading="loading" :columns="attendanceCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="kind" label="种类" width="110" />
+          <el-table-column prop="doc_no" label="单号" width="140" />
+          <el-table-column prop="title" label="标题" min-width="120" />
+          <el-table-column prop="employee_name" label="员工" width="100" />
+          <el-table-column prop="leave_type" label="假别" width="90" />
+          <el-table-column prop="biz_date" label="日期" width="110" />
+          <el-table-column prop="minutes" label="分钟" width="80" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
+          <el-table-column label="操作" width="140" fixed="right">
+            <template #default="{ row }">
+              <template v-if="row.status === 'pending' || row.status === 'draft'">
+                <el-button link type="success" @click="decideQueue(Number(row.id), true, String(row.kind || 'leave'))">通过</el-button>
+                <el-button link type="danger" @click="decideQueue(Number(row.id), false, String(row.kind || 'leave'))">驳回</el-button>
+              </template>
             </template>
+          </el-table-column>
+        </el-table>
+        <template #extra="{ row }">
+          <el-tag size="small">{{ row.status }}</el-tag>
+        </template>
+        <template #actions="{ row }">
+          <template v-if="row.status === 'pending' || row.status === 'draft'">
+            <el-button link type="success" @click="decideQueue(Number(row.id), true, String(row.kind || 'leave'))">通过</el-button>
+            <el-button link type="danger" @click="decideQueue(Number(row.id), false, String(row.kind || 'leave'))">驳回</el-button>
           </template>
-        </el-table-column>
-      </el-table>
+        </template>
+      </TableOrCards>
     </template>
   </div>
 </template>

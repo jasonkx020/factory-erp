@@ -25,6 +25,8 @@ import {
   RoleSelect,
   EnumSelect,
 } from '../../components/select'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
 type RefKind = 'warehouse' | 'workshop' | 'employee' | 'user' | 'product' | 'customer' | 'role'
@@ -347,6 +349,22 @@ const tableCols = computed(() => {
 
 const colLabel = (k: string) => formFields.value.find((f) => f.key === k)?.label || k
 
+const cardColumns = computed<MobileCardColumn[]>(() => {
+  const cols = tableCols.value
+  const primaryProp =
+    cols.find((c) => c === 'name' || c === 'code' || c === 'doc_no' || c === 'title') || cols[0]
+  return cols.map((col, i) => ({
+    prop: col,
+    label: colLabel(col),
+    primary: col === primaryProp,
+    hideOnCard:
+      cols.length > 8 &&
+      i >= 6 &&
+      !['status', 'name', 'code', 'doc_no', 'id'].includes(col) &&
+      col !== primaryProp,
+  }))
+})
+
 watch(() => props.module, () => load())
 onMounted(load)
 </script>
@@ -381,29 +399,42 @@ onMounted(load)
         <span class="spacer" />
         <span class="muted">共 {{ total }} 条</span>
       </div>
-      <el-table :data="list" border stripe style="width:100%">
-        <el-table-column
-          v-for="col in tableCols"
-          :key="col"
-          :prop="col"
-          :label="colLabel(col)"
-          min-width="110"
-          show-overflow-tooltip
-        />
-        <el-table-column label="操作" width="240" fixed="right">
-          <template #default="{ row }">
-            <el-button v-if="meta?.update && !meta?.readOnly" link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button
-              v-for="act in (meta?.actions || [])"
-              :key="act"
-              link
-              type="success"
-              @click="onAction(row, act)"
-            >{{ act }}</el-button>
-            <el-button v-if="meta?.remove && !meta?.readOnly" link type="danger" @click="onDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="cardColumns">
+        <el-table :data="list" border stripe style="width:100%">
+          <el-table-column
+            v-for="col in tableCols"
+            :key="col"
+            :prop="col"
+            :label="colLabel(col)"
+            min-width="110"
+            show-overflow-tooltip
+          />
+          <el-table-column label="操作" width="240" fixed="right">
+            <template #default="{ row }">
+              <el-button v-if="meta?.update && !meta?.readOnly" link type="primary" @click="openEdit(row)">编辑</el-button>
+              <el-button
+                v-for="act in (meta?.actions || [])"
+                :key="act"
+                link
+                type="success"
+                @click="onAction(row, act)"
+              >{{ act }}</el-button>
+              <el-button v-if="meta?.remove && !meta?.readOnly" link type="danger" @click="onDelete(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="meta?.update && !meta?.readOnly" link type="primary" @click="openEdit(row)">编辑</el-button>
+          <el-button
+            v-for="act in (meta?.actions || [])"
+            :key="act"
+            link
+            type="success"
+            @click="onAction(row, act)"
+          >{{ act }}</el-button>
+          <el-button v-if="meta?.remove && !meta?.readOnly" link type="danger" @click="onDelete(row)">删除</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <el-dialog v-model="dlg" :title="editingId ? '编辑' : '新建'" width="560px" destroy-on-close>

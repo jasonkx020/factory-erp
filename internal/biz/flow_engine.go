@@ -14,18 +14,19 @@ import (
 )
 
 type routingStep struct {
-	ID                   int64
-	RoutingID            int64
-	SeqNo                int
-	ProcessID            int64
-	StepCode             string
-	StepName             string
-	IsPiecework          bool
-	IsInboundCheckpoint  bool
-	AutoNext             bool
-	AutoStockIn          bool
-	AutoStockOut         bool
-	WarehouseID          int64
+	ID                        int64
+	RoutingID                 int64
+	SeqNo                     int
+	ProcessID                 int64
+	StepCode                  string
+	StepName                  string
+	IsPiecework               bool
+	IsInboundCheckpoint       bool
+	CheckpointBindWarehouse   bool
+	AutoNext                  bool
+	AutoStockIn               bool
+	AutoStockOut              bool
+	WarehouseID               int64
 }
 
 // AfterReportWork drives automation after a report-work is created.
@@ -49,13 +50,34 @@ func (s *Services) AfterReportWork(c *gin.Context, reportID, processID, workerID
 		utilization = qty / inputWeight
 	}
 
-	// piecework summary (UPSERT by day)
-	if processID > 0 && workerID > 0 {
+	step := s.loadStep(stepID)
+	if step == nil && workOrderID > 0 {
+		var sid int64
+		_ = s.DB.QueryRow(`SELECT COALESCE(routing_step_id,0) FROM pd_work_order WHERE id=?`, workOrderID).Scan(&sid)
+		step = s.loadStep(sid)
+	}
+
+	// piecework summary: only piecework steps (worker × process × day)
+	doPiece := processID > 0 && workerID > 0 && (step == nil || step.IsPiecework)
+	if step == nil && processID > 0 && workerID > 0 {
+		// fallback: process-level is_piecework when step missing
+		var pPiece int
+		_ = s.DB.QueryRow(`SELECT COALESCE(is_piecework,0) FROM pd_process WHERE id=?`, processID).Scan(&pPiece)
+		doPiece = pPiece == 1
+	}
+	if doPiece {
 		s.upsertPieceworkSummary(workerID, processID, reportID, qty, inputWeight, qty, loss, utilization)
 		var rate float64
 		_ = s.DB.QueryRow(`SELECT rate FROM pay_process_wage_rate WHERE process_id=? AND status='active' ORDER BY id DESC LIMIT 1`, processID).Scan(&rate)
 		out["wage_amount"] = qty * rate
 		out["rate"] = rate
+		out["input_weight"] = inputWeight
+		out["output_weight"] = qty
+		out["loss"] = loss
+		out["utilization"] = utilization
+		out["piecework"] = true
+	} else {
+		out["piecework"] = false
 		out["input_weight"] = inputWeight
 		out["output_weight"] = qty
 		out["loss"] = loss
@@ -67,13 +89,6 @@ func (s *Services) AfterReportWork(c *gin.Context, reportID, processID, workerID
 		_, _ = s.DB.Exec(`UPDATE pd_production_task_item SET completed_qty = completed_qty + ? WHERE task_id=?`, qty, taskID)
 	}
 
-	step := s.loadStep(stepID)
-	if step == nil && workOrderID > 0 {
-		var sid int64
-		_ = s.DB.QueryRow(`SELECT COALESCE(routing_step_id,0) FROM pd_work_order WHERE id=?`, workOrderID).Scan(&sid)
-		step = s.loadStep(sid)
-	}
-
 	nextInfo := gin.H{}
 	status := "ok"
 	errMsg := ""
@@ -83,9 +98,12 @@ func (s *Services) AfterReportWork(c *gin.Context, reportID, processID, workerID
 		payload := map[string]interface{}{
 			"box_code": boxCode, "qty": qty, "process_id": processID,
 			"input_weight": inputWeight, "output_weight": qty, "loss": loss, "utilization": utilization,
+			"checkpoint_bind_warehouse": step.CheckpointBindWarehouse,
 		}
-		if step.AutoStockOut {
-			// consume input weight when available
+		doOut := func() {
+			if !step.AutoStockOut {
+				return
+			}
 			consumeQty := inputWeight
 			if consumeQty <= 0 {
 				consumeQty = qty
@@ -95,7 +113,10 @@ func (s *Services) AfterReportWork(c *gin.Context, reportID, processID, workerID
 				errMsg = "stock_out:" + err.Error()
 			}
 		}
-		if step.AutoStockIn {
+		doIn := func() {
+			if !step.AutoStockIn {
+				return
+			}
 			wh := step.WarehouseID
 			if wh == 0 {
 				wh = 2
@@ -109,6 +130,16 @@ func (s *Services) AfterReportWork(c *gin.Context, reportID, processID, workerID
 				nextInfo["new_box_code"] = newCode
 				boxCode = newCode
 			}
+		}
+		// 卡点绑仓：先入库再出库；普通加工步：先出（投料）后入（产出）
+		if step.IsInboundCheckpoint && step.CheckpointBindWarehouse {
+			doIn()
+			doOut()
+			nextInfo["stock_order"] = "in_then_out"
+		} else {
+			doOut()
+			doIn()
+			nextInfo["stock_order"] = "out_then_in"
 		}
 		if step.IsInboundCheckpoint {
 			woID, dID := s.spawnCheckpointWO(taskID, step)
@@ -152,17 +183,18 @@ func (s *Services) loadStep(id int64) *routingStep {
 		return nil
 	}
 	var st routingStep
-	var piece, cp, an, asi, aso int
+	var piece, cp, bind, an, asi, aso int
 	err := s.DB.QueryRow(`SELECT id, routing_id, seq_no, process_id, COALESCE(step_code,''), COALESCE(step_name,''),
-		COALESCE(is_piecework,0), COALESCE(is_inbound_checkpoint,0), COALESCE(auto_next,1),
+		COALESCE(is_piecework,0), COALESCE(is_inbound_checkpoint,0), COALESCE(checkpoint_bind_warehouse,0), COALESCE(auto_next,1),
 		COALESCE(auto_stock_in,0), COALESCE(auto_stock_out,0), COALESCE(warehouse_id,0)
 		FROM pd_routing_step WHERE id=?`, id).
-		Scan(&st.ID, &st.RoutingID, &st.SeqNo, &st.ProcessID, &st.StepCode, &st.StepName, &piece, &cp, &an, &asi, &aso, &st.WarehouseID)
+		Scan(&st.ID, &st.RoutingID, &st.SeqNo, &st.ProcessID, &st.StepCode, &st.StepName, &piece, &cp, &bind, &an, &asi, &aso, &st.WarehouseID)
 	if err != nil {
 		return nil
 	}
 	st.IsPiecework = piece == 1
 	st.IsInboundCheckpoint = cp == 1
+	st.CheckpointBindWarehouse = bind == 1
 	st.AutoNext = an == 1
 	st.AutoStockIn = asi == 1
 	st.AutoStockOut = aso == 1
@@ -316,7 +348,7 @@ func (s *Services) handleFlowRules(c *gin.Context, method, action string) bool {
 			}
 		}
 		rows, err := s.DB.Query(`SELECT id, routing_id, seq_no, process_id, COALESCE(step_code,''), COALESCE(step_name,''),
-			COALESCE(is_piecework,0), COALESCE(is_inbound_checkpoint,0), COALESCE(auto_next,1),
+			COALESCE(is_piecework,0), COALESCE(is_inbound_checkpoint,0), COALESCE(checkpoint_bind_warehouse,0), COALESCE(auto_next,1),
 			COALESCE(auto_stock_in,0), COALESCE(auto_stock_out,0), COALESCE(warehouse_id,0)
 			FROM pd_routing_step WHERE routing_id=? ORDER BY seq_no`, rid)
 		if err != nil {
@@ -327,12 +359,12 @@ func (s *Services) handleFlowRules(c *gin.Context, method, action string) bool {
 		list := []gin.H{}
 		for rows.Next() {
 			var id, rrid, pid, wh int64
-			var seq, piece, cp, an, asi, aso int
+			var seq, piece, cp, bind, an, asi, aso int
 			var code, name string
-			_ = rows.Scan(&id, &rrid, &seq, &pid, &code, &name, &piece, &cp, &an, &asi, &aso, &wh)
+			_ = rows.Scan(&id, &rrid, &seq, &pid, &code, &name, &piece, &cp, &bind, &an, &asi, &aso, &wh)
 			list = append(list, gin.H{
 				"id": id, "routing_id": rrid, "seq_no": seq, "process_id": pid, "step_code": code, "step_name": name,
-				"is_piecework": piece == 1, "is_inbound_checkpoint": cp == 1, "auto_next": an == 1,
+				"is_piecework": piece == 1, "is_inbound_checkpoint": cp == 1, "checkpoint_bind_warehouse": bind == 1, "auto_next": an == 1,
 				"auto_stock_in": asi == 1, "auto_stock_out": aso == 1, "warehouse_id": wh,
 			})
 		}
@@ -351,8 +383,8 @@ func (s *Services) handleFlowRules(c *gin.Context, method, action string) bool {
 				if id == 0 {
 					continue
 				}
-				_, _ = s.DB.Exec(`UPDATE pd_routing_step SET is_piecework=?, is_inbound_checkpoint=?, auto_next=?, auto_stock_in=?, auto_stock_out=?, warehouse_id=? WHERE id=?`,
-					boolInt(m["is_piecework"]), boolInt(m["is_inbound_checkpoint"]), boolInt(m["auto_next"]),
+				_, _ = s.DB.Exec(`UPDATE pd_routing_step SET is_piecework=?, is_inbound_checkpoint=?, checkpoint_bind_warehouse=?, auto_next=?, auto_stock_in=?, auto_stock_out=?, warehouse_id=? WHERE id=?`,
+					boolInt(m["is_piecework"]), boolInt(m["is_inbound_checkpoint"]), boolInt(m["checkpoint_bind_warehouse"]), boolInt(m["auto_next"]),
 					boolInt(m["auto_stock_in"]), boolInt(m["auto_stock_out"]), nullIf0(mustInt(m["warehouse_id"])), id)
 			}
 		}

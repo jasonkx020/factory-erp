@@ -122,6 +122,38 @@ func EnsureAutomationSchema(db *sql.DB) {
 		`ALTER TABLE pd_routing_step ADD COLUMN auto_stock_in INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE pd_routing_step ADD COLUMN auto_stock_out INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE pd_routing_step ADD COLUMN warehouse_id INTEGER`,
+		`ALTER TABLE pd_routing_step ADD COLUMN checkpoint_bind_warehouse INTEGER NOT NULL DEFAULT 0`,
+		`CREATE TABLE IF NOT EXISTS pd_process_return (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc_no TEXT NOT NULL UNIQUE,
+  box_code TEXT NOT NULL,
+  process_id INTEGER,
+  step_id INTEGER,
+  warehouse_id INTEGER NOT NULL,
+  return_weight REAL NOT NULL DEFAULT 0,
+  reason TEXT,
+  status TEXT NOT NULL DEFAULT 'draft',
+  applicant_user_id INTEGER,
+  foreman_user_id INTEGER,
+  warehouse_user_id INTEGER,
+  current_assignee_user_id INTEGER,
+  report_work_id INTEGER,
+  stock_txn_id INTEGER,
+  remark TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  posted_at TEXT,
+  is_deleted INTEGER NOT NULL DEFAULT 0
+)`,
+		`CREATE TABLE IF NOT EXISTS pd_process_return_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  return_id INTEGER NOT NULL,
+  action TEXT NOT NULL,
+  from_user_id INTEGER,
+  to_user_id INTEGER,
+  remark TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+)`,
 		`ALTER TABLE pd_routing ADD COLUMN graph_json TEXT`,
 		`CREATE TABLE IF NOT EXISTS pd_flow_graph (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -449,6 +481,8 @@ func seedAutomation(db *sql.DB) {
  (1, 11, 6, 'S11', '过滤装袋', 0, 0, 1, 0, 0, NULL, 1),
  (1, 12, 11, 'S12', '入库-成品库销售', 0, 0, 0, 1, 0, 3, 1)`)
 	}
+	// 演示：S7 卡点可绑仓（先入后出需同时开 auto_stock_in/out）；默认仅标志，不强制出入库
+	_, _ = db.Exec(`UPDATE pd_routing_step SET checkpoint_bind_warehouse=1 WHERE routing_id=1 AND step_code='S7'`)
 	_, _ = db.Exec(`INSERT OR IGNORE INTO pay_process_wage_rate(process_id, rate, effective_from, status) VALUES (10, 0.22, '2026-07-01', 'active')`)
 	_, _ = db.Exec(`INSERT OR IGNORE INTO hr_employee(id, emp_no, name, org_id, dept_id, workshop_id, emp_type, badge_code, status) VALUES
  (2, 'E0301', '陈某', 1, 1, 1, 'piece', 'EMP0301', 'active'),

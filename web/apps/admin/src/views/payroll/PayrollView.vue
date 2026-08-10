@@ -3,9 +3,70 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { empTypeLabel, payrollApi, PAY_ADJUST_TYPE_OPTIONS, RATE_UNIT_OPTIONS } from '@erp/shared'
 import { EmployeeSelect, WorkshopSelect, ProcessSelect, EnumSelect } from '../../components/select'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
 const props = defineProps<{ module: string }>()
+
+const workerCols: MobileCardColumn[] = [
+  { prop: 'name', label: '姓名', primary: true },
+  { prop: 'emp_no', label: '工号' },
+  { prop: 'emp_type', label: '用工类型' },
+  { prop: 'pay_type', label: '计薪方式' },
+  { prop: 'monthly_base', label: '月薪基数' },
+  { prop: 'bank_account', label: '银行卡' },
+  { prop: 'status', label: '状态' },
+]
+const sheetCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'period_ym', label: '期间' },
+  { prop: 'line_count', label: '人数' },
+  { prop: 'total_amount', label: '合计' },
+  { prop: 'status', label: '状态' },
+  { prop: 'calc_at', label: '核算时间' },
+]
+const rateCols: MobileCardColumn[] = [
+  { prop: 'process_name', label: '工序', primary: true },
+  { prop: 'process_id', label: '工序ID' },
+  { prop: 'process_code', label: '编码' },
+  { prop: 'rate', label: '工价' },
+  { prop: 'rate_unit', label: '单位' },
+  { prop: 'effective_from', label: '生效' },
+  { prop: 'status', label: '状态' },
+]
+const calcCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'period_ym', label: '期间' },
+  { prop: 'sheet_id', label: '工资单ID' },
+  { prop: 'status', label: '状态' },
+  { prop: 'summary_json', label: '摘要' },
+  { prop: 'created_at', label: '时间' },
+]
+const commissionRuleCols: MobileCardColumn[] = [
+  { prop: 'name', label: '名称', primary: true },
+  { prop: 'rate', label: '比例' },
+  { prop: 'effective_from', label: '生效' },
+  { prop: 'status', label: '状态' },
+]
+const commissionCalcCols: MobileCardColumn[] = [
+  { prop: 'name', label: '姓名', primary: true },
+  { prop: 'period', label: '期间' },
+  { prop: 'emp_no', label: '工号' },
+  { prop: 'rule_name', label: '规则' },
+  { prop: 'base_amount', label: '基数' },
+  { prop: 'commission_amount', label: '提成' },
+]
+const sheetLineCols: MobileCardColumn[] = [
+  { prop: 'name', label: '姓名', primary: true },
+  { prop: 'emp_no', label: '工号' },
+  { prop: 'emp_type', label: '类型' },
+  { prop: 'piece_amount', label: '计件' },
+  { prop: 'attendance_amount', label: '考勤/月薪' },
+  { prop: 'commission_amount', label: '提成' },
+  { prop: 'adjust_amount', label: '调整' },
+  { prop: 'total_amount', label: '合计' },
+]
 
 const loading = ref(false)
 const list = ref<Row[]>([])
@@ -171,75 +232,16 @@ onMounted(load)
     </div>
 
     <!-- 工人档案 -->
-    <el-table v-if="module === '工人信息管理'" :data="list" border stripe>
-      <el-table-column prop="emp_no" label="工号" width="110" />
-      <el-table-column prop="name" label="姓名" width="100" />
-      <el-table-column label="用工类型" width="100">
-        <template #default="{ row }">{{ empTypeLabel(row.emp_type) }}</template>
-      </el-table-column>
-      <el-table-column prop="pay_type" label="计薪方式" width="100" />
-      <el-table-column prop="monthly_base" label="月薪基数" width="110" />
-      <el-table-column prop="bank_account" label="银行卡" />
-      <el-table-column prop="status" label="状态" width="90" />
-      <el-table-column label="操作" width="90">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <!-- 工资单 -->
-    <el-table v-else-if="module === '工资批量管理'" :data="list" border stripe>
-      <el-table-column prop="doc_no" label="单号" width="120" />
-      <el-table-column prop="period_ym" label="期间" width="100" />
-      <el-table-column prop="line_count" label="人数" width="80" />
-      <el-table-column prop="total_amount" label="合计" width="110" />
-      <el-table-column prop="status" label="状态" width="90" />
-      <el-table-column prop="calc_at" label="核算时间" width="160" />
-      <el-table-column label="操作" width="260" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openSheet(row)">明细</el-button>
-          <el-button v-if="row.status === 'draft'" link @click="openAdjust(row)">调整</el-button>
-          <el-button v-if="row.status === 'draft'" link type="success" @click="confirmSheet(row)">确认</el-button>
-          <el-button v-if="row.status === 'confirmed' || row.status === 'draft'" link type="warning" @click="paySheet(row)">发放</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <!-- 工价 -->
-    <el-table v-else-if="module === '工序工资'" :data="list" border stripe>
-      <el-table-column prop="process_id" label="工序ID" width="90" />
-      <el-table-column prop="process_code" label="编码" width="100" />
-      <el-table-column prop="process_name" label="工序" />
-      <el-table-column prop="rate" label="工价" width="100" />
-      <el-table-column prop="rate_unit" label="单位" width="80" />
-      <el-table-column prop="effective_from" label="生效" width="120" />
-      <el-table-column prop="status" label="状态" width="90" />
-      <el-table-column label="操作" width="140">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="danger" @click="removeRate(row)">停用</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <!-- 核算日志 -->
-    <el-table v-else-if="module === '薪酬核算'" :data="list" border stripe>
-      <el-table-column prop="doc_no" label="单号" width="120" />
-      <el-table-column prop="period_ym" label="期间" width="100" />
-      <el-table-column prop="sheet_id" label="工资单ID" width="100" />
-      <el-table-column prop="status" label="状态" width="90" />
-      <el-table-column prop="summary_json" label="摘要" />
-      <el-table-column prop="created_at" label="时间" width="160" />
-    </el-table>
-
-    <!-- 提成 -->
-    <template v-else-if="module === '销售提成'">
-      <h3 class="sub">提成规则</h3>
-      <el-table :data="list" border size="small" style="margin-bottom:12px">
-        <el-table-column prop="name" label="名称" />
-        <el-table-column prop="rate" label="比例" width="100" />
-        <el-table-column prop="effective_from" label="生效" width="120" />
+    <TableOrCards v-if="module === '工人信息管理'" :data="list" :loading="loading" :columns="workerCols">
+      <el-table :data="list" border stripe>
+        <el-table-column prop="emp_no" label="工号" width="110" />
+        <el-table-column prop="name" label="姓名" width="100" />
+        <el-table-column label="用工类型" width="100">
+          <template #default="{ row }">{{ empTypeLabel(row.emp_type) }}</template>
+        </el-table-column>
+        <el-table-column prop="pay_type" label="计薪方式" width="100" />
+        <el-table-column prop="monthly_base" label="月薪基数" width="110" />
+        <el-table-column prop="bank_account" label="银行卡" />
         <el-table-column prop="status" label="状态" width="90" />
         <el-table-column label="操作" width="90">
           <template #default="{ row }">
@@ -247,15 +249,102 @@ onMounted(load)
           </template>
         </el-table-column>
       </el-table>
-      <h3 class="sub">提成结果</h3>
-      <el-table :data="calcs" border stripe>
-        <el-table-column prop="period" label="期间" width="100" />
-        <el-table-column prop="emp_no" label="工号" width="100" />
-        <el-table-column prop="name" label="姓名" width="100" />
-        <el-table-column prop="rule_name" label="规则" />
-        <el-table-column prop="base_amount" label="基数" width="110" />
-        <el-table-column prop="commission_amount" label="提成" width="110" />
+      <template #actions="{ row }">
+        <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+      </template>
+    </TableOrCards>
+
+    <!-- 工资单 -->
+    <TableOrCards v-else-if="module === '工资批量管理'" :data="list" :loading="loading" :columns="sheetCols">
+      <el-table :data="list" border stripe>
+        <el-table-column prop="doc_no" label="单号" width="120" />
+        <el-table-column prop="period_ym" label="期间" width="100" />
+        <el-table-column prop="line_count" label="人数" width="80" />
+        <el-table-column prop="total_amount" label="合计" width="110" />
+        <el-table-column prop="status" label="状态" width="90" />
+        <el-table-column prop="calc_at" label="核算时间" width="160" />
+        <el-table-column label="操作" width="260" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openSheet(row)">明细</el-button>
+            <el-button v-if="row.status === 'draft'" link @click="openAdjust(row)">调整</el-button>
+            <el-button v-if="row.status === 'draft'" link type="success" @click="confirmSheet(row)">确认</el-button>
+            <el-button v-if="row.status === 'confirmed' || row.status === 'draft'" link type="warning" @click="paySheet(row)">发放</el-button>
+          </template>
+        </el-table-column>
       </el-table>
+      <template #actions="{ row }">
+        <el-button link type="primary" @click="openSheet(row)">明细</el-button>
+        <el-button v-if="row.status === 'draft'" link @click="openAdjust(row)">调整</el-button>
+        <el-button v-if="row.status === 'draft'" link type="success" @click="confirmSheet(row)">确认</el-button>
+        <el-button v-if="row.status === 'confirmed' || row.status === 'draft'" link type="warning" @click="paySheet(row)">发放</el-button>
+      </template>
+    </TableOrCards>
+
+    <!-- 工价 -->
+    <TableOrCards v-else-if="module === '工序工资'" :data="list" :loading="loading" :columns="rateCols">
+      <el-table :data="list" border stripe>
+        <el-table-column prop="process_id" label="工序ID" width="90" />
+        <el-table-column prop="process_code" label="编码" width="100" />
+        <el-table-column prop="process_name" label="工序" />
+        <el-table-column prop="rate" label="工价" width="100" />
+        <el-table-column prop="rate_unit" label="单位" width="80" />
+        <el-table-column prop="effective_from" label="生效" width="120" />
+        <el-table-column prop="status" label="状态" width="90" />
+        <el-table-column label="操作" width="140">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+            <el-button link type="danger" @click="removeRate(row)">停用</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #actions="{ row }">
+        <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+        <el-button link type="danger" @click="removeRate(row)">停用</el-button>
+      </template>
+    </TableOrCards>
+
+    <!-- 核算日志 -->
+    <TableOrCards v-else-if="module === '薪酬核算'" :data="list" :loading="loading" :columns="calcCols">
+      <el-table :data="list" border stripe>
+        <el-table-column prop="doc_no" label="单号" width="120" />
+        <el-table-column prop="period_ym" label="期间" width="100" />
+        <el-table-column prop="sheet_id" label="工资单ID" width="100" />
+        <el-table-column prop="status" label="状态" width="90" />
+        <el-table-column prop="summary_json" label="摘要" />
+        <el-table-column prop="created_at" label="时间" width="160" />
+      </el-table>
+    </TableOrCards>
+
+    <!-- 提成 -->
+    <template v-else-if="module === '销售提成'">
+      <h3 class="sub">提成规则</h3>
+      <TableOrCards :data="list" :loading="loading" :columns="commissionRuleCols" style="margin-bottom:12px">
+        <el-table :data="list" border size="small">
+          <el-table-column prop="name" label="名称" />
+          <el-table-column prop="rate" label="比例" width="100" />
+          <el-table-column prop="effective_from" label="生效" width="120" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column label="操作" width="90">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+        </template>
+      </TableOrCards>
+      <h3 class="sub">提成结果</h3>
+      <TableOrCards :data="calcs" :loading="loading" :columns="commissionCalcCols">
+        <el-table :data="calcs" border stripe>
+          <el-table-column prop="period" label="期间" width="100" />
+          <el-table-column prop="emp_no" label="工号" width="100" />
+          <el-table-column prop="name" label="姓名" width="100" />
+          <el-table-column prop="rule_name" label="规则" />
+          <el-table-column prop="base_amount" label="基数" width="110" />
+          <el-table-column prop="commission_amount" label="提成" width="110" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <el-dialog v-model="dlg" :title="module" width="520px">
@@ -328,16 +417,18 @@ onMounted(load)
     <el-dialog v-model="detailDlg" title="工资单明细" width="820px">
       <template v-if="sheetDetail">
         <p>{{ sheetDetail.doc_no }} · {{ sheetDetail.period_ym }} · {{ sheetDetail.status }} · 合计 {{ sheetDetail.total_amount }}</p>
-        <el-table :data="(sheetDetail.lines as Row[]) || []" border size="small" max-height="420">
-          <el-table-column prop="emp_no" label="工号" width="100" />
-          <el-table-column prop="name" label="姓名" width="90" />
-          <el-table-column prop="emp_type" label="类型" width="80" />
-          <el-table-column prop="piece_amount" label="计件" width="90" />
-          <el-table-column prop="attendance_amount" label="考勤/月薪" width="110" />
-          <el-table-column prop="commission_amount" label="提成" width="90" />
-          <el-table-column prop="adjust_amount" label="调整" width="90" />
-          <el-table-column prop="total_amount" label="合计" width="100" />
-        </el-table>
+        <TableOrCards :data="(sheetDetail.lines as Row[]) || []" :columns="sheetLineCols">
+          <el-table :data="(sheetDetail.lines as Row[]) || []" border size="small" max-height="420">
+            <el-table-column prop="emp_no" label="工号" width="100" />
+            <el-table-column prop="name" label="姓名" width="90" />
+            <el-table-column prop="emp_type" label="类型" width="80" />
+            <el-table-column prop="piece_amount" label="计件" width="90" />
+            <el-table-column prop="attendance_amount" label="考勤/月薪" width="110" />
+            <el-table-column prop="commission_amount" label="提成" width="90" />
+            <el-table-column prop="adjust_amount" label="调整" width="90" />
+            <el-table-column prop="total_amount" label="合计" width="100" />
+          </el-table>
+        </TableOrCards>
       </template>
     </el-dialog>
   </div>

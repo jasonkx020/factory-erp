@@ -40,11 +40,13 @@ function open(domain: string, module: string) {
     </div>
     <el-card style="margin:16px 0">
       <template #header>权限中心快捷入口</template>
-      <el-button type="primary" @click="open('人事管理','权限分配')">权限分配</el-button>
-      <el-button @click="open('系统管理','自定义权限')">自定义权限</el-button>
-      <el-button @click="open('系统管理','自定义菜单')">自定义菜单</el-button>
-      <el-button @click="open('系统管理','登录控制')">登录控制</el-button>
-      <el-button @click="open('系统管理','账户冻结')">账户冻结</el-button>
+      <div class="quick-actions">
+        <el-button type="primary" @click="open('人事管理','权限分配')">权限分配</el-button>
+        <el-button @click="open('系统管理','自定义权限')">自定义权限</el-button>
+        <el-button @click="open('系统管理','自定义菜单')">自定义菜单</el-button>
+        <el-button @click="open('系统管理','登录控制')">登录控制</el-button>
+        <el-button @click="open('系统管理','账户冻结')">账户冻结</el-button>
+      </div>
     </el-card>
     <h3>十三大核心功能</h3>
     <div class="stats">
@@ -71,4 +73,10 @@ function open(domain: string, module: string) {
 .stat.click:hover { border-color: #0d7a6f; }
 .label { color: #5c6b75; font-size: 12px; }
 .value { font-size: 24px; font-weight: 600; color: #0d7a6f; margin-top: 4px; }
+.quick-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 768px) {
+  .stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .stat { padding: 12px; }
+  .value { font-size: 20px; }
+}
 </style>

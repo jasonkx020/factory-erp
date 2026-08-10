@@ -1,5 +1,7 @@
 server:
   addr: ":18080"
+  # 开发可外置：改前端后 npm run build:dist 即可热换，无需重编 Go
+  web_root: "web/dist"
 database:
   driver: sqlite
   sqlite_path: data/erp_dev.db

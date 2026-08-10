@@ -149,6 +149,37 @@ func (s *Services) confirmReportWork(c *gin.Context) bool {
 	return true
 }
 
+// voidReportWorkDraft 作废未确认过站草稿（与「领出未用完退库」分开，不计件、无库存回冲）。
+func (s *Services) voidReportWorkDraft(c *gin.Context) bool {
+	if !s.requireAnyRole(c, "piece", "fixed", "foreman", "line_worker", "admin") {
+		return true
+	}
+	id := paramID(c)
+	m := s.loadReportWork(id)
+	if m == nil {
+		api.FailJSON(c, "NOT_FOUND")
+		return true
+	}
+	st := strOr(m["status"])
+	if st != "confirm_pending" && st != "draft" && st != "submitted" {
+		api.FailJSON(c, "ONLY_DRAFT_VOIDABLE")
+		return true
+	}
+	if strOr(m["confirmed_at"]) != "" || st == "posted" {
+		api.FailJSON(c, "ALREADY_CONFIRMED")
+		return true
+	}
+	body := bindBody(c)
+	_, err := s.DB.Exec(`UPDATE pd_report_work SET status='void' WHERE id=? AND status IN ('confirm_pending','draft','submitted')`, id)
+	if err != nil {
+		api.FailJSON(c, "DB_ERROR:"+err.Error())
+		return true
+	}
+	s.writeAuditCtx(c, "report_work", id, "void", strOrDef(body["remark"], "void_draft"), m, s.loadReportWork(id))
+	api.OK(c, gin.H{"id": id, "status": "void"})
+	return true
+}
+
 func (s *Services) writeProcessLossTxn(boxCode string, loss float64) error {
 	var productID, wh int64
 	_ = s.DB.QueryRow(`SELECT product_id, COALESCE(warehouse_id,1) FROM inv_box_code WHERE code=?`, boxCode).Scan(&productID, &wh)

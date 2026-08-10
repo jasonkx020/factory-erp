@@ -3,8 +3,114 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { reportApi } from '@erp/shared'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
+
+const enterpriseCols: MobileCardColumn[] = [
+  { prop: 'code', label: '编码', primary: true },
+  { prop: 'name', label: '名称' },
+  { prop: 'report_type', label: '类型' },
+  { prop: 'status', label: '状态' },
+]
+const crmLevelCols: MobileCardColumn[] = [
+  { prop: 'level', label: '级别', primary: true },
+  { prop: 'count', label: '数量' },
+]
+const inquiryCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'customer_id', label: '客户ID' },
+  { prop: 'status', label: '状态' },
+  { prop: 'created_at', label: '创建时间' },
+]
+const followCols: MobileCardColumn[] = [
+  { prop: 'customer_name', label: '客户', primary: true },
+  { prop: 'follow_type', label: '类型' },
+  { prop: 'follow_at', label: '跟进时间' },
+  { prop: 'content', label: '内容' },
+  { prop: 'next_remind_at', label: '下次提醒' },
+]
+const qcCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'source', label: '来源' },
+  { prop: 'qc_type', label: '类型' },
+  { prop: 'product_id', label: '产品ID' },
+  { prop: 'qty', label: '数量' },
+  { prop: 'qty_pass', label: '合格' },
+  { prop: 'qty_fail', label: '不合格' },
+  { prop: 'result', label: '结果' },
+  { prop: 'status', label: '状态' },
+  { prop: 'created_at', label: '时间' },
+]
+const accountDirCols: MobileCardColumn[] = [
+  { prop: 'direction', label: '方向', primary: true },
+  { prop: 'count', label: '笔数' },
+  { prop: 'amount', label: '金额' },
+]
+const fundCols: MobileCardColumn[] = [
+  { prop: 'code', label: '编码', primary: true },
+  { prop: 'name', label: '名称' },
+  { prop: 'currency', label: '币种' },
+  { prop: 'balance', label: '余额' },
+]
+const stockTxnCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'doc_type', label: '类型' },
+  { prop: 'warehouse_id', label: '仓库' },
+  { prop: 'biz_date', label: '业务日' },
+  { prop: 'qty_in', label: '入库量' },
+  { prop: 'qty_out', label: '出库量' },
+  { prop: 'status', label: '状态' },
+  { prop: 'remark', label: '备注' },
+]
+const stockLedgerCols: MobileCardColumn[] = [
+  { prop: 'product_name', label: '产品名称', primary: true },
+  { prop: 'warehouse_name', label: '仓库' },
+  { prop: 'product_code', label: '产品编码' },
+  { prop: 'batch_no', label: '批次' },
+  { prop: 'qty', label: '数量' },
+  { prop: 'avg_cost', label: '平均成本' },
+  { prop: 'amount', label: '金额' },
+]
+const salesWeightCols: MobileCardColumn[] = [
+  { prop: 'product_name', label: '产品名称', primary: true },
+  { prop: 'product_code', label: '产品编码' },
+  { prop: 'qty', label: '数量' },
+  { prop: 'weight', label: '重量' },
+  { prop: 'amount', label: '金额' },
+]
+const productSalesCols: MobileCardColumn[] = [
+  { prop: 'product_name', label: '产品名称', primary: true },
+  { prop: 'product_code', label: '产品编码' },
+  { prop: 'order_count', label: '订单数' },
+  { prop: 'qty', label: '数量' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'avg_price', label: '均价' },
+]
+const logisticsCols: MobileCardColumn[] = [
+  { prop: 'track_no', label: '运单号', primary: true },
+  { prop: 'carrier_name', label: '承运商' },
+  { prop: 'order_id', label: '订单ID' },
+  { prop: 'status', label: '状态' },
+  { prop: 'location', label: '位置' },
+  { prop: 'updated_at', label: '更新时间' },
+]
+const costProfitCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'period', label: '期间' },
+  { prop: 'product_id', label: '产品ID' },
+  { prop: 'material_cost', label: '材料' },
+  { prop: 'labor_cost', label: '人工' },
+  { prop: 'overhead', label: '制造费用' },
+  { prop: 'total_cost', label: '总成本' },
+  { prop: 'status', label: '状态' },
+]
+const statementLineCols: MobileCardColumn[] = [
+  { prop: 'item', label: '项目', primary: true },
+  { prop: 'section', label: '类别' },
+  { prop: 'amount', label: '金额' },
+]
 
 const route = useRoute()
 const TITLE_MAP: Record<string, string> = {
@@ -286,7 +392,7 @@ watch(active, refresh)
     </div>
 
     <el-row v-if="showKpis" :gutter="12" class="mb">
-      <el-col v-for="k in kpis" :key="String(k.key || k.metric || k.title)" :xs="12" :sm="8" :md="6">
+      <el-col v-for="k in kpis" :key="String(k.key || k.metric || k.title)" :xs="24" :sm="8" :md="6">
         <el-card shadow="never" class="kpi">
           <div class="stat-label">{{ k.title || k.item || k.metric || k.key }}</div>
           <div class="stat-value">{{ fmt(k.value ?? k.amount) }}<span v-if="k.unit" class="unit">{{ k.unit }}</span></div>
@@ -302,21 +408,25 @@ watch(active, refresh)
     <!-- 企业报表定义表 -->
     <template v-else-if="active === 'enterprise'">
       <h4>报表定义</h4>
-      <el-table :data="list" size="small" empty-text="暂无定义">
-        <el-table-column prop="code" label="编码" width="160" />
-        <el-table-column prop="name" label="名称" min-width="140" />
-        <el-table-column prop="report_type" label="类型" width="120" />
-        <el-table-column prop="status" label="状态" width="90" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="enterpriseCols" empty-text="暂无定义">
+        <el-table :data="list" size="small" empty-text="暂无定义">
+          <el-table-column prop="code" label="编码" width="160" />
+          <el-table-column prop="name" label="名称" min-width="140" />
+          <el-table-column prop="report_type" label="类型" width="120" />
+          <el-table-column prop="status" label="状态" width="90" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- CRM 分级 -->
     <template v-else-if="active === 'crm-stats'">
       <h4>客户分级</h4>
-      <el-table :data="extraRows" size="small" empty-text="暂无分级数据">
-        <el-table-column prop="level" label="级别" min-width="140" />
-        <el-table-column prop="count" label="数量" width="120" />
-      </el-table>
+      <TableOrCards :data="extraRows" :loading="loading" :columns="crmLevelCols" empty-text="暂无分级数据">
+        <el-table :data="extraRows" size="small" empty-text="暂无分级数据">
+          <el-table-column prop="level" label="级别" min-width="140" />
+          <el-table-column prop="count" label="数量" width="120" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 日统计明细 -->
@@ -333,25 +443,29 @@ watch(active, refresh)
 
     <!-- 询价 -->
     <template v-else-if="active === 'inquiries'">
-      <el-table :data="list" size="small" empty-text="暂无询价">
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="doc_no" label="单号" width="160" />
-        <el-table-column prop="customer_id" label="客户ID" width="90" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column prop="created_at" label="创建时间" min-width="160" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="inquiryCols" empty-text="暂无询价">
+        <el-table :data="list" size="small" empty-text="暂无询价">
+          <el-table-column prop="id" label="ID" width="70" />
+          <el-table-column prop="doc_no" label="单号" width="160" />
+          <el-table-column prop="customer_id" label="客户ID" width="90" />
+          <el-table-column prop="status" label="状态" width="100" />
+          <el-table-column prop="created_at" label="创建时间" min-width="160" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 跟进 -->
     <template v-else-if="active === 'follow-ups'">
-      <el-table :data="list" size="small" empty-text="暂无跟进">
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="customer_name" label="客户" min-width="140" />
-        <el-table-column prop="follow_type" label="类型" width="100" />
-        <el-table-column prop="follow_at" label="跟进时间" width="160" />
-        <el-table-column prop="content" label="内容" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="next_remind_at" label="下次提醒" width="160" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="followCols" empty-text="暂无跟进">
+        <el-table :data="list" size="small" empty-text="暂无跟进">
+          <el-table-column prop="id" label="ID" width="70" />
+          <el-table-column prop="customer_name" label="客户" min-width="140" />
+          <el-table-column prop="follow_type" label="类型" width="100" />
+          <el-table-column prop="follow_at" label="跟进时间" width="160" />
+          <el-table-column prop="content" label="内容" min-width="200" show-overflow-tooltip />
+          <el-table-column prop="next_remind_at" label="下次提醒" width="160" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 毛利仅 KPI -->
@@ -361,122 +475,142 @@ watch(active, refresh)
 
     <!-- 质检 -->
     <template v-else-if="active === 'qc'">
-      <el-table :data="list" size="small" empty-text="暂无质检记录">
-        <el-table-column prop="source" label="来源" width="90" />
-        <el-table-column prop="doc_no" label="单号" width="150" />
-        <el-table-column prop="qc_type" label="类型" width="100" />
-        <el-table-column prop="product_id" label="产品ID" width="90" />
-        <el-table-column prop="qty" label="数量" width="90" />
-        <el-table-column prop="qty_pass" label="合格" width="80" />
-        <el-table-column prop="qty_fail" label="不合格" width="80" />
-        <el-table-column prop="result" label="结果" width="90" />
-        <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column prop="created_at" label="时间" min-width="160" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="qcCols" empty-text="暂无质检记录">
+        <el-table :data="list" size="small" empty-text="暂无质检记录">
+          <el-table-column prop="source" label="来源" width="90" />
+          <el-table-column prop="doc_no" label="单号" width="150" />
+          <el-table-column prop="qc_type" label="类型" width="100" />
+          <el-table-column prop="product_id" label="产品ID" width="90" />
+          <el-table-column prop="qty" label="数量" width="90" />
+          <el-table-column prop="qty_pass" label="合格" width="80" />
+          <el-table-column prop="qty_fail" label="不合格" width="80" />
+          <el-table-column prop="result" label="结果" width="90" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column prop="created_at" label="时间" min-width="160" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 账目 -->
     <template v-else-if="active === 'accounts'">
       <h4>收支方向汇总</h4>
-      <el-table :data="list" size="small" class="mb" empty-text="暂无流水">
-        <el-table-column prop="direction" label="方向" width="100" />
-        <el-table-column prop="count" label="笔数" width="100" />
-        <el-table-column prop="amount" label="金额" min-width="140" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="accountDirCols" class="mb" empty-text="暂无流水">
+        <el-table :data="list" size="small" class="mb" empty-text="暂无流水">
+          <el-table-column prop="direction" label="方向" width="100" />
+          <el-table-column prop="count" label="笔数" width="100" />
+          <el-table-column prop="amount" label="金额" min-width="140" />
+        </el-table>
+      </TableOrCards>
       <h4>资金账户</h4>
-      <el-table :data="extraRows" size="small" empty-text="暂无账户">
-        <el-table-column prop="code" label="编码" width="120" />
-        <el-table-column prop="name" label="名称" min-width="140" />
-        <el-table-column prop="currency" label="币种" width="80" />
-        <el-table-column prop="balance" label="余额" width="140" />
-      </el-table>
+      <TableOrCards :data="extraRows" :loading="loading" :columns="fundCols" empty-text="暂无账户">
+        <el-table :data="extraRows" size="small" empty-text="暂无账户">
+          <el-table-column prop="code" label="编码" width="120" />
+          <el-table-column prop="name" label="名称" min-width="140" />
+          <el-table-column prop="currency" label="币种" width="80" />
+          <el-table-column prop="balance" label="余额" width="140" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 出入库 -->
     <template v-else-if="active === 'stock-txns'">
-      <el-table :data="list" size="small" empty-text="暂无出入库单据">
-        <el-table-column prop="doc_no" label="单号" width="150" />
-        <el-table-column prop="doc_type" label="类型" width="100" />
-        <el-table-column prop="warehouse_id" label="仓库" width="80" />
-        <el-table-column prop="biz_date" label="业务日" width="110" />
-        <el-table-column prop="qty_in" label="入库量" width="100" />
-        <el-table-column prop="qty_out" label="出库量" width="100" />
-        <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="stockTxnCols" empty-text="暂无出入库单据">
+        <el-table :data="list" size="small" empty-text="暂无出入库单据">
+          <el-table-column prop="doc_no" label="单号" width="150" />
+          <el-table-column prop="doc_type" label="类型" width="100" />
+          <el-table-column prop="warehouse_id" label="仓库" width="80" />
+          <el-table-column prop="biz_date" label="业务日" width="110" />
+          <el-table-column prop="qty_in" label="入库量" width="100" />
+          <el-table-column prop="qty_out" label="出库量" width="100" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 收发存 -->
     <template v-else-if="active === 'stock-ledger'">
-      <el-table :data="list" size="small" empty-text="暂无库存余额">
-        <el-table-column prop="warehouse_name" label="仓库" width="120" />
-        <el-table-column prop="product_code" label="产品编码" width="120" />
-        <el-table-column prop="product_name" label="产品名称" min-width="140" />
-        <el-table-column prop="batch_no" label="批次" width="100" />
-        <el-table-column prop="qty" label="数量" width="100" />
-        <el-table-column prop="avg_cost" label="平均成本" width="110" />
-        <el-table-column prop="amount" label="金额" width="120" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="stockLedgerCols" empty-text="暂无库存余额">
+        <el-table :data="list" size="small" empty-text="暂无库存余额">
+          <el-table-column prop="warehouse_name" label="仓库" width="120" />
+          <el-table-column prop="product_code" label="产品编码" width="120" />
+          <el-table-column prop="product_name" label="产品名称" min-width="140" />
+          <el-table-column prop="batch_no" label="批次" width="100" />
+          <el-table-column prop="qty" label="数量" width="100" />
+          <el-table-column prop="avg_cost" label="平均成本" width="110" />
+          <el-table-column prop="amount" label="金额" width="120" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 销售重量 -->
     <template v-else-if="active === 'sales-weight'">
-      <el-table :data="list" size="small" empty-text="暂无销售重量">
-        <el-table-column prop="product_code" label="产品编码" width="120" />
-        <el-table-column prop="product_name" label="产品名称" min-width="140" />
-        <el-table-column prop="qty" label="数量" width="100" />
-        <el-table-column prop="weight" label="重量" width="120" />
-        <el-table-column prop="amount" label="金额" width="120" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="salesWeightCols" empty-text="暂无销售重量">
+        <el-table :data="list" size="small" empty-text="暂无销售重量">
+          <el-table-column prop="product_code" label="产品编码" width="120" />
+          <el-table-column prop="product_name" label="产品名称" min-width="140" />
+          <el-table-column prop="qty" label="数量" width="100" />
+          <el-table-column prop="weight" label="重量" width="120" />
+          <el-table-column prop="amount" label="金额" width="120" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 产品销售 -->
     <template v-else-if="active === 'product-sales'">
-      <el-table :data="list" size="small" empty-text="暂无产品销售">
-        <el-table-column prop="product_code" label="产品编码" width="120" />
-        <el-table-column prop="product_name" label="产品名称" min-width="140" />
-        <el-table-column prop="order_count" label="订单数" width="90" />
-        <el-table-column prop="qty" label="数量" width="100" />
-        <el-table-column prop="amount" label="金额" width="120" />
-        <el-table-column prop="avg_price" label="均价" width="110" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="productSalesCols" empty-text="暂无产品销售">
+        <el-table :data="list" size="small" empty-text="暂无产品销售">
+          <el-table-column prop="product_code" label="产品编码" width="120" />
+          <el-table-column prop="product_name" label="产品名称" min-width="140" />
+          <el-table-column prop="order_count" label="订单数" width="90" />
+          <el-table-column prop="qty" label="数量" width="100" />
+          <el-table-column prop="amount" label="金额" width="120" />
+          <el-table-column prop="avg_price" label="均价" width="110" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 物流 -->
     <template v-else-if="active === 'logistics'">
-      <el-table :data="list" size="small" empty-text="暂无物流轨迹（可在系统物流表维护）">
-        <el-table-column prop="track_no" label="运单号" width="160" />
-        <el-table-column prop="carrier_name" label="承运商" width="120" />
-        <el-table-column prop="order_id" label="订单ID" width="90" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column prop="location" label="位置" min-width="140" />
-        <el-table-column prop="updated_at" label="更新时间" width="160" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="logisticsCols" empty-text="暂无物流轨迹（可在系统物流表维护）">
+        <el-table :data="list" size="small" empty-text="暂无物流轨迹（可在系统物流表维护）">
+          <el-table-column prop="track_no" label="运单号" width="160" />
+          <el-table-column prop="carrier_name" label="承运商" width="120" />
+          <el-table-column prop="order_id" label="订单ID" width="90" />
+          <el-table-column prop="status" label="状态" width="100" />
+          <el-table-column prop="location" label="位置" min-width="140" />
+          <el-table-column prop="updated_at" label="更新时间" width="160" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 成本利润明细 -->
     <template v-else-if="active === 'cost-profit'">
-      <el-table :data="list" size="small" empty-text="暂无成本核算">
-        <el-table-column prop="doc_no" label="单号" width="140" />
-        <el-table-column prop="period" label="期间" width="100" />
-        <el-table-column prop="product_id" label="产品ID" width="90" />
-        <el-table-column prop="material_cost" label="材料" width="100" />
-        <el-table-column prop="labor_cost" label="人工" width="100" />
-        <el-table-column prop="overhead" label="制造费用" width="100" />
-        <el-table-column prop="total_cost" label="总成本" width="110" />
-        <el-table-column prop="status" label="状态" width="100" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="costProfitCols" empty-text="暂无成本核算">
+        <el-table :data="list" size="small" empty-text="暂无成本核算">
+          <el-table-column prop="doc_no" label="单号" width="140" />
+          <el-table-column prop="period" label="期间" width="100" />
+          <el-table-column prop="product_id" label="产品ID" width="90" />
+          <el-table-column prop="material_cost" label="材料" width="100" />
+          <el-table-column prop="labor_cost" label="人工" width="100" />
+          <el-table-column prop="overhead" label="制造费用" width="100" />
+          <el-table-column prop="total_cost" label="总成本" width="110" />
+          <el-table-column prop="status" label="状态" width="100" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 资产负债表 / 现金流 / 利润表 -->
     <template v-else-if="active === 'balance-sheet' || active === 'cash-flow' || active === 'income-statement'">
-      <el-table :data="list" size="small" empty-text="暂无报表行">
-        <el-table-column v-if="active === 'balance-sheet'" prop="section" label="类别" width="110" />
-        <el-table-column prop="item" label="项目" min-width="180" />
-        <el-table-column prop="amount" label="金额" width="160">
-          <template #default="{ row }">{{ fmt(row.amount) }}</template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="statementLineCols" empty-text="暂无报表行">
+        <el-table :data="list" size="small" empty-text="暂无报表行">
+          <el-table-column v-if="active === 'balance-sheet'" prop="section" label="类别" width="110" />
+          <el-table-column prop="item" label="项目" min-width="180" />
+          <el-table-column prop="amount" label="金额" width="160">
+            <template #default="{ row }">{{ fmt(row.amount) }}</template>
+          </el-table-column>
+        </el-table>
+      </TableOrCards>
     </template>
   </div>
 </template>

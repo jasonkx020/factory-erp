@@ -4,8 +4,39 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { productApi, BASE_UNIT_OPTIONS } from '@erp/shared'
 import { ProductSelect, ProcessSelect, RoutingSelect, EnumSelect } from '../../components/select'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
+
+const productCols: MobileCardColumn[] = [
+  { prop: 'code', label: '编码', primary: true },
+  { prop: 'name', label: '名称' },
+  { prop: 'product_type', label: '类型' },
+  { prop: 'category', label: '分类' },
+  { prop: 'spec_text', label: '规格' },
+  { prop: 'cost_price', label: '成本' },
+  { prop: 'sale_price', label: '售价' },
+  { prop: 'status', label: '状态' },
+]
+const unitCols: MobileCardColumn[] = [
+  { prop: 'unit_name', label: '单位', primary: true },
+  { prop: 'factor_to_base', label: '换算系数' },
+]
+const appSortCols: MobileCardColumn[] = [
+  { prop: 'product_code', label: '编码', primary: true },
+  { prop: 'product_name', label: '名称' },
+  { prop: 'sort_no', label: '序号' },
+  { prop: 'product_type', label: '类型' },
+]
+const specCols: MobileCardColumn[] = [
+  { prop: 'product_code', label: '产品编码', primary: true },
+  { prop: 'product_name', label: '产品名称' },
+  { prop: 'spec_code', label: '规格码' },
+  { prop: 'routing_id', label: '工艺路线' },
+  { prop: 'process_wage_bind_json', label: '工资绑定' },
+  { prop: 'status', label: '状态' },
+]
 
 const route = useRoute()
 const TITLE_MAP: Record<string, string> = {
@@ -294,23 +325,30 @@ watch(selectedProductId, () => {
           <el-button type="primary" @click="createProduct">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="code" label="编码" width="110" />
-        <el-table-column prop="name" label="名称" min-width="140" />
-        <el-table-column prop="product_type" label="类型" width="90" />
-        <el-table-column prop="category" label="分类" width="90" />
-        <el-table-column prop="spec_text" label="规格" width="120" />
-        <el-table-column prop="cost_price" label="成本" width="90" />
-        <el-table-column prop="sale_price" label="售价" width="90" />
-        <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column label="操作" width="220" fixed="right">
-          <template #default="{ row }">
-            <el-button v-if="row.status!=='active'" link type="success" @click="activate(Number(row.id))">启用</el-button>
-            <el-button v-if="row.status==='active'" link type="warning" @click="deactivate(Number(row.id))">停用</el-button>
-            <el-button link type="danger" @click="removeProduct(Number(row.id))">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="productCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="code" label="编码" width="110" />
+          <el-table-column prop="name" label="名称" min-width="140" />
+          <el-table-column prop="product_type" label="类型" width="90" />
+          <el-table-column prop="category" label="分类" width="90" />
+          <el-table-column prop="spec_text" label="规格" width="120" />
+          <el-table-column prop="cost_price" label="成本" width="90" />
+          <el-table-column prop="sale_price" label="售价" width="90" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column label="操作" width="220" fixed="right">
+            <template #default="{ row }">
+              <el-button v-if="row.status!=='active'" link type="success" @click="activate(Number(row.id))">启用</el-button>
+              <el-button v-if="row.status==='active'" link type="warning" @click="deactivate(Number(row.id))">停用</el-button>
+              <el-button link type="danger" @click="removeProduct(Number(row.id))">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="row.status!=='active'" link type="success" @click="activate(Number(row.id))">启用</el-button>
+          <el-button v-if="row.status==='active'" link type="warning" @click="deactivate(Number(row.id))">停用</el-button>
+          <el-button link type="danger" @click="removeProduct(Number(row.id))">删除</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 单位管理 -->
@@ -329,24 +367,30 @@ watch(selectedProductId, () => {
         </el-form>
         <p class="hint">例：袋 → kg，系数 25 表示 1 袋 = 25 kg</p>
       </el-card>
-      <el-table :data="units" size="small">
-        <el-table-column prop="unit_name" label="单位" width="100" />
-        <el-table-column prop="factor_to_base" label="换算系数" width="110" />
-        <el-table-column label="基本" width="80">
-          <template #default="{ row }">{{ row.is_base ? '是' : '' }}</template>
-        </el-table-column>
-        <el-table-column label="采/销/存" width="120">
-          <template #default="{ row }">
-            {{ row.is_purchase ? '采' : '' }}{{ row.is_sale ? '销' : '' }}{{ row.is_stock ? '存' : '' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="180">
-          <template #default="{ $index, row }">
-            <el-button v-if="!row.is_base" link type="primary" @click="setBaseUnit($index)">设为基本</el-button>
-            <el-button link type="danger" @click="removeUnit($index)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="units" :loading="loading" :columns="unitCols">
+        <el-table :data="units" size="small">
+          <el-table-column prop="unit_name" label="单位" width="100" />
+          <el-table-column prop="factor_to_base" label="换算系数" width="110" />
+          <el-table-column label="基本" width="80">
+            <template #default="{ row }">{{ row.is_base ? '是' : '' }}</template>
+          </el-table-column>
+          <el-table-column label="采/销/存" width="120">
+            <template #default="{ row }">
+              {{ row.is_purchase ? '采' : '' }}{{ row.is_sale ? '销' : '' }}{{ row.is_stock ? '存' : '' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="180">
+            <template #default="{ $index, row }">
+              <el-button v-if="!row.is_base" link type="primary" @click="setBaseUnit($index)">设为基本</el-button>
+              <el-button link type="danger" @click="removeUnit($index)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="!row.is_base" link type="primary" @click="setBaseUnit(units.indexOf(row))">设为基本</el-button>
+          <el-button link type="danger" @click="removeUnit(units.indexOf(row))">删除</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- APP 排序 -->
@@ -355,23 +399,30 @@ watch(selectedProductId, () => {
       <div class="mb">
         <el-button type="primary" size="small" @click="saveSorts">保存排序</el-button>
       </div>
-      <el-table :data="list" size="small">
-        <el-table-column prop="sort_no" label="序号" width="80" />
-        <el-table-column prop="product_code" label="编码" width="110" />
-        <el-table-column prop="product_name" label="名称" min-width="160" />
-        <el-table-column prop="product_type" label="类型" width="90" />
-        <el-table-column label="可见" width="90">
-          <template #default="{ row }">
-            <el-switch v-model="row.is_visible" />
-          </template>
-        </el-table-column>
-        <el-table-column label="调整" width="160">
-          <template #default="{ $index }">
-            <el-button link @click="moveSort($index, -1)">上移</el-button>
-            <el-button link @click="moveSort($index, 1)">下移</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="appSortCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="sort_no" label="序号" width="80" />
+          <el-table-column prop="product_code" label="编码" width="110" />
+          <el-table-column prop="product_name" label="名称" min-width="160" />
+          <el-table-column prop="product_type" label="类型" width="90" />
+          <el-table-column label="可见" width="90">
+            <template #default="{ row }">
+              <el-switch v-model="row.is_visible" />
+            </template>
+          </el-table-column>
+          <el-table-column label="调整" width="160">
+            <template #default="{ $index }">
+              <el-button link @click="moveSort($index, -1)">上移</el-button>
+              <el-button link @click="moveSort($index, 1)">下移</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-switch v-model="row.is_visible" />
+          <el-button link @click="moveSort(list.indexOf(row), -1)">上移</el-button>
+          <el-button link @click="moveSort(list.indexOf(row), 1)">下移</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 生产规格绑定 -->
@@ -391,19 +442,24 @@ watch(selectedProductId, () => {
           <el-button type="primary" @click="createSpec">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="product_code" label="产品编码" width="110" />
-        <el-table-column prop="product_name" label="产品名称" min-width="140" />
-        <el-table-column prop="spec_code" label="规格码" width="120" />
-        <el-table-column prop="routing_id" label="工艺路线" width="100" />
-        <el-table-column prop="process_wage_bind_json" label="工资绑定" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="status" label="状态" width="80" />
-        <el-table-column label="操作" width="100">
-          <template #default="{ row }">
-            <el-button link type="danger" @click="removeSpec(Number(row.id))">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="specCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="product_code" label="产品编码" width="110" />
+          <el-table-column prop="product_name" label="产品名称" min-width="140" />
+          <el-table-column prop="spec_code" label="规格码" width="120" />
+          <el-table-column prop="routing_id" label="工艺路线" width="100" />
+          <el-table-column prop="process_wage_bind_json" label="工资绑定" min-width="160" show-overflow-tooltip />
+          <el-table-column prop="status" label="状态" width="80" />
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button link type="danger" @click="removeSpec(Number(row.id))">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button link type="danger" @click="removeSpec(Number(row.id))">删除</el-button>
+        </template>
+      </TableOrCards>
     </template>
   </div>
 </template>

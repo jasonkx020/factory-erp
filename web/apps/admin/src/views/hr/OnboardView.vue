@@ -3,8 +3,24 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { DEFAULT_EMP_TYPE, EMP_TYPE_OPTIONS, empTypeLabel, hrApi, iamApi } from '@erp/shared'
 import { DeptSelect, TeamSelect, WorkshopSelect } from '../../components/select'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
+
+const onboardCols: MobileCardColumn[] = [
+  { prop: 'name', label: '姓名', primary: true },
+  { prop: 'id', label: '单号' },
+  { prop: 'onboard_date', label: '入职日' },
+  { prop: 'emp_no', label: '工号' },
+  { prop: 'emp_type', label: '类型' },
+  { prop: 'job_title', label: '岗位' },
+  { prop: 'workshop_id', label: '车间' },
+  { prop: 'mobile', label: '手机' },
+  { prop: 'id_card_no', label: '身份证号' },
+  { prop: 'status', label: '状态' },
+  { prop: 'remark', label: '备注' },
+]
 
 const loading = ref(false)
 const list = ref<Row[]>([])
@@ -206,46 +222,53 @@ onMounted(load)
       <el-button @click="load">刷新</el-button>
     </div>
 
-    <el-table :data="visibleList" border stripe>
-      <el-table-column prop="id" label="单号" width="70" />
-      <el-table-column prop="onboard_date" label="入职日" width="110" />
-      <el-table-column prop="emp_no" label="工号" width="120" />
-      <el-table-column prop="name" label="姓名" width="100" />
-      <el-table-column label="类型" width="90">
-        <template #default="{ row }">
-          <el-tag size="small" :type="row.emp_type === 'temp' ? 'warning' : 'info'">
-            {{ empTypeLabel(row.emp_type) }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="job_title" label="岗位" width="100" />
-      <el-table-column prop="workshop_id" label="车间" width="70" />
-      <el-table-column prop="mobile" label="手机" width="120" />
-      <el-table-column prop="id_card_no" label="身份证号" width="160" show-overflow-tooltip />
-      <el-table-column label="开户" width="80">
-        <template #default="{ row }">
-          <el-tag size="small" :type="row.has_account ? 'success' : row.need_account ? 'warning' : 'info'">
-            {{ row.has_account ? '已开' : row.need_account ? '待开' : '不开' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="状态" width="90">
-        <template #default="{ row }">
-          <el-tag
-            size="small"
-            :type="row.status === 'confirmed' ? 'success' : row.status === 'cancelled' ? 'info' : 'warning'"
-          >{{ statusLabel[String(row.status)] || row.status }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="remark" label="备注" min-width="120" />
-      <el-table-column label="操作" width="220" fixed="right">
-        <template #default="{ row }">
-          <el-button v-if="row.status === 'draft'" link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button v-if="row.status === 'draft'" link type="success" @click="confirm(row)">确认入职</el-button>
-          <el-button v-if="row.status === 'draft'" link type="danger" @click="cancel(row)">取消</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <TableOrCards :data="visibleList" :loading="loading" :columns="onboardCols">
+      <el-table :data="visibleList" border stripe>
+        <el-table-column prop="id" label="单号" width="70" />
+        <el-table-column prop="onboard_date" label="入职日" width="110" />
+        <el-table-column prop="emp_no" label="工号" width="120" />
+        <el-table-column prop="name" label="姓名" width="100" />
+        <el-table-column label="类型" width="90">
+          <template #default="{ row }">
+            <el-tag size="small" :type="row.emp_type === 'temp' ? 'warning' : 'info'">
+              {{ empTypeLabel(row.emp_type) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="job_title" label="岗位" width="100" />
+        <el-table-column prop="workshop_id" label="车间" width="70" />
+        <el-table-column prop="mobile" label="手机" width="120" />
+        <el-table-column prop="id_card_no" label="身份证号" width="160" show-overflow-tooltip />
+        <el-table-column label="开户" width="80">
+          <template #default="{ row }">
+            <el-tag size="small" :type="row.has_account ? 'success' : row.need_account ? 'warning' : 'info'">
+              {{ row.has_account ? '已开' : row.need_account ? '待开' : '不开' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="90">
+          <template #default="{ row }">
+            <el-tag
+              size="small"
+              :type="row.status === 'confirmed' ? 'success' : row.status === 'cancelled' ? 'info' : 'warning'"
+            >{{ statusLabel[String(row.status)] || row.status }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="remark" label="备注" min-width="120" />
+        <el-table-column label="操作" width="220" fixed="right">
+          <template #default="{ row }">
+            <el-button v-if="row.status === 'draft'" link type="primary" @click="openEdit(row)">编辑</el-button>
+            <el-button v-if="row.status === 'draft'" link type="success" @click="confirm(row)">确认入职</el-button>
+            <el-button v-if="row.status === 'draft'" link type="danger" @click="cancel(row)">取消</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #actions="{ row }">
+        <el-button v-if="row.status === 'draft'" link type="primary" @click="openEdit(row)">编辑</el-button>
+        <el-button v-if="row.status === 'draft'" link type="success" @click="confirm(row)">确认入职</el-button>
+        <el-button v-if="row.status === 'draft'" link type="danger" @click="cancel(row)">取消</el-button>
+      </template>
+    </TableOrCards>
 
     <el-dialog v-model="dialog" :title="isEdit ? '编辑入职草稿' : '新建入职登记'" width="720px" destroy-on-close>
       <el-alert
@@ -257,54 +280,54 @@ onMounted(load)
       />
       <el-form label-width="100px">
         <el-row :gutter="12">
-          <el-col :span="12">
+          <el-col :span="12" :xs="24">
             <el-form-item label="工号" required>
               <el-input v-model="form.emp_no" :disabled="isEdit" />
             </el-form-item>
           </el-col>
-          <el-col :span="12">
+          <el-col :span="12" :xs="24">
             <el-form-item label="姓名" required>
               <el-input v-model="form.name" />
             </el-form-item>
           </el-col>
-          <el-col :span="12">
+          <el-col :span="12" :xs="24">
             <el-form-item label="员工类型">
               <el-select v-model="form.emp_type" style="width:100%">
                 <el-option v-for="t in EMP_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="12">
+          <el-col :span="12" :xs="24">
             <el-form-item label="入职日期">
               <el-date-picker v-model="form.onboard_date" type="date" value-format="YYYY-MM-DD" style="width:100%" />
             </el-form-item>
           </el-col>
-          <el-col :span="12">
+          <el-col :span="12" :xs="24">
             <el-form-item label="岗位">
               <el-input v-model="form.job_title" placeholder="如 去皮工" />
             </el-form-item>
           </el-col>
-          <el-col :span="12">
+          <el-col :span="12" :xs="24">
             <el-form-item label="手机">
               <el-input v-model="form.mobile" />
             </el-form-item>
           </el-col>
-          <el-col :span="12">
+          <el-col :span="12" :xs="24">
             <el-form-item label="身份证号">
               <el-input v-model="form.id_card_no" placeholder="可手填；App 支持 OCR" maxlength="18" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+          <el-col :span="8" :xs="24">
             <el-form-item label="部门">
               <DeptSelect v-model="form.dept_id" allow-zero zero-label="未设置" style="width:100%" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+          <el-col :span="8" :xs="24">
             <el-form-item label="车间">
               <WorkshopSelect v-model="form.workshop_id" allow-zero zero-label="未设置" style="width:100%" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+          <el-col :span="8" :xs="24">
             <el-form-item label="班组">
               <TeamSelect
                 v-model="form.team_id"
@@ -315,23 +338,23 @@ onMounted(load)
               />
             </el-form-item>
           </el-col>
-          <el-col :span="12">
+          <el-col :span="12" :xs="24">
             <el-form-item label="工牌码">
               <span v-if="form.badge_code" class="badge-ro">{{ form.badge_code }}（自动生成）</span>
               <span v-else class="hint">确认入职建档时系统自动生成，无需填写</span>
             </el-form-item>
           </el-col>
-          <el-col :span="12">
+          <el-col :span="12" :xs="24">
             <el-form-item label="登录名">
               <el-input v-model="form.login_name" placeholder="默认用工号" />
             </el-form-item>
           </el-col>
-          <el-col :span="24">
+          <el-col :span="24" :xs="24">
             <el-form-item label="开户赋权">
               <el-switch v-model="form.need_account" active-text="确认时开户" inactive-text="仅建档不开户" />
             </el-form-item>
           </el-col>
-          <el-col :span="24">
+          <el-col :span="24" :xs="24">
             <el-form-item label="赋予角色">
               <el-checkbox-group v-model="form.role_ids">
                 <el-checkbox v-for="r in roles" :key="String(r.id)" :label="Number(r.id)">
@@ -341,7 +364,7 @@ onMounted(load)
               <p class="hint">不选则按员工类型使用入职角色模板（计件/临时→piece / 固定→fixed / 职能→hr）。</p>
             </el-form-item>
           </el-col>
-          <el-col :span="24">
+          <el-col :span="24" :xs="24">
             <el-form-item label="备注">
               <el-input v-model="form.remark" type="textarea" :rows="2" />
             </el-form-item>

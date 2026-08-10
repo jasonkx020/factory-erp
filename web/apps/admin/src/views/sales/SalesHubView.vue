@@ -4,8 +4,106 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { salesApi, productApi, crmApi, type FormOption } from '@erp/shared'
 import { SalesOrderSelect, ProductSelect, WarehouseSelect, EnumSelect } from '../../components/select'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
+
+const orderListCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'customer_name', label: '客户' },
+  { prop: 'status', label: '状态' },
+  { prop: 'source', label: '来源' },
+  { prop: 'total_amount', label: '金额' },
+  { prop: 'created_at', label: '时间' },
+]
+const orderEditCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'customer_name', label: '客户' },
+  { prop: 'status', label: '状态' },
+  { prop: 'total_amount', label: '金额' },
+  { prop: 'created_at', label: '时间' },
+]
+const orderRebuyCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '原单号', primary: true },
+  { prop: 'customer_name', label: '客户' },
+  { prop: 'status', label: '状态' },
+  { prop: 'total_amount', label: '金额' },
+  { prop: 'created_at', label: '时间' },
+]
+const inquiryCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'customer_name', label: '客户' },
+  { prop: 'status', label: '状态' },
+  { prop: 'created_at', label: '时间' },
+]
+const preShipCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'order_no', label: '订单' },
+  { prop: 'plan_ship_date', label: '计划日' },
+  { prop: 'status', label: '状态' },
+  { prop: 'reserved', label: '已占用' },
+]
+const deliveryCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'order_no', label: '订单' },
+  { prop: 'status', label: '状态' },
+  { prop: 'logistics_no', label: '物流' },
+  { prop: 'shipped_at', label: '发货时间' },
+]
+const priceLockCols: MobileCardColumn[] = [
+  { prop: 'customer_name', label: '客户', primary: true },
+  { prop: 'product_name', label: '产品' },
+  { prop: 'lock_price', label: '锁价' },
+  { prop: 'effective_from', label: '起' },
+  { prop: 'effective_to', label: '止' },
+  { prop: 'status', label: '状态' },
+]
+const contractCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '合同号', primary: true },
+  { prop: 'customer_name', label: '客户' },
+  { prop: 'title', label: '标题' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'status', label: '状态' },
+]
+const quoteCols: MobileCardColumn[] = [
+  { prop: 'customer_name', label: '客户', primary: true },
+  { prop: 'product_name', label: '产品' },
+  { prop: 'price', label: '报价' },
+  { prop: 'quoted_at', label: '时间' },
+  { prop: 'inquiry_id', label: '询价ID' },
+  { prop: 'order_id', label: '订单ID' },
+]
+const rankingCols: MobileCardColumn[] = [
+  { prop: 'customer_name', label: '客户', primary: true },
+  { prop: 'rank', label: '排名' },
+  { prop: 'order_count', label: '订单数' },
+  { prop: 'amount', label: '销售额' },
+]
+const bomCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'name', label: '名称' },
+  { prop: 'product_name', label: '成品' },
+  { prop: 'status', label: '状态' },
+]
+const budgetCols: MobileCardColumn[] = [
+  { prop: 'order_id', label: '订单', primary: true },
+  { prop: 'sale_amount', label: '销售额' },
+  { prop: 'total_cost', label: '成本' },
+  { prop: 'margin', label: '毛利率' },
+  { prop: 'created_at', label: '时间' },
+]
+const printCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'doc_type', label: '类型' },
+  { prop: 'printed_at', label: '打印时间' },
+]
+const selfOrderCols: MobileCardColumn[] = [
+  { prop: 'name', label: '规则', primary: true },
+  { prop: 'min_qty', label: '最小量' },
+  { prop: 'enabled', label: '启用' },
+  { prop: 'remark', label: '说明' },
+]
 
 const PRINT_DOC_OPTIONS: FormOption[] = [
   { value: 'sales_order', label: '销售订单' },
@@ -82,6 +180,12 @@ const customers = ref<Row[]>([])
 const products = ref<Row[]>([])
 const list = ref<Row[]>([])
 const detail = ref<Row | null>(null)
+const orderEditList = computed(() =>
+  list.value.filter((r) => ['draft', 'open', 'submitted'].includes(String(r.status))),
+)
+const inquiryApproveList = computed(() =>
+  list.value.filter((r) => ['draft', 'pending', 'submitted'].includes(String(r.status))),
+)
 
 const orderForm = reactive({
   customer_id: 1,
@@ -457,70 +561,95 @@ onMounted(async () => {
           <el-button type="primary" @click="createOrder">下单</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small" @row-click="(r: Row) => openOrder(Number(r.id))">
-        <el-table-column prop="doc_no" label="单号" width="160" />
-        <el-table-column prop="customer_name" label="客户" width="140" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column prop="source" label="来源" width="90" />
-        <el-table-column prop="total_amount" label="金额" width="100" />
-        <el-table-column prop="created_at" label="时间" min-width="150" />
-        <el-table-column label="操作" width="280" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click.stop="submitOrder(Number(row.id))">提交</el-button>
-            <el-button link @click.stop="openEditOrder(row)">修改</el-button>
-            <el-button link type="danger" @click.stop="cancelOrder(Number(row.id))">取消</el-button>
-            <el-button link @click.stop="pickOrder(row)">选用</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="orderListCols">
+        <el-table :data="list" size="small" @row-click="(r: Row) => openOrder(Number(r.id))">
+          <el-table-column prop="doc_no" label="单号" width="160" />
+          <el-table-column prop="customer_name" label="客户" width="140" />
+          <el-table-column prop="status" label="状态" width="100" />
+          <el-table-column prop="source" label="来源" width="90" />
+          <el-table-column prop="total_amount" label="金额" width="100" />
+          <el-table-column prop="created_at" label="时间" min-width="150" />
+          <el-table-column label="操作" width="280" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" @click.stop="submitOrder(Number(row.id))">提交</el-button>
+              <el-button link @click.stop="openEditOrder(row)">修改</el-button>
+              <el-button link type="danger" @click.stop="cancelOrder(Number(row.id))">取消</el-button>
+              <el-button link @click.stop="pickOrder(row)">选用</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button link type="primary" @click="submitOrder(Number(row.id))">提交</el-button>
+          <el-button link @click="openEditOrder(row)">修改</el-button>
+          <el-button link type="danger" @click="cancelOrder(Number(row.id))">取消</el-button>
+          <el-button link @click="pickOrder(row)">选用</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 修改订单：仅草稿/可改订单的编辑 -->
     <template v-else-if="active==='order-edit'">
       <p class="mode-hint">本页专注修改已有订单（备注与明细行）；新建请走「销售订单」。</p>
-      <el-table :data="list.filter(r => ['draft','open','submitted'].includes(String(r.status)))" size="small">
-        <el-table-column prop="doc_no" label="单号" width="160" />
-        <el-table-column prop="customer_name" label="客户" width="140" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column prop="total_amount" label="金额" width="100" />
-        <el-table-column prop="created_at" label="时间" min-width="150" />
-        <el-table-column label="操作" width="160" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="openEditOrder(row)">编辑保存</el-button>
-            <el-button link @click="openOrder(Number(row.id))">查看</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="orderEditList" :loading="loading" :columns="orderEditCols">
+        <el-table :data="orderEditList" size="small">
+          <el-table-column prop="doc_no" label="单号" width="160" />
+          <el-table-column prop="customer_name" label="客户" width="140" />
+          <el-table-column prop="status" label="状态" width="100" />
+          <el-table-column prop="total_amount" label="金额" width="100" />
+          <el-table-column prop="created_at" label="时间" min-width="150" />
+          <el-table-column label="操作" width="160" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="openEditOrder(row)">编辑保存</el-button>
+              <el-button link @click="openOrder(Number(row.id))">查看</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button link type="primary" @click="openEditOrder(row)">编辑保存</el-button>
+          <el-button link @click="openOrder(Number(row.id))">查看</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 订单复购：以复购为主操作 -->
     <template v-else-if="active==='order-rebuy'">
       <p class="mode-hint">选择历史订单一键复购生成新单；不会修改原单。</p>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="原单号" width="160" />
-        <el-table-column prop="customer_name" label="客户" width="140" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column prop="total_amount" label="金额" width="100" />
-        <el-table-column prop="created_at" label="时间" min-width="150" />
-        <el-table-column label="操作" width="140" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="success" @click="rebuyOrder(Number(row.id))">一键复购</el-button>
-            <el-button link @click="openOrder(Number(row.id))">查看</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="orderRebuyCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="原单号" width="160" />
+          <el-table-column prop="customer_name" label="客户" width="140" />
+          <el-table-column prop="status" label="状态" width="100" />
+          <el-table-column prop="total_amount" label="金额" width="100" />
+          <el-table-column prop="created_at" label="时间" min-width="150" />
+          <el-table-column label="操作" width="140" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="success" @click="rebuyOrder(Number(row.id))">一键复购</el-button>
+              <el-button link @click="openOrder(Number(row.id))">查看</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button link type="success" @click="rebuyOrder(Number(row.id))">一键复购</el-button>
+          <el-button link @click="openOrder(Number(row.id))">查看</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 我的订单 -->
     <template v-else-if="active==='my-orders'">
-      <el-table :data="list" size="small" @row-click="(r: Row) => openOrder(Number(r.id))">
-        <el-table-column prop="doc_no" label="单号" width="160" />
-        <el-table-column prop="customer_name" label="客户" width="140" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column prop="source" label="来源" width="90" />
-        <el-table-column prop="total_amount" label="金额" width="100" />
-        <el-table-column prop="created_at" label="时间" min-width="150" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="orderListCols">
+        <el-table :data="list" size="small" @row-click="(r: Row) => openOrder(Number(r.id))">
+          <el-table-column prop="doc_no" label="单号" width="160" />
+          <el-table-column prop="customer_name" label="客户" width="140" />
+          <el-table-column prop="status" label="状态" width="100" />
+          <el-table-column prop="source" label="来源" width="90" />
+          <el-table-column prop="total_amount" label="金额" width="100" />
+          <el-table-column prop="created_at" label="时间" min-width="150" />
+        </el-table>
+        <template #actions="{ row }">
+          <el-button link type="primary" @click="openOrder(Number(row.id))">查看</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 询价管理：新建 + 转订单 -->
@@ -542,33 +671,43 @@ onMounted(async () => {
           <el-button type="primary" @click="createInquiry">保存</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="160" />
-        <el-table-column prop="customer_name" label="客户" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column prop="created_at" label="时间" width="160" />
-        <el-table-column label="操作" width="160">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="inquiryToOrder(Number(row.id))">转订单</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="inquiryCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="160" />
+          <el-table-column prop="customer_name" label="客户" />
+          <el-table-column prop="status" label="状态" width="100" />
+          <el-table-column prop="created_at" label="时间" width="160" />
+          <el-table-column label="操作" width="160">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="inquiryToOrder(Number(row.id))">转订单</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button link type="primary" @click="inquiryToOrder(Number(row.id))">转订单</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 询价审批：仅审批待审单据 -->
     <template v-else-if="active==='inquiry-approve'">
       <p class="mode-hint">本页仅处理待审批询价；新建询价请走「询价管理」。</p>
-      <el-table :data="list.filter(r => ['draft','pending','submitted'].includes(String(r.status)))" size="small">
-        <el-table-column prop="doc_no" label="单号" width="160" />
-        <el-table-column prop="customer_name" label="客户" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column prop="created_at" label="时间" width="160" />
-        <el-table-column label="操作" width="120">
-          <template #default="{ row }">
-            <el-button link type="success" @click="approveInquiry(Number(row.id))">审批通过</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="inquiryApproveList" :loading="loading" :columns="inquiryCols">
+        <el-table :data="inquiryApproveList" size="small">
+          <el-table-column prop="doc_no" label="单号" width="160" />
+          <el-table-column prop="customer_name" label="客户" />
+          <el-table-column prop="status" label="状态" width="100" />
+          <el-table-column prop="created_at" label="时间" width="160" />
+          <el-table-column label="操作" width="120">
+            <template #default="{ row }">
+              <el-button link type="success" @click="approveInquiry(Number(row.id))">审批通过</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button link type="success" @click="approveInquiry(Number(row.id))">审批通过</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 预发货 -->
@@ -584,19 +723,25 @@ onMounted(async () => {
           <el-button type="primary" @click="createPreShip">创建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="160" />
-        <el-table-column prop="order_no" label="订单" width="160" />
-        <el-table-column prop="plan_ship_date" label="计划日" width="120" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column prop="reserved" label="已占用" width="90" />
-        <el-table-column label="操作" width="200">
-          <template #default="{ row }">
-            <el-button link @click="reservePre(Number(row.id))">占用</el-button>
-            <el-button link type="primary" @click="confirmPre(Number(row.id))">确认→发货单</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="preShipCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="160" />
+          <el-table-column prop="order_no" label="订单" width="160" />
+          <el-table-column prop="plan_ship_date" label="计划日" width="120" />
+          <el-table-column prop="status" label="状态" width="100" />
+          <el-table-column prop="reserved" label="已占用" width="90" />
+          <el-table-column label="操作" width="200">
+            <template #default="{ row }">
+              <el-button link @click="reservePre(Number(row.id))">占用</el-button>
+              <el-button link type="primary" @click="confirmPre(Number(row.id))">确认→发货单</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button link @click="reservePre(Number(row.id))">占用</el-button>
+          <el-button link type="primary" @click="confirmPre(Number(row.id))">确认→发货单</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 发货审批 -->
@@ -610,19 +755,25 @@ onMounted(async () => {
           <el-button type="primary" @click="createDelivery">创建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="160" />
-        <el-table-column prop="order_no" label="订单" width="160" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column prop="logistics_no" label="物流" />
-        <el-table-column prop="shipped_at" label="发货时间" width="160" />
-        <el-table-column label="操作" width="200">
-          <template #default="{ row }">
-            <el-button link type="success" @click="approveDelivery(Number(row.id))">审批</el-button>
-            <el-button link type="primary" @click="shipDelivery(Number(row.id))">出库发货</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="deliveryCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="160" />
+          <el-table-column prop="order_no" label="订单" width="160" />
+          <el-table-column prop="status" label="状态" width="100" />
+          <el-table-column prop="logistics_no" label="物流" />
+          <el-table-column prop="shipped_at" label="发货时间" width="160" />
+          <el-table-column label="操作" width="200">
+            <template #default="{ row }">
+              <el-button link type="success" @click="approveDelivery(Number(row.id))">审批</el-button>
+              <el-button link type="primary" @click="shipDelivery(Number(row.id))">出库发货</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button link type="success" @click="approveDelivery(Number(row.id))">审批</el-button>
+          <el-button link type="primary" @click="shipDelivery(Number(row.id))">出库发货</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 锁价 -->
@@ -649,14 +800,16 @@ onMounted(async () => {
           <el-button type="primary" @click="createLock">保存</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="customer_name" label="客户" />
-        <el-table-column prop="product_name" label="产品" />
-        <el-table-column prop="lock_price" label="锁价" width="100" />
-        <el-table-column prop="effective_from" label="起" width="120" />
-        <el-table-column prop="effective_to" label="止" width="120" />
-        <el-table-column prop="status" label="状态" width="90" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="priceLockCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="customer_name" label="客户" />
+          <el-table-column prop="product_name" label="产品" />
+          <el-table-column prop="lock_price" label="锁价" width="100" />
+          <el-table-column prop="effective_from" label="起" width="120" />
+          <el-table-column prop="effective_to" label="止" width="120" />
+          <el-table-column prop="status" label="状态" width="90" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 合同 -->
@@ -673,34 +826,40 @@ onMounted(async () => {
           <el-button type="primary" @click="createContract">保存</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="合同号" width="160" />
-        <el-table-column prop="customer_name" label="客户" />
-        <el-table-column prop="title" label="标题" />
-        <el-table-column prop="amount" label="金额" width="120" />
-        <el-table-column prop="status" label="状态" width="90" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="contractCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="合同号" width="160" />
+          <el-table-column prop="customer_name" label="客户" />
+          <el-table-column prop="title" label="标题" />
+          <el-table-column prop="amount" label="金额" width="120" />
+          <el-table-column prop="status" label="状态" width="90" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 历史报价 / 排行榜 / BOM / 预算 / 打印 / 自助 / 计算器 -->
     <template v-else-if="active==='quotes'">
-      <el-table :data="list" size="small">
-        <el-table-column prop="customer_name" label="客户" />
-        <el-table-column prop="product_name" label="产品" />
-        <el-table-column prop="price" label="报价" width="100" />
-        <el-table-column prop="quoted_at" label="时间" width="180" />
-        <el-table-column prop="inquiry_id" label="询价ID" width="90" />
-        <el-table-column prop="order_id" label="订单ID" width="90" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="quoteCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="customer_name" label="客户" />
+          <el-table-column prop="product_name" label="产品" />
+          <el-table-column prop="price" label="报价" width="100" />
+          <el-table-column prop="quoted_at" label="时间" width="180" />
+          <el-table-column prop="inquiry_id" label="询价ID" width="90" />
+          <el-table-column prop="order_id" label="订单ID" width="90" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active==='rankings'">
-      <el-table :data="list" size="small">
-        <el-table-column prop="rank" label="排名" width="80" />
-        <el-table-column prop="customer_name" label="客户" />
-        <el-table-column prop="order_count" label="订单数" width="100" />
-        <el-table-column prop="amount" label="销售额" width="120" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="rankingCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="rank" label="排名" width="80" />
+          <el-table-column prop="customer_name" label="客户" />
+          <el-table-column prop="order_count" label="订单数" width="100" />
+          <el-table-column prop="amount" label="销售额" width="120" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active==='boms'">
@@ -719,12 +878,14 @@ onMounted(async () => {
           <el-button type="primary" @click="createBom">保存</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="160" />
-        <el-table-column prop="name" label="名称" />
-        <el-table-column prop="product_name" label="成品" />
-        <el-table-column prop="status" label="状态" width="90" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="bomCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="160" />
+          <el-table-column prop="name" label="名称" />
+          <el-table-column prop="product_name" label="成品" />
+          <el-table-column prop="status" label="状态" width="90" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active==='budgets'">
@@ -739,13 +900,15 @@ onMounted(async () => {
           <el-button type="primary" @click="createBudget">测算</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="order_id" label="订单" width="90" />
-        <el-table-column prop="sale_amount" label="销售额" width="100" />
-        <el-table-column prop="total_cost" label="成本" width="100" />
-        <el-table-column prop="margin" label="毛利率" width="100" />
-        <el-table-column prop="created_at" label="时间" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="budgetCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="order_id" label="订单" width="90" />
+          <el-table-column prop="sale_amount" label="销售额" width="100" />
+          <el-table-column prop="total_cost" label="成本" width="100" />
+          <el-table-column prop="margin" label="毛利率" width="100" />
+          <el-table-column prop="created_at" label="时间" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active==='calculator'">
@@ -790,11 +953,13 @@ onMounted(async () => {
           <el-button type="primary" @click="doPrint">生成预览</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_type" label="类型" width="120" />
-        <el-table-column prop="doc_no" label="单号" />
-        <el-table-column prop="printed_at" label="打印时间" width="180" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="printCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_type" label="类型" width="120" />
+          <el-table-column prop="doc_no" label="单号" />
+          <el-table-column prop="printed_at" label="打印时间" width="180" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active==='self-orders'">
@@ -814,12 +979,14 @@ onMounted(async () => {
           <el-button type="primary" @click="submitSelf">提交自助单</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="name" label="规则" />
-        <el-table-column prop="min_qty" label="最小量" width="100" />
-        <el-table-column prop="enabled" label="启用" width="80" />
-        <el-table-column prop="remark" label="说明" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="selfOrderCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="name" label="规则" />
+          <el-table-column prop="min_qty" label="最小量" width="100" />
+          <el-table-column prop="enabled" label="启用" width="80" />
+          <el-table-column prop="remark" label="说明" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <el-card v-if="detail" header="明细" style="margin-top:16px">

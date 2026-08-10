@@ -216,6 +216,21 @@ export const productionApi = {
   closeRework: (id: number) => api.post(`/production/reworks/${id}/close`, {}),
   scraps: () => api.get<PageData>('/production/scraps'),
   createScrap: (body: Record<string, unknown>) => api.post('/production/scraps', body),
+  listProcessReturns: (params?: string) =>
+    api.get<PageData>(params ? `/production/process-returns?${params}` : '/production/process-returns'),
+  getProcessReturn: (id: number) => api.get(`/production/process-returns/${id}`),
+  createProcessReturn: (body: Record<string, unknown>) => api.post('/production/process-returns', body),
+  submitProcessReturn: (id: number) => api.post(`/production/process-returns/${id}/submit`, {}),
+  approveProcessReturn: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/production/process-returns/${id}/approve`, body || {}),
+  rejectProcessReturn: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/production/process-returns/${id}/reject`, body || {}),
+  transferProcessReturn: (id: number, body: Record<string, unknown>) =>
+    api.post(`/production/process-returns/${id}/transfer`, body),
+  warehouseConfirmProcessReturn: (id: number) =>
+    api.post(`/production/process-returns/${id}/warehouse-confirm`, {}),
+  voidReportWork: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/production/report-works/${id}/void`, body || {}),
   drawingLinks: () => api.get<PageData>('/production/drawing-links'),
   createDrawingLink: (body: Record<string, unknown>) => api.post('/production/drawing-links', body),
   costHidePolicies: () => api.get<PageData>('/production/cost-hide-policies'),

@@ -8,8 +8,88 @@ import {
   SETTLE_METHOD_OPTIONS,
 } from '@erp/shared'
 import { CustomerSelect, UserSelect, EnumSelect } from '../../components/select'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
+
+const customerCols: MobileCardColumn[] = [
+  { prop: 'code', label: '编码', primary: true },
+  { prop: 'name', label: '名称' },
+  { prop: 'contact_name', label: '联系人' },
+  { prop: 'mobile', label: '手机' },
+  { prop: 'level', label: '等级' },
+  { prop: 'owner_user_id', label: '归属' },
+  { prop: 'protect_until', label: '保护至' },
+]
+const oppCols: MobileCardColumn[] = [
+  { prop: 'title', label: '标题', primary: true },
+  { prop: 'customer_name', label: '客户' },
+  { prop: 'stage', label: '阶段' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'status', label: '状态' },
+  { prop: 'converted_order_id', label: '订单ID' },
+]
+const followCols: MobileCardColumn[] = [
+  { prop: 'customer_name', label: '客户', primary: true },
+  { prop: 'follow_type', label: '方式' },
+  { prop: 'follow_at', label: '时间' },
+  { prop: 'content', label: '内容' },
+  { prop: 'next_remind_at', label: '下次提醒' },
+]
+const assignCols: MobileCardColumn[] = [
+  { prop: 'customer_name', label: '客户', primary: true },
+  { prop: 'from_user_id', label: '原归属' },
+  { prop: 'to_user_id', label: '新归属' },
+  { prop: 'assigned_at', label: '时间' },
+  { prop: 'lock_flag', label: '锁定' },
+  { prop: 'remark', label: '备注' },
+]
+const protectCols: MobileCardColumn[] = [
+  { prop: 'name', label: '名称', primary: true },
+  { prop: 'protect_days', label: '天数' },
+  { prop: 'status', label: '状态' },
+  { prop: 'release_rule_json', label: '规则' },
+]
+const releaseCols: MobileCardColumn[] = [
+  { prop: 'customer_name', label: '客户', primary: true },
+  { prop: 'released_at', label: '时间' },
+  { prop: 'from_user_id', label: '原归属' },
+  { prop: 'reason', label: '原因' },
+]
+const inquiryCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '询价单号', primary: true },
+  { prop: 'customer_name', label: '客户' },
+  { prop: 'status', label: '状态' },
+  { prop: 'source', label: '来源' },
+  { prop: 'expire_at', label: '有效期' },
+  { prop: 'created_at', label: '创建时间' },
+]
+const importCols: MobileCardColumn[] = [
+  { prop: 'file_name', label: '文件', primary: true },
+  { prop: 'imported_at', label: '时间' },
+  { prop: 'success_count', label: '成功' },
+  { prop: 'fail_count', label: '失败' },
+  { prop: 'fail_detail_json', label: '失败明细' },
+]
+const lockCols: MobileCardColumn[] = [
+  { prop: 'code', label: '编码', primary: true },
+  { prop: 'name', label: '名称' },
+  { prop: 'owner_user_id', label: '归属' },
+  { prop: 'protect_until', label: '保护至' },
+]
+const hideCols: MobileCardColumn[] = [
+  { prop: 'code', label: '编码', primary: true },
+  { prop: 'name', label: '名称' },
+  { prop: 'owner_user_id', label: '归属' },
+]
+const reminderCols: MobileCardColumn[] = [
+  { prop: 'content', label: '内容', primary: true },
+  { prop: 'remind_at', label: '提醒时间' },
+  { prop: 'user_id', label: '用户' },
+  { prop: 'ref_id', label: '关联ID' },
+  { prop: 'status', label: '状态' },
+]
 
 const route = useRoute()
 
@@ -394,30 +474,37 @@ onMounted(async () => {
           <el-form-item label="仅公海"><el-switch v-model="seaOnly" @change="refresh" /></el-form-item>
           <el-button @click="refresh">查询</el-button>
         </el-form>
-        <el-table :data="list" size="small">
-          <el-table-column prop="code" label="编码" width="120" />
-          <el-table-column prop="name" label="名称" min-width="140" />
-          <el-table-column prop="contact_name" label="联系人" width="100" />
-          <el-table-column prop="mobile" label="手机" width="120" />
-          <el-table-column prop="level" label="等级" width="70" />
-          <el-table-column prop="owner_user_id" label="归属" width="80" />
-          <el-table-column prop="protect_until" label="保护至" width="110" />
-          <el-table-column label="状态" width="140">
-            <template #default="{ row }">
-              <el-tag v-if="row.is_public_sea" size="small" type="warning">公海</el-tag>
-              <el-tag v-if="row.is_locked" size="small" type="danger">锁定</el-tag>
-              <el-tag v-if="row.is_hidden" size="small" type="info">隐藏</el-tag>
-              <span v-if="!row.is_public_sea && !row.is_locked && !row.is_hidden">{{ row.status }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="200" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="openProfile(Number(row.id))">档案</el-button>
-              <el-button link @click="lockRow(Number(row.id), !!row.is_locked)">{{ row.is_locked ? '解锁' : '锁定' }}</el-button>
-              <el-button link @click="hideRow(Number(row.id), !!row.is_hidden)">{{ row.is_hidden ? '取消隐藏' : '隐藏' }}</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="customerCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="code" label="编码" width="120" />
+            <el-table-column prop="name" label="名称" min-width="140" />
+            <el-table-column prop="contact_name" label="联系人" width="100" />
+            <el-table-column prop="mobile" label="手机" width="120" />
+            <el-table-column prop="level" label="等级" width="70" />
+            <el-table-column prop="owner_user_id" label="归属" width="80" />
+            <el-table-column prop="protect_until" label="保护至" width="110" />
+            <el-table-column label="状态" width="140">
+              <template #default="{ row }">
+                <el-tag v-if="row.is_public_sea" size="small" type="warning">公海</el-tag>
+                <el-tag v-if="row.is_locked" size="small" type="danger">锁定</el-tag>
+                <el-tag v-if="row.is_hidden" size="small" type="info">隐藏</el-tag>
+                <span v-if="!row.is_public_sea && !row.is_locked && !row.is_hidden">{{ row.status }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="200" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="openProfile(Number(row.id))">档案</el-button>
+                <el-button link @click="lockRow(Number(row.id), !!row.is_locked)">{{ row.is_locked ? '解锁' : '锁定' }}</el-button>
+                <el-button link @click="hideRow(Number(row.id), !!row.is_hidden)">{{ row.is_hidden ? '取消隐藏' : '隐藏' }}</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #actions="{ row }">
+            <el-button link type="primary" @click="openProfile(Number(row.id))">档案</el-button>
+            <el-button link @click="lockRow(Number(row.id), !!row.is_locked)">{{ row.is_locked ? '解锁' : '锁定' }}</el-button>
+            <el-button link @click="hideRow(Number(row.id), !!row.is_hidden)">{{ row.is_hidden ? '取消隐藏' : '隐藏' }}</el-button>
+          </template>
+        </TableOrCards>
       </el-card>
     </template>
 
@@ -461,20 +548,25 @@ onMounted(async () => {
           <el-button type="primary" @click="createOpp">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="customer_name" label="客户" width="140" />
-        <el-table-column prop="title" label="标题" min-width="160" />
-        <el-table-column prop="stage" label="阶段" width="100" />
-        <el-table-column prop="amount" label="金额" width="100" />
-        <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column prop="converted_order_id" label="订单ID" width="90" />
-        <el-table-column label="操作" width="120">
-          <template #default="{ row }">
-            <el-button v-if="row.status !== 'won'" link type="primary" @click="convertOpp(Number(row.id))">转订单</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="oppCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="id" label="ID" width="70" />
+          <el-table-column prop="customer_name" label="客户" width="140" />
+          <el-table-column prop="title" label="标题" min-width="160" />
+          <el-table-column prop="stage" label="阶段" width="100" />
+          <el-table-column prop="amount" label="金额" width="100" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column prop="converted_order_id" label="订单ID" width="90" />
+          <el-table-column label="操作" width="120">
+            <template #default="{ row }">
+              <el-button v-if="row.status !== 'won'" link type="primary" @click="convertOpp(Number(row.id))">转订单</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="row.status !== 'won'" link type="primary" @click="convertOpp(Number(row.id))">转订单</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 跟进 -->
@@ -494,13 +586,15 @@ onMounted(async () => {
           <el-button type="primary" @click="createFollow">保存</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="customer_name" label="客户" width="140" />
-        <el-table-column prop="follow_type" label="方式" width="80" />
-        <el-table-column prop="follow_at" label="时间" width="160" />
-        <el-table-column prop="content" label="内容" min-width="200" />
-        <el-table-column prop="next_remind_at" label="下次提醒" width="160" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="followCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="customer_name" label="客户" width="140" />
+          <el-table-column prop="follow_type" label="方式" width="80" />
+          <el-table-column prop="follow_at" label="时间" width="160" />
+          <el-table-column prop="content" label="内容" min-width="200" />
+          <el-table-column prop="next_remind_at" label="下次提醒" width="160" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 资源分配 -->
@@ -515,14 +609,16 @@ onMounted(async () => {
           <el-button @click="seaOnly = true; loadCustomersMeta()">刷新公海客户</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="customer_name" label="客户" width="160" />
-        <el-table-column prop="from_user_id" label="原归属" width="90" />
-        <el-table-column prop="to_user_id" label="新归属" width="90" />
-        <el-table-column prop="assigned_at" label="时间" width="160" />
-        <el-table-column prop="lock_flag" label="锁定" width="80" />
-        <el-table-column prop="remark" label="备注" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="assignCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="customer_name" label="客户" width="160" />
+          <el-table-column prop="from_user_id" label="原归属" width="90" />
+          <el-table-column prop="to_user_id" label="新归属" width="90" />
+          <el-table-column prop="assigned_at" label="时间" width="160" />
+          <el-table-column prop="lock_flag" label="锁定" width="80" />
+          <el-table-column prop="remark" label="备注" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 保护 -->
@@ -535,13 +631,15 @@ onMounted(async () => {
           <el-button type="primary" @click="createProtect">新建规则</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="name" label="名称" />
-        <el-table-column prop="protect_days" label="天数" width="90" />
-        <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column prop="release_rule_json" label="规则" min-width="200" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="protectCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="id" label="ID" width="70" />
+          <el-table-column prop="name" label="名称" />
+          <el-table-column prop="protect_days" label="天数" width="90" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column prop="release_rule_json" label="规则" min-width="200" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 释放 -->
@@ -554,24 +652,28 @@ onMounted(async () => {
           <el-button @click="autoRelease">到期自动释放</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="customer_name" label="客户" width="160" />
-        <el-table-column prop="released_at" label="时间" width="160" />
-        <el-table-column prop="from_user_id" label="原归属" width="90" />
-        <el-table-column prop="reason" label="原因" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="releaseCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="customer_name" label="客户" width="160" />
+          <el-table-column prop="released_at" label="时间" width="160" />
+          <el-table-column prop="from_user_id" label="原归属" width="90" />
+          <el-table-column prop="reason" label="原因" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 询价关联 -->
     <template v-else-if="active === 'inquiries'">
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="询价单号" width="150" />
-        <el-table-column prop="customer_name" label="客户" width="160" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column prop="source" label="来源" width="90" />
-        <el-table-column prop="expire_at" label="有效期" width="160" />
-        <el-table-column prop="created_at" label="创建时间" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="inquiryCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="询价单号" width="150" />
+          <el-table-column prop="customer_name" label="客户" width="160" />
+          <el-table-column prop="status" label="状态" width="100" />
+          <el-table-column prop="source" label="来源" width="90" />
+          <el-table-column prop="expire_at" label="有效期" width="160" />
+          <el-table-column prop="created_at" label="创建时间" />
+        </el-table>
+      </TableOrCards>
       <p class="hint">询价新建/审批在「销售管理」完成；此处按客户查看关联询价。</p>
     </template>
 
@@ -584,44 +686,56 @@ onMounted(async () => {
           <span class="hint" style="margin-left:8px">重复编码/名称自动跳过；导入客户默认进入公海待分配。</span>
         </div>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="id" label="批次" width="80" />
-        <el-table-column prop="file_name" label="文件" width="160" />
-        <el-table-column prop="imported_at" label="时间" width="160" />
-        <el-table-column prop="success_count" label="成功" width="80" />
-        <el-table-column prop="fail_count" label="失败" width="80" />
-        <el-table-column prop="fail_detail_json" label="失败明细" min-width="200" show-overflow-tooltip />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="importCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="id" label="批次" width="80" />
+          <el-table-column prop="file_name" label="文件" width="160" />
+          <el-table-column prop="imported_at" label="时间" width="160" />
+          <el-table-column prop="success_count" label="成功" width="80" />
+          <el-table-column prop="fail_count" label="失败" width="80" />
+          <el-table-column prop="fail_detail_json" label="失败明细" min-width="200" show-overflow-tooltip />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 锁定列表 -->
     <template v-else-if="active === 'locks'">
-      <el-table :data="list" size="small">
-        <el-table-column prop="code" label="编码" width="120" />
-        <el-table-column prop="name" label="名称" />
-        <el-table-column prop="owner_user_id" label="归属" width="90" />
-        <el-table-column prop="protect_until" label="保护至" width="120" />
-        <el-table-column label="操作" width="120">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="lockRow(Number(row.id), true)">解锁</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="lockCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="code" label="编码" width="120" />
+          <el-table-column prop="name" label="名称" />
+          <el-table-column prop="owner_user_id" label="归属" width="90" />
+          <el-table-column prop="protect_until" label="保护至" width="120" />
+          <el-table-column label="操作" width="120">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="lockRow(Number(row.id), true)">解锁</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button link type="primary" @click="lockRow(Number(row.id), true)">解锁</el-button>
+        </template>
+      </TableOrCards>
       <p class="hint">无锁定客户时列表为空。可在客户管理中执行锁定。</p>
     </template>
 
     <!-- 隐藏列表 -->
     <template v-else-if="active === 'hides'">
-      <el-table :data="list.filter((r) => r.is_hidden)" size="small">
-        <el-table-column prop="code" label="编码" width="120" />
-        <el-table-column prop="name" label="名称" />
-        <el-table-column prop="owner_user_id" label="归属" width="90" />
-        <el-table-column label="操作" width="140">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="hideRow(Number(row.id), true)">取消隐藏</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list.filter((r) => r.is_hidden)" :loading="loading" :columns="hideCols">
+        <el-table :data="list.filter((r) => r.is_hidden)" size="small">
+          <el-table-column prop="code" label="编码" width="120" />
+          <el-table-column prop="name" label="名称" />
+          <el-table-column prop="owner_user_id" label="归属" width="90" />
+          <el-table-column label="操作" width="140">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="hideRow(Number(row.id), true)">取消隐藏</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button link type="primary" @click="hideRow(Number(row.id), true)">取消隐藏</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <!-- 任务提醒 -->
@@ -635,18 +749,23 @@ onMounted(async () => {
           <el-button type="primary" @click="createReminder">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="remind_at" label="提醒时间" width="160" />
-        <el-table-column prop="content" label="内容" min-width="200" />
-        <el-table-column prop="user_id" label="用户" width="80" />
-        <el-table-column prop="ref_id" label="关联ID" width="90" />
-        <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column label="操作" width="100">
-          <template #default="{ row }">
-            <el-button v-if="row.status === 'pending'" link type="primary" @click="doneReminder(Number(row.id))">完成</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="reminderCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="remind_at" label="提醒时间" width="160" />
+          <el-table-column prop="content" label="内容" min-width="200" />
+          <el-table-column prop="user_id" label="用户" width="80" />
+          <el-table-column prop="ref_id" label="关联ID" width="90" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button v-if="row.status === 'pending'" link type="primary" @click="doneReminder(Number(row.id))">完成</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="row.status === 'pending'" link type="primary" @click="doneReminder(Number(row.id))">完成</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <el-card v-if="detail" header="明细 / 客户360" style="margin-top:16px">

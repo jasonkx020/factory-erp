@@ -4,8 +4,22 @@ import { ElMessage } from 'element-plus'
 import { salesApi, BASE_UNIT_OPTIONS } from '@erp/shared'
 import { ProductSelect, EnumSelect } from '../../components/select'
 import { loadProducts } from '../../components/select/entitySelects'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
+
+const settleCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'product_name', label: '产品' },
+  { prop: 'plate_no', label: '车牌' },
+  { prop: 'driver_name', label: '司机' },
+  { prop: 'trace_code', label: '溯源' },
+  { prop: 'weight', label: '重量' },
+  { prop: 'goods_amount', label: '货款' },
+  { prop: 'amount', label: '结算金额' },
+  { prop: 'status', label: '状态' },
+]
 const list = ref<Row[]>([])
 const loading = ref(false)
 const productCache = ref<Row[]>([])
@@ -104,22 +118,27 @@ onMounted(refresh)
         <el-button type="primary" @click="create">保存</el-button>
       </el-form>
     </el-card>
-    <el-table :data="list" size="small" style="margin-top:12px">
-      <el-table-column prop="doc_no" label="单号" width="150" />
-      <el-table-column prop="product_name" label="产品" width="120" />
-      <el-table-column prop="plate_no" label="车牌" width="90" />
-      <el-table-column prop="driver_name" label="司机" width="90" />
-      <el-table-column prop="trace_code" label="溯源" min-width="120" />
-      <el-table-column prop="weight" label="重量" width="80" />
-      <el-table-column prop="goods_amount" label="货款" width="80" />
-      <el-table-column prop="amount" label="结算金额" width="100" />
-      <el-table-column prop="status" label="状态" width="80" />
-      <el-table-column label="操作" width="100">
-        <template #default="{ row }">
-          <el-button v-if="row.status==='draft'" link type="success" @click="closeRow(Number(row.id))">关单</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <TableOrCards :data="list" :loading="loading" :columns="settleCols" style="margin-top:12px">
+      <el-table :data="list" size="small">
+        <el-table-column prop="doc_no" label="单号" width="150" />
+        <el-table-column prop="product_name" label="产品" width="120" />
+        <el-table-column prop="plate_no" label="车牌" width="90" />
+        <el-table-column prop="driver_name" label="司机" width="90" />
+        <el-table-column prop="trace_code" label="溯源" min-width="120" />
+        <el-table-column prop="weight" label="重量" width="80" />
+        <el-table-column prop="goods_amount" label="货款" width="80" />
+        <el-table-column prop="amount" label="结算金额" width="100" />
+        <el-table-column prop="status" label="状态" width="80" />
+        <el-table-column label="操作" width="100">
+          <template #default="{ row }">
+            <el-button v-if="row.status==='draft'" link type="success" @click="closeRow(Number(row.id))">关单</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #actions="{ row }">
+        <el-button v-if="row.status==='draft'" link type="success" @click="closeRow(Number(row.id))">关单</el-button>
+      </template>
+    </TableOrCards>
   </div>
 </template>
 

@@ -5,8 +5,22 @@ import { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
 import { DEFAULT_EMP_TYPE, EMP_TYPE_OPTIONS, empTypeLabel, hrApi, iamApi } from '@erp/shared'
 import { DeptSelect, TeamSelect, WorkshopSelect } from '../../components/select'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
+
+const empCols: MobileCardColumn[] = [
+  { prop: 'name', label: '姓名', primary: true },
+  { prop: 'emp_no', label: '工号' },
+  { prop: 'login_name', label: '登录账号' },
+  { prop: 'emp_type', label: '类型' },
+  { prop: 'job_title', label: '岗位' },
+  { prop: 'mobile', label: '手机' },
+  { prop: 'workshop_id', label: '车间' },
+  { prop: 'dept_id', label: '部门' },
+  { prop: 'status', label: '状态' },
+]
 
 const loading = ref(false)
 const exporting = ref(false)
@@ -411,30 +425,38 @@ onMounted(load)
       <span class="hint">可导出 {{ exportable.length }} / 筛选 {{ filtered.length }}</span>
     </div>
 
-    <el-table :data="filtered" border stripe>
-      <el-table-column prop="emp_no" label="工号" width="110" />
-      <el-table-column prop="name" label="姓名" width="100" />
-      <el-table-column prop="login_name" label="登录账号" width="120" />
-      <el-table-column label="类型" width="100">
-        <template #default="{ row }">{{ empTypeLabel(row.emp_type) }}</template>
-      </el-table-column>
-      <el-table-column prop="job_title" label="岗位" width="110" />
-      <el-table-column prop="mobile" label="手机" width="120" />
-      <el-table-column prop="workshop_id" label="车间" width="70" />
-      <el-table-column prop="dept_id" label="部门" width="70" />
-      <el-table-column prop="status" label="状态" width="80" />
-      <el-table-column label="账号" width="70">
-        <template #default="{ row }">{{ Number(row.user_id) > 0 || row.has_account || row.login_name ? '有' : '无' }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="240" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link @click="openBadge(row)">工牌</el-button>
-          <el-button v-if="!(Number(row.user_id) > 0 || row.has_account)" link type="success" @click="openAccount(row)">开户</el-button>
-          <el-button v-if="row.status === 'active'" link type="danger" @click="deactivate(row)">停用</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <TableOrCards :data="filtered" :loading="loading" :columns="empCols">
+      <el-table :data="filtered" border stripe>
+        <el-table-column prop="emp_no" label="工号" width="110" />
+        <el-table-column prop="name" label="姓名" width="100" />
+        <el-table-column prop="login_name" label="登录账号" width="120" />
+        <el-table-column label="类型" width="100">
+          <template #default="{ row }">{{ empTypeLabel(row.emp_type) }}</template>
+        </el-table-column>
+        <el-table-column prop="job_title" label="岗位" width="110" />
+        <el-table-column prop="mobile" label="手机" width="120" />
+        <el-table-column prop="workshop_id" label="车间" width="70" />
+        <el-table-column prop="dept_id" label="部门" width="70" />
+        <el-table-column prop="status" label="状态" width="80" />
+        <el-table-column label="账号" width="70">
+          <template #default="{ row }">{{ Number(row.user_id) > 0 || row.has_account || row.login_name ? '有' : '无' }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="240" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+            <el-button link @click="openBadge(row)">工牌</el-button>
+            <el-button v-if="!(Number(row.user_id) > 0 || row.has_account)" link type="success" @click="openAccount(row)">开户</el-button>
+            <el-button v-if="row.status === 'active'" link type="danger" @click="deactivate(row)">停用</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #actions="{ row }">
+        <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+        <el-button link @click="openBadge(row)">工牌</el-button>
+        <el-button v-if="!(Number(row.user_id) > 0 || row.has_account)" link type="success" @click="openAccount(row)">开户</el-button>
+        <el-button v-if="row.status === 'active'" link type="danger" @click="deactivate(row)">停用</el-button>
+      </template>
+    </TableOrCards>
 
     <el-dialog v-model="dlg" :title="editingId ? '编辑员工' : '新建员工'" width="520px">
       <p v-if="!editingId" class="form-tip">

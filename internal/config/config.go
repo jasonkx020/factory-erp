@@ -64,7 +64,8 @@ type MqttConfig struct {
 }
 
 type ServerConfig struct {
-	Addr string `yaml:"addr"`
+	Addr    string `yaml:"addr"`
+	WebRoot string `yaml:"web_root"` // empty = embedded UI; set to web/dist for external
 }
 
 type DatabaseConfig struct {
@@ -177,6 +178,9 @@ func (c *Config) WarnInsecureIfNeeded() {
 func applyEnv(c *Config) {
 	if v := os.Getenv("ERP_SERVER_ADDR"); v != "" {
 		c.Server.Addr = v
+	}
+	if v := os.Getenv("ERP_WEB_ROOT"); v != "" {
+		c.Server.WebRoot = v
 	}
 	if v := os.Getenv("ERP_DATABASE_DRIVER"); v != "" {
 		c.Database.Driver = v

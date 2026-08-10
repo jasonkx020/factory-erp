@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
 import '../../core/debug_demo_accounts.dart';
 import '../../core/notify_service.dart';
@@ -15,7 +16,9 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   late final TextEditingController _login;
   late final TextEditingController _password;
+  late final TextEditingController _server;
   String _selectedDemoLogin = 'admin';
+  String _savedBaseHint = '';
 
   @override
   void initState() {
@@ -26,12 +29,19 @@ class _LoginPageState extends State<LoginPage> {
     _selectedDemoLogin = initial?.login ?? 'admin';
     _login = TextEditingController(text: initial?.login ?? 'admin');
     _password = TextEditingController(text: DebugDemoAccount.password);
+    _server = TextEditingController();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final api = context.read<AuthState>().api;
+      _server.text = displayApiHost(api.baseUrl);
+      setState(() => _savedBaseHint = api.baseUrl);
+    });
   }
 
   @override
   void dispose() {
     _login.dispose();
     _password.dispose();
+    _server.dispose();
     super.dispose();
   }
 
@@ -43,8 +53,27 @@ class _LoginPageState extends State<LoginPage> {
     });
   }
 
+  Future<void> _applyServer() async {
+    final api = context.read<AuthState>().api;
+    await api.setBaseUrl(_server.text);
+    if (!mounted) return;
+    setState(() {
+      _server.text = displayApiHost(api.baseUrl);
+      _savedBaseHint = api.baseUrl;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已保存后台地址：${api.baseUrl}')),
+    );
+  }
+
   Future<void> _submit() async {
     final auth = context.read<AuthState>();
+    await auth.api.setBaseUrl(_server.text);
+    if (!mounted) return;
+    setState(() {
+      _server.text = displayApiHost(auth.api.baseUrl);
+      _savedBaseHint = auth.api.baseUrl;
+    });
     final ok = await auth.login(_login.text.trim(), _password.text);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(auth.error)));
@@ -62,6 +91,8 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _oauthStub() async {
     final auth = context.read<AuthState>();
+    await auth.api.setBaseUrl(_server.text);
+    if (!mounted) return;
     final ok = await auth.loginWithOAuth(provider: 'wechat', code: 'stub');
     if (!mounted) return;
     if (!ok) {
@@ -94,6 +125,23 @@ class _LoginPageState extends State<LoginPage> {
                     '登录后按角色展示作业步骤 · client_type=mobile',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _server,
+                    keyboardType: TextInputType.url,
+                    decoration: InputDecoration(
+                      labelText: '后台地址（IP/主机）',
+                      hintText: '192.168.1.100 或 10.0.2.2:18080',
+                      helperText: _savedBaseHint.isEmpty ? '默认模拟器网关 10.0.2.2:18080' : _savedBaseHint,
+                      helperMaxLines: 2,
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        tooltip: '保存地址',
+                        onPressed: loading ? null : _applyServer,
+                        icon: const Icon(Icons.save_outlined),
+                      ),
+                    ),
+                  ),
                   if (showDebugDemoAccounts) ...[
                     const SizedBox(height: 20),
                     Card(
@@ -110,7 +158,7 @@ class _LoginPageState extends State<LoginPage> {
                             const SizedBox(height: 10),
                             DropdownButtonFormField<String>(
                               isExpanded: true,
-                              value: _selectedDemoLogin,
+                              initialValue: _selectedDemoLogin,
                               decoration: const InputDecoration(
                                 labelText: '选择角色用户',
                                 border: OutlineInputBorder(),
@@ -154,7 +202,6 @@ class _LoginPageState extends State<LoginPage> {
                     controller: _login,
                     decoration: const InputDecoration(labelText: '用户名'),
                     onChanged: (_) {
-                      // 手动改用户名时同步下拉高亮（若匹配）
                       if (showDebugDemoAccounts &&
                           kDebugDemoAccounts.any((a) => a.login == _login.text.trim())) {
                         setState(() => _selectedDemoLogin = _login.text.trim());

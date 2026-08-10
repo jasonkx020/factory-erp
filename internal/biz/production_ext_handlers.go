@@ -166,6 +166,8 @@ func EnsureProductionExtSchema(db *sql.DB) {
 
 func (s *Services) handleProductionExt(c *gin.Context, method, openapiPath, action string) bool {
 	switch {
+	case strings.HasPrefix(openapiPath, "/api/v1/production/process-returns"):
+		return s.handleProcessReturns(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/task-merges"):
 		return s.handleTaskMerges(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/boms"):

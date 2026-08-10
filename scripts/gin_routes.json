@@ -1,15 +1,23 @@
 [
   {
     "method": "GET",
+    "path": "/api/v1/production/process-returns"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/process-returns/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/process-reports"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/production/process-wip"
   },
   {
     "method": "GET",
     "path": "/api/v1/production/process-wip/boxes"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/process-reports"
   },
   {
     "method": "GET",
@@ -1533,6 +1541,50 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/production/process-returns"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/process-returns/:id/submit"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/process-returns/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/process-returns/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/process-returns/:id/transfer"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/process-returns/:id/warehouse-confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/processes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/piecework-summaries/recalc"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/piecework-summaries/:id/pay"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/piece-issue-sheets"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/piece-issue-sheets/generate"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/production/report-works"
   },
   {
@@ -1542,6 +1594,10 @@
   {
     "method": "POST",
     "path": "/api/v1/production/report-works/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/report-works/:id/void"
   },
   {
     "method": "POST",
@@ -1586,26 +1642,6 @@
   {
     "method": "POST",
     "path": "/api/v1/production/shifts/:id/members"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/piecework-summaries/recalc"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/piecework-summaries/:id/pay"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/piece-issue-sheets"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/piece-issue-sheets/generate"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/processes"
   },
   {
     "method": "POST",

@@ -15,8 +15,73 @@ import FarmerInboundView from './FarmerInboundView.vue'
 import WeighVarietyView from './WeighVarietyView.vue'
 import TraceBatchView from './TraceBatchView.vue'
 import FlowGraphEditorView from '../automation/FlowGraphEditorView.vue'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
+
+const requestCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'title', label: '标题' },
+  { prop: 'qty', label: '数量' },
+  { prop: 'need_date', label: '需用日' },
+  { prop: 'status', label: '状态' },
+]
+const planCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'plan_date', label: '计划日' },
+  { prop: 'status', label: '状态' },
+  { prop: 'remark', label: '备注' },
+]
+const inboundCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'supplier_id', label: '供应商' },
+  { prop: 'warehouse_id', label: '仓库' },
+  { prop: 'biz_date', label: '业务日' },
+  { prop: 'status', label: '状态' },
+]
+const qcCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'product_id', label: '物料' },
+  { prop: 'qty_check', label: '抽检' },
+  { prop: 'qty_pass', label: '合格' },
+  { prop: 'qty_fail', label: '不合格' },
+  { prop: 'result', label: '结果' },
+  { prop: 'status', label: '状态' },
+]
+const returnCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'supplier_id', label: '供应商' },
+  { prop: 'reason', label: '原因' },
+  { prop: 'status', label: '状态' },
+]
+const priceCols: MobileCardColumn[] = [
+  { prop: 'supplier_id', label: '供应商', primary: true },
+  { prop: 'product_id', label: '物料' },
+  { prop: 'price', label: '价格' },
+  { prop: 'biz_date', label: '日期' },
+  { prop: 'source_doc_id', label: '来源入库单' },
+]
+const analyticsCols: MobileCardColumn[] = [
+  { prop: 'supplier_name', label: '供应商', primary: true },
+  { prop: '_kind', label: '类型' },
+  { prop: 'supplier_code', label: '编码' },
+  { prop: 'product_id', label: '物料' },
+  { prop: 'purchase_qty', label: '采购量' },
+  { prop: 'purchase_amount', label: '采购额' },
+  { prop: 'avg_price', label: '均价' },
+  { prop: 'pass_rate', label: '合格率' },
+  { prop: 'return_rate', label: '退货率' },
+]
+const taskCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'title', label: '标题' },
+  { prop: 'product_id', label: '物料' },
+  { prop: 'qty', label: '数量' },
+  { prop: 'assignee_id', label: '负责人' },
+  { prop: 'due_date', label: '截止' },
+  { prop: 'status', label: '状态' },
+]
 
 const route = useRoute()
 
@@ -375,21 +440,29 @@ onMounted(async () => {
             <el-button type="primary" @click="createRequest">新建</el-button>
           </el-form>
         </el-card>
-        <el-table :data="list" size="small">
-          <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column prop="title" label="标题" min-width="140" />
-          <el-table-column prop="qty" label="数量" width="90" />
-          <el-table-column prop="need_date" label="需用日" width="110" />
-          <el-table-column prop="status" label="状态" width="100" />
-          <el-table-column label="操作" width="320" fixed="right">
-            <template #default="{ row }">
-              <el-button link @click="openDetail('request', Number(row.id))">明细</el-button>
-              <el-button v-if="row.status==='draft' || row.status==='rejected'" link type="primary" @click="submitReq(Number(row.id))">提交</el-button>
-              <el-button v-if="row.status==='submitted'" link type="success" @click="approveReq(Number(row.id))">批准</el-button>
-              <el-button v-if="row.status==='approved' || row.status==='submitted'" link type="warning" @click="toPlan(Number(row.id))">转计划</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="requestCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="doc_no" label="单号" width="150" />
+            <el-table-column prop="title" label="标题" min-width="140" />
+            <el-table-column prop="qty" label="数量" width="90" />
+            <el-table-column prop="need_date" label="需用日" width="110" />
+            <el-table-column prop="status" label="状态" width="100" />
+            <el-table-column label="操作" width="320" fixed="right">
+              <template #default="{ row }">
+                <el-button link @click="openDetail('request', Number(row.id))">明细</el-button>
+                <el-button v-if="row.status==='draft' || row.status==='rejected'" link type="primary" @click="submitReq(Number(row.id))">提交</el-button>
+                <el-button v-if="row.status==='submitted'" link type="success" @click="approveReq(Number(row.id))">批准</el-button>
+                <el-button v-if="row.status==='approved' || row.status==='submitted'" link type="warning" @click="toPlan(Number(row.id))">转计划</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #actions="{ row }">
+            <el-button link @click="openDetail('request', Number(row.id))">明细</el-button>
+            <el-button v-if="row.status==='draft' || row.status==='rejected'" link type="primary" @click="submitReq(Number(row.id))">提交</el-button>
+            <el-button v-if="row.status==='submitted'" link type="success" @click="approveReq(Number(row.id))">批准</el-button>
+            <el-button v-if="row.status==='approved' || row.status==='submitted'" link type="warning" @click="toPlan(Number(row.id))">转计划</el-button>
+          </template>
+        </TableOrCards>
       </template>
 
       <!-- 采购计划 -->
@@ -403,20 +476,28 @@ onMounted(async () => {
             <el-button type="primary" @click="createPlan">新建</el-button>
           </el-form>
         </el-card>
-        <el-table :data="list" size="small">
-          <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column prop="plan_date" label="计划日" width="110" />
-          <el-table-column prop="status" label="状态" width="100" />
-          <el-table-column prop="remark" label="备注" min-width="160" />
-          <el-table-column label="操作" width="340" fixed="right">
-            <template #default="{ row }">
-              <el-button link @click="openDetail('plan', Number(row.id))">明细</el-button>
-              <el-button v-if="row.status==='draft' || row.status==='rejected'" link type="primary" @click="submitPlan(Number(row.id))">提交</el-button>
-              <el-button v-if="row.status==='submitted'" link type="success" @click="approvePlan(Number(row.id))">批准</el-button>
-              <el-button v-if="row.status==='approved' || row.status==='submitted'" link type="warning" @click="toInbound(Number(row.id))">转入库</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="planCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="doc_no" label="单号" width="150" />
+            <el-table-column prop="plan_date" label="计划日" width="110" />
+            <el-table-column prop="status" label="状态" width="100" />
+            <el-table-column prop="remark" label="备注" min-width="160" />
+            <el-table-column label="操作" width="340" fixed="right">
+              <template #default="{ row }">
+                <el-button link @click="openDetail('plan', Number(row.id))">明细</el-button>
+                <el-button v-if="row.status==='draft' || row.status==='rejected'" link type="primary" @click="submitPlan(Number(row.id))">提交</el-button>
+                <el-button v-if="row.status==='submitted'" link type="success" @click="approvePlan(Number(row.id))">批准</el-button>
+                <el-button v-if="row.status==='approved' || row.status==='submitted'" link type="warning" @click="toInbound(Number(row.id))">转入库</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #actions="{ row }">
+            <el-button link @click="openDetail('plan', Number(row.id))">明细</el-button>
+            <el-button v-if="row.status==='draft' || row.status==='rejected'" link type="primary" @click="submitPlan(Number(row.id))">提交</el-button>
+            <el-button v-if="row.status==='submitted'" link type="success" @click="approvePlan(Number(row.id))">批准</el-button>
+            <el-button v-if="row.status==='approved' || row.status==='submitted'" link type="warning" @click="toInbound(Number(row.id))">转入库</el-button>
+          </template>
+        </TableOrCards>
       </template>
 
       <!-- 采购入库 -->
@@ -432,19 +513,25 @@ onMounted(async () => {
             <el-button type="primary" @click="createInbound">新建</el-button>
           </el-form>
         </el-card>
-        <el-table :data="list" size="small">
-          <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column prop="supplier_id" label="供应商" width="90" />
-          <el-table-column prop="warehouse_id" label="仓库" width="80" />
-          <el-table-column prop="biz_date" label="业务日" width="110" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column label="操作" width="200">
-            <template #default="{ row }">
-              <el-button link @click="openDetail('inbound', Number(row.id))">明细</el-button>
-              <el-button v-if="row.status==='draft'" link type="primary" @click="postInbound(Number(row.id))">过账入库</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="inboundCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="doc_no" label="单号" width="150" />
+            <el-table-column prop="supplier_id" label="供应商" width="90" />
+            <el-table-column prop="warehouse_id" label="仓库" width="80" />
+            <el-table-column prop="biz_date" label="业务日" width="110" />
+            <el-table-column prop="status" label="状态" width="90" />
+            <el-table-column label="操作" width="200">
+              <template #default="{ row }">
+                <el-button link @click="openDetail('inbound', Number(row.id))">明细</el-button>
+                <el-button v-if="row.status==='draft'" link type="primary" @click="postInbound(Number(row.id))">过账入库</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #actions="{ row }">
+            <el-button link @click="openDetail('inbound', Number(row.id))">明细</el-button>
+            <el-button v-if="row.status==='draft'" link type="primary" @click="postInbound(Number(row.id))">过账入库</el-button>
+          </template>
+        </TableOrCards>
       </template>
 
       <!-- 来料质检 -->
@@ -458,21 +545,27 @@ onMounted(async () => {
             <el-button type="primary" @click="createQc">新建</el-button>
           </el-form>
         </el-card>
-        <el-table :data="list" size="small">
-          <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column prop="product_id" label="物料" width="90" />
-          <el-table-column prop="qty_check" label="抽检" width="90" />
-          <el-table-column prop="qty_pass" label="合格" width="90" />
-          <el-table-column prop="qty_fail" label="不合格" width="90" />
-          <el-table-column prop="result" label="结果" width="90" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column label="操作" width="160">
-            <template #default="{ row }">
-              <el-button v-if="row.status==='draft' || row.status==='pending'" link type="success" @click="passQc(Number(row.id))">通过</el-button>
-              <el-button v-if="row.status==='draft' || row.status==='pending'" link type="danger" @click="failQc(Number(row.id))">不合格</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="qcCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="doc_no" label="单号" width="150" />
+            <el-table-column prop="product_id" label="物料" width="90" />
+            <el-table-column prop="qty_check" label="抽检" width="90" />
+            <el-table-column prop="qty_pass" label="合格" width="90" />
+            <el-table-column prop="qty_fail" label="不合格" width="90" />
+            <el-table-column prop="result" label="结果" width="90" />
+            <el-table-column prop="status" label="状态" width="90" />
+            <el-table-column label="操作" width="160">
+              <template #default="{ row }">
+                <el-button v-if="row.status==='draft' || row.status==='pending'" link type="success" @click="passQc(Number(row.id))">通过</el-button>
+                <el-button v-if="row.status==='draft' || row.status==='pending'" link type="danger" @click="failQc(Number(row.id))">不合格</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #actions="{ row }">
+            <el-button v-if="row.status==='draft' || row.status==='pending'" link type="success" @click="passQc(Number(row.id))">通过</el-button>
+            <el-button v-if="row.status==='draft' || row.status==='pending'" link type="danger" @click="failQc(Number(row.id))">不合格</el-button>
+          </template>
+        </TableOrCards>
       </template>
 
       <!-- 退货 -->
@@ -488,44 +581,54 @@ onMounted(async () => {
             <el-button type="primary" @click="createReturn">新建</el-button>
           </el-form>
         </el-card>
-        <el-table :data="list" size="small">
-          <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column prop="supplier_id" label="供应商" width="90" />
-          <el-table-column prop="reason" label="原因" min-width="140" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column label="操作" width="180">
-            <template #default="{ row }">
-              <el-button link @click="openDetail('return', Number(row.id))">明细</el-button>
-              <el-button v-if="row.status==='draft'" link type="warning" @click="postReturn(Number(row.id))">过账退货</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="returnCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="doc_no" label="单号" width="150" />
+            <el-table-column prop="supplier_id" label="供应商" width="90" />
+            <el-table-column prop="reason" label="原因" min-width="140" />
+            <el-table-column prop="status" label="状态" width="90" />
+            <el-table-column label="操作" width="180">
+              <template #default="{ row }">
+                <el-button link @click="openDetail('return', Number(row.id))">明细</el-button>
+                <el-button v-if="row.status==='draft'" link type="warning" @click="postReturn(Number(row.id))">过账退货</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #actions="{ row }">
+            <el-button link @click="openDetail('return', Number(row.id))">明细</el-button>
+            <el-button v-if="row.status==='draft'" link type="warning" @click="postReturn(Number(row.id))">过账退货</el-button>
+          </template>
+        </TableOrCards>
       </template>
 
       <!-- 历史价 -->
       <template v-else-if="active === 'prices'">
-        <el-table :data="list" size="small">
-          <el-table-column prop="supplier_id" label="供应商" width="100" />
-          <el-table-column prop="product_id" label="物料" width="100" />
-          <el-table-column prop="price" label="价格" width="100" />
-          <el-table-column prop="biz_date" label="日期" width="120" />
-          <el-table-column prop="source_doc_id" label="来源入库单" width="120" />
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="priceCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="supplier_id" label="供应商" width="100" />
+            <el-table-column prop="product_id" label="物料" width="100" />
+            <el-table-column prop="price" label="价格" width="100" />
+            <el-table-column prop="biz_date" label="日期" width="120" />
+            <el-table-column prop="source_doc_id" label="来源入库单" width="120" />
+          </el-table>
+        </TableOrCards>
       </template>
 
       <!-- 分析 -->
       <template v-else-if="active === 'analytics'">
-        <el-table :data="list" size="small">
-          <el-table-column prop="_kind" label="类型" width="80" />
-          <el-table-column prop="supplier_name" label="供应商" min-width="140" />
-          <el-table-column prop="supplier_code" label="编码" width="120" />
-          <el-table-column prop="product_id" label="物料" width="90" />
-          <el-table-column prop="purchase_qty" label="采购量" width="100" />
-          <el-table-column prop="purchase_amount" label="采购额" width="100" />
-          <el-table-column prop="avg_price" label="均价" width="90" />
-          <el-table-column prop="pass_rate" label="合格率" width="90" />
-          <el-table-column prop="return_rate" label="退货率" width="90" />
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="analyticsCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="_kind" label="类型" width="80" />
+            <el-table-column prop="supplier_name" label="供应商" min-width="140" />
+            <el-table-column prop="supplier_code" label="编码" width="120" />
+            <el-table-column prop="product_id" label="物料" width="90" />
+            <el-table-column prop="purchase_qty" label="采购量" width="100" />
+            <el-table-column prop="purchase_amount" label="采购额" width="100" />
+            <el-table-column prop="avg_price" label="均价" width="90" />
+            <el-table-column prop="pass_rate" label="合格率" width="90" />
+            <el-table-column prop="return_rate" label="退货率" width="90" />
+          </el-table>
+        </TableOrCards>
       </template>
 
       <!-- 任务 -->
@@ -541,21 +644,27 @@ onMounted(async () => {
             <el-button type="primary" @click="createTask">新建</el-button>
           </el-form>
         </el-card>
-        <el-table :data="list" size="small">
-          <el-table-column prop="doc_no" label="单号" width="140" />
-          <el-table-column prop="title" label="标题" min-width="140" />
-          <el-table-column prop="product_id" label="物料" width="80" />
-          <el-table-column prop="qty" label="数量" width="90" />
-          <el-table-column prop="assignee_id" label="负责人" width="90" />
-          <el-table-column prop="due_date" label="截止" width="110" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column label="操作" width="180">
-            <template #default="{ row }">
-              <el-button v-if="row.status==='open'" link type="primary" @click="assignTask(Number(row.id))">分配</el-button>
-              <el-button v-if="row.status!=='done'" link type="success" @click="completeTask(Number(row.id))">完成</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="list" :loading="loading" :columns="taskCols">
+          <el-table :data="list" size="small">
+            <el-table-column prop="doc_no" label="单号" width="140" />
+            <el-table-column prop="title" label="标题" min-width="140" />
+            <el-table-column prop="product_id" label="物料" width="80" />
+            <el-table-column prop="qty" label="数量" width="90" />
+            <el-table-column prop="assignee_id" label="负责人" width="90" />
+            <el-table-column prop="due_date" label="截止" width="110" />
+            <el-table-column prop="status" label="状态" width="90" />
+            <el-table-column label="操作" width="180">
+              <template #default="{ row }">
+                <el-button v-if="row.status==='open'" link type="primary" @click="assignTask(Number(row.id))">分配</el-button>
+                <el-button v-if="row.status!=='done'" link type="success" @click="completeTask(Number(row.id))">完成</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #actions="{ row }">
+            <el-button v-if="row.status==='open'" link type="primary" @click="assignTask(Number(row.id))">分配</el-button>
+            <el-button v-if="row.status!=='done'" link type="success" @click="completeTask(Number(row.id))">完成</el-button>
+          </template>
+        </TableOrCards>
       </template>
 
       <el-card v-if="detail" header="单据明细" style="margin-top:16px">

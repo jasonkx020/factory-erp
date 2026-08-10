@@ -3,6 +3,15 @@
 *.db-journal
 *.exe
 bin/
+dist-release/
+web/dist/
 .idea/
 .vscode/
 *.log
+# release-synced Vite assets (keep placeholder index.html files in git)
+internal/webui/dist/assets/
+internal/webui/dist/admin/assets/
+internal/webui/dist/front/boss/assets/
+internal/webui/dist/**/*.js
+internal/webui/dist/**/*.css
+internal/webui/dist/**/*.map

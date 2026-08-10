@@ -3,8 +3,22 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { fieldLedgerApi, ticketApi } from '@erp/shared'
 import { EmployeeSelect } from '../../components/select'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
+
+const issueCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'biz_date', label: '日期' },
+  { prop: 'seq_no', label: '序号' },
+  { prop: 'employee_name', label: '员工' },
+  { prop: 'items_summary', label: '工具明细' },
+  { prop: 'issue_qty', label: '领取' },
+  { prop: 'return_qty', label: '交还' },
+  { prop: 'total_qty', label: '在用' },
+  { prop: 'status', label: '状态' },
+]
 type FormLine = { tool_item_id: number | null; issue_qty: number }
 
 const items = ref<Row[]>([])
@@ -177,27 +191,35 @@ onMounted(refresh)
         </el-form-item>
       </el-form>
     </el-card>
-    <el-table :data="issues" size="small" style="margin-top:12px" border stripe>
-      <el-table-column prop="biz_date" label="日期" width="110" />
-      <el-table-column prop="seq_no" label="序号" width="70" />
-      <el-table-column prop="doc_no" label="单号" width="150" />
-      <el-table-column prop="employee_name" label="员工" width="100" />
-      <el-table-column prop="items_summary" label="工具明细" min-width="180" />
-      <el-table-column prop="issue_qty" label="领取" width="70" />
-      <el-table-column prop="return_qty" label="交还" width="70" />
-      <el-table-column prop="total_qty" label="在用" width="70" />
-      <el-table-column label="状态" width="110">
-        <template #default="{ row }">{{ statusLabel[String(row.status)] || row.status }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="220" fixed="right">
-        <template #default="{ row }">
-          <el-button v-if="row.status==='pending'" link type="success" @click="approve(row)">发放</el-button>
-          <el-button v-if="row.status==='pending'" link type="danger" @click="reject(row)">驳回</el-button>
-          <el-button v-if="row.status==='pending_return'" link type="success" @click="confirmReturn(row)">确认归还</el-button>
-          <el-button v-if="row.status==='open'" link type="warning" @click="doReturn(row)">快捷全还</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <TableOrCards :data="issues" :loading="loading" :columns="issueCols" style="margin-top:12px">
+      <el-table :data="issues" size="small" border stripe>
+        <el-table-column prop="biz_date" label="日期" width="110" />
+        <el-table-column prop="seq_no" label="序号" width="70" />
+        <el-table-column prop="doc_no" label="单号" width="150" />
+        <el-table-column prop="employee_name" label="员工" width="100" />
+        <el-table-column prop="items_summary" label="工具明细" min-width="180" />
+        <el-table-column prop="issue_qty" label="领取" width="70" />
+        <el-table-column prop="return_qty" label="交还" width="70" />
+        <el-table-column prop="total_qty" label="在用" width="70" />
+        <el-table-column label="状态" width="110">
+          <template #default="{ row }">{{ statusLabel[String(row.status)] || row.status }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="220" fixed="right">
+          <template #default="{ row }">
+            <el-button v-if="row.status==='pending'" link type="success" @click="approve(row)">发放</el-button>
+            <el-button v-if="row.status==='pending'" link type="danger" @click="reject(row)">驳回</el-button>
+            <el-button v-if="row.status==='pending_return'" link type="success" @click="confirmReturn(row)">确认归还</el-button>
+            <el-button v-if="row.status==='open'" link type="warning" @click="doReturn(row)">快捷全还</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #actions="{ row }">
+        <el-button v-if="row.status==='pending'" link type="success" @click="approve(row)">发放</el-button>
+        <el-button v-if="row.status==='pending'" link type="danger" @click="reject(row)">驳回</el-button>
+        <el-button v-if="row.status==='pending_return'" link type="success" @click="confirmReturn(row)">确认归还</el-button>
+        <el-button v-if="row.status==='open'" link type="warning" @click="doReturn(row)">快捷全还</el-button>
+      </template>
+    </TableOrCards>
   </div>
 </template>
 

@@ -3,10 +3,40 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { iamApi, ERP_MENUS } from '@erp/shared'
 import HrPermView from './HrPermView.vue'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 const props = defineProps<{ module: string }>()
 
 type Row = Record<string, unknown>
+
+const policyCols: MobileCardColumn[] = [
+  { prop: 'field_key', label: '字段', primary: true },
+  { prop: 'field_name', label: '名称' },
+  { prop: 'visible', label: '可见' },
+  { prop: 'editable', label: '可编辑' },
+]
+
+const permCols: MobileCardColumn[] = [
+  { prop: 'code', label: '权限码', primary: true },
+  { prop: 'domain', label: '域' },
+  { prop: 'module', label: '模块' },
+  { prop: 'action', label: '动作' },
+]
+
+const menuCols: MobileCardColumn[] = [
+  { prop: 'module', label: '模块', primary: true },
+  { prop: 'domain', label: '域' },
+  { prop: 'menu_key', label: '菜单键' },
+  { prop: 'visible', label: '可见' },
+  { prop: 'sort_no', label: '排序' },
+]
+
+const userCols: MobileCardColumn[] = [
+  { prop: 'login_name', label: '登录名', primary: true },
+  { prop: 'name', label: '姓名' },
+  { prop: 'status', label: '状态' },
+]
 
 const users = ref<Row[]>([])
 const roles = ref<Row[]>([])
@@ -154,6 +184,8 @@ const roleOptions = computed(() =>
   roles.value.map((r) => ({ label: `${r.code || ''} ${r.name || ''}`.trim(), value: Number(r.id) })),
 )
 
+const permissionPreview = computed(() => permissions.value.slice(0, 80))
+
 onMounted(loadAll)
 watch(() => props.module, loadAll)
 </script>
@@ -174,23 +206,29 @@ watch(() => props.module, loadAll)
         <el-button @click="loadAll">刷新</el-button>
       </div>
       <h3>成本字段策略（当前角色）</h3>
-      <el-table :data="policyDraft" border>
-        <el-table-column prop="field_key" label="字段" min-width="140" />
-        <el-table-column prop="field_name" label="名称" min-width="120" />
-        <el-table-column label="可见" width="100">
-          <template #default="{ row }"><el-switch v-model="row.visible" /></template>
-        </el-table-column>
-        <el-table-column label="可编辑" width="100">
-          <template #default="{ row }"><el-switch v-model="row.editable" /></template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="policyDraft" :columns="policyCols">
+        <el-table :data="policyDraft" border>
+          <el-table-column prop="field_key" label="字段" min-width="140" />
+          <el-table-column prop="field_name" label="名称" min-width="120" />
+          <el-table-column label="可见" width="100">
+            <template #default="{ row }"><el-switch v-model="row.visible" /></template>
+          </el-table-column>
+          <el-table-column label="可编辑" width="100">
+            <template #default="{ row }"><el-switch v-model="row.editable" /></template>
+          </el-table-column>
+        </el-table>
+        <template #field-visible="{ row }"><el-switch v-model="row.visible" /></template>
+        <template #field-editable="{ row }"><el-switch v-model="row.editable" /></template>
+      </TableOrCards>
       <h3 style="margin-top:16px">权限码字典（只读）</h3>
-      <el-table :data="permissions.slice(0, 80)" border height="280">
-        <el-table-column prop="code" label="权限码" min-width="220" />
-        <el-table-column prop="domain" label="域" />
-        <el-table-column prop="module" label="模块" />
-        <el-table-column prop="action" label="动作" />
-      </el-table>
+      <TableOrCards :data="permissionPreview" :columns="permCols">
+        <el-table :data="permissionPreview" border height="280">
+          <el-table-column prop="code" label="权限码" min-width="220" />
+          <el-table-column prop="domain" label="域" />
+          <el-table-column prop="module" label="模块" />
+          <el-table-column prop="action" label="动作" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <template v-else-if="module === '自定义菜单'">
@@ -202,17 +240,23 @@ watch(() => props.module, loadAll)
         <el-button type="primary" @click="saveMenus">保存菜单可见性</el-button>
         <el-button @click="loadAll">刷新</el-button>
       </div>
-      <el-table :data="menuDraft" border height="520">
-        <el-table-column prop="domain" label="域" width="120" />
-        <el-table-column prop="module" label="模块" min-width="160" />
-        <el-table-column prop="menu_key" label="菜单键" min-width="180" />
-        <el-table-column label="可见" width="90">
-          <template #default="{ row }"><el-switch v-model="row.visible" /></template>
-        </el-table-column>
-        <el-table-column label="排序" width="120">
-          <template #default="{ row }"><el-input-number v-model="row.sort_no" :min="0" :step="10" controls-position="right" /></template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="menuDraft" :columns="menuCols">
+        <el-table :data="menuDraft" border height="520">
+          <el-table-column prop="domain" label="域" width="120" />
+          <el-table-column prop="module" label="模块" min-width="160" />
+          <el-table-column prop="menu_key" label="菜单键" min-width="180" />
+          <el-table-column label="可见" width="90">
+            <template #default="{ row }"><el-switch v-model="row.visible" /></template>
+          </el-table-column>
+          <el-table-column label="排序" width="120">
+            <template #default="{ row }"><el-input-number v-model="row.sort_no" :min="0" :step="10" controls-position="right" /></template>
+          </el-table-column>
+        </el-table>
+        <template #field-visible="{ row }"><el-switch v-model="row.visible" /></template>
+        <template #field-sort_no="{ row }">
+          <el-input-number v-model="row.sort_no" :min="0" :step="10" controls-position="right" />
+        </template>
+      </TableOrCards>
     </template>
 
     <template v-else-if="module === '登录控制'">
@@ -234,20 +278,29 @@ watch(() => props.module, loadAll)
     </template>
 
     <template v-else-if="module === '账户冻结'">
-      <el-table :data="users" border>
-        <el-table-column prop="login_name" label="登录名" />
-        <el-table-column prop="name" label="姓名" />
-        <el-table-column prop="status" label="状态" />
-        <el-table-column label="操作" width="120">
-          <template #default="{ row }">
-            <el-button
-              link
-              :type="row.status === 'frozen' ? 'success' : 'danger'"
-              @click="freeze(Number(row.id), row.status === 'frozen')"
-            >{{ row.status === 'frozen' ? '解冻' : '冻结' }}</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="users" :columns="userCols">
+        <el-table :data="users" border>
+          <el-table-column prop="login_name" label="登录名" />
+          <el-table-column prop="name" label="姓名" />
+          <el-table-column prop="status" label="状态" />
+          <el-table-column label="操作" width="120">
+            <template #default="{ row }">
+              <el-button
+                link
+                :type="row.status === 'frozen' ? 'success' : 'danger'"
+                @click="freeze(Number(row.id), row.status === 'frozen')"
+              >{{ row.status === 'frozen' ? '解冻' : '冻结' }}</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button
+            link
+            :type="row.status === 'frozen' ? 'success' : 'danger'"
+            @click="freeze(Number(row.id), row.status === 'frozen')"
+          >{{ row.status === 'frozen' ? '解冻' : '冻结' }}</el-button>
+        </template>
+      </TableOrCards>
     </template>
   </div>
 </template>

@@ -5,10 +5,21 @@ import { ElMessage } from 'element-plus'
 import { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
 import { purchaseApi } from '@erp/shared'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 const router = useRouter()
 
 type Row = Record<string, unknown>
+
+const batchCols: MobileCardColumn[] = [
+  { prop: 'code', label: '溯源批号', primary: true },
+  { prop: 'seq_no', label: '流水' },
+  { prop: 'lot_no', label: '批次' },
+  { prop: 'status', label: '状态' },
+  { prop: 'weigh_ticket_id', label: '过磅单' },
+  { prop: 'created_at', label: '生成时间' },
+]
 
 const loading = ref(false)
 const exporting = ref(false)
@@ -254,33 +265,49 @@ onMounted(refresh)
         </div>
       </template>
 
-      <el-table v-if="viewMode === 'table'" :data="list" size="small" stripe>
-        <el-table-column label="二维码" width="88" align="center">
-          <template #default="{ row }">
-            <img
-              v-if="qrMap[String(row.code || '')]"
-              class="qr-thumb"
-              :src="qrMap[String(row.code || '')]"
-              alt=""
-              @click="openPreview(row)"
-            />
-            <span v-else class="muted">…</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="code" label="溯源批号" min-width="200" />
-        <el-table-column prop="seq_no" label="流水" width="80" />
-        <el-table-column prop="lot_no" label="批次" width="70" />
-        <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column prop="weigh_ticket_id" label="过磅单" width="90" />
-        <el-table-column prop="created_at" label="生成时间" width="160" />
-        <el-table-column label="操作" width="220">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="openPreview(row)">查看</el-button>
-            <el-button link type="primary" @click="openInboundInfo(row)">入库信息</el-button>
-            <el-button v-if="row.status === 'available'" link type="danger" @click="voidCode(row)">作废</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards v-if="viewMode === 'table'" :data="list" :loading="loading" :columns="batchCols">
+        <el-table :data="list" size="small" stripe>
+          <el-table-column label="二维码" width="88" align="center">
+            <template #default="{ row }">
+              <img
+                v-if="qrMap[String(row.code || '')]"
+                class="qr-thumb"
+                :src="qrMap[String(row.code || '')]"
+                alt=""
+                @click="openPreview(row)"
+              />
+              <span v-else class="muted">…</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="code" label="溯源批号" min-width="200" />
+          <el-table-column prop="seq_no" label="流水" width="80" />
+          <el-table-column prop="lot_no" label="批次" width="70" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column prop="weigh_ticket_id" label="过磅单" width="90" />
+          <el-table-column prop="created_at" label="生成时间" width="160" />
+          <el-table-column label="操作" width="220">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="openPreview(row)">查看</el-button>
+              <el-button link type="primary" @click="openInboundInfo(row)">入库信息</el-button>
+              <el-button v-if="row.status === 'available'" link type="danger" @click="voidCode(row)">作废</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #extra="{ row }">
+          <img
+            v-if="qrMap[String(row.code || '')]"
+            class="qr-thumb"
+            :src="qrMap[String(row.code || '')]"
+            alt=""
+            @click="openPreview(row)"
+          />
+        </template>
+        <template #actions="{ row }">
+          <el-button link type="primary" @click="openPreview(row)">查看</el-button>
+          <el-button link type="primary" @click="openInboundInfo(row)">入库信息</el-button>
+          <el-button v-if="row.status === 'available'" link type="danger" @click="voidCode(row)">作废</el-button>
+        </template>
+      </TableOrCards>
 
       <div v-else class="label-grid">
         <div v-for="row in list" :key="String(row.code)" class="label-card" @click="openPreview(row)">

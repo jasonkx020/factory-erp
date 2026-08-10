@@ -3,6 +3,9 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { empTypeLabel, hrApi, iamApi } from '@erp/shared'
 import { WorkshopSelect } from '../../components/select'
+import DesktopOnlyGate from '../../components/mobile/DesktopOnlyGate.vue'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
 
@@ -454,6 +457,42 @@ async function confirmOffboard(id: number) {
   await loadCore()
 }
 
+const empCardCols: MobileCardColumn[] = [
+  { prop: 'name', label: '姓名', primary: true },
+  { prop: 'emp_no', label: '工号' },
+  { prop: 'status', label: '状态' },
+  { prop: 'user_id', label: '账号ID' },
+]
+const userCardCols: MobileCardColumn[] = [
+  { prop: 'login_name', label: '登录名', primary: true },
+  { prop: 'name', label: '员工名' },
+  { prop: 'user_type', label: '类型' },
+  { prop: 'status', label: '状态' },
+]
+const roleUserCardCols: MobileCardColumn[] = [
+  { prop: 'login_name', label: '登录名', primary: true },
+  { prop: 'name', label: '姓名' },
+  { prop: 'status', label: '状态' },
+]
+const onboardCardCols: MobileCardColumn[] = [
+  { prop: 'id', label: 'ID', primary: true },
+  { prop: 'employee_id', label: '员工' },
+  { prop: 'status', label: '状态' },
+  { prop: 'remark', label: '备注' },
+]
+const offboardCardCols: MobileCardColumn[] = [
+  { prop: 'id', label: 'ID', primary: true },
+  { prop: 'employee_id', label: '员工' },
+  { prop: 'status', label: '状态' },
+  { prop: 'reason', label: '原因' },
+]
+const sessionCardCols: MobileCardColumn[] = [
+  { prop: 'id', label: '会话ID', primary: true },
+  { prop: 'user_id', label: '用户' },
+  { prop: 'client_type', label: '端' },
+  { prop: 'created_at', label: '创建时间' },
+]
+
 onMounted(loadCore)
 </script>
 
@@ -494,48 +533,68 @@ onMounted(loadCore)
           <el-button type="primary" @click="openAccountDialog()">为员工开户</el-button>
           <el-button @click="loadCore">刷新</el-button>
         </div>
-        <el-table :data="filteredEmployees" border stripe height="360">
-          <el-table-column prop="id" label="ID" width="70" />
-          <el-table-column prop="emp_no" label="工号" width="110" />
-          <el-table-column prop="name" label="姓名" />
-          <el-table-column label="类型" width="90">
-            <template #default="{ row }">{{ empTypeLabel(row.emp_type) }}</template>
-          </el-table-column>
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column prop="user_id" label="账号ID" width="90" />
-          <el-table-column label="开户" width="90">
-            <template #default="{ row }">
-              <el-tag :type="row.has_account || row.user_id ? 'success' : 'info'" size="small">
-                {{ row.has_account || row.user_id ? '已开' : '未开' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="200">
-            <template #default="{ row }">
-              <el-button v-if="!row.user_id" link type="primary" @click="openAccountDialog(row)">开户</el-button>
-              <el-button v-if="row.user_id" link type="primary" @click="goAuthorize(Number(row.user_id))">授权</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="(filteredEmployees as Record<string, unknown>[])" :columns="empCardCols">
+          <el-table :data="filteredEmployees" border stripe height="360">
+            <el-table-column prop="id" label="ID" width="70" />
+            <el-table-column prop="emp_no" label="工号" width="110" />
+            <el-table-column prop="name" label="姓名" />
+            <el-table-column label="类型" width="90">
+              <template #default="{ row }">{{ empTypeLabel(row.emp_type) }}</template>
+            </el-table-column>
+            <el-table-column prop="status" label="状态" width="90" />
+            <el-table-column prop="user_id" label="账号ID" width="90" />
+            <el-table-column label="开户" width="90">
+              <template #default="{ row }">
+                <el-tag :type="row.has_account || row.user_id ? 'success' : 'info'" size="small">
+                  {{ row.has_account || row.user_id ? '已开' : '未开' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="200">
+              <template #default="{ row }">
+                <el-button v-if="!row.user_id" link type="primary" @click="openAccountDialog(row)">开户</el-button>
+                <el-button v-if="row.user_id" link type="primary" @click="goAuthorize(Number(row.user_id))">授权</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag :type="row.has_account || row.user_id ? 'success' : 'info'" size="small">
+              {{ row.has_account || row.user_id ? '已开' : '未开' }}
+            </el-tag>
+          </template>
+          <template #actions="{ row }">
+            <el-button v-if="!row.user_id" link type="primary" @click="openAccountDialog(row)">开户</el-button>
+            <el-button v-if="row.user_id" link type="primary" @click="goAuthorize(Number(row.user_id))">授权</el-button>
+          </template>
+        </TableOrCards>
 
         <h3 class="sub">用户列表</h3>
-        <el-table :data="users" border stripe height="280">
-          <el-table-column prop="id" label="ID" width="70" />
-          <el-table-column prop="login_name" label="登录名" />
-          <el-table-column prop="name" label="员工名" />
-          <el-table-column prop="employee_id" label="员工ID" width="90" />
-          <el-table-column prop="user_type" label="类型" width="90" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column label="操作" width="200">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="goAuthorize(Number(row.id))">授权</el-button>
-              <el-button link :type="row.status === 'frozen' ? 'success' : 'danger'"
-                @click="freeze(Number(row.id), row.status === 'frozen')">
-                {{ row.status === 'frozen' ? '解冻' : '冻结' }}
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="users" :columns="userCardCols">
+          <el-table :data="users" border stripe height="280">
+            <el-table-column prop="id" label="ID" width="70" />
+            <el-table-column prop="login_name" label="登录名" />
+            <el-table-column prop="name" label="员工名" />
+            <el-table-column prop="employee_id" label="员工ID" width="90" />
+            <el-table-column prop="user_type" label="类型" width="90" />
+            <el-table-column prop="status" label="状态" width="90" />
+            <el-table-column label="操作" width="200">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="goAuthorize(Number(row.id))">授权</el-button>
+                <el-button link :type="row.status === 'frozen' ? 'success' : 'danger'"
+                  @click="freeze(Number(row.id), row.status === 'frozen')">
+                  {{ row.status === 'frozen' ? '解冻' : '冻结' }}
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #actions="{ row }">
+            <el-button link type="primary" @click="goAuthorize(Number(row.id))">授权</el-button>
+            <el-button link :type="row.status === 'frozen' ? 'success' : 'danger'"
+              @click="freeze(Number(row.id), row.status === 'frozen')">
+              {{ row.status === 'frozen' ? '解冻' : '冻结' }}
+            </el-button>
+          </template>
+        </TableOrCards>
       </el-tab-pane>
 
       <el-tab-pane label="角色管理" name="roles">
@@ -591,8 +650,9 @@ onMounted(loadCore)
               </el-form-item>
             </el-form>
 
+            <DesktopOnlyGate message="仓/工序范围与权限码矩阵需在桌面浏览器操作。">
             <el-row :gutter="16">
-              <el-col :span="12">
+              <el-col :span="12" :xs="24">
                 <h3 class="sub">仓范围</h3>
                 <el-checkbox-group v-model="roleWhIds">
                   <el-checkbox v-for="w in warehouses" :key="String(w.id)" :value="Number(w.id)">
@@ -600,7 +660,7 @@ onMounted(loadCore)
                   </el-checkbox>
                 </el-checkbox-group>
               </el-col>
-              <el-col :span="12">
+              <el-col :span="12" :xs="24">
                 <h3 class="sub">工序范围</h3>
                 <div v-for="p in processes" :key="String(p.id)" class="proc-row">
                   <template v-if="roleProcMap[Number(p.id)]">
@@ -681,8 +741,10 @@ onMounted(loadCore)
                 </el-collapse>
               </div>
             </section>
+            </DesktopOnlyGate>
 
             <h3 class="sub">已绑定用户</h3>
+            <TableOrCards :data="roleBoundUsers" :columns="roleUserCardCols">
             <el-table :data="roleBoundUsers" border size="small" max-height="180">
               <el-table-column prop="login_name" label="登录名" />
               <el-table-column prop="name" label="姓名" />
@@ -693,6 +755,10 @@ onMounted(loadCore)
                 </template>
               </el-table-column>
             </el-table>
+            <template #actions="{ row }">
+              <el-button link type="primary" @click="goAuthorize(Number(row.id))">授权</el-button>
+            </template>
+            </TableOrCards>
           </section>
           <el-empty v-else description="请选择角色" />
         </div>
@@ -755,7 +821,7 @@ onMounted(loadCore)
 
       <el-tab-pane label="入职·离职" name="lifecycle">
         <el-row :gutter="20">
-          <el-col :span="12">
+          <el-col :span="12" :xs="24">
             <h3 class="sub">入职开户</h3>
             <div class="row">
               <el-select v-model="onboardForm.employee_id" filterable clearable placeholder="未开户员工" style="width:220px">
@@ -767,6 +833,7 @@ onMounted(loadCore)
             <el-checkbox-group v-model="onboardForm.role_ids" style="margin-bottom:8px">
               <el-checkbox v-for="r in roles.slice(0, 8)" :key="'ob'+r.id" :label="Number(r.id)">{{ r.name }}</el-checkbox>
             </el-checkbox-group>
+            <TableOrCards :data="onboards" :columns="onboardCardCols">
             <el-table :data="onboards" border size="small" height="260">
               <el-table-column prop="id" label="ID" width="60" />
               <el-table-column prop="employee_id" label="员工" width="80" />
@@ -778,8 +845,12 @@ onMounted(loadCore)
                 </template>
               </el-table-column>
             </el-table>
+            <template #actions="{ row }">
+              <el-button v-if="row.status !== 'confirmed'" link type="primary" @click="confirmOnboard(Number(row.id))">确认开户</el-button>
+            </template>
+            </TableOrCards>
           </el-col>
-          <el-col :span="12">
+          <el-col :span="12" :xs="24">
             <h3 class="sub">离职收回</h3>
             <div class="row">
               <el-select v-model="offboardForm.employee_id" filterable clearable placeholder="员工" style="width:220px">
@@ -789,6 +860,7 @@ onMounted(loadCore)
               <el-checkbox v-model="offboardForm.revoke_permission">收回权限</el-checkbox>
               <el-button type="danger" @click="createOffboard">建单</el-button>
             </div>
+            <TableOrCards :data="offboards" :columns="offboardCardCols">
             <el-table :data="offboards" border size="small" height="260">
               <el-table-column prop="id" label="ID" width="60" />
               <el-table-column prop="employee_id" label="员工" width="80" />
@@ -800,12 +872,17 @@ onMounted(loadCore)
                 </template>
               </el-table-column>
             </el-table>
+            <template #actions="{ row }">
+              <el-button v-if="row.status !== 'confirmed'" link type="danger" @click="confirmOffboard(Number(row.id))">确认离职</el-button>
+            </template>
+            </TableOrCards>
           </el-col>
         </el-row>
       </el-tab-pane>
 
       <el-tab-pane label="冻结·会话" name="freeze">
         <h3 class="sub">账户冻结</h3>
+        <TableOrCards :data="users" :columns="userCardCols">
         <el-table :data="users" border stripe height="280">
           <el-table-column prop="login_name" label="登录名" />
           <el-table-column prop="name" label="姓名" />
@@ -819,7 +896,15 @@ onMounted(loadCore)
             </template>
           </el-table-column>
         </el-table>
+        <template #actions="{ row }">
+          <el-button link :type="row.status === 'frozen' ? 'success' : 'danger'"
+            @click="freeze(Number(row.id), row.status === 'frozen')">
+            {{ row.status === 'frozen' ? '解冻' : '冻结' }}
+          </el-button>
+        </template>
+        </TableOrCards>
         <h3 class="sub">在线会话</h3>
+        <TableOrCards :data="sessions" :columns="sessionCardCols">
         <el-table :data="sessions" border size="small" height="220">
           <el-table-column prop="id" label="会话ID" width="90" />
           <el-table-column prop="user_id" label="用户" width="90" />
@@ -831,6 +916,10 @@ onMounted(loadCore)
             </template>
           </el-table-column>
         </el-table>
+        <template #actions="{ row }">
+          <el-button link type="danger" @click="revokeSession(Number(row.id))">踢下线</el-button>
+        </template>
+        </TableOrCards>
       </el-tab-pane>
     </el-tabs>
 
@@ -983,5 +1072,9 @@ onMounted(loadCore)
   .stats { grid-template-columns: repeat(3, 1fr); }
   .role-layout { grid-template-columns: 1fr; }
   .perm-mod-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+  .hr-perm { padding: 12px; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
 }
 </style>

@@ -9,6 +9,8 @@ const String kDefaultApiBase = String.fromEnvironment(
   defaultValue: 'http://10.0.2.2:18080/api/v1',
 );
 
+const String _kApiBasePref = 'api_base_url';
+
 class ApiEnvelope {
   ApiEnvelope({required this.code, required this.msg, this.data});
 
@@ -25,10 +27,39 @@ class ApiEnvelope {
       );
 }
 
-class ApiClient {
-  ApiClient({this.baseUrl = kDefaultApiBase});
+/// 把用户输入规范成 `http(s)://host:port/api/v1`
+String normalizeApiBase(String raw) {
+  var s = raw.trim();
+  if (s.isEmpty) return kDefaultApiBase;
+  if (!s.contains('://')) {
+    s = 'http://$s';
+  }
+  final uri = Uri.tryParse(s);
+  if (uri == null || uri.host.isEmpty) return kDefaultApiBase;
+  final scheme = uri.scheme.isEmpty ? 'http' : uri.scheme;
+  final port = uri.hasPort ? uri.port : 18080;
+  var path = uri.path;
+  if (path.isEmpty || path == '/') {
+    path = '/api/v1';
+  } else if (!path.contains('/api/v1')) {
+    path = path.endsWith('/') ? '${path}api/v1' : '$path/api/v1';
+  }
+  path = path.replaceAll(RegExp(r'/+$'), '');
+  return Uri(scheme: scheme, host: uri.host, port: port, path: path).toString();
+}
 
-  final String baseUrl;
+/// 登录页展示用：尽量显示 host:port
+String displayApiHost(String baseUrl) {
+  final u = Uri.tryParse(baseUrl);
+  if (u == null || u.host.isEmpty) return baseUrl;
+  if (u.hasPort) return '${u.host}:${u.port}';
+  return u.host;
+}
+
+class ApiClient {
+  ApiClient({String? baseUrl}) : baseUrl = baseUrl ?? kDefaultApiBase;
+
+  String baseUrl;
   String? accessToken;
   String? refreshToken;
 
@@ -46,6 +77,16 @@ class ApiClient {
     final p = await SharedPreferences.getInstance();
     accessToken = p.getString('access_token');
     refreshToken = p.getString('refresh_token');
+    final saved = p.getString(_kApiBasePref);
+    if (saved != null && saved.trim().isNotEmpty) {
+      baseUrl = normalizeApiBase(saved);
+    }
+  }
+
+  Future<void> setBaseUrl(String raw) async {
+    baseUrl = normalizeApiBase(raw);
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kApiBasePref, baseUrl);
   }
 
   Future<void> saveTokens(String access, String refresh) async {

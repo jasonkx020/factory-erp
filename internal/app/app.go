@@ -18,6 +18,7 @@ import (
 	"erp/internal/notify"
 	"erp/internal/persistence"
 	"erp/internal/server/health"
+	"erp/internal/webui"
 )
 
 type App struct {
@@ -59,7 +60,7 @@ func New(cfgPath string) (*App, error) {
 		"/files",
 	}
 	eng.Use(middleware.Metrics())
-	eng.Use(middleware.JWT(cfg.JWT.Secret, db.SQL, permit))
+	eng.Use(middleware.JWT(cfg.JWT.Secret, db.SQL, permit, webui.IsStaticPath))
 	eng.Use(middleware.Audit(db.SQL))
 	_ = os.MkdirAll(filepath.Join("data", "uploads"), 0o755)
 	eng.Static("/files", "data")
@@ -108,6 +109,18 @@ func New(cfgPath string) (*App, error) {
 
 	stop := make(chan struct{})
 	go notifySvc.StartPublisher(stop)
+
+	uiFS, uiErr := webui.Open(cfg.Server.WebRoot)
+	if uiErr != nil {
+		log.Printf("webui: open failed: %v (continuing without UI)", uiErr)
+	} else {
+		webui.Register(eng, uiFS)
+		if uiFS.Source == webui.SourceExternal {
+			log.Printf("webui: serving external root %s", uiFS.Root)
+		} else {
+			log.Printf("webui: serving embedded dist")
+		}
+	}
 
 	// 生产关闭 debug；demo/开发仅 sys_admin 可访问
 	if cfg.Seed.DemoEnabled() {

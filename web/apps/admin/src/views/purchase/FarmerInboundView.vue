@@ -4,10 +4,55 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { purchaseApi, bizApi } from '@erp/shared'
 import ConfirmSnapshotCompare from '../../components/closed-loop/ConfirmSnapshotCompare.vue'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 const route = useRoute()
 
 type Row = Record<string, unknown>
+
+const farmerCols: MobileCardColumn[] = [
+  { prop: 'name', label: '姓名', primary: true },
+  { prop: 'id', label: 'ID' },
+  { prop: 'mobile', label: '电话' },
+  { prop: 'origin', label: '产地' },
+  { prop: 'default_unit_price', label: '默认单价' },
+  { prop: 'status', label: '状态' },
+]
+const arrivalCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'farmer_name', label: '农户' },
+  { prop: 'estimate_weight', label: '估重' },
+  { prop: 'qc_result', label: '质检' },
+  { prop: 'grade', label: '等级' },
+  { prop: 'status', label: '状态' },
+]
+const ticketCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'receive_kind', label: '模式' },
+  { prop: 'batch_no', label: '溯源批号' },
+  { prop: 'party_name', label: '姓名' },
+  { prop: 'farmer_name', label: '农户' },
+  { prop: 'gross_weight', label: '入场重量' },
+  { prop: 'net_weight', label: '净重' },
+  { prop: 'settle_amount', label: '结算' },
+  { prop: 'cold_store_type', label: '冷库' },
+  { prop: 'status', label: '状态' },
+  { prop: 'trace_code', label: '溯源码' },
+  { prop: 'box_code', label: '箱码' },
+]
+const settlementCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '结算单', primary: true },
+  { prop: 'farmer_name', label: '农户' },
+  { prop: 'net_weight', label: '净重' },
+  { prop: 'goods_amount', label: '货款' },
+  { prop: 'freight_fee', label: '运费' },
+  { prop: 'loading_fee', label: '装卸' },
+  { prop: 'weigh_fee', label: '过磅费' },
+  { prop: 'amount', label: '结算金额' },
+  { prop: 'status', label: '状态' },
+  { prop: 'transfer_no', label: '转账单号' },
+]
 
 const props = withDefaults(defineProps<{ section?: string }>(), { section: 'all' })
 
@@ -492,7 +537,7 @@ watch(
     </p>
 
     <el-row v-if="showFarmers || showWeigh" :gutter="16">
-      <el-col v-if="showFarmers" :span="showWeigh ? 8 : 12">
+      <el-col v-if="showFarmers" :span="showWeigh ? 8 : 12" :xs="24">
         <el-card header="农户建档">
           <el-form label-width="80px" size="small">
             <el-form-item label="姓名"><el-input v-model="farmerForm.name" /></el-form-item>
@@ -504,7 +549,7 @@ watch(
         </el-card>
       </el-col>
       <template v-if="showWeigh">
-        <el-col :span="showFarmers ? 8 : 12">
+        <el-col :span="showFarmers ? 8 : 12" :xs="24">
           <el-card header="到货 + 质检照">
             <el-form label-width="90px" size="small">
               <el-form-item label="农户">
@@ -525,7 +570,7 @@ watch(
             </el-form>
           </el-card>
         </el-col>
-        <el-col :span="showFarmers ? 8 : 12">
+        <el-col :span="showFarmers ? 8 : 12" :xs="24">
           <el-card header="过磅草稿（入厂/入库）">
             <el-form label-width="100px" size="small">
               <el-form-item label="模式">
@@ -663,90 +708,111 @@ watch(
     </el-row>
 
     <el-card v-if="showFarmers" header="农户列表" style="margin-top:16px">
-      <el-table :data="farmers" size="small">
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="name" label="姓名" width="120" />
-        <el-table-column prop="mobile" label="电话" width="130" />
-        <el-table-column prop="origin" label="产地" />
-        <el-table-column prop="default_unit_price" label="默认单价" width="100" />
-        <el-table-column prop="status" label="状态" width="90" />
-      </el-table>
+      <TableOrCards :data="farmers" :loading="loading" :columns="farmerCols">
+        <el-table :data="farmers" size="small">
+          <el-table-column prop="id" label="ID" width="70" />
+          <el-table-column prop="name" label="姓名" width="120" />
+          <el-table-column prop="mobile" label="电话" width="130" />
+          <el-table-column prop="origin" label="产地" />
+          <el-table-column prop="default_unit_price" label="默认单价" width="100" />
+          <el-table-column prop="status" label="状态" width="90" />
+        </el-table>
+      </TableOrCards>
     </el-card>
 
     <el-card v-if="showWeigh" header="到货质检" style="margin-top:16px">
-      <el-table :data="arrivals" size="small">
-        <el-table-column prop="doc_no" label="单号" width="150" />
-        <el-table-column prop="farmer_name" label="农户" width="100" />
-        <el-table-column prop="estimate_weight" label="估重" width="80" />
-        <el-table-column prop="qc_result" label="质检" width="70" />
-        <el-table-column prop="grade" label="等级" width="60" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column label="操作" width="200" fixed="right">
-          <template #default="{ row }">
-            <el-button v-if="row.status==='qc_pending' || row.status==='draft'" link type="success" @click="qcArrival(Number(row.id), true)">合格定级</el-button>
-            <el-button v-if="row.status==='qc_pending' || row.status==='draft'" link type="danger" @click="qcArrival(Number(row.id), false)">不合格</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="arrivals" :loading="loading" :columns="arrivalCols">
+        <el-table :data="arrivals" size="small">
+          <el-table-column prop="doc_no" label="单号" width="150" />
+          <el-table-column prop="farmer_name" label="农户" width="100" />
+          <el-table-column prop="estimate_weight" label="估重" width="80" />
+          <el-table-column prop="qc_result" label="质检" width="70" />
+          <el-table-column prop="grade" label="等级" width="60" />
+          <el-table-column prop="status" label="状态" width="100" />
+          <el-table-column label="操作" width="200" fixed="right">
+            <template #default="{ row }">
+              <el-button v-if="row.status==='qc_pending' || row.status==='draft'" link type="success" @click="qcArrival(Number(row.id), true)">合格定级</el-button>
+              <el-button v-if="row.status==='qc_pending' || row.status==='draft'" link type="danger" @click="qcArrival(Number(row.id), false)">不合格</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="row.status==='qc_pending' || row.status==='draft'" link type="success" @click="qcArrival(Number(row.id), true)">合格定级</el-button>
+          <el-button v-if="row.status==='qc_pending' || row.status==='draft'" link type="danger" @click="qcArrival(Number(row.id), false)">不合格</el-button>
+        </template>
+      </TableOrCards>
     </el-card>
 
     <el-card v-if="showWeigh" header="过磅确认 / 出码（入库请到仓管待办）" style="margin-top:16px">
       <p class="hint">确认出码后系统将溯源码与单号推送给仓管；仓管确认后方为采购完成。</p>
-      <el-table :data="tickets" size="small">
-        <el-table-column prop="doc_no" label="单号" width="150" />
-        <el-table-column prop="receive_kind" label="模式" width="70">
-          <template #default="{ row }">{{ row.receive_kind === 'stockin' ? '入库' : '入厂' }}</template>
-        </el-table-column>
-        <el-table-column prop="batch_no" label="溯源批号" min-width="160" />
-        <el-table-column prop="party_name" label="姓名" width="90" />
-        <el-table-column prop="farmer_name" label="农户" width="90" />
-        <el-table-column prop="gross_weight" label="入场重量" width="90" />
-        <el-table-column prop="net_weight" label="净重" width="70" />
-        <el-table-column prop="settle_amount" label="结算" width="80" />
-        <el-table-column prop="cold_store_type" label="冷库" width="80" />
-        <el-table-column prop="image_url" label="照片" width="70">
-          <template #default="{ row }">
-            <el-image v-if="row.image_url" :src="String(row.image_url)" style="width:36px;height:36px" fit="cover" :preview-src-list="[String(row.image_url)]" />
-          </template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column prop="trace_code" label="溯源码" min-width="160" />
-        <el-table-column prop="box_code" label="箱码" min-width="120" />
-        <el-table-column label="操作" width="280" fixed="right">
-          <template #default="{ row }">
-            <el-button v-if="row.status==='draft' || row.status==='qc_pass'" link type="primary" @click="openConfirm(row)">对照确认出码</el-button>
-            <el-button v-if="row.status==='weighed'" link type="info" disabled>等待仓管入库</el-button>
-            <el-button link type="warning" @click="openCorrect(row, 'weigh_ticket')">纠错</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="tickets" :loading="loading" :columns="ticketCols">
+        <el-table :data="tickets" size="small">
+          <el-table-column prop="doc_no" label="单号" width="150" />
+          <el-table-column prop="receive_kind" label="模式" width="70">
+            <template #default="{ row }">{{ row.receive_kind === 'stockin' ? '入库' : '入厂' }}</template>
+          </el-table-column>
+          <el-table-column prop="batch_no" label="溯源批号" min-width="160" />
+          <el-table-column prop="party_name" label="姓名" width="90" />
+          <el-table-column prop="farmer_name" label="农户" width="90" />
+          <el-table-column prop="gross_weight" label="入场重量" width="90" />
+          <el-table-column prop="net_weight" label="净重" width="70" />
+          <el-table-column prop="settle_amount" label="结算" width="80" />
+          <el-table-column prop="cold_store_type" label="冷库" width="80" />
+          <el-table-column prop="image_url" label="照片" width="70">
+            <template #default="{ row }">
+              <el-image v-if="row.image_url" :src="String(row.image_url)" style="width:36px;height:36px" fit="cover" :preview-src-list="[String(row.image_url)]" />
+            </template>
+          </el-table-column>
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column prop="trace_code" label="溯源码" min-width="160" />
+          <el-table-column prop="box_code" label="箱码" min-width="120" />
+          <el-table-column label="操作" width="280" fixed="right">
+            <template #default="{ row }">
+              <el-button v-if="row.status==='draft' || row.status==='qc_pass'" link type="primary" @click="openConfirm(row)">对照确认出码</el-button>
+              <el-button v-if="row.status==='weighed'" link type="info" disabled>等待仓管入库</el-button>
+              <el-button link type="warning" @click="openCorrect(row, 'weigh_ticket')">纠错</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="row.status==='draft' || row.status==='qc_pass'" link type="primary" @click="openConfirm(row)">对照确认出码</el-button>
+          <el-button v-if="row.status==='weighed'" link type="info" disabled>等待仓管入库</el-button>
+          <el-button link type="warning" @click="openCorrect(row, 'weigh_ticket')">纠错</el-button>
+        </template>
+      </TableOrCards>
       <pre v-if="labelPreview" class="trace">标签预览：{{ JSON.stringify(labelPreview, null, 2) }}</pre>
     </el-card>
 
     <el-row v-if="showSettlements || showTrace" :gutter="16" style="margin-top:16px">
-      <el-col v-if="showSettlements" :span="showTrace ? 14 : 24">
+      <el-col v-if="showSettlements" :span="showTrace ? 14 : 24" :xs="24">
         <el-card header="农户结算（财务支付须转账单号+回单）">
-          <el-table :data="settlements" size="small">
-            <el-table-column prop="doc_no" label="结算单" width="140" />
-            <el-table-column prop="farmer_name" label="农户" width="90" />
-            <el-table-column prop="net_weight" label="净重" width="80" />
-            <el-table-column prop="goods_amount" label="货款" width="80" />
-            <el-table-column prop="freight_fee" label="运费" width="70" />
-            <el-table-column prop="loading_fee" label="装卸" width="70" />
-            <el-table-column prop="weigh_fee" label="过磅费" width="70" />
-            <el-table-column prop="amount" label="结算金额" width="90" />
-            <el-table-column prop="status" label="状态" width="110" />
-            <el-table-column prop="transfer_no" label="转账单号" min-width="120" />
-            <el-table-column label="操作" width="160" fixed="right">
-              <template #default="{ row }">
-                <el-button v-if="row.status!=='settle_paid'" link type="primary" @click="openPay(row)">支付关单</el-button>
-                <el-button link type="warning" @click="openCorrect(row, 'farmer_settlement')">纠错</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+          <TableOrCards :data="settlements" :loading="loading" :columns="settlementCols">
+            <el-table :data="settlements" size="small">
+              <el-table-column prop="doc_no" label="结算单" width="140" />
+              <el-table-column prop="farmer_name" label="农户" width="90" />
+              <el-table-column prop="net_weight" label="净重" width="80" />
+              <el-table-column prop="goods_amount" label="货款" width="80" />
+              <el-table-column prop="freight_fee" label="运费" width="70" />
+              <el-table-column prop="loading_fee" label="装卸" width="70" />
+              <el-table-column prop="weigh_fee" label="过磅费" width="70" />
+              <el-table-column prop="amount" label="结算金额" width="90" />
+              <el-table-column prop="status" label="状态" width="110" />
+              <el-table-column prop="transfer_no" label="转账单号" min-width="120" />
+              <el-table-column label="操作" width="160" fixed="right">
+                <template #default="{ row }">
+                  <el-button v-if="row.status!=='settle_paid'" link type="primary" @click="openPay(row)">支付关单</el-button>
+                  <el-button link type="warning" @click="openCorrect(row, 'farmer_settlement')">纠错</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <template #actions="{ row }">
+              <el-button v-if="row.status!=='settle_paid'" link type="primary" @click="openPay(row)">支付关单</el-button>
+              <el-button link type="warning" @click="openCorrect(row, 'farmer_settlement')">纠错</el-button>
+            </template>
+          </TableOrCards>
         </el-card>
       </el-col>
-      <el-col v-if="showTrace" :span="showSettlements ? 10 : 24">
+      <el-col v-if="showTrace" :span="showSettlements ? 10 : 24" :xs="24">
         <el-card header="溯源倒查时间轴">
           <el-input v-model="traceCode" placeholder="溯源批号 / T1- / 箱码 / 过磅单号" style="max-width:280px;margin-right:8px" />
           <el-button type="primary" @click="doTrace">倒查</el-button>

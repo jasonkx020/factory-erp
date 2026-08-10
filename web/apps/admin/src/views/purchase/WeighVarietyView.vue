@@ -3,8 +3,19 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { purchaseApi, productApi } from '@erp/shared'
 import { ProductSelect } from '../../components/select'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
+
+const varietyCols: MobileCardColumn[] = [
+  { prop: 'name', label: '名称', primary: true },
+  { prop: 'sort_no', label: '排序' },
+  { prop: 'code', label: '编码' },
+  { prop: 'default_product_id', label: '默认产品' },
+  { prop: 'status', label: '状态' },
+  { prop: 'remark', label: '备注' },
+]
 
 const loading = ref(false)
 const list = ref<Row[]>([])
@@ -110,23 +121,33 @@ onMounted(refresh)
         <el-button type="primary" @click="openCreate">新建品种</el-button>
         <el-button @click="refresh">刷新</el-button>
       </div>
-      <el-table :data="list" size="small" border>
-        <el-table-column prop="sort_no" label="排序" width="70" />
-        <el-table-column prop="code" label="编码" width="140" />
-        <el-table-column prop="name" label="名称" min-width="120" />
-        <el-table-column label="默认产品" min-width="140">
-          <template #default="{ row }">{{ productName(row.default_product_id) }}</template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
-        <el-table-column label="操作" width="220" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link @click="toggleStatus(row)">{{ row.status === 'active' ? '停用' : '启用' }}</el-button>
-            <el-button link type="danger" @click="removeRow(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="varietyCols">
+        <el-table :data="list" size="small" border>
+          <el-table-column prop="sort_no" label="排序" width="70" />
+          <el-table-column prop="code" label="编码" width="140" />
+          <el-table-column prop="name" label="名称" min-width="120" />
+          <el-table-column label="默认产品" min-width="140">
+            <template #default="{ row }">{{ productName(row.default_product_id) }}</template>
+          </el-table-column>
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
+          <el-table-column label="操作" width="220" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+              <el-button link @click="toggleStatus(row)">{{ row.status === 'active' ? '停用' : '启用' }}</el-button>
+              <el-button link type="danger" @click="removeRow(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #field-default_product_id="{ row }">
+          {{ productName(row.default_product_id) }}
+        </template>
+        <template #actions="{ row }">
+          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+          <el-button link @click="toggleStatus(row)">{{ row.status === 'active' ? '停用' : '启用' }}</el-button>
+          <el-button link type="danger" @click="removeRow(row)">删除</el-button>
+        </template>
+      </TableOrCards>
     </el-card>
 
     <el-dialog v-model="dlg" :title="editingId ? '编辑过磅品种' : '新建过磅品种'" width="480px">

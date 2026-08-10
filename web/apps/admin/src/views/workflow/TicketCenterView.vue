@@ -2,8 +2,26 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { iamApi, ticketApi } from '@erp/shared'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
+
+const ticketCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'category_name', label: '分类' },
+  { prop: 'title', label: '标题' },
+  { prop: 'applicant_name', label: '申请人' },
+  { prop: 'assignee_name', label: '当前处理人' },
+  { prop: 'status', label: '状态', hideOnCard: true },
+  { prop: 'created_at', label: '创建时间' },
+]
+
+const categoryCols: MobileCardColumn[] = [
+  { prop: 'code', label: '编码', primary: true },
+  { prop: 'name', label: '名称' },
+  { prop: 'remark', label: '说明' },
+]
 type FieldDef = {
   key: string
   label: string
@@ -317,7 +335,7 @@ onMounted(refresh)
               <el-input v-model="createForm.title" placeholder="空则按表单内容自动生成" style="width:320px" />
             </el-form-item>
             <el-row :gutter="12">
-              <el-col v-for="f in createSchema" :key="f.key" :span="f.type === 'textarea' ? 24 : 12">
+              <el-col v-for="f in createSchema" :key="f.key" :span="f.type === 'textarea' ? 24 : 12" :xs="24">
                 <el-form-item :label="f.label + (f.required ? ' *' : '')">
                   <el-date-picker
                     v-if="f.type === 'date'"
@@ -371,45 +389,62 @@ onMounted(refresh)
           <el-button size="small" style="margin-left:8px" @click="loadTickets">刷新</el-button>
         </div>
 
-        <el-table :data="tickets" border stripe size="small" style="margin-top:12px">
-          <el-table-column prop="doc_no" label="单号" width="160" />
-          <el-table-column prop="category_name" label="分类" width="140" />
-          <el-table-column prop="title" label="标题" min-width="180" />
-          <el-table-column prop="applicant_name" label="申请人" width="100" />
-          <el-table-column prop="assignee_name" label="当前处理人" width="110" />
-          <el-table-column label="状态" width="90">
-            <template #default="{ row }">{{ statusLabel[String(row.status)] || row.status }}</template>
-          </el-table-column>
-          <el-table-column prop="created_at" label="创建时间" width="160" />
-          <el-table-column label="操作" width="90" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="tickets" :loading="loading" :columns="ticketCols" style="margin-top:12px">
+          <el-table :data="tickets" border stripe size="small">
+            <el-table-column prop="doc_no" label="单号" width="160" />
+            <el-table-column prop="category_name" label="分类" width="140" />
+            <el-table-column prop="title" label="标题" min-width="180" />
+            <el-table-column prop="applicant_name" label="申请人" width="100" />
+            <el-table-column prop="assignee_name" label="当前处理人" width="110" />
+            <el-table-column label="状态" width="90">
+              <template #default="{ row }">{{ statusLabel[String(row.status)] || row.status }}</template>
+            </el-table-column>
+            <el-table-column prop="created_at" label="创建时间" width="160" />
+            <el-table-column label="操作" width="90" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="openDetail(row)">详情</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag size="small">{{ statusLabel[String(row.status)] || row.status }}</el-tag>
+          </template>
+          <template #actions="{ row }">
+            <el-button link type="primary" @click="openDetail(row)">详情</el-button>
+          </template>
+        </TableOrCards>
       </el-tab-pane>
 
       <el-tab-pane label="分类与字段" name="categories">
         <div style="margin-bottom:12px">
           <el-button type="primary" size="small" @click="openNewType">新建工单类型</el-button>
         </div>
-        <el-table :data="categories" border stripe size="small">
-          <el-table-column prop="code" label="编码" width="140" />
-          <el-table-column prop="name" label="名称" width="160" />
-          <el-table-column prop="remark" label="说明" min-width="160" />
-          <el-table-column label="字段数" width="80">
-            <template #default="{ row }">{{ schemaOf(row).length }}</template>
-          </el-table-column>
-          <el-table-column label="启用" width="70">
-            <template #default="{ row }">{{ row.enabled ? '是' : '否' }}</template>
-          </el-table-column>
-          <el-table-column label="操作" width="220">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="openEditType(row)">编辑字段</el-button>
-              <el-button link type="primary" @click="openHandlers(row)">处理人</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <TableOrCards :data="categories" :loading="loading" :columns="categoryCols">
+          <el-table :data="categories" border stripe size="small">
+            <el-table-column prop="code" label="编码" width="140" />
+            <el-table-column prop="name" label="名称" width="160" />
+            <el-table-column prop="remark" label="说明" min-width="160" />
+            <el-table-column label="字段数" width="80">
+              <template #default="{ row }">{{ schemaOf(row).length }}</template>
+            </el-table-column>
+            <el-table-column label="启用" width="70">
+              <template #default="{ row }">{{ row.enabled ? '是' : '否' }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="220">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="openEditType(row)">编辑字段</el-button>
+                <el-button link type="primary" @click="openHandlers(row)">处理人</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag size="small" :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '启用' : '停用' }}</el-tag>
+          </template>
+          <template #actions="{ row }">
+            <el-button link type="primary" @click="openEditType(row)">编辑字段</el-button>
+            <el-button link type="primary" @click="openHandlers(row)">处理人</el-button>
+          </template>
+        </TableOrCards>
       </el-tab-pane>
     </el-tabs>
 

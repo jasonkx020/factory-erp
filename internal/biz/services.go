@@ -82,6 +82,9 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		if strings.HasSuffix(openapiPath, "/confirm") && method == "POST" {
 			return s.confirmReportWork(c)
 		}
+		if strings.HasSuffix(openapiPath, "/void") && method == "POST" {
+			return s.voidReportWorkDraft(c)
+		}
 		if strings.HasSuffix(openapiPath, "/correct") && method == "POST" {
 			body := bindBody(c)
 			body["biz_type"] = "report_work"

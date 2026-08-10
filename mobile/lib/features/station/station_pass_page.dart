@@ -231,6 +231,26 @@ class _StationPassPageState extends State<StationPassPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   FilledButton(onPressed: () => _confirm(qcPass: true), child: const Text('确认过站（QC 合格）')),
+                  OutlinedButton(
+                    onPressed: () async {
+                      final id = _pendingReportId ?? (_last?['id'] as num?)?.toInt();
+                      if (id == null) {
+                        setState(() => _msg = '无待作废草稿');
+                        return;
+                      }
+                      final api = context.read<AuthState>().api;
+                      final r = await api.post('/production/report-works/$id/void', {'remark': 'void_draft'});
+                      setState(() {
+                        if (r.ok) {
+                          _pendingReportId = null;
+                          _msg = '草稿已作废';
+                        } else {
+                          _msg = r.msg;
+                        }
+                      });
+                    },
+                    child: const Text('作废草稿'),
+                  ),
                   if (_isCheckpoint)
                     OutlinedButton(
                       onPressed: () => _confirm(qcPass: false),

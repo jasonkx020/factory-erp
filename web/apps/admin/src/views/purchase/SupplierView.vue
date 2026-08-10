@@ -9,8 +9,48 @@ import {
   LICENSE_TYPE_OPTIONS,
 } from '@erp/shared'
 import { EnumSelect, ProductSelect, WarehouseSelect } from '../../components/select'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
+
+const supplierCols: MobileCardColumn[] = [
+  { prop: 'name', label: '名称', primary: true },
+  { prop: 'code', label: '编码' },
+  { prop: 'supplier_type', label: '类型' },
+  { prop: 'status', label: '状态' },
+  { prop: 'rating', label: '等级' },
+  { prop: 'settle_method', label: '结算' },
+]
+
+const analyticsCols: MobileCardColumn[] = [
+  { prop: 'supplier_name', label: '供应商', primary: true },
+  { prop: 'product_id', label: '物料' },
+  { prop: 'qty', label: '数量' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'avg_price', label: '均价' },
+]
+
+const licenseCols: MobileCardColumn[] = [
+  { prop: 'license_type', label: '类型', primary: true },
+  { prop: 'license_no', label: '号码' },
+  { prop: 'expire_date', label: '到期日' },
+]
+
+const supplyCols: MobileCardColumn[] = [
+  { prop: 'product_id', label: '物料', primary: true },
+  { prop: 'is_preferred', label: '首选' },
+  { prop: 'moq', label: 'MOQ' },
+  { prop: 'lead_time_days', label: '交期' },
+  { prop: 'last_price', label: '最近价' },
+]
+
+const priceCols: MobileCardColumn[] = [
+  { prop: 'product_id', label: '物料', primary: true },
+  { prop: 'price', label: '价格' },
+  { prop: 'biz_date', label: '日期' },
+  { prop: 'source_doc_id', label: '来源入库' },
+]
 
 const loading = ref(false)
 const list = ref<Row[]>([])
@@ -204,36 +244,49 @@ onMounted(loadList)
       <span class="muted">共 {{ total }} 家</span>
     </div>
 
-    <el-table :data="list" border stripe>
-      <el-table-column prop="code" label="编码" width="120" />
-      <el-table-column prop="name" label="名称" min-width="160" />
-      <el-table-column prop="supplier_type" label="类型" width="90" />
-      <el-table-column prop="status" label="状态" width="90">
-        <template #default="{ row }">{{ statusLabel[String(row.status)] || row.status }}</template>
-      </el-table-column>
-      <el-table-column prop="rating" label="等级" width="70" />
-      <el-table-column prop="settle_method" label="结算" width="90" />
-      <el-table-column label="操作" width="320" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">详情</el-button>
-          <el-button v-if="row.status==='potential'" link type="success" @click="doAction(row,'qualify')">准入</el-button>
-          <el-button v-if="row.status==='qualified'" link type="warning" @click="doAction(row,'freeze')">冻结</el-button>
-          <el-button v-if="row.status==='frozen'" link type="success" @click="doAction(row,'activate')">解冻</el-button>
-          <el-button v-if="row.status!=='blacklist'" link type="danger" @click="doAction(row,'blacklist')">拉黑</el-button>
-          <el-button link type="danger" @click="removeRow(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <TableOrCards :data="list" :loading="loading" :columns="supplierCols">
+      <el-table :data="list" border stripe>
+        <el-table-column prop="code" label="编码" width="120" />
+        <el-table-column prop="name" label="名称" min-width="160" />
+        <el-table-column prop="supplier_type" label="类型" width="90" />
+        <el-table-column prop="status" label="状态" width="90">
+          <template #default="{ row }">{{ statusLabel[String(row.status)] || row.status }}</template>
+        </el-table-column>
+        <el-table-column prop="rating" label="等级" width="70" />
+        <el-table-column prop="settle_method" label="结算" width="90" />
+        <el-table-column label="操作" width="320" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openEdit(row)">详情</el-button>
+            <el-button v-if="row.status==='potential'" link type="success" @click="doAction(row,'qualify')">准入</el-button>
+            <el-button v-if="row.status==='qualified'" link type="warning" @click="doAction(row,'freeze')">冻结</el-button>
+            <el-button v-if="row.status==='frozen'" link type="success" @click="doAction(row,'activate')">解冻</el-button>
+            <el-button v-if="row.status!=='blacklist'" link type="danger" @click="doAction(row,'blacklist')">拉黑</el-button>
+            <el-button link type="danger" @click="removeRow(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #field-status="{ row }">{{ statusLabel[String(row.status)] || row.status }}</template>
+      <template #actions="{ row }">
+        <el-button link type="primary" @click="openEdit(row)">详情</el-button>
+        <el-button v-if="row.status==='potential'" link type="success" @click="doAction(row,'qualify')">准入</el-button>
+        <el-button v-if="row.status==='qualified'" link type="warning" @click="doAction(row,'freeze')">冻结</el-button>
+        <el-button v-if="row.status==='frozen'" link type="success" @click="doAction(row,'activate')">解冻</el-button>
+        <el-button v-if="row.status!=='blacklist'" link type="danger" @click="doAction(row,'blacklist')">拉黑</el-button>
+        <el-button link type="danger" @click="removeRow(row)">删除</el-button>
+      </template>
+    </TableOrCards>
 
     <el-card shadow="never" style="margin-top:16px">
       <template #header>量价分析（已过账入库）</template>
-      <el-table :data="analytics" size="small" border>
-        <el-table-column prop="supplier_name" label="供应商" />
-        <el-table-column prop="product_id" label="物料" width="80" />
-        <el-table-column prop="qty" label="数量" width="100" />
-        <el-table-column prop="amount" label="金额" width="100" />
-        <el-table-column prop="avg_price" label="均价" width="100" />
-      </el-table>
+      <TableOrCards :data="analytics" :columns="analyticsCols">
+        <el-table :data="analytics" size="small" border>
+          <el-table-column prop="supplier_name" label="供应商" />
+          <el-table-column prop="product_id" label="物料" width="80" />
+          <el-table-column prop="qty" label="数量" width="100" />
+          <el-table-column prop="amount" label="金额" width="100" />
+          <el-table-column prop="avg_price" label="均价" width="100" />
+        </el-table>
+      </TableOrCards>
     </el-card>
 
     <el-dialog v-model="dialog" :title="editing ? '供应商详情' : '新建供应商'" width="860px" destroy-on-close>
@@ -278,30 +331,50 @@ onMounted(loadList)
         <el-tab-pane label="证照" name="licenses" :disabled="!editing">
           <el-button size="small" @click="addLicense">新增</el-button>
           <el-button size="small" type="primary" @click="saveLicenses">保存证照</el-button>
-          <el-table :data="licenses" size="small" border style="margin-top:8px">
-            <el-table-column label="类型"><template #default="{row}"><EnumSelect v-model="row.license_type" :options="LICENSE_TYPE_OPTIONS" style="width:100%" /></template></el-table-column>
-            <el-table-column label="号码"><template #default="{row}"><el-input v-model="row.license_no" /></template></el-table-column>
-            <el-table-column label="到期日"><template #default="{row}"><el-date-picker v-model="row.expire_date" type="date" value-format="YYYY-MM-DD" style="width:100%" /></template></el-table-column>
-          </el-table>
+          <TableOrCards :data="licenses" :columns="licenseCols" style="margin-top:8px">
+            <el-table :data="licenses" size="small" border style="margin-top:8px">
+              <el-table-column label="类型"><template #default="{row}"><EnumSelect v-model="row.license_type" :options="LICENSE_TYPE_OPTIONS" style="width:100%" /></template></el-table-column>
+              <el-table-column label="号码"><template #default="{row}"><el-input v-model="row.license_no" /></template></el-table-column>
+              <el-table-column label="到期日"><template #default="{row}"><el-date-picker v-model="row.expire_date" type="date" value-format="YYYY-MM-DD" style="width:100%" /></template></el-table-column>
+            </el-table>
+            <template #title="{ row }">
+              <EnumSelect v-model="row.license_type" :options="LICENSE_TYPE_OPTIONS" style="width:100%" />
+            </template>
+            <template #field-license_no="{ row }"><el-input v-model="row.license_no" /></template>
+            <template #field-expire_date="{ row }">
+              <el-date-picker v-model="row.expire_date" type="date" value-format="YYYY-MM-DD" style="width:100%" />
+            </template>
+          </TableOrCards>
         </el-tab-pane>
         <el-tab-pane label="可供物料" name="supply" :disabled="!editing">
           <el-button size="small" @click="addSupply">新增</el-button>
           <el-button size="small" type="primary" @click="saveSupply">保存</el-button>
-          <el-table :data="supplyItems" size="small" border style="margin-top:8px">
-            <el-table-column label="物料" width="180"><template #default="{row}"><ProductSelect v-model="row.product_id" :clearable="false" style="width:100%" /></template></el-table-column>
-            <el-table-column label="首选" width="80"><template #default="{row}"><el-switch v-model="row.is_preferred" /></template></el-table-column>
-            <el-table-column label="MOQ"><template #default="{row}"><el-input-number v-model="row.moq" :min="0" /></template></el-table-column>
-            <el-table-column label="交期"><template #default="{row}"><el-input-number v-model="row.lead_time_days" :min="0" /></template></el-table-column>
-            <el-table-column label="最近价"><template #default="{row}"><el-input-number v-model="row.last_price" :min="0" :step="0.01" /></template></el-table-column>
-          </el-table>
+          <TableOrCards :data="supplyItems" :columns="supplyCols" style="margin-top:8px">
+            <el-table :data="supplyItems" size="small" border style="margin-top:8px">
+              <el-table-column label="物料" width="180"><template #default="{row}"><ProductSelect v-model="row.product_id" :clearable="false" style="width:100%" /></template></el-table-column>
+              <el-table-column label="首选" width="80"><template #default="{row}"><el-switch v-model="row.is_preferred" /></template></el-table-column>
+              <el-table-column label="MOQ"><template #default="{row}"><el-input-number v-model="row.moq" :min="0" /></template></el-table-column>
+              <el-table-column label="交期"><template #default="{row}"><el-input-number v-model="row.lead_time_days" :min="0" /></template></el-table-column>
+              <el-table-column label="最近价"><template #default="{row}"><el-input-number v-model="row.last_price" :min="0" :step="0.01" /></template></el-table-column>
+            </el-table>
+            <template #title="{ row }">
+              <ProductSelect v-model="row.product_id" :clearable="false" style="width:100%" />
+            </template>
+            <template #field-is_preferred="{ row }"><el-switch v-model="row.is_preferred" /></template>
+            <template #field-moq="{ row }"><el-input-number v-model="row.moq" :min="0" /></template>
+            <template #field-lead_time_days="{ row }"><el-input-number v-model="row.lead_time_days" :min="0" /></template>
+            <template #field-last_price="{ row }"><el-input-number v-model="row.last_price" :min="0" :step="0.01" /></template>
+          </TableOrCards>
         </el-tab-pane>
         <el-tab-pane label="价格历史" name="prices" :disabled="!editing">
-          <el-table :data="prices" size="small" border>
-            <el-table-column prop="product_id" label="物料" />
-            <el-table-column prop="price" label="价格" />
-            <el-table-column prop="biz_date" label="日期" />
-            <el-table-column prop="source_doc_id" label="来源入库" />
-          </el-table>
+          <TableOrCards :data="prices" :columns="priceCols">
+            <el-table :data="prices" size="small" border>
+              <el-table-column prop="product_id" label="物料" />
+              <el-table-column prop="price" label="价格" />
+              <el-table-column prop="biz_date" label="日期" />
+              <el-table-column prop="source_doc_id" label="来源入库" />
+            </el-table>
+          </TableOrCards>
         </el-tab-pane>
         <el-tab-pane label="绩效" name="perf" :disabled="!editing">
           <el-descriptions v-if="perf" :column="2" border size="small">

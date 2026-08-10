@@ -34,6 +34,9 @@ import {
   SalesOrderSelect,
   EnumSelect,
 } from '../components/select'
+import MobileDataCards from '../components/mobile/MobileDataCards.vue'
+import { useIsMobile } from '../composables/useMediaQuery'
+import type { MobileCardColumn } from '../components/mobile/MobileDataCards.vue'
 
 type FieldKind = 'text' | 'status' | 'date' | 'month' | 'datetime' | 'ref'
 type RefKind = 'warehouse' | 'workshop' | 'employee' | 'user' | 'product' | 'customer' | 'supplier' | 'process' | 'order'
@@ -69,6 +72,7 @@ function fieldKind(key: string): { kind: FieldKind; ref?: RefKind } {
 const route = useRoute()
 const auth = useAuthStore()
 const perm = usePermStore()
+const isMobile = useIsMobile()
 
 const pathHit = computed(() => adminModuleForPath(route.path))
 const domain = computed(() => {
@@ -98,6 +102,18 @@ function visibleColumns() {
     return true
   })
 }
+
+const cardColumns = computed<MobileCardColumn[]>(() => {
+  const cols = visibleColumns()
+  const primaryProp =
+    cols.find((c) => c === 'name' || c === 'code' || c === 'doc_no' || c === 'title') || cols[0]
+  return cols.map((col, i) => ({
+    prop: col,
+    label: col,
+    primary: col === primaryProp,
+    hideOnCard: cols.length > 8 && i >= 6 && !['status', 'name', 'code', 'doc_no', 'id'].includes(col) && col !== primaryProp,
+  }))
+})
 
 async function load() {
   if (perm.isIamModule(moduleName.value) || perm.isSupplierModule(moduleName.value) || perm.isFarmerInboundModule(moduleName.value) || perm.isOnboardModule(moduleName.value) || perm.isEmployeeModule(moduleName.value) || perm.isDeptModule(moduleName.value) || perm.isHrOpsModule(moduleName.value) || perm.isSystemAdminModule(moduleName.value) || perm.isPayrollModule(moduleName.value)) return
@@ -246,7 +262,7 @@ watch(() => route.fullPath, load)
       <span class="spacer" />
       <span class="muted">共 {{ total }} 条</span>
     </div>
-    <el-table v-loading="loading" :data="list" stripe border style="width:100%">
+    <el-table v-if="!isMobile" v-loading="loading" :data="list" stripe border style="width:100%">
       <el-table-column
         v-for="col in visibleColumns()"
         :key="col"
@@ -270,7 +286,29 @@ watch(() => route.fullPath, load)
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="dialogVisible" :title="editingId ? '编辑' : '新建'" width="520px">
+    <MobileDataCards
+      v-else
+      :data="list"
+      :loading="loading"
+      :columns="cardColumns"
+    >
+      <template #extra="{ row }">
+        <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+      </template>
+      <template #actions="{ row }">
+        <el-button v-if="meta?.update && !meta.readOnly" link type="primary" @click="openEdit(row)">编辑</el-button>
+        <el-button
+          v-for="act in (meta?.actions || [])"
+          :key="act"
+          link
+          type="success"
+          @click="onAction(row, act)"
+        >{{ act }}</el-button>
+        <el-button v-if="(meta?.remove || meta?.detail) && !meta.readOnly" link type="danger" @click="onDelete(row)">删除</el-button>
+      </template>
+    </MobileDataCards>
+
+    <el-dialog v-model="dialogVisible" :title="editingId ? '编辑' : '新建'" :width="isMobile ? '95%' : '520px'">
       <el-form label-width="100px">
         <el-form-item v-for="k in formKeys.filter(x => x !== 'id')" :key="k" :label="k">
           <template v-if="fieldKind(k).kind === 'status'">

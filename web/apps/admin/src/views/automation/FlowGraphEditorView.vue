@@ -10,6 +10,7 @@ import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
+import DesktopOnlyGate from '../../components/mobile/DesktopOnlyGate.vue'
 
 const props = withDefaults(
   defineProps<{ kindFilter?: string }>(),
@@ -284,7 +285,7 @@ function addNode(type: string) {
   const id = `${type}_${Date.now()}`
   const data: Row =
     type === 'process_step'
-      ? { label: '工序', process_id: Number(processes.value[0]?.id || 0), auto_next: true, is_piecework: false }
+      ? { label: '工序', process_id: Number(processes.value[0]?.id || 0), auto_next: true, is_piecework: false, is_inbound_checkpoint: false, checkpoint_bind_warehouse: false }
       : type === 'role_task'
         ? { label: '岗位任务', role_code: 'qc', action: 'qc_deduct' }
         : type === 'gateway_xor'
@@ -446,6 +447,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <DesktopOnlyGate message="工艺流程图编辑需在桌面浏览器操作。">
   <div class="flow-editor" v-loading="loading">
     <aside class="left">
       <div class="toolbar">
@@ -493,6 +495,9 @@ onBeforeUnmount(() => {
           </el-table-column>
           <el-table-column label="卡点" width="50">
             <template #default="{ row }">{{ row.is_inbound_checkpoint ? '是' : '' }}</template>
+          </el-table-column>
+          <el-table-column label="绑仓" width="50">
+            <template #default="{ row }">{{ row.checkpoint_bind_warehouse ? '是' : '' }}</template>
           </el-table-column>
         </el-table>
       </div>
@@ -570,6 +575,9 @@ onBeforeUnmount(() => {
             </el-form-item>
             <el-form-item label="计件"><el-switch v-model="(selected.data as Row).is_piecework" @change="syncSelectedData" /></el-form-item>
             <el-form-item label="卡点"><el-switch v-model="(selected.data as Row).is_inbound_checkpoint" @change="syncSelectedData" /></el-form-item>
+            <el-form-item label="卡点绑仓(先入后出)">
+              <el-switch v-model="(selected.data as Row).checkpoint_bind_warehouse" @change="syncSelectedData" />
+            </el-form-item>
             <el-form-item label="自动下步"><el-switch v-model="(selected.data as Row).auto_next" @change="syncSelectedData" /></el-form-item>
             <el-form-item label="自动入库"><el-switch v-model="(selected.data as Row).auto_stock_in" @change="syncSelectedData" /></el-form-item>
             <el-form-item label="自动出库"><el-switch v-model="(selected.data as Row).auto_stock_out" @change="syncSelectedData" /></el-form-item>
@@ -604,6 +612,7 @@ onBeforeUnmount(() => {
       <p v-else class="hint">点击节点或连线编辑；Delete 删除选中项；删线后可重新拖拽连线。</p>
     </aside>
   </div>
+  </DesktopOnlyGate>
 </template>
 
 <style scoped>

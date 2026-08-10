@@ -10,8 +10,174 @@ import {
   ProductSelect,
   EnumSelect,
 } from '../../components/select'
+import TableOrCards from '../../components/mobile/TableOrCards.vue'
+import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
+
+const subjectCols: MobileCardColumn[] = [
+  { prop: 'code', label: '编码', primary: true },
+  { prop: 'name', label: '名称' },
+  { prop: 'subject_type', label: '类型' },
+  { prop: 'status', label: '状态' },
+]
+const ledgerCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'direction', label: '方向' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'biz_date', label: '日期' },
+  { prop: 'counterparty', label: '对方' },
+  { prop: 'remark', label: '备注' },
+]
+const incomeExpenseCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '流水号', primary: true },
+  { prop: 'category', label: '类别' },
+  { prop: 'direction', label: '方向' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'biz_date', label: '日期' },
+  { prop: 'counterparty', label: '对方' },
+]
+const orderCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'status', label: '状态' },
+  { prop: 'created_at', label: '创建时间' },
+]
+const mpCols: MobileCardColumn[] = [
+  { prop: 'bill_no', label: '账单号', primary: true },
+  { prop: 'channel', label: '渠道' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'status', label: '状态' },
+  { prop: 'paid_at', label: '支付/对账时间' },
+]
+const voucherCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '凭证号', primary: true },
+  { prop: 'period', label: '期间' },
+  { prop: 'biz_date', label: '日期' },
+  { prop: 'summary', label: '摘要' },
+  { prop: 'status', label: '状态' },
+]
+const invoiceCols: MobileCardColumn[] = [
+  { prop: 'invoice_no', label: '票号', primary: true },
+  { prop: 'direction', label: '方向' },
+  { prop: 'counterparty_name', label: '对方' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'tax', label: '税额' },
+  { prop: 'status', label: '状态' },
+]
+const writeoffCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'customer_id', label: '客户' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'status', label: '状态' },
+]
+const recognitionCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'customer_id', label: '客户' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'status', label: '状态' },
+]
+const fxCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'currency', label: '币种' },
+  { prop: 'amount_fx', label: '外币' },
+  { prop: 'rate', label: '汇率' },
+  { prop: 'amount_local', label: '本币' },
+  { prop: 'status', label: '状态' },
+]
+const allocCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'source_amount', label: '金额' },
+  { prop: 'status', label: '状态' },
+]
+const alertCols: MobileCardColumn[] = [
+  { prop: 'customer_id', label: '客户', primary: true },
+  { prop: 'overdue_days', label: '逾期天' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'status', label: '状态' },
+]
+const reconcileCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'book_balance', label: '账面' },
+  { prop: 'actual_balance', label: '实盘' },
+  { prop: 'status', label: '状态' },
+]
+const prepayCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'party_type', label: '类型' },
+  { prop: 'party_id', label: '对方' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'balance', label: '余额' },
+  { prop: 'status', label: '状态' },
+]
+const costCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'period', label: '期间' },
+  { prop: 'material_cost', label: '物料' },
+  { prop: 'labor_cost', label: '人工' },
+  { prop: 'overhead', label: '制造' },
+  { prop: 'total_cost', label: '合计' },
+  { prop: 'status', label: '状态' },
+]
+const contractProfitCols: MobileCardColumn[] = [
+  { prop: 'contract_id', label: '合同', primary: true },
+  { prop: 'revenue', label: '收入' },
+  { prop: 'cost', label: '成本' },
+  { prop: 'profit', label: '利润' },
+  { prop: 'period', label: '期间' },
+]
+const returnCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'order_id', label: '订单' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'status', label: '状态' },
+]
+const arapCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'party_type', label: '类型' },
+  { prop: 'party_id', label: '对方' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'direction', label: '方向' },
+  { prop: 'status', label: '状态' },
+]
+const approvalCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'biz_type', label: '类型' },
+  { prop: 'title', label: '摘要' },
+  { prop: 'status', label: '状态' },
+]
+const fundAccountCols: MobileCardColumn[] = [
+  { prop: 'code', label: '编码', primary: true },
+  { prop: 'name', label: '名称' },
+  { prop: 'currency', label: '币种' },
+  { prop: 'balance', label: '余额' },
+  { prop: 'status', label: '状态' },
+]
+const fundTransferCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'from_account_id', label: '转出' },
+  { prop: 'to_account_id', label: '转入' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'status', label: '状态' },
+]
+const statementCols: MobileCardColumn[] = [
+  { prop: 'code', label: '报表', primary: true },
+  { prop: 'period', label: '期间' },
+  { prop: 'title', label: '标题' },
+  { prop: 'generated_at', label: '生成时间' },
+]
+const costTraceCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '成本单', primary: true },
+  { prop: 'period', label: '期间' },
+  { prop: 'source_type', label: '来源类型' },
+  { prop: 'source_id', label: '来源ID' },
+  { prop: 'amount', label: '金额' },
+]
+const monthCloseCols: MobileCardColumn[] = [
+  { prop: 'year', label: '年', primary: true },
+  { prop: 'month', label: '月' },
+  { prop: 'status', label: '状态' },
+  { prop: 'closed_at', label: '结转时间' },
+]
 
 const route = useRoute()
 const TITLE_MAP: Record<string, string> = {
@@ -48,6 +214,7 @@ const list = ref<Row[]>([])
 const funds = ref<Row[]>([])
 const subjects = ref<Row[]>([])
 const fundTab = ref<'accounts' | 'transfers'>('accounts')
+const fundCols = computed(() => (fundTab.value === 'accounts' ? fundAccountCols : fundTransferCols))
 const statementPreview = ref<Row | null>(null)
 
 const subjectForm = reactive({ code: '', name: '', subject_type: 'asset' })
@@ -259,10 +426,12 @@ watch([active, fundTab], refresh)
           <el-button type="primary" @click="run(() => financeApi.createSubject({ ...subjectForm }), '已建科目')">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="code" label="编码" width="100" /><el-table-column prop="name" label="名称" />
-        <el-table-column prop="subject_type" label="类型" width="100" /><el-table-column prop="status" label="状态" width="90" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="subjectCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="code" label="编码" width="100" /><el-table-column prop="name" label="名称" />
+          <el-table-column prop="subject_type" label="类型" width="100" /><el-table-column prop="status" label="状态" width="90" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <!-- 流水 -->
@@ -282,27 +451,33 @@ watch([active, fundTab], refresh)
           <el-button type="primary" @click="run(() => financeApi.createLedger({ ...ledgerForm }), '流水已登记')">登记</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="direction" label="方向" width="80" />
-        <el-table-column prop="amount" label="金额" width="100" /><el-table-column prop="biz_date" label="日期" width="110" />
-        <el-table-column prop="counterparty" label="对方" /><el-table-column prop="remark" label="备注" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="ledgerCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="direction" label="方向" width="80" />
+          <el-table-column prop="amount" label="金额" width="100" /><el-table-column prop="biz_date" label="日期" width="110" />
+          <el-table-column prop="counterparty" label="对方" /><el-table-column prop="remark" label="备注" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'income-expenses'">
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="流水号" width="150" /><el-table-column prop="category" label="类别" width="120" />
-        <el-table-column prop="direction" label="方向" width="80" /><el-table-column prop="amount" label="金额" width="100" />
-        <el-table-column prop="biz_date" label="日期" width="110" /><el-table-column prop="counterparty" label="对方" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="incomeExpenseCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="流水号" width="150" /><el-table-column prop="category" label="类别" width="120" />
+          <el-table-column prop="direction" label="方向" width="80" /><el-table-column prop="amount" label="金额" width="100" />
+          <el-table-column prop="biz_date" label="日期" width="110" /><el-table-column prop="counterparty" label="对方" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'orders'">
       <el-alert class="mb" type="info" :closable="false" title="财务视角销售订单（只读）；业务办理请到销售管理" />
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="160" /><el-table-column prop="status" label="状态" width="100" />
-        <el-table-column prop="created_at" label="创建时间" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="orderCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="160" /><el-table-column prop="status" label="状态" width="100" />
+          <el-table-column prop="created_at" label="创建时间" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'miniprogram'">
@@ -316,16 +491,21 @@ watch([active, fundTab], refresh)
           <el-button @click="run(() => financeApi.reconcileMiniprogram({}), '已对账未付款账单')">一键对账</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="bill_no" label="账单号" width="150" /><el-table-column prop="channel" label="渠道" width="100" />
-        <el-table-column prop="amount" label="金额" width="100" /><el-table-column prop="status" label="状态" width="100" />
-        <el-table-column prop="paid_at" label="支付/对账时间" />
-        <el-table-column label="操作" width="100">
-          <template #default="{ row }">
-            <el-button v-if="row.status==='unpaid'" link type="primary" @click="run(() => financeApi.reconcileMiniprogram({ id: Number(row.id) }), '已对账')">对账</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="mpCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="bill_no" label="账单号" width="150" /><el-table-column prop="channel" label="渠道" width="100" />
+          <el-table-column prop="amount" label="金额" width="100" /><el-table-column prop="status" label="状态" width="100" />
+          <el-table-column prop="paid_at" label="支付/对账时间" />
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button v-if="row.status==='unpaid'" link type="primary" @click="run(() => financeApi.reconcileMiniprogram({ id: Number(row.id) }), '已对账')">对账</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="row.status==='unpaid'" link type="primary" @click="run(() => financeApi.reconcileMiniprogram({ id: Number(row.id) }), '已对账')">对账</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'vouchers'">
@@ -346,17 +526,23 @@ watch([active, fundTab], refresh)
           ] }), '凭证已建')">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="凭证号" width="150" /><el-table-column prop="period" label="期间" width="100" />
-        <el-table-column prop="biz_date" label="日期" width="110" /><el-table-column prop="summary" label="摘要" />
-        <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column label="操作" width="160">
-          <template #default="{ row }">
-            <el-button v-if="row.status==='draft'" link type="success" @click="run(() => financeApi.approveVoucher(Number(row.id)), '已审批')">审批</el-button>
-            <el-button v-if="row.status==='approved' || row.status==='draft'" link type="primary" @click="run(() => financeApi.postVoucher(Number(row.id)), '已过账')">过账</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="voucherCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="凭证号" width="150" /><el-table-column prop="period" label="期间" width="100" />
+          <el-table-column prop="biz_date" label="日期" width="110" /><el-table-column prop="summary" label="摘要" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column label="操作" width="160">
+            <template #default="{ row }">
+              <el-button v-if="row.status==='draft'" link type="success" @click="run(() => financeApi.approveVoucher(Number(row.id)), '已审批')">审批</el-button>
+              <el-button v-if="row.status==='approved' || row.status==='draft'" link type="primary" @click="run(() => financeApi.postVoucher(Number(row.id)), '已过账')">过账</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="row.status==='draft'" link type="success" @click="run(() => financeApi.approveVoucher(Number(row.id)), '已审批')">审批</el-button>
+          <el-button v-if="row.status==='approved' || row.status==='draft'" link type="primary" @click="run(() => financeApi.postVoucher(Number(row.id)), '已过账')">过账</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'invoices'">
@@ -372,11 +558,13 @@ watch([active, fundTab], refresh)
           <el-button type="primary" @click="run(() => financeApi.createInvoice({ ...invoiceForm }), '发票已建')">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="invoice_no" label="票号" width="150" /><el-table-column prop="direction" label="方向" width="80" />
-        <el-table-column prop="counterparty_name" label="对方" /><el-table-column prop="amount" label="金额" width="100" />
-        <el-table-column prop="tax" label="税额" width="90" /><el-table-column prop="status" label="状态" width="90" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="invoiceCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="invoice_no" label="票号" width="150" /><el-table-column prop="direction" label="方向" width="80" />
+          <el-table-column prop="counterparty_name" label="对方" /><el-table-column prop="amount" label="金额" width="100" />
+          <el-table-column prop="tax" label="税额" width="90" /><el-table-column prop="status" label="状态" width="90" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'writeoffs'">
@@ -393,15 +581,20 @@ watch([active, fundTab], refresh)
           <el-button type="primary" @click="run(() => financeApi.createWriteoff({ ...writeoffForm }), '核单已建')">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="customer_id" label="客户" width="90" />
-        <el-table-column prop="amount" label="金额" width="100" /><el-table-column prop="status" label="状态" width="90" />
-        <el-table-column label="操作" width="100">
-          <template #default="{ row }">
-            <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.confirmWriteoff(Number(row.id)), '已确认入账')">确认</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="writeoffCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="customer_id" label="客户" width="90" />
+          <el-table-column prop="amount" label="金额" width="100" /><el-table-column prop="status" label="状态" width="90" />
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.confirmWriteoff(Number(row.id)), '已确认入账')">确认</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.confirmWriteoff(Number(row.id)), '已确认入账')">确认</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'recognitions'">
@@ -417,15 +610,20 @@ watch([active, fundTab], refresh)
           <el-button type="primary" @click="run(() => financeApi.createRecognition({ ...recognitionForm }), '认款已建')">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="customer_id" label="客户" width="90" />
-        <el-table-column prop="amount" label="金额" width="100" /><el-table-column prop="status" label="状态" width="90" />
-        <el-table-column label="操作" width="100">
-          <template #default="{ row }">
-            <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.confirmRecognition(Number(row.id)), '已认款')">确认</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="recognitionCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="customer_id" label="客户" width="90" />
+          <el-table-column prop="amount" label="金额" width="100" /><el-table-column prop="status" label="状态" width="90" />
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.confirmRecognition(Number(row.id)), '已认款')">确认</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.confirmRecognition(Number(row.id)), '已认款')">确认</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'fx' || active === 'fx-query'">
@@ -442,16 +640,21 @@ watch([active, fundTab], refresh)
           <el-button type="primary" @click="run(() => financeApi.createFx({ ...fxForm }), '结汇单已建')">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="currency" label="币种" width="80" />
-        <el-table-column prop="amount_fx" label="外币" width="100" /><el-table-column prop="rate" label="汇率" width="90" />
-        <el-table-column prop="amount_local" label="本币" width="100" /><el-table-column prop="status" label="状态" width="90" />
-        <el-table-column v-if="active==='fx'" label="操作" width="100">
-          <template #default="{ row }">
-            <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.confirmFx(Number(row.id)), '结汇已确认')">确认</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="fxCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="currency" label="币种" width="80" />
+          <el-table-column prop="amount_fx" label="外币" width="100" /><el-table-column prop="rate" label="汇率" width="90" />
+          <el-table-column prop="amount_local" label="本币" width="100" /><el-table-column prop="status" label="状态" width="90" />
+          <el-table-column v-if="active==='fx'" label="操作" width="100">
+            <template #default="{ row }">
+              <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.confirmFx(Number(row.id)), '结汇已确认')">确认</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template v-if="active==='fx'" #actions="{ row }">
+          <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.confirmFx(Number(row.id)), '结汇已确认')">确认</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'allocations'">
@@ -461,15 +664,20 @@ watch([active, fundTab], refresh)
           <el-button type="primary" @click="run(() => financeApi.createAllocation({ ...allocForm }), '分摊已建')">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="source_amount" label="金额" width="120" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column label="操作" width="100">
-          <template #default="{ row }">
-            <el-button v-if="row.status!=='revoked'" link type="danger" @click="run(() => financeApi.revokeAllocation(Number(row.id)), '已撤销')">撤销</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="allocCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="source_amount" label="金额" width="120" />
+          <el-table-column prop="status" label="状态" width="100" />
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button v-if="row.status!=='revoked'" link type="danger" @click="run(() => financeApi.revokeAllocation(Number(row.id)), '已撤销')">撤销</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="row.status!=='revoked'" link type="danger" @click="run(() => financeApi.revokeAllocation(Number(row.id)), '已撤销')">撤销</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'alerts'">
@@ -482,15 +690,20 @@ watch([active, fundTab], refresh)
           <el-button type="primary" @click="run(() => financeApi.createAlert({ ...alertForm }), '预警已建')">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="customer_id" label="客户" width="90" /><el-table-column prop="overdue_days" label="逾期天" width="90" />
-        <el-table-column prop="amount" label="金额" width="100" /><el-table-column prop="status" label="状态" width="90" />
-        <el-table-column label="操作" width="100">
-          <template #default="{ row }">
-            <el-button v-if="row.status==='open'" link type="primary" @click="run(() => financeApi.handleAlert(Number(row.id), { remark: '已跟进' }), '已处理')">处理</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="alertCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="customer_id" label="客户" width="90" /><el-table-column prop="overdue_days" label="逾期天" width="90" />
+          <el-table-column prop="amount" label="金额" width="100" /><el-table-column prop="status" label="状态" width="90" />
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button v-if="row.status==='open'" link type="primary" @click="run(() => financeApi.handleAlert(Number(row.id), { remark: '已跟进' }), '已处理')">处理</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="row.status==='open'" link type="primary" @click="run(() => financeApi.handleAlert(Number(row.id), { remark: '已跟进' }), '已处理')">处理</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'reconciles'">
@@ -505,15 +718,20 @@ watch([active, fundTab], refresh)
           <el-button type="primary" @click="run(() => financeApi.createReconcile({ ...reconcileForm }), '对账单已建')">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="book_balance" label="账面" width="100" />
-        <el-table-column prop="actual_balance" label="实盘" width="100" /><el-table-column prop="status" label="状态" width="90" />
-        <el-table-column label="操作" width="100">
-          <template #default="{ row }">
-            <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.confirmReconcile(Number(row.id)), '已确认')">确认</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="reconcileCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="book_balance" label="账面" width="100" />
+          <el-table-column prop="actual_balance" label="实盘" width="100" /><el-table-column prop="status" label="状态" width="90" />
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.confirmReconcile(Number(row.id)), '已确认')">确认</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.confirmReconcile(Number(row.id)), '已确认')">确认</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'prepays'">
@@ -533,11 +751,13 @@ watch([active, fundTab], refresh)
           <el-button type="primary" @click="run(() => financeApi.createPrepay({ ...prepayForm }), '已建')">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="party_type" label="类型" width="90" />
-        <el-table-column prop="party_id" label="对方" width="90" /><el-table-column prop="amount" label="金额" width="100" />
-        <el-table-column prop="balance" label="余额" width="100" /><el-table-column prop="status" label="状态" width="90" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="prepayCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="party_type" label="类型" width="90" />
+          <el-table-column prop="party_id" label="对方" width="90" /><el-table-column prop="amount" label="金额" width="100" />
+          <el-table-column prop="balance" label="余额" width="100" /><el-table-column prop="status" label="状态" width="90" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'cost-accountings'">
@@ -551,26 +771,33 @@ watch([active, fundTab], refresh)
           <el-button type="primary" @click="run(() => financeApi.createCostAccounting({ ...costForm }), '成本单已建')">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="period" label="期间" width="100" />
-        <el-table-column prop="material_cost" label="物料" width="90" /><el-table-column prop="labor_cost" label="人工" width="90" />
-        <el-table-column prop="overhead" label="制造" width="90" /><el-table-column prop="total_cost" label="合计" width="100" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column label="操作" width="100">
-          <template #default="{ row }">
-            <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.calcCost(Number(row.id)), '已核算')">核算</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="costCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="period" label="期间" width="100" />
+          <el-table-column prop="material_cost" label="物料" width="90" /><el-table-column prop="labor_cost" label="人工" width="90" />
+          <el-table-column prop="overhead" label="制造" width="90" /><el-table-column prop="total_cost" label="合计" width="100" />
+          <el-table-column prop="status" label="状态" width="100" />
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.calcCost(Number(row.id)), '已核算')">核算</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.calcCost(Number(row.id)), '已核算')">核算</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'contract-profits'">
       <div class="mb"><el-button type="primary" size="small" @click="run(() => financeApi.recalcContractProfit({}), '利润已重算')">重算合同利润</el-button></div>
-      <el-table :data="list" size="small">
-        <el-table-column prop="contract_id" label="合同" width="90" /><el-table-column prop="revenue" label="收入" width="120" />
-        <el-table-column prop="cost" label="成本" width="120" /><el-table-column prop="profit" label="利润" width="120" />
-        <el-table-column prop="period" label="期间" width="100" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="contractProfitCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="contract_id" label="合同" width="90" /><el-table-column prop="revenue" label="收入" width="120" />
+          <el-table-column prop="cost" label="成本" width="120" /><el-table-column prop="profit" label="利润" width="120" />
+          <el-table-column prop="period" label="期间" width="100" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'return-finances'">
@@ -581,15 +808,20 @@ watch([active, fundTab], refresh)
           <el-button type="primary" @click="run(() => financeApi.createReturnFinance({ ...returnForm }), '退单已建')">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="order_id" label="订单" width="90" />
-        <el-table-column prop="amount" label="金额" width="100" /><el-table-column prop="status" label="状态" width="90" />
-        <el-table-column label="操作" width="100">
-          <template #default="{ row }">
-            <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.confirmReturnFinance(Number(row.id)), '已确认')">确认</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="returnCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="order_id" label="订单" width="90" />
+          <el-table-column prop="amount" label="金额" width="100" /><el-table-column prop="status" label="状态" width="90" />
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.confirmReturnFinance(Number(row.id)), '已确认')">确认</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.confirmReturnFinance(Number(row.id)), '已确认')">确认</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'arap'">
@@ -609,29 +841,40 @@ watch([active, fundTab], refresh)
           <el-button type="primary" @click="run(() => financeApi.createArap({ ...arapForm }), '调整单已建')">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="party_type" label="类型" width="90" />
-        <el-table-column prop="party_id" label="对方" width="90" /><el-table-column prop="amount" label="金额" width="100" />
-        <el-table-column prop="direction" label="方向" width="90" /><el-table-column prop="status" label="状态" width="90" />
-        <el-table-column label="操作" width="100">
-          <template #default="{ row }">
-            <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.postArap(Number(row.id)), '已过账')">过账</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="arapCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="单号" width="150" /><el-table-column prop="party_type" label="类型" width="90" />
+          <el-table-column prop="party_id" label="对方" width="90" /><el-table-column prop="amount" label="金额" width="100" />
+          <el-table-column prop="direction" label="方向" width="90" /><el-table-column prop="status" label="状态" width="90" />
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.postArap(Number(row.id)), '已过账')">过账</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.postArap(Number(row.id)), '已过账')">过账</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'approvals'">
-      <el-table :data="list" size="small">
-        <el-table-column prop="biz_type" label="类型" width="100" /><el-table-column prop="doc_no" label="单号" width="150" />
-        <el-table-column prop="title" label="摘要" /><el-table-column prop="status" label="状态" width="100" />
-        <el-table-column label="操作" width="160">
-          <template #default="{ row }">
-            <el-button v-if="row.status==='draft' || row.status==='pending' || row.status==='submitted'" link type="success" @click="run(() => financeApi.approveFinance(Number(row.id)), '已批准')">批准</el-button>
-            <el-button v-if="row.status==='draft' || row.status==='pending' || row.status==='submitted'" link type="danger" @click="run(() => financeApi.rejectFinance(Number(row.id)), '已驳回')">驳回</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="approvalCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="biz_type" label="类型" width="100" /><el-table-column prop="doc_no" label="单号" width="150" />
+          <el-table-column prop="title" label="摘要" /><el-table-column prop="status" label="状态" width="100" />
+          <el-table-column label="操作" width="160">
+            <template #default="{ row }">
+              <el-button v-if="row.status==='draft' || row.status==='pending' || row.status==='submitted'" link type="success" @click="run(() => financeApi.approveFinance(Number(row.id)), '已批准')">批准</el-button>
+              <el-button v-if="row.status==='draft' || row.status==='pending' || row.status==='submitted'" link type="danger" @click="run(() => financeApi.rejectFinance(Number(row.id)), '已驳回')">驳回</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="row.status==='draft' || row.status==='pending' || row.status==='submitted'" link type="success" @click="run(() => financeApi.approveFinance(Number(row.id)), '已批准')">批准</el-button>
+          <el-button v-if="row.status==='draft' || row.status==='pending' || row.status==='submitted'" link type="danger" @click="run(() => financeApi.rejectFinance(Number(row.id)), '已驳回')">驳回</el-button>
+        </template>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'funds'">
@@ -664,23 +907,28 @@ watch([active, fundTab], refresh)
           <el-button type="primary" @click="run(() => financeApi.createFundTransfer({ ...fundTfForm }), '调拨单已建')">新建</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <template v-if="fundTab==='accounts'">
-          <el-table-column prop="code" label="编码" width="120" /><el-table-column prop="name" label="名称" />
-          <el-table-column prop="currency" label="币种" width="80" /><el-table-column prop="balance" label="余额" width="120" />
-          <el-table-column prop="status" label="状态" width="90" />
+      <TableOrCards :data="list" :loading="loading" :columns="fundCols">
+        <el-table :data="list" size="small">
+          <template v-if="fundTab==='accounts'">
+            <el-table-column prop="code" label="编码" width="120" /><el-table-column prop="name" label="名称" />
+            <el-table-column prop="currency" label="币种" width="80" /><el-table-column prop="balance" label="余额" width="120" />
+            <el-table-column prop="status" label="状态" width="90" />
+          </template>
+          <template v-else>
+            <el-table-column prop="doc_no" label="单号" width="150" />
+            <el-table-column prop="from_account_id" label="转出" width="90" /><el-table-column prop="to_account_id" label="转入" width="90" />
+            <el-table-column prop="amount" label="金额" width="100" /><el-table-column prop="status" label="状态" width="90" />
+            <el-table-column label="操作" width="100">
+              <template #default="{ row }">
+                <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.postFundTransfer(Number(row.id)), '已过账')">过账</el-button>
+              </template>
+            </el-table-column>
+          </template>
+        </el-table>
+        <template v-if="fundTab==='transfers'" #actions="{ row }">
+          <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.postFundTransfer(Number(row.id)), '已过账')">过账</el-button>
         </template>
-        <template v-else>
-          <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column prop="from_account_id" label="转出" width="90" /><el-table-column prop="to_account_id" label="转入" width="90" />
-          <el-table-column prop="amount" label="金额" width="100" /><el-table-column prop="status" label="状态" width="90" />
-          <el-table-column label="操作" width="100">
-            <template #default="{ row }">
-              <el-button v-if="row.status==='draft'" link type="primary" @click="run(() => financeApi.postFundTransfer(Number(row.id)), '已过账')">过账</el-button>
-            </template>
-          </el-table-column>
-        </template>
-      </el-table>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'statements'">
@@ -688,18 +936,22 @@ watch([active, fundTab], refresh)
         <el-button type="primary" size="small" @click="generateStatements">生成三大表</el-button>
       </div>
       <pre v-if="statementPreview" class="preview">{{ statementPreview }}</pre>
-      <el-table :data="list" size="small">
-        <el-table-column prop="code" label="报表" width="120" /><el-table-column prop="period" label="期间" width="110" />
-        <el-table-column prop="title" label="标题" /><el-table-column prop="generated_at" label="生成时间" width="170" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="statementCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="code" label="报表" width="120" /><el-table-column prop="period" label="期间" width="110" />
+          <el-table-column prop="title" label="标题" /><el-table-column prop="generated_at" label="生成时间" width="170" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'cost-traces'">
-      <el-table :data="list" size="small">
-        <el-table-column prop="doc_no" label="成本单" width="150" /><el-table-column prop="period" label="期间" width="100" />
-        <el-table-column prop="source_type" label="来源类型" width="120" /><el-table-column prop="source_id" label="来源ID" width="90" />
-        <el-table-column prop="amount" label="金额" width="120" />
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="costTraceCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="doc_no" label="成本单" width="150" /><el-table-column prop="period" label="期间" width="100" />
+          <el-table-column prop="source_type" label="来源类型" width="120" /><el-table-column prop="source_id" label="来源ID" width="90" />
+          <el-table-column prop="amount" label="金额" width="120" />
+        </el-table>
+      </TableOrCards>
     </template>
 
     <template v-else-if="active === 'month-closes'">
@@ -710,15 +962,20 @@ watch([active, fundTab], refresh)
           <el-button type="primary" @click="run(() => financeApi.closeMonth({ ...monthForm }), '期间已结转')">结转</el-button>
         </el-form>
       </el-card>
-      <el-table :data="list" size="small">
-        <el-table-column prop="year" label="年" width="90" /><el-table-column prop="month" label="月" width="80" />
-        <el-table-column prop="status" label="状态" width="100" /><el-table-column prop="closed_at" label="结转时间" />
-        <el-table-column label="操作" width="100">
-          <template #default="{ row }">
-            <el-button v-if="row.status==='closed'" link type="warning" @click="run(() => financeApi.reopenMonth(Number(row.id)), '已反结转')">反结转</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableOrCards :data="list" :loading="loading" :columns="monthCloseCols">
+        <el-table :data="list" size="small">
+          <el-table-column prop="year" label="年" width="90" /><el-table-column prop="month" label="月" width="80" />
+          <el-table-column prop="status" label="状态" width="100" /><el-table-column prop="closed_at" label="结转时间" />
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button v-if="row.status==='closed'" link type="warning" @click="run(() => financeApi.reopenMonth(Number(row.id)), '已反结转')">反结转</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #actions="{ row }">
+          <el-button v-if="row.status==='closed'" link type="warning" @click="run(() => financeApi.reopenMonth(Number(row.id)), '已反结转')">反结转</el-button>
+        </template>
+      </TableOrCards>
     </template>
   </div>
 </template>

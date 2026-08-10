@@ -322,8 +322,8 @@ func (s *Services) upsertRoutingSteps(routingID int64, steps []compiledStep) str
 		}
 		if id > 0 {
 			_, err := s.DB.Exec(`UPDATE pd_routing_step SET seq_no=?, process_id=?, step_code=?, step_name=?,
-				is_piecework=?, is_inbound_checkpoint=?, auto_next=?, auto_stock_in=?, auto_stock_out=?, warehouse_id=? WHERE id=?`,
-				st.Seq, st.ProcessID, st.Code, st.Name, boolToInt(st.Piece), boolToInt(st.Checkpoint),
+				is_piecework=?, is_inbound_checkpoint=?, checkpoint_bind_warehouse=?, auto_next=?, auto_stock_in=?, auto_stock_out=?, warehouse_id=? WHERE id=?`,
+				st.Seq, st.ProcessID, st.Code, st.Name, boolToInt(st.Piece), boolToInt(st.Checkpoint), boolToInt(st.CheckpointBind),
 				boolToInt(st.AutoNext), boolToInt(st.StockIn), boolToInt(st.StockOut), nullIf0(st.WarehouseID), id)
 			if err != nil {
 				return "DB_ERROR:" + err.Error()
@@ -331,9 +331,9 @@ func (s *Services) upsertRoutingSteps(routingID int64, steps []compiledStep) str
 			keep[id] = true
 			continue
 		}
-		res, err := s.DB.Exec(`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-			routingID, st.Seq, st.ProcessID, st.Code, st.Name, boolToInt(st.Piece), boolToInt(st.Checkpoint),
+		res, err := s.DB.Exec(`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, checkpoint_bind_warehouse, auto_next, auto_stock_in, auto_stock_out, warehouse_id)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+			routingID, st.Seq, st.ProcessID, st.Code, st.Name, boolToInt(st.Piece), boolToInt(st.Checkpoint), boolToInt(st.CheckpointBind),
 			boolToInt(st.AutoNext), boolToInt(st.StockIn), boolToInt(st.StockOut), nullIf0(st.WarehouseID))
 		if err != nil {
 			return "DB_ERROR:" + err.Error()
@@ -361,9 +361,9 @@ func (s *Services) upsertRoutingSteps(routingID int64, steps []compiledStep) str
 }
 
 type compiledStep struct {
-	Seq, ProcessID, WarehouseID                    int64
-	Code, Name                                     string
-	Piece, Checkpoint, AutoNext, StockIn, StockOut bool
+	Seq, ProcessID, WarehouseID                                      int64
+	Code, Name                                                       string
+	Piece, Checkpoint, CheckpointBind, AutoNext, StockIn, StockOut bool
 }
 
 func compileProcessSteps(doc *flowGraphDoc) ([]compiledStep, string) {
@@ -450,6 +450,7 @@ func compileProcessSteps(doc *flowGraphDoc) ([]compiledStep, string) {
 		steps = append(steps, compiledStep{
 			Seq: int64(i + 1), ProcessID: pid, WarehouseID: wh, Code: code, Name: name,
 			Piece: asBool(d["is_piecework"]), Checkpoint: asBool(d["is_inbound_checkpoint"]),
+			CheckpointBind: asBool(d["checkpoint_bind_warehouse"]),
 			AutoNext: an, StockIn: asi, StockOut: aso,
 		})
 	}
