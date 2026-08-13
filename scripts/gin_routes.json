@@ -1761,10 +1761,6 @@
   },
   {
     "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/:id/box-stock-in"
-  },
-  {
-    "method": "POST",
     "path": "/api/v1/purchase/weigh-tickets/:id/warehouse-return"
   },
   {
@@ -1778,6 +1774,10 @@
   {
     "method": "POST",
     "path": "/api/v1/purchase/weigh-tickets/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/box-stock-in"
   },
   {
     "method": "POST",
@@ -2337,6 +2337,18 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/inventory/box-codes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/box-codes/:id/bind"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/box-codes/:id/destroy"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/inventory/inbound-qcs"
   },
   {
@@ -2354,18 +2366,6 @@
   {
     "method": "POST",
     "path": "/api/v1/inventory/assemble-splits/:id/post"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/box-codes"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/box-codes/:id/bind"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/inventory/box-codes/:id/destroy"
   },
   {
     "method": "POST",

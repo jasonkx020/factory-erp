@@ -12,7 +12,7 @@ withDefaults(
     zeroLabel?: string
   }>(),
   {
-    placeholder: '选择部门',
+    placeholder: '选择部门（可搜索）',
     clearable: true,
     style: 'width:180px',
     allowZero: false,

@@ -74,6 +74,7 @@ var preferredList = map[[2]string]string{
 	{"人事管理", "考勤管理"}:       "/hr/attendance/rules",
 	{"人事管理", "考勤明细"}:       "/hr/attendance/records",
 	{"人事管理", "请假管理"}:       "/hr/leave-requests",
+	{"人事管理", "人事调动"}:       "/system/personnel-transfers",
 	{"审批管理", "任务管理"}:       "/approval/tasks",
 	{"客户管理", "CRM客户管理"}:   "/crm/customers",
 	{"客户管理", "商机管理"}:       "/crm/opportunities",

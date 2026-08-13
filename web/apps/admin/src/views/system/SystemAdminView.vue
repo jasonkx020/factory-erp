@@ -23,13 +23,14 @@ import {
   ProductSelect,
   CustomerSelect,
   RoleSelect,
+  DeptSelect,
   EnumSelect,
 } from '../../components/select'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
-type RefKind = 'warehouse' | 'workshop' | 'employee' | 'user' | 'product' | 'customer' | 'role'
+type RefKind = 'warehouse' | 'workshop' | 'employee' | 'user' | 'product' | 'customer' | 'role' | 'dept'
 type FieldDef = {
   key: string
   label: string
@@ -182,7 +183,8 @@ const CRUD_FIELDS: Record<string, FieldDef[]> = {
   ],
   人事调动: [
     { key: 'employee_id', label: '员工', type: 'ref', ref: 'employee' },
-    { key: 'from_dept_id', label: '原部门ID', type: 'number' }, { key: 'to_dept_id', label: '新部门ID', type: 'number' },
+    { key: 'from_dept_id', label: '原部门', type: 'ref', ref: 'dept' },
+    { key: 'to_dept_id', label: '新部门', type: 'ref', ref: 'dept' },
     { key: 'from_workshop_id', label: '原车间', type: 'ref', ref: 'workshop' },
     { key: 'to_workshop_id', label: '新车间', type: 'ref', ref: 'workshop' },
     { key: 'reason', label: '原因', type: 'textarea' }, { key: 'effective_date', label: '生效日', type: 'date' },
@@ -463,6 +465,7 @@ onMounted(load)
           <ProductSelect v-else-if="f.type === 'ref' && f.ref === 'product'" v-model="form[f.key] as number" style="width:100%" />
           <CustomerSelect v-else-if="f.type === 'ref' && f.ref === 'customer'" v-model="form[f.key] as number" style="width:100%" />
           <RoleSelect v-else-if="f.type === 'ref' && f.ref === 'role'" v-model="form[f.key] as number" style="width:100%" />
+          <DeptSelect v-else-if="f.type === 'ref' && f.ref === 'dept'" v-model="form[f.key] as number" style="width:100%" />
           <el-input v-else v-model="form[f.key]" />
         </el-form-item>
       </el-form>

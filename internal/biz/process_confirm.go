@@ -16,45 +16,48 @@ func (s *Services) loadReportWork(id int64) gin.H {
 	var dispatchID, woID, processID, workerID int64
 	var docNo, status, reported, scan, snap, qc, confirmedAt string
 	var qty, weight, inW, outW, loss, util float64
-	var confirmedBy int64
+	var confirmedBy, opUserID, opEmpID int64
 	err := s.DB.QueryRow(`SELECT doc_no, COALESCE(dispatch_id,0), COALESCE(work_order_id,0), process_id, worker_id,
 		qty, COALESCE(weight,0), COALESCE(input_weight,0), COALESCE(output_weight,0), COALESCE(loss,0), COALESCE(utilization,0),
 		status, COALESCE(reported_at,''), COALESCE(scan_code,''), COALESCE(confirmed_by,0), COALESCE(confirmed_at,''),
-		COALESCE(confirmed_snapshot_json,''), COALESCE(process_qc_result,'')
+		COALESCE(confirmed_snapshot_json,''), COALESCE(process_qc_result,''),
+		COALESCE(operator_user_id,0), COALESCE(operator_employee_id,0)
 		FROM pd_report_work WHERE id=?`, id).
 		Scan(&docNo, &dispatchID, &woID, &processID, &workerID, &qty, &weight, &inW, &outW, &loss, &util,
-			&status, &reported, &scan, &confirmedBy, &confirmedAt, &snap, &qc)
+			&status, &reported, &scan, &confirmedBy, &confirmedAt, &snap, &qc, &opUserID, &opEmpID)
 	if err != nil {
 		return nil
 	}
+	var workerName, opName string
+	_ = s.DB.QueryRow(`SELECT COALESCE(name,'') FROM hr_employee WHERE id=?`, workerID).Scan(&workerName)
+	if opEmpID > 0 {
+		_ = s.DB.QueryRow(`SELECT COALESCE(name,'') FROM hr_employee WHERE id=?`, opEmpID).Scan(&opName)
+	} else if opUserID > 0 {
+		_ = s.DB.QueryRow(`SELECT COALESCE(e.name,u.login_name,'') FROM iam_user u
+			LEFT JOIN hr_employee e ON e.id=u.employee_id WHERE u.id=?`, opUserID).Scan(&opName)
+	}
 	return gin.H{
 		"id": id, "doc_no": docNo, "dispatch_id": dispatchID, "work_order_id": woID, "process_id": processID,
-		"worker_id": workerID, "qty": qty, "weight": weight, "input_weight": inW, "output_weight": outW,
+		"worker_id": workerID, "worker_name": workerName, "qty": qty, "weight": weight, "input_weight": inW, "output_weight": outW,
 		"loss": loss, "utilization": util, "status": status, "reported_at": reported, "scan_code": scan,
 		"confirmed_by": confirmedBy, "confirmed_at": confirmedAt, "confirmed_snapshot_json": snap,
-		"process_qc_result": qc, "evidences": s.listEvidence("report_work", id),
+		"process_qc_result": qc, "operator_user_id": opUserID, "operator_employee_id": opEmpID, "operator_name": opName,
+		"pass_for_other": opEmpID > 0 && workerID != opEmpID,
+		"evidences": s.listEvidence("report_work", id),
 	}
 }
 
-// confirmReportWork 工人确认报工/定损/工序 QC 后过账工序环。
-func (s *Services) confirmReportWork(c *gin.Context) bool {
-	if !s.requireAnyRole(c, "piece", "fixed", "foreman", "line_worker") {
-		return true
-	}
-	id := paramID(c)
-	body := bindBody(c)
+// applyReportWorkConfirm 将待确认报工过账；失败返回错误码（不写 HTTP）。
+func (s *Services) applyReportWorkConfirm(c *gin.Context, id int64, body map[string]interface{}) (gin.H, string) {
 	m := s.loadReportWork(id)
 	if m == nil {
-		api.FailJSON(c, "NOT_FOUND")
-		return true
+		return nil, "NOT_FOUND"
 	}
 	if strOr(m["status"]) == "posted" || strOr(m["confirmed_at"]) != "" {
-		api.FailJSON(c, "ALREADY_CONFIRMED")
-		return true
+		return nil, "ALREADY_CONFIRMED"
 	}
 	if strOr(m["status"]) == "void" {
-		api.FailJSON(c, "VOIDED")
-		return true
+		return nil, "VOIDED"
 	}
 
 	inW, _ := asFloat(m["input_weight"])
@@ -85,8 +88,7 @@ func (s *Services) confirmReportWork(c *gin.Context) bool {
 		qc = "fail"
 	}
 	if qc != "pass" {
-		api.FailJSON(c, "PROCESS_QC_FAIL")
-		return true
+		return nil, "PROCESS_QC_FAIL"
 	}
 	if img := strOrDef(body["qc_image_url"], strOr(body["image_url"])); img != "" {
 		_, _ = s.addEvidence(c, "report_work", id, "process_qc_photo", img, nil)
@@ -105,8 +107,7 @@ func (s *Services) confirmReportWork(c *gin.Context) bool {
 		process_qc_result=?, confirmed_by=?, confirmed_at=datetime('now'), confirmed_snapshot_json=?, status='posted', bag_qty=? WHERE id=?`,
 		inW, outW, outW, outW, outW, loss, util, qc, uid, snap, bagQty, id)
 	if err != nil {
-		api.FailJSON(c, "DB_ERROR:"+err.Error())
-		return true
+		return nil, "DB_ERROR:" + err.Error()
 	}
 	if loss > 0 {
 		pid, _ := asInt64(m["process_id"])
@@ -144,6 +145,21 @@ func (s *Services) confirmReportWork(c *gin.Context) bool {
 			FromRole: "piece", ToRoles: []string{"foreman"}, CreateTask: true,
 			Payload: gin.H{"scan_code": box, "loss": out["loss"], "output_weight": out["output_weight"], "next": flow["next"]},
 		})
+	}
+	return out, ""
+}
+
+// confirmReportWork 工人确认报工/定损/工序 QC 后过账工序环。
+func (s *Services) confirmReportWork(c *gin.Context) bool {
+	if !s.requireAnyRole(c, "piece", "fixed", "foreman", "line_worker") {
+		return true
+	}
+	id := paramID(c)
+	body := bindBody(c)
+	out, failCode := s.applyReportWorkConfirm(c, id, body)
+	if failCode != "" {
+		api.FailJSON(c, failCode)
+		return true
 	}
 	api.OK(c, out)
 	return true

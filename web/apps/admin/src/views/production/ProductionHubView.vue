@@ -75,6 +75,8 @@ const reportCols: MobileCardColumn[] = [
 ]
 const processReportCols: MobileCardColumn[] = [
   { prop: 'process_name', label: '工序', primary: true },
+  { prop: 'worker_name', label: '过站人' },
+  { prop: 'operator_name', label: '操作人' },
   { prop: 'input_weight', label: '投料' },
   { prop: 'output_weight', label: '完工' },
   { prop: 'loss', label: '损耗' },
@@ -1110,6 +1112,9 @@ onMounted(async () => {
             <TableOrCards :data="processReports" :loading="loading" :columns="processReportCols">
               <el-table :data="processReports" size="small">
                 <el-table-column prop="process_name" label="工序" width="120" />
+                <el-table-column prop="worker_name" label="过站人" width="100" />
+                <el-table-column prop="operator_name" label="操作人" width="100" />
+                <el-table-column prop="scan_code" label="箱码" width="120" show-overflow-tooltip />
                 <el-table-column prop="input_weight" label="投料" width="80" />
                 <el-table-column prop="output_weight" label="完工" width="80" />
                 <el-table-column prop="loss" label="损耗" width="80" />

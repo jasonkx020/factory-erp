@@ -3,10 +3,28 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { assetApi } from '@erp/shared'
+import { DeptSelect, loadDepartments } from '../../components/select'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
+const departments = ref<Row[]>([])
+
+function deptNameById(id: number | null | undefined): string {
+  if (!id) return ''
+  const row = departments.value.find((d) => Number(d.id) === Number(id))
+  return row ? String(row.name ?? '') : ''
+}
+
+function onAssetDept(id: number | null) {
+  assetForm.dept_id = id ?? 0
+  assetForm.dept_name = deptNameById(id)
+}
+
+function onTransferDept(id: number | null) {
+  transferForm.to_dept_id = id ?? 0
+  transferForm.to_dept_name = deptNameById(id)
+}
 
 const categoryCols: MobileCardColumn[] = [
   { prop: 'code', label: '编码', primary: true },
@@ -88,8 +106,8 @@ const assetForm = reactive({
   code: '',
   name: '',
   category_id: 0 as number,
-  dept_id: 1,
-  dept_name: '生产部',
+  dept_id: 0 as number,
+  dept_name: '',
   location_text: '',
   original_value: 0,
   net_value: 0,
@@ -101,21 +119,25 @@ const assetForm = reactive({
 
 const transferForm = reactive({
   asset_id: 0 as number,
-  to_dept_id: 2,
-  to_dept_name: '仓储部',
+  to_dept_id: 0 as number,
+  to_dept_name: '',
   to_location: '',
   remark: '',
 })
 
 async function loadMeta() {
-  const [c, a] = await Promise.all([assetApi.categories(), assetApi.list()])
+  const [c, a, d] = await Promise.all([assetApi.categories(), assetApi.list(), loadDepartments()])
   categories.value = ((c.data as { list?: Row[] })?.list) || []
   assets.value = ((a.data as { list?: Row[] })?.list) || []
+  departments.value = d || []
   if (categories.value[0] && !assetForm.category_id) {
     assetForm.category_id = Number(categories.value[0].id)
   }
   if (assets.value[0] && !transferForm.asset_id) {
     transferForm.asset_id = Number(assets.value[0].id)
+  }
+  if (!assetForm.dept_id && departments.value[0]) {
+    onAssetDept(Number(departments.value[0].id))
   }
 }
 
@@ -203,8 +225,8 @@ async function removeAsset(id: number) {
 
 async function createTransfer() {
   if (!transferForm.asset_id) return ElMessage.warning('选择资产')
-  if (!transferForm.to_location && !transferForm.to_dept_name) {
-    return ElMessage.warning('填写调入部门或位置')
+  if (!transferForm.to_location && !transferForm.to_dept_id && !transferForm.to_dept_name) {
+    return ElMessage.warning('填写调入位置或选择调入部门')
   }
   const res = await assetApi.createTransfer({ ...transferForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
@@ -291,9 +313,8 @@ watch(active, refresh)
               />
             </el-select>
           </el-form-item>
-          <el-form-item label="部门"><el-input v-model="assetForm.dept_name" style="width:110px" /></el-form-item>
-          <el-form-item label="部门ID">
-            <el-input-number v-model="assetForm.dept_id" :min="0" placeholder="暂无部门主数据，请填ID" />
+          <el-form-item label="部门">
+            <DeptSelect :model-value="assetForm.dept_id || null" style="width:180px" @update:model-value="onAssetDept" />
           </el-form-item>
           <el-form-item label="存放位置"><el-input v-model="assetForm.location_text" style="width:140px" /></el-form-item>
           <el-form-item label="原值"><el-input-number v-model="assetForm.original_value" :min="0" :step="100" /></el-form-item>
@@ -346,9 +367,8 @@ watch(active, refresh)
               />
             </el-select>
           </el-form-item>
-          <el-form-item label="调入部门"><el-input v-model="transferForm.to_dept_name" style="width:120px" /></el-form-item>
-          <el-form-item label="调入部门ID">
-            <el-input-number v-model="transferForm.to_dept_id" :min="0" placeholder="暂无部门主数据，请填ID" />
+          <el-form-item label="调入部门">
+            <DeptSelect :model-value="transferForm.to_dept_id || null" style="width:180px" @update:model-value="onTransferDept" />
           </el-form-item>
           <el-form-item label="调入位置"><el-input v-model="transferForm.to_location" style="width:140px" /></el-form-item>
           <el-form-item label="备注"><el-input v-model="transferForm.remark" style="width:140px" /></el-form-item>

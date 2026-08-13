@@ -69,7 +69,8 @@ var resourceDomainModule = map[string]domainModule{
 	// hr / payroll
 	"hr/employees": {"人事管理", "员工档案"}, "hr/onboards": {"人事管理", "入职登记"},
 	"hr/departments": {"人事管理", "部门管理"}, "hr/work-teams": {"人事管理", "员工档案"},
-	"hr/tool-issues": {"人事管理", "工具领还"}, "payroll/wage-rates": {"工资管理", "工序工资"},
+	"hr/tool-issues": {"人事管理", "工具领还"}, "system/personnel-transfers": {"人事管理", "人事调动"},
+	"payroll/wage-rates": {"工资管理", "工序工资"},
 	"payroll/sheets": {"工资管理", "薪酬核算"},
 	// crm / product / asset / approval / report
 	"crm/customers": {"客户管理", "CRM客户管理"}, "product/products": {"产品管理", "产品档案"},
@@ -111,7 +112,7 @@ var allDomainMenus = []struct {
 	{"固定资产管理", []string{"固定资产类别", "固定资产项目", "固定资产内部转移", "固定资产统计"}},
 	{"财务管理", []string{"账目管理", "交易流水账", "收入支出明细", "订单管理", "小程序管理", "凭证管理", "发票管理", "收款核单", "外币结汇", "结汇查询", "分摊撤销", "收款预警", "出纳对账", "预收预付管理", "成本核算", "合同利润", "销售认款", "销售退货退单", "往来调整单", "财务审批", "资金管理", "财务报表", "成本明细溯源表", "月度结转"}},
 	{"工资管理", []string{"工人信息管理", "工资批量管理", "工序工资", "薪酬核算", "销售提成"}},
-	{"人事管理", []string{"员工档案", "部门管理", "权限分配", "入职登记", "离职登记", "工具领还", "考勤管理", "班次管理", "绩效管理", "请假管理", "考勤明细", "加班补卡统计", "考勤月度统计", "考勤绩效汇总", "外访明细", "备忘录管理", "员工日志"}},
+	{"人事管理", []string{"员工档案", "部门管理", "权限分配", "入职登记", "离职登记", "人事调动", "工具领还", "考勤管理", "班次管理", "绩效管理", "请假管理", "考勤明细", "加班补卡统计", "考勤月度统计", "考勤绩效汇总", "外访明细", "备忘录管理", "员工日志"}},
 	{"统计报表", []string{"企业报表", "老板驾驶舱", "生产看板", "生产实况", "客户询价查询", "CRM统计", "日统计报表", "毛利润统计", "质检报表", "账目统计", "出入库查询", "收发存明细", "跟进记录查询", "销售重量统计", "产品销售查询", "系统物流查询", "成本利润表", "资产负债表", "现金流量表", "利润表"}},
 	{"审批管理", []string{"任务管理", "单据审核", "费用财务审批", "询价财务审批", "询价明细审批", "采购审批", "采购计划单审批", "事务申请审批", "费用申请", "考勤审批"}},
 }
@@ -285,6 +286,11 @@ func CheckAPIPerm(c *gin.Context, resourceKey, action, method string) bool {
 	if dm.Module != "" {
 		viewCodes := modulePermCodes(dm.Domain, dm.Module, false)
 		editCodes := modulePermCodes(dm.Domain, dm.Module, true)
+		// 人事调动从系统管理迁入：兼容旧权限码
+		if dm.Domain == "人事管理" && dm.Module == "人事调动" {
+			viewCodes = append(viewCodes, "系统管理:人事调动:查看")
+			editCodes = append(editCodes, "系统管理:人事调动:编辑")
+		}
 		if write {
 			if !claimsHasCode(claims.Permissions, editCodes...) {
 				approve := dm.Domain + ":" + dm.Module + ":审批"

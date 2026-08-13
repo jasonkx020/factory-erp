@@ -1052,8 +1052,14 @@ func (s *Services) listProcessReports(c *gin.Context) bool {
 	args = append(args, pageSize, (pageNum-1)*pageSize)
 	rows, err := s.DB.Query(`SELECT r.id, COALESCE(r.doc_no,''), COALESCE(r.status,''), COALESCE(r.process_id,0), COALESCE(p.name,''),
 		COALESCE(r.input_weight,0), COALESCE(r.output_weight,0), COALESCE(r.loss,0), COALESCE(r.bag_qty,0),
-		COALESCE(r.confirmed_at, r.reported_at,''), COALESCE(r.process_qc_result,'')
-		FROM pd_report_work r LEFT JOIN pd_process p ON p.id=r.process_id `+where+`
+		COALESCE(r.confirmed_at, r.reported_at,''), COALESCE(r.process_qc_result,''),
+		COALESCE(r.worker_id,0), COALESCE(ew.name,''), COALESCE(r.operator_employee_id,0), COALESCE(eo.name,''),
+		COALESCE(r.operator_user_id,0), COALESCE(r.scan_code,'')
+		FROM pd_report_work r
+		LEFT JOIN pd_process p ON p.id=r.process_id
+		LEFT JOIN hr_employee ew ON ew.id=r.worker_id
+		LEFT JOIN hr_employee eo ON eo.id=r.operator_employee_id
+		`+where+`
 		ORDER BY r.id DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -1062,16 +1068,25 @@ func (s *Services) listProcessReports(c *gin.Context) bool {
 	defer rows.Close()
 	list := []gin.H{}
 	for rows.Next() {
-		var id, procID int64
-		var docNo, status, pname, at, qc string
+		var id, procID, workerID, opEmpID, opUserID int64
+		var docNo, status, pname, at, qc, workerName, opName, scan string
 		var inW, outW, loss, bag float64
-		_ = rows.Scan(&id, &docNo, &status, &procID, &pname, &inW, &outW, &loss, &bag, &at, &qc)
+		_ = rows.Scan(&id, &docNo, &status, &procID, &pname, &inW, &outW, &loss, &bag, &at, &qc,
+			&workerID, &workerName, &opEmpID, &opName, &opUserID, &scan)
+		if opName == "" && opUserID > 0 {
+			_ = s.DB.QueryRow(`SELECT COALESCE(e.name,u.login_name,'') FROM iam_user u
+				LEFT JOIN hr_employee e ON e.id=u.employee_id WHERE u.id=?`, opUserID).Scan(&opName)
+		}
 		var scrapTypeVal string
 		_ = s.DB.QueryRow(`SELECT COALESCE(scrap_type,'') FROM pd_scrap_record WHERE doc_no LIKE ? ORDER BY id DESC LIMIT 1`, fmt.Sprintf("SCR-%d%%", id)).Scan(&scrapTypeVal)
 		list = append(list, gin.H{
 			"id": id, "doc_no": docNo, "status": status, "process_id": procID, "process_name": pname,
 			"input_weight": inW, "output_weight": outW, "loss": loss, "bag_qty": bag, "reported_at": at,
 			"process_qc_result": qc, "scrap_type": scrapTypeVal,
+			"worker_id": workerID, "worker_name": workerName,
+			"operator_employee_id": opEmpID, "operator_user_id": opUserID, "operator_name": opName,
+			"pass_for_other": opEmpID > 0 && workerID != opEmpID,
+			"scan_code": scan,
 		})
 	}
 	api.PageOK(c, list, total, pageNum, pageSize)

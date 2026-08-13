@@ -38,7 +38,16 @@ export const usePermStore = defineStore('perm', () => {
         auth.hasPerm(systemPermCode(module, '编辑'))
       )
     }
-    return false
+    // 人事调动迁入后：兼容旧「系统管理:人事调动」权限码
+    if (domain === '人事管理' && module === '人事调动') {
+      if (
+        auth.hasPerm('系统管理:人事调动:查看') ||
+        auth.hasPerm('系统管理:人事调动:编辑')
+      ) {
+        return true
+      }
+    }
+    return hasDomainModulePerm(domain, module)
   }
 
   /** 13 域菜单：管理员全量；否则按菜单裁剪 ∪ 权限码 */

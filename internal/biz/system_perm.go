@@ -14,7 +14,7 @@ import (
 // systemModules 与前端 SYSTEM_ADMIN_MODULES 对齐
 var systemModules = []string{
 	"基础设置", "自定义打印", "自定义菜单", "自定义权限", "表格自定义", "公式设置",
-	"销售设置", "生产设置", "物流信息管理", "审批流程设定", "人事调动", "登录控制",
+	"销售设置", "生产设置", "物流信息管理", "审批流程设定", "登录控制",
 	"批量改价", "批量核算工资", "单据审批", "单据锁定", "单据通知", "单据编辑", "单据删除",
 	"事项提醒", "多条件检索", "账户冻结", "财审管控", "学堂管理", "知识库", "图纸管理",
 	"文档管理", "员工日志", "操作日志", "数据修复", "业务闭环", "公告设置", "备忘录", "工单中心",
@@ -32,7 +32,6 @@ var systemResourceModule = map[string]string{
 	"system/production-settings":    "生产设置",
 	"system/logistics/carriers":     "物流信息管理",
 	"system/approval-flows":         "审批流程设定",
-	"system/personnel-transfers":    "人事调动",
 	"iam/login-policy":              "登录控制",
 	"system/batch-price-jobs":       "批量改价",
 	"system/batch-payroll-jobs":     "批量核算工资",
@@ -59,6 +58,10 @@ var systemResourceModule = map[string]string{
 }
 
 func isSystemProtectedResource(resourceKey string) bool {
+	// 人事调动已迁到人事管理域，走普通域权限，不再按系统管理拦截
+	if resourceKey == "system/personnel-transfers" || strings.HasPrefix(resourceKey, "system/personnel-transfers/") {
+		return false
+	}
 	if _, ok := systemResourceModule[resourceKey]; ok {
 		return true
 	}

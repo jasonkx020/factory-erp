@@ -1540,7 +1540,7 @@ export const MODULES: ModuleMeta[] = [
     actions: [],
   },
   {
-    domain: '系统管理',
+    domain: '人事管理',
     module: '人事调动',
     phase: 1,
     list: '/system/personnel-transfers',

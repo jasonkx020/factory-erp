@@ -68,7 +68,8 @@ func openSmokeDB(t *testing.T) *sql.DB {
 			process_id INTEGER, worker_id INTEGER, qty REAL, weight REAL, input_weight REAL,
 			output_weight REAL, loss REAL, utilization REAL, status TEXT, reported_at TEXT,
 			scan_code TEXT, confirmed_by INTEGER, confirmed_at TEXT, confirmed_snapshot_json TEXT,
-			process_qc_result TEXT, bag_qty REAL)`,
+			process_qc_result TEXT, bag_qty REAL, operator_user_id INTEGER, operator_employee_id INTEGER, created_by INTEGER)`,
+		`CREATE TABLE hr_employee(id INTEGER PRIMARY KEY, name TEXT, badge_code TEXT, emp_no TEXT, status TEXT DEFAULT 'active', is_deleted INTEGER DEFAULT 0)`,
 		`CREATE TABLE biz_audit_log(
 			id INTEGER PRIMARY KEY AUTOINCREMENT, biz_type TEXT, biz_id INTEGER, action TEXT,
 			reason TEXT, before_json TEXT, after_json TEXT, actor_user_id INTEGER, created_at TEXT)`,
