@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
@@ -13,7 +12,7 @@ import '../../core/notify_service.dart';
 import 'process_return_page.dart';
 
 /// 班组子页分区（hub 首页用 push 打开对应页，返回即销毁）。
-enum WorkshopHubSection { home, scan, overview, tasks, dispatch, flex, qcScrap, process, stock, processReturn }
+enum WorkshopHubSection { home, overview, tasks, dispatch, flex, qcScrap, process, stock, processReturn }
 
 /// 车间主任工作台：报工 + 任务派工 + 灵活派发 + 质检/返修/废料
 class WorkshopPage extends StatefulWidget {
@@ -34,19 +33,11 @@ class WorkshopPage extends StatefulWidget {
 }
 
 class _WorkshopPageState extends State<WorkshopPage> {
-  final _badge = TextEditingController();
-  final _box = TextEditingController();
-  final _weight = TextEditingController();
-  final _bag = TextEditingController(text: '0');
   final _flexQty = TextEditingController(text: '100');
   final _flexWorker = TextEditingController(text: '2');
   final _qcQty = TextEditingController(text: '10');
   final _scrapQty = TextEditingController(text: '5');
   final _reworkQty = TextEditingController(text: '5');
-  String _scrapType = '';
-  String _msg = '';
-  Map<String, dynamic>? _last;
-  int? _pendingId;
   int? _taskId;
   int? _processId;
   List<dynamic> _tasks = [];
@@ -67,9 +58,7 @@ class _WorkshopPageState extends State<WorkshopPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final prefs = await SharedPreferences.getInstance();
       if (!mounted) return;
-      _badge.text = prefs.getString('erp.worker.badge') ?? '';
       context.read<NotifyService>().addListener(_onNotify);
       await _boot();
     });
@@ -80,7 +69,7 @@ class _WorkshopPageState extends State<WorkshopPage> {
     try {
       context.read<NotifyService>().removeListener(_onNotify);
     } catch (_) {}
-    for (final c in [_badge, _box, _weight, _bag, _flexQty, _flexWorker, _qcQty, _scrapQty, _reworkQty]) {
+    for (final c in [_flexQty, _flexWorker, _qcQty, _scrapQty, _reworkQty]) {
       c.dispose();
     }
     super.dispose();
@@ -88,18 +77,6 @@ class _WorkshopPageState extends State<WorkshopPage> {
 
   void _onNotify() {
     if (!mounted) return;
-    final notify = context.read<NotifyService>();
-    for (final raw in notify.inbox) {
-      if (raw is! Map) continue;
-      if (raw['event_key']?.toString() != 'production.report_confirmed') continue;
-      final p = NotifyService.parsePayload(raw['payload'] ?? raw['payload_json']);
-      final next = p['next'] is Map ? Map<String, dynamic>.from(p['next'] as Map) : p;
-      final code = next['new_box_code'];
-      if (code != null && _box.text.trim().isEmpty) {
-        setState(() => _box.text = code.toString());
-        break;
-      }
-    }
     _refresh();
   }
 
@@ -164,8 +141,6 @@ class _WorkshopPageState extends State<WorkshopPage> {
     switch (widget.initialSection) {
       case WorkshopHubSection.home:
         return '班组';
-      case WorkshopHubSection.scan:
-        return '扫码过站';
       case WorkshopHubSection.overview:
         return '概览';
       case WorkshopHubSection.tasks:
@@ -183,77 +158,6 @@ class _WorkshopPageState extends State<WorkshopPage> {
       case WorkshopHubSection.processReturn:
         return '剩余料退库';
     }
-  }
-
-  Future<void> _scan({required bool resolveOnly}) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (_badge.text.trim().isNotEmpty) {
-      await prefs.setString('erp.worker.badge', _badge.text.trim());
-    }
-    if (!mounted) return;
-    final api = context.read<AuthState>().api;
-    final path = resolveOnly ? '/production/scan/resolve' : '/production/scan';
-    final net = double.tryParse(_weight.text) ?? 0;
-    final r = await api.post(path, {
-      'badge_code': _badge.text.trim(),
-      'box_code': _box.text.trim(),
-      'net_weight': net,
-      'output_weight': net,
-    });
-    setState(() {
-      if (!r.ok) {
-        _msg = r.msg;
-        return;
-      }
-      final data = r.data is Map ? Map<String, dynamic>.from(r.data as Map) : <String, dynamic>{};
-      _last = data;
-      if (resolveOnly) {
-        _msg = '已解析 ${data['worker_name'] ?? ''}';
-      } else if (data['needs_confirm'] == true || data['status'] == 'confirm_pending') {
-        _pendingId = (data['id'] as num?)?.toInt();
-        _msg = '草稿已建，请确认过账';
-      } else {
-        _pendingId = null;
-        _msg = '报工成功';
-      }
-      final next = data['next'];
-      if (next is Map && next['new_box_code'] != null) {
-        _box.text = next['new_box_code'].toString();
-      }
-    });
-    if (r.ok && !resolveOnly && _pendingId == null) await _refresh();
-  }
-
-  Future<void> _confirm() async {
-    final id = _pendingId ?? (_last?['id'] as num?)?.toInt();
-    if (id == null) {
-      setState(() => _msg = '请先提交报工草稿');
-      return;
-    }
-    final api = context.read<AuthState>().api;
-    final net = double.tryParse(_weight.text) ?? 0;
-    final body = <String, dynamic>{
-      'output_weight': net,
-      'process_qc_result': 'pass',
-      'bag_qty': double.tryParse(_bag.text) ?? 0,
-    };
-    if (_scrapType.isNotEmpty) body['scrap_type'] = _scrapType;
-    final r = await api.post('/production/report-works/$id/confirm', body);
-    setState(() {
-      if (r.ok) {
-        final data = r.data is Map ? Map<String, dynamic>.from(r.data as Map) : <String, dynamic>{};
-        _last = data;
-        _pendingId = null;
-        _msg = '已确认过账';
-        final next = data['next'];
-        if (next is Map && next['new_box_code'] != null) {
-          _box.text = next['new_box_code'].toString();
-        }
-      } else {
-        _msg = r.msg;
-      }
-    });
-    if (r.ok) await _refresh();
   }
 
   Future<void> _receiveDispatch(Map m) async {
@@ -317,7 +221,7 @@ class _WorkshopPageState extends State<WorkshopPage> {
       'qty': double.tryParse(_scrapQty.text) ?? 5,
       'weight': double.tryParse(_scrapQty.text) ?? 5,
       'disposition': 'waste',
-      'scrap_type': _scrapType.isEmpty ? 'cut_defect' : _scrapType,
+      'scrap_type': 'cut_defect',
       'remark': '车间废料登记',
     });
     if (!mounted) return;
@@ -394,12 +298,6 @@ class _WorkshopPageState extends State<WorkshopPage> {
         const Text('常用', style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         HubEntryTile(
-          icon: Icons.qr_code_scanner,
-          title: '扫码过站',
-          subtitle: '工牌 + 箱码报工确认',
-          onTap: () => _pushSection(WorkshopHubSection.scan),
-        ),
-        HubEntryTile(
           icon: Icons.dashboard_outlined,
           title: '概览',
           subtitle: '任务/派工/图纸/流转',
@@ -455,62 +353,6 @@ class _WorkshopPageState extends State<WorkshopPage> {
             if (mounted) await _refresh();
           },
         ),
-      ],
-    );
-  }
-
-  Widget _scanBody() {
-    return Column(
-      children: [
-        Expanded(
-          child: ListView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
-            children: [
-              const FormSectionHeader('扫码过站'),
-              FormRow.text(label: '工牌码', controller: _badge, requiredMark: true),
-              FormRow.text(label: '箱码', controller: _box, requiredMark: true),
-              FormRow.text(label: '净重(kg)', controller: _weight, keyboardType: TextInputType.number, requiredMark: true),
-              FormRow.text(label: '袋数', controller: _bag, keyboardType: TextInputType.number),
-              const FormSectionHeader('次品类型'),
-              FormRow(
-                label: '次品',
-                child: Wrap(
-                  alignment: WrapAlignment.end,
-                  spacing: 6,
-                  runSpacing: 4,
-                  children: [
-                    for (final e in const [
-                      MapEntry('', '无次品'),
-                      MapEntry('cut_defect', '切断次品'),
-                      MapEntry('core_defect', '去芯次品'),
-                      MapEntry('dice_defect', '切块次品'),
-                      MapEntry('sieve_bag_defect', '过筛装袋次品'),
-                    ])
-                      ChoiceChip(
-                        label: Text(e.value, style: const TextStyle(fontSize: 12)),
-                        selected: _scrapType == e.key,
-                        visualDensity: VisualDensity.compact,
-                        onSelected: (_) => setState(() => _scrapType = e.key),
-                      ),
-                  ],
-                ),
-              ),
-              if (_msg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_msg)),
-            ],
-          ),
-        ),
-        FormStickyButtonBar(
-          children: [
-            OutlinedButton(onPressed: () => _scan(resolveOnly: true), child: const Text('预解析')),
-            FilledButton(onPressed: () => _scan(resolveOnly: false), child: const Text('提交草稿')),
-          ],
-        ),
-        if (_pendingId != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: FilledButton.tonal(onPressed: _confirm, child: const Text('确认过账')),
-          ),
       ],
     );
   }
@@ -655,8 +497,6 @@ class _WorkshopPageState extends State<WorkshopPage> {
     switch (widget.initialSection) {
       case WorkshopHubSection.home:
         return _homeBody();
-      case WorkshopHubSection.scan:
-        return _scanBody();
       case WorkshopHubSection.overview:
         return _overviewBody();
       case WorkshopHubSection.tasks:

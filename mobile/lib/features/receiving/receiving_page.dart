@@ -13,6 +13,7 @@ import '../../widgets/form_section_header.dart';
 import '../../widgets/form_sticky_actions.dart';
 import '../../widgets/hub_entry_tile.dart';
 import '../../widgets/trace_code_field.dart';
+import '../warehouse/warehouse_page.dart';
 import 'gate_inbound_wizard.dart';
 
 /// 现场过磅收货：选类型 → 填表预览 → 确认创建（批号即溯源码，绑定农户并推仓管）
@@ -1201,9 +1202,10 @@ class _ReceivingPageState extends State<ReceivingPage> {
           title: '扫溯源分箱',
           subtitle: '入厂后由仓管扫溯源码分箱入库',
           onTap: () {
-            // 引导仓管去仓管作业页扫码
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('请到「仓管作业」扫溯源码分箱入库')),
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const WarehousePage(initialSection: WarehouseSection.scan),
+              ),
             );
           },
         ),
