@@ -53,6 +53,9 @@ const shiftMemberCols: MobileCardColumn[] = [
 const taskCols: MobileCardColumn[] = [
   { prop: 'doc_no', label: '单号', primary: true },
   { prop: 'status', label: '状态' },
+  { prop: 'plan_qty', label: '计划' },
+  { prop: 'completed_qty', label: '完工' },
+  { prop: 'progress_pct', label: '进度%' },
   { prop: 'created_at', label: '创建时间' },
 ]
 const dispatchCols: MobileCardColumn[] = [
@@ -248,6 +251,42 @@ const backfillForm = reactive({ backfill_reason: '' })
 const loading = ref(false)
 const list = ref<Row[]>([])
 const detail = ref<Row | null>(null)
+const taskFlowSteps = ref<Row[]>([])
+const taskDetailDrawer = ref(false)
+
+const isTaskDetail = computed(() => Array.isArray(detail.value?.items))
+const taskItems = computed(() => ((detail.value?.items as Row[]) || []))
+const taskPlanTotal = computed(() =>
+  taskItems.value.reduce((s, it) => s + Number(it.plan_qty ?? it.qty ?? 0), 0),
+)
+const taskDoneTotal = computed(() =>
+  taskItems.value.reduce((s, it) => s + Number(it.completed_qty ?? 0), 0),
+)
+const taskProgressPct = computed(() => {
+  const plan = taskPlanTotal.value
+  if (plan <= 0) return 0
+  return Math.min(100, Math.round((taskDoneTotal.value / plan) * 1000) / 10)
+})
+
+function productLabel(pid: number) {
+  const p = products.value.find((x) => Number(x.id) === pid)
+  return p ? String(p.name || p.code || pid) : String(pid)
+}
+
+function itemProgress(it: Row) {
+  const plan = Number(it.plan_qty ?? it.qty ?? 0)
+  const done = Number(it.completed_qty ?? 0)
+  if (plan <= 0) return Number(it.progress_pct ?? 0)
+  return Math.min(100, Math.round((done / plan) * 1000) / 10)
+}
+
+function statusTagType(st: unknown): 'success' | 'warning' | 'info' | 'danger' {
+  const s = String(st || '')
+  if (s === 'closed' || s === 'done' || s === 'finished') return 'success'
+  if (s === 'in_progress' || s === 'released') return 'warning'
+  if (s === 'cancelled' || s === 'void') return 'danger'
+  return 'info'
+}
 const products = ref<Row[]>([])
 const processes = ref<Row[]>([])
 const workers = ref<Row[]>([])
@@ -326,6 +365,8 @@ async function refresh() {
   if (embedRoutings.value || embedPieceIssue.value) return
   loading.value = true
   detail.value = null
+  taskDetailDrawer.value = false
+  taskFlowSteps.value = []
   try {
     let res
     switch (active.value) {
@@ -449,7 +490,32 @@ async function openTask(id: number) {
   const res = await productionApi.getTask(id)
   if (res.code !== 1) return ElMessage.error(res.msg)
   const items = await productionApi.taskItems(id)
-  detail.value = { ...(res.data as Row), items: (items.data as { list?: Row[] })?.list || [] }
+  const row = { ...(res.data as Row), items: (items.data as { list?: Row[] })?.list || [] }
+  detail.value = row
+  taskFlowSteps.value = []
+  const rid = Number(row.routing_id || 0)
+  if (rid > 0) {
+    try {
+      const fr = await productionApi.flowRules(rid)
+      const data = fr.data as { steps?: Row[]; list?: Row[] } | Row[] | undefined
+      if (Array.isArray(data)) {
+        taskFlowSteps.value = data
+      } else if (data && Array.isArray(data.steps)) {
+        taskFlowSteps.value = data.steps
+      } else if (data && Array.isArray(data.list)) {
+        taskFlowSteps.value = data.list
+      } else {
+        taskFlowSteps.value = []
+      }
+    } catch {
+      taskFlowSteps.value = []
+    }
+  }
+  taskDetailDrawer.value = true
+}
+
+function closeTaskDetail() {
+  taskDetailDrawer.value = false
 }
 
 async function createDispatch() {
@@ -960,19 +1026,31 @@ onMounted(async () => {
           <el-table :data="list" size="small">
             <el-table-column prop="doc_no" label="单号" width="160" />
             <el-table-column prop="status" label="状态" width="100" />
-            <el-table-column prop="created_at" label="创建时间" />
+            <el-table-column prop="plan_qty" label="计划" width="90" />
+            <el-table-column prop="completed_qty" label="完工" width="90" />
+            <el-table-column label="进度" min-width="140">
+              <template #default="{ row }">
+                <el-progress
+                  :percentage="Math.min(100, Number(row.progress_pct || 0))"
+                  :stroke-width="10"
+                  :text-inside="false"
+                />
+              </template>
+            </el-table-column>
+            <el-table-column prop="created_at" label="创建时间" width="160" />
             <el-table-column label="操作" width="200">
               <template #default="{ row }">
-                <el-button link @click="openTask(Number(row.id)); dispatchForm.task_id=Number(row.id)">明细</el-button>
+                <el-button link type="primary" @click="openTask(Number(row.id)); dispatchForm.task_id=Number(row.id)">明细</el-button>
                 <el-button v-if="row.status!=='closed'" link type="warning" @click="closeTask(Number(row.id))">关闭</el-button>
               </template>
             </el-table-column>
           </el-table>
           <template #extra="{ row }">
             <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+            <span class="hint">{{ Number(row.completed_qty || 0) }}/{{ Number(row.plan_qty || 0) }} · {{ Number(row.progress_pct || 0).toFixed(0) }}%</span>
           </template>
           <template #actions="{ row }">
-            <el-button link @click="openTask(Number(row.id)); dispatchForm.task_id=Number(row.id)">明细</el-button>
+            <el-button link type="primary" @click="openTask(Number(row.id)); dispatchForm.task_id=Number(row.id)">明细</el-button>
             <el-button v-if="row.status!=='closed'" link type="warning" @click="closeTask(Number(row.id))">关闭</el-button>
           </template>
         </TableOrCards>
@@ -1000,19 +1078,30 @@ onMounted(async () => {
           <el-table :data="list" size="small">
             <el-table-column prop="doc_no" label="单号" width="160" />
             <el-table-column prop="status" label="状态" width="100" />
-            <el-table-column prop="created_at" label="创建时间" />
+            <el-table-column prop="plan_qty" label="计划" width="90" />
+            <el-table-column prop="completed_qty" label="完工" width="90" />
+            <el-table-column label="进度" min-width="140">
+              <template #default="{ row }">
+                <el-progress
+                  :percentage="Math.min(100, Number(row.progress_pct || 0))"
+                  :stroke-width="10"
+                />
+              </template>
+            </el-table-column>
+            <el-table-column prop="created_at" label="创建时间" width="160" />
             <el-table-column label="操作" width="200">
               <template #default="{ row }">
-                <el-button link @click="openTask(Number(row.id)); dispatchForm.task_id=Number(row.id)">明细</el-button>
+                <el-button link type="primary" @click="openTask(Number(row.id)); dispatchForm.task_id=Number(row.id)">明细</el-button>
                 <el-button v-if="row.status!=='closed'" link type="warning" @click="closeTask(Number(row.id))">关闭</el-button>
               </template>
             </el-table-column>
           </el-table>
           <template #extra="{ row }">
             <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+            <span class="hint">{{ Number(row.completed_qty || 0) }}/{{ Number(row.plan_qty || 0) }} · {{ Number(row.progress_pct || 0).toFixed(0) }}%</span>
           </template>
           <template #actions="{ row }">
-            <el-button link @click="openTask(Number(row.id)); dispatchForm.task_id=Number(row.id)">明细</el-button>
+            <el-button link type="primary" @click="openTask(Number(row.id)); dispatchForm.task_id=Number(row.id)">明细</el-button>
             <el-button v-if="row.status!=='closed'" link type="warning" @click="closeTask(Number(row.id))">关闭</el-button>
           </template>
         </TableOrCards>
@@ -1675,7 +1764,84 @@ onMounted(async () => {
         </TableOrCards>
       </template>
 
-      <el-card v-if="detail" header="明细" style="margin-top:16px">
+      <el-drawer
+        v-model="taskDetailDrawer"
+        :title="`任务明细 · ${detail?.doc_no || ''}`"
+        size="560px"
+        destroy-on-close
+        @close="closeTaskDetail"
+      >
+        <template v-if="isTaskDetail && detail">
+          <el-row :gutter="12" class="mb">
+            <el-col :span="8" :xs="24">
+              <div class="kpi-card">
+                <div class="kpi">计划量</div>
+                <div class="kpi-n">{{ taskPlanTotal }}</div>
+              </div>
+            </el-col>
+            <el-col :span="8" :xs="24">
+              <div class="kpi-card">
+                <div class="kpi">已完工</div>
+                <div class="kpi-n">{{ taskDoneTotal }}</div>
+              </div>
+            </el-col>
+            <el-col :span="8" :xs="24">
+              <div class="kpi-card">
+                <div class="kpi">完成率</div>
+                <div class="kpi-n">{{ taskProgressPct }}%</div>
+              </div>
+            </el-col>
+          </el-row>
+          <div class="mb">
+            <el-progress :percentage="taskProgressPct" :stroke-width="16" />
+          </div>
+          <div class="meta-row mb">
+            <el-tag :type="statusTagType(detail.status)" size="small">{{ detail.status }}</el-tag>
+            <span class="hint">创建 {{ detail.created_at || '-' }}</span>
+            <span v-if="detail.routing_id" class="hint">工艺 #{{ detail.routing_id }}</span>
+            <span v-if="detail.workshop_id" class="hint">车间 #{{ detail.workshop_id }}</span>
+          </div>
+
+          <h4 class="sec-title">商品行</h4>
+          <div v-if="!taskItems.length" class="hint mb">暂无商品行</div>
+          <div v-for="it in taskItems" :key="String(it.id)" class="item-card">
+            <div class="item-head">
+              <strong>{{ it.product_name || productLabel(Number(it.product_id)) }}</strong>
+              <span class="hint">#{{ it.product_id }} {{ it.product_code || '' }}</span>
+            </div>
+            <div class="item-nums">
+              <span>计划 {{ Number(it.plan_qty ?? it.qty ?? 0) }}</span>
+              <span>完工 {{ Number(it.completed_qty ?? 0) }}</span>
+              <span>{{ itemProgress(it) }}%</span>
+            </div>
+            <el-progress :percentage="itemProgress(it)" :stroke-width="10" />
+          </div>
+
+          <h4 v-if="taskFlowSteps.length" class="sec-title">工艺路径</h4>
+          <div v-if="taskFlowSteps.length" class="flow-track">
+            <div
+              v-for="(st, idx) in taskFlowSteps"
+              :key="String(st.id || idx)"
+              class="flow-node"
+              :class="{
+                piece: st.is_piecework,
+                checkpoint: st.is_inbound_checkpoint,
+              }"
+            >
+              <div class="flow-seq">{{ st.seq_no ?? idx + 1 }}</div>
+              <div class="flow-name">{{ st.step_name || st.step_code || `步骤${idx + 1}` }}</div>
+              <div class="flow-flags">
+                <el-tag v-if="st.is_piecework" size="small" type="success">计件</el-tag>
+                <el-tag v-if="st.is_inbound_checkpoint" size="small" type="warning">卡点</el-tag>
+                <el-tag v-if="st.checkpoint_bind_warehouse" size="small">绑仓</el-tag>
+              </div>
+              <div v-if="idx < taskFlowSteps.length - 1" class="flow-arrow" aria-hidden="true">→</div>
+            </div>
+          </div>
+        </template>
+      </el-drawer>
+
+      <el-card v-if="detail && !isTaskDetail" header="明细" style="margin-top:16px">
         <pre class="detail">{{ JSON.stringify(detail, null, 2) }}</pre>
       </el-card>
 
@@ -1711,4 +1877,57 @@ onMounted(async () => {
 .detail { background: #f6f8fa; padding: 12px; border-radius: 8px; max-height: 420px; overflow: auto; font-size: 12px; }
 .kpi { color: #667; font-size: 12px; }
 .kpi-n { font-size: 28px; font-weight: 600; margin-top: 4px; }
+.kpi-card {
+  background: #f5f8fa;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+.meta-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.sec-title { margin: 16px 0 10px; font-size: 14px; color: #334; }
+.item-card {
+  border: 1px solid #e6ebef;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: #fff;
+}
+.item-head { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.item-nums { display: flex; gap: 16px; font-size: 13px; color: #556; margin-bottom: 8px; }
+.flow-track {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: stretch;
+}
+.flow-node {
+  position: relative;
+  min-width: 100px;
+  max-width: 140px;
+  flex: 1 1 100px;
+  background: #f7fafb;
+  border: 1px solid #dde5ea;
+  border-radius: 10px;
+  padding: 10px 10px 12px;
+}
+.flow-node.piece { border-color: #9fd4b3; background: #f3fbf6; }
+.flow-node.checkpoint { border-color: #e6c56a; background: #fffaf0; }
+.flow-seq {
+  font-size: 11px;
+  color: #889;
+  margin-bottom: 4px;
+}
+.flow-name { font-weight: 600; font-size: 13px; line-height: 1.3; min-height: 2.4em; }
+.flow-flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.flow-arrow {
+  position: absolute;
+  right: -10px;
+  top: 40%;
+  color: #99a;
+  font-size: 14px;
+  z-index: 1;
+}
+@media (max-width: 640px) {
+  .flow-arrow { display: none; }
+}
 </style>

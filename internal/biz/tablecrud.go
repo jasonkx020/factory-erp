@@ -40,13 +40,36 @@ func (s *Services) handleTableCRUD(c *gin.Context, resourceKey, action string) b
 func (s *Services) tableList(c *gin.Context, spec *tablespec.Spec) {
 	pageNum, pageSize := sqlutil.Page(c)
 	where := "1=1"
+	args := []interface{}{}
 	if spec.SoftDelete {
 		where += " AND COALESCE(is_deleted,0)=0"
 	}
+	if spec.Status != "" {
+		if st := strings.TrimSpace(c.Query("status")); st != "" {
+			where += fmt.Sprintf(" AND %s=?", spec.Status)
+			args = append(args, st)
+		}
+	}
+	if spec.DocNo == "code" {
+		if q := strings.TrimSpace(c.Query("q")); q != "" {
+			where += " AND code LIKE ?"
+			args = append(args, "%"+q+"%")
+		}
+		if code := strings.TrimSpace(c.Query("code")); code != "" {
+			where += " AND code LIKE ?"
+			args = append(args, "%"+code+"%")
+		}
+	}
+	if tc := strings.TrimSpace(c.Query("trace_code")); tc != "" && hasCol(spec, "trace_code") {
+		where += " AND trace_code LIKE ?"
+		args = append(args, "%"+tc+"%")
+	}
 	var total int
-	_ = s.DB.QueryRow(fmt.Sprintf(`SELECT COUNT(1) FROM %s WHERE %s`, spec.Table, where)).Scan(&total)
+	countArgs := append([]interface{}{}, args...)
+	_ = s.DB.QueryRow(fmt.Sprintf(`SELECT COUNT(1) FROM %s WHERE %s`, spec.Table, where), countArgs...).Scan(&total)
 	offset := (pageNum - 1) * pageSize
-	rows, err := s.DB.Query(fmt.Sprintf(`SELECT * FROM %s WHERE %s ORDER BY id DESC LIMIT ? OFFSET ?`, spec.Table, where), pageSize, offset)
+	listArgs := append(append([]interface{}{}, args...), pageSize, offset)
+	rows, err := s.DB.Query(fmt.Sprintf(`SELECT * FROM %s WHERE %s ORDER BY id DESC LIMIT ? OFFSET ?`, spec.Table, where), listArgs...)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR")
 		return
@@ -58,6 +81,18 @@ func (s *Services) tableList(c *gin.Context, spec *tablespec.Spec) {
 		return
 	}
 	api.PageOK(c, list, total, pageNum, pageSize)
+}
+
+func hasCol(spec *tablespec.Spec, name string) bool {
+	if spec == nil {
+		return false
+	}
+	for _, c := range spec.Cols {
+		if c.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Services) tableGet(c *gin.Context, spec *tablespec.Spec) {

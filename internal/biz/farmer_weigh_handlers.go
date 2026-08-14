@@ -217,6 +217,7 @@ func (s *Services) handleWeighTickets(c *gin.Context, method, action string) boo
 		}
 		m["evidences"] = s.listEvidence("weigh_ticket", id)
 		s.attachWeighProcessTrail(m, id)
+		s.attachWeighVerifyMedia(m, id, strOr(m["image_url"]))
 		if claimsIsWarehouseOnly(middleware.Claims(c)) {
 			m = maskWeighTicketForWarehouse(m)
 		}
@@ -974,6 +975,9 @@ func (s *Services) stockInWeighTicket(c *gin.Context) bool {
 	if !s.requireAnyRole(c, "warehouse") {
 		return true
 	}
+	if !s.requireMobileClient(c) {
+		return true
+	}
 	id := paramID(c)
 	// 去掉 App「认领」后：仓管核对确认时自动接管开着的协作工单
 	s.takeOverWeighTicketForWarehouse(c, id)
@@ -993,6 +997,9 @@ func (s *Services) stockInWeighTicket(c *gin.Context) bool {
 // boxStockInWeighTicket 仓管扫溯源后对已入厂批次分箱入库。
 func (s *Services) boxStockInWeighTicket(c *gin.Context) bool {
 	if !s.requireAnyRole(c, "warehouse") {
+		return true
+	}
+	if !s.requireMobileClient(c) {
 		return true
 	}
 	id := paramID(c)
@@ -1116,6 +1123,9 @@ func (s *Services) takeOverWeighTicketForWarehouse(c *gin.Context, weighID int64
 // warehouseReturnWeighTicket 仓管核对信息不符时退回采购（可指定采购员）。
 func (s *Services) warehouseReturnWeighTicket(c *gin.Context) bool {
 	if !s.requireAnyRole(c, "warehouse") {
+		return true
+	}
+	if !s.requireMobileClient(c) {
 		return true
 	}
 	id := paramID(c)

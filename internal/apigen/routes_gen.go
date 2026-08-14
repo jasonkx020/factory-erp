@@ -588,6 +588,7 @@ func RegisterGenerated(r *gin.RouterGroup, h Handler) {
 	r.POST("/notify/inbox/:id/read", h.Dispatch("POST", "/api/v1/notify/inbox/{id}/read", "/notify/inbox/:id/read", "notify/inbox", "action:read"))
 	r.GET("/workflow/tasks", h.Dispatch("GET", "/api/v1/workflow/tasks", "/workflow/tasks", "workflow/tasks", "list"))
 	r.POST("/workflow/tasks/:id/claim", h.Dispatch("POST", "/api/v1/workflow/tasks/{id}/claim", "/workflow/tasks/:id/claim", "workflow/tasks", "action:claim"))
+	r.POST("/workflow/tasks/:id/assign", h.Dispatch("POST", "/api/v1/workflow/tasks/{id}/assign", "/workflow/tasks/:id/assign", "workflow/tasks", "action:assign"))
 	r.GET("/biz/evidences", h.Dispatch("GET", "/api/v1/biz/evidences", "/biz/evidences", "biz/evidences", "list"))
 	r.POST("/biz/evidences", h.Dispatch("POST", "/api/v1/biz/evidences", "/biz/evidences", "biz/evidences", "create"))
 	r.POST("/biz/corrections", h.Dispatch("POST", "/api/v1/biz/corrections", "/biz/corrections", "biz/corrections", "create"))

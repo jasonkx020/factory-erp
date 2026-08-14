@@ -57,7 +57,8 @@ export const inventoryApi = {
   postTxn: (id: number) => api.post(`/inventory/stock-txns/${id}/post`, {}),
   cancelTxn: (id: number) => api.post(`/inventory/stock-txns/${id}/cancel`, {}),
   boxTrace: (code: string) => api.get(`/inventory/box-codes/trace/${encodeURIComponent(code)}`),
-  listBoxes: () => api.get<PageData>('/inventory/box-codes'),
+  listBoxes: (params?: string) =>
+    api.get<PageData>(`/inventory/box-codes${params ? `?${params}` : ''}`),
   createBox: (body: Record<string, unknown>) => api.post('/inventory/box-codes', body),
   bindBox: (id: number, body?: Record<string, unknown>) =>
     api.post(`/inventory/box-codes/${id}/bind`, body || {}),
@@ -269,6 +270,8 @@ export const notifyApi = {
   readInbox: (id: number) => api.post(`/notify/inbox/${id}/read`, {}),
   tasks: (params?: string) => api.get(`/workflow/tasks${params ? `?${params}` : ''}`),
   claimTask: (id: number) => api.post(`/workflow/tasks/${id}/claim`, {}),
+  assignTask: (id: number, body: { to_user_id: number; comment?: string }) =>
+    api.post(`/workflow/tasks/${id}/assign`, body),
 }
 
 export const ticketApi = {

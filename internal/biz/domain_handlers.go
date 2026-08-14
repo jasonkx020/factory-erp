@@ -257,7 +257,11 @@ func (s *Services) handleProdTasks(c *gin.Context, method, action, path string) 
 	if strings.Contains(path, "/items") {
 		id := paramID(c)
 		if method == "GET" {
-			rows, err := s.DB.Query(`SELECT id, product_id, plan_qty, COALESCE(completed_qty,0) FROM pd_production_task_item WHERE task_id=?`, id)
+			rows, err := s.DB.Query(`SELECT i.id, i.product_id, i.plan_qty, COALESCE(i.completed_qty,0),
+				COALESCE(p.name,''), COALESCE(p.code,'')
+				FROM pd_production_task_item i
+				LEFT JOIN prd_product p ON p.id=i.product_id
+				WHERE i.task_id=? ORDER BY i.id`, id)
 			if err != nil {
 				api.FailJSON(c, "DB_ERROR")
 				return true
@@ -267,8 +271,16 @@ func (s *Services) handleProdTasks(c *gin.Context, method, action, path string) 
 			for rows.Next() {
 				var iid, pid int64
 				var qty, done float64
-				_ = rows.Scan(&iid, &pid, &qty, &done)
-				list = append(list, gin.H{"id": iid, "product_id": pid, "qty": qty, "plan_qty": qty, "completed_qty": done})
+				var pname, pcode string
+				_ = rows.Scan(&iid, &pid, &qty, &done, &pname, &pcode)
+				pct := 0.0
+				if qty > 0 {
+					pct = done / qty * 100
+				}
+				list = append(list, gin.H{
+					"id": iid, "product_id": pid, "product_name": pname, "product_code": pcode,
+					"qty": qty, "plan_qty": qty, "completed_qty": done, "progress_pct": pct,
+				})
 			}
 			api.OK(c, gin.H{"list": list})
 			return true
@@ -289,7 +301,11 @@ func (s *Services) handleProdTasks(c *gin.Context, method, action, path string) 
 	}
 	switch action {
 	case "list":
-		rows, err := s.DB.Query(`SELECT id, doc_no, status, created_at FROM pd_production_task WHERE is_deleted=0 ORDER BY id DESC`)
+		rows, err := s.DB.Query(`SELECT t.id, t.doc_no, t.status, t.created_at,
+			COALESCE(t.routing_id,0), COALESCE(t.workshop_id,0),
+			COALESCE((SELECT SUM(plan_qty) FROM pd_production_task_item i WHERE i.task_id=t.id),0),
+			COALESCE((SELECT SUM(completed_qty) FROM pd_production_task_item i WHERE i.task_id=t.id),0)
+			FROM pd_production_task t WHERE t.is_deleted=0 ORDER BY t.id DESC`)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR")
 			return true
@@ -297,10 +313,19 @@ func (s *Services) handleProdTasks(c *gin.Context, method, action, path string) 
 		defer rows.Close()
 		list := []gin.H{}
 		for rows.Next() {
-			var id int64
+			var id, rid, wid int64
 			var docNo, status, created string
-			_ = rows.Scan(&id, &docNo, &status, &created)
-			list = append(list, gin.H{"id": id, "doc_no": docNo, "status": status, "created_at": created})
+			var plan, done float64
+			_ = rows.Scan(&id, &docNo, &status, &created, &rid, &wid, &plan, &done)
+			pct := 0.0
+			if plan > 0 {
+				pct = done / plan * 100
+			}
+			list = append(list, gin.H{
+				"id": id, "doc_no": docNo, "status": status, "created_at": created,
+				"routing_id": rid, "workshop_id": wid,
+				"plan_qty": plan, "completed_qty": done, "progress_pct": pct,
+			})
 		}
 		api.OK(c, gin.H{"list": list, "total": len(list)})
 		return true
@@ -338,13 +363,27 @@ func (s *Services) handleProdTasks(c *gin.Context, method, action, path string) 
 	case "get":
 		id := paramID(c)
 		var docNo, status, created string
-		err := s.DB.QueryRow(`SELECT doc_no, status, created_at FROM pd_production_task WHERE id=? AND is_deleted=0`, id).
-			Scan(&docNo, &status, &created)
+		var rid, wid int64
+		var plan, done float64
+		err := s.DB.QueryRow(`SELECT t.doc_no, t.status, t.created_at,
+			COALESCE(t.routing_id,0), COALESCE(t.workshop_id,0),
+			COALESCE((SELECT SUM(plan_qty) FROM pd_production_task_item i WHERE i.task_id=t.id),0),
+			COALESCE((SELECT SUM(completed_qty) FROM pd_production_task_item i WHERE i.task_id=t.id),0)
+			FROM pd_production_task t WHERE t.id=? AND t.is_deleted=0`, id).
+			Scan(&docNo, &status, &created, &rid, &wid, &plan, &done)
 		if err != nil {
 			api.FailJSON(c, "NOT_FOUND")
 			return true
 		}
-		api.OK(c, gin.H{"id": id, "doc_no": docNo, "status": status, "created_at": created})
+		pct := 0.0
+		if plan > 0 {
+			pct = done / plan * 100
+		}
+		api.OK(c, gin.H{
+			"id": id, "doc_no": docNo, "status": status, "created_at": created,
+			"routing_id": rid, "workshop_id": wid,
+			"plan_qty": plan, "completed_qty": done, "progress_pct": pct,
+		})
 		return true
 	case "update":
 		id := paramID(c)

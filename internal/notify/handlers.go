@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"database/sql"
 	"encoding/json"
 	"strconv"
 	"strings"
@@ -21,6 +22,8 @@ func (s *Service) HandleAPI(c *gin.Context, method, openapiPath, action string) 
 		return s.handleInboxRead(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/notify/inbox") && method == "GET":
 		return s.handleInboxList(c)
+	case strings.Contains(openapiPath, "/workflow/tasks") && strings.HasSuffix(openapiPath, "/assign") && method == "POST":
+		return s.handleTaskAssign(c)
 	case strings.Contains(openapiPath, "/workflow/tasks") && strings.HasSuffix(openapiPath, "/claim") && method == "POST":
 		return s.handleTaskClaim(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/workflow/tasks") && method == "GET":
@@ -116,25 +119,33 @@ func (s *Service) handleTaskList(c *gin.Context) bool {
 		roleSet[r] = true
 	}
 	isAdmin := roleSet["sys_admin"] || roleSet["admin"] || roleSet["系统管理员"]
-	where := `WHERE status=?`
+	where := `WHERE t.status=?`
 	args := []interface{}{status}
 	if !isAdmin {
-		where += ` AND (assignee_user_id=? OR to_role IN (` + placeholders(len(cl.Roles)) + `))`
+		// 已指定处理人：仅本人可见；未指定：按 to_role 对角色池可见
+		where += ` AND (
+			(COALESCE(t.assignee_user_id,0)>0 AND t.assignee_user_id=?)
+			OR (COALESCE(t.assignee_user_id,0)=0 AND t.to_role IN (` + placeholders(len(cl.Roles)) + `))
+		)`
 		args = append(args, cl.UserID)
 		for _, r := range cl.Roles {
 			args = append(args, r)
 		}
 		if len(cl.Roles) == 0 {
-			where = `WHERE status=? AND assignee_user_id=?`
+			where = `WHERE t.status=? AND t.assignee_user_id=?`
 			args = []interface{}{status, cl.UserID}
 		}
 	}
 	var total int
-	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM wf_task `+where, args...).Scan(&total)
-	args = append(args, pageSize, (pageNum-1)*pageSize)
-	rows, err := s.DB.Query(`SELECT id, event_key, biz_type, biz_id, COALESCE(doc_no,''), COALESCE(trace_code,''),
-		COALESCE(from_role,''), to_role, COALESCE(assignee_user_id,0), COALESCE(payload_json,'{}'), status, created_at
-		FROM wf_task `+where+` ORDER BY id DESC LIMIT ? OFFSET ?`, args...)
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM wf_task t `+where, args...).Scan(&total)
+	listArgs := append(append([]interface{}{}, args...), pageSize, (pageNum-1)*pageSize)
+	rows, err := s.DB.Query(`SELECT t.id, t.event_key, t.biz_type, t.biz_id, COALESCE(t.doc_no,''), COALESCE(t.trace_code,''),
+		COALESCE(t.from_role,''), t.to_role, COALESCE(t.assignee_user_id,0), COALESCE(t.payload_json,'{}'), t.status, t.created_at,
+		COALESCE(NULLIF(e.name,''), u.login_name, '')
+		FROM wf_task t
+		LEFT JOIN iam_user u ON u.id=t.assignee_user_id
+		LEFT JOIN hr_employee e ON e.id=u.employee_id
+		`+where+` ORDER BY t.id DESC LIMIT ? OFFSET ?`, listArgs...)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
 		return true
@@ -143,8 +154,8 @@ func (s *Service) handleTaskList(c *gin.Context) bool {
 	list := []gin.H{}
 	for rows.Next() {
 		var id, bizID, assignee int64
-		var ek, bt, doc, trace, fr, tr, pj, st, created string
-		_ = rows.Scan(&id, &ek, &bt, &bizID, &doc, &trace, &fr, &tr, &assignee, &pj, &st, &created)
+		var ek, bt, doc, trace, fr, tr, pj, st, created, assigneeName string
+		_ = rows.Scan(&id, &ek, &bt, &bizID, &doc, &trace, &fr, &tr, &assignee, &pj, &st, &created, &assigneeName)
 		var payload interface{}
 		_ = json.Unmarshal([]byte(pj), &payload)
 		if strings.EqualFold(tr, "warehouse") {
@@ -154,7 +165,8 @@ func (s *Service) handleTaskList(c *gin.Context) bool {
 		}
 		list = append(list, gin.H{
 			"id": id, "event_key": ek, "biz_type": bt, "biz_id": bizID, "doc_no": doc, "trace_code": trace,
-			"from_role": fr, "to_role": tr, "assignee_user_id": assignee, "payload": payload, "status": st, "created_at": created,
+			"from_role": fr, "to_role": tr, "assignee_user_id": assignee, "assignee_name": assigneeName,
+			"payload": payload, "status": st, "created_at": created,
 		})
 	}
 	api.OK(c, gin.H{"list": list, "total": total, "page_num": pageNum, "page_size": pageSize})
@@ -199,6 +211,116 @@ func (s *Service) handleTaskClaim(c *gin.Context) bool {
 	}
 	api.OK(c, gin.H{"id": id, "assignee_user_id": cl.UserID})
 	return true
+}
+
+// handleTaskAssign 后台指定待办处理人（仓管等），并同步 weigh 协作单。
+func (s *Service) handleTaskAssign(c *gin.Context) bool {
+	cl := middleware.Claims(c)
+	if cl == nil {
+		api.FailJSON(c, "UNAUTHORIZED")
+		return true
+	}
+	id := paramID(c)
+	var body struct {
+		ToUserID int64  `json:"to_user_id"`
+		Comment  string `json:"comment"`
+	}
+	_ = c.ShouldBindJSON(&body)
+	if body.ToUserID <= 0 {
+		api.FailJSON(c, "TO_USER_REQUIRED")
+		return true
+	}
+
+	var status, toRole, bizType, docNo, trace string
+	var bizID, curAssignee int64
+	err := s.DB.QueryRow(`SELECT status, COALESCE(to_role,''), COALESCE(biz_type,''), COALESCE(biz_id,0),
+		COALESCE(doc_no,''), COALESCE(trace_code,''), COALESCE(assignee_user_id,0)
+		FROM wf_task WHERE id=?`, id).
+		Scan(&status, &toRole, &bizType, &bizID, &docNo, &trace, &curAssignee)
+	if err != nil {
+		api.FailJSON(c, "NOT_FOUND")
+		return true
+	}
+	if status != "pending" {
+		api.FailJSON(c, "TASK_NOT_PENDING")
+		return true
+	}
+
+	roleNeed := strings.ToLower(strings.TrimSpace(toRole))
+	if roleNeed == "" {
+		roleNeed = "warehouse"
+	}
+	if !userHasRoleCode(s.DB, body.ToUserID, roleNeed) {
+		// 仓管中文别名
+		ok := false
+		if roleNeed == "warehouse" {
+			for _, alt := range []string{"仓管", "仓管员"} {
+				if userHasRoleCode(s.DB, body.ToUserID, alt) {
+					ok = true
+					break
+				}
+			}
+		}
+		if !ok {
+			api.FailJSON(c, "ASSIGNEE_ROLE_MISMATCH")
+			return true
+		}
+	}
+
+	_, err = s.DB.Exec(`UPDATE wf_task SET assignee_user_id=? WHERE id=? AND status='pending'`, body.ToUserID, id)
+	if err != nil {
+		api.FailJSON(c, "DB_ERROR:"+err.Error())
+		return true
+	}
+
+	if strings.EqualFold(bizType, "weigh_ticket") && bizID > 0 {
+		var tid int64
+		_ = s.DB.QueryRow(`SELECT id FROM wf_ticket WHERE biz_type='weigh_ticket' AND biz_id=? AND status IN ('open','in_progress') ORDER BY id DESC LIMIT 1`, bizID).Scan(&tid)
+		if tid > 0 {
+			_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=datetime('now') WHERE id=?`, body.ToUserID, tid)
+			_, _ = s.DB.Exec(`INSERT INTO wf_ticket_log(ticket_id, action, from_user_id, to_user_id, comment) VALUES(?,?,?,?,?)`,
+				tid, "assign", nullIf0(cl.UserID), body.ToUserID, strings.TrimSpace(body.Comment))
+		}
+	}
+
+	assigneeName := ""
+	_ = s.DB.QueryRow(`SELECT COALESCE(NULLIF(e.name,''), u.login_name, '') FROM iam_user u
+		LEFT JOIN hr_employee e ON e.id=u.employee_id WHERE u.id=?`, body.ToUserID).Scan(&assigneeName)
+
+	title := "待办已指派给你"
+	bodyText := docNo
+	if trace != "" {
+		bodyText = docNo + " · " + trace
+	}
+	if bodyText == "" {
+		bodyText = "请打开 App 处理仓管待办"
+	}
+	pj, _ := json.Marshal(gin.H{
+		"event_key": "workflow.task.assigned", "task_id": id, "biz_type": bizType, "biz_id": bizID,
+		"doc_no": docNo, "trace_code": trace, "from_user_id": cl.UserID,
+	})
+	_, _ = s.DB.Exec(`INSERT INTO notify_inbox(user_id, title, body, event_key, task_id, payload_json) VALUES(?,?,?,?,?,?)`,
+		body.ToUserID, title, bodyText, "workflow.task.assigned", id, string(pj))
+	s.enqueueOutbox(erpmqtt.UserTopic(erpmqtt.Tenant(s.Cfg), body.ToUserID), gin.H{
+		"title": title, "body": bodyText, "event_key": "workflow.task.assigned", "task_id": id,
+	}, "task-assign-"+strconv.FormatInt(id, 10)+"-"+strconv.FormatInt(body.ToUserID, 10))
+
+	api.OK(c, gin.H{
+		"id": id, "assignee_user_id": body.ToUserID, "assignee_name": assigneeName,
+		"prev_assignee_user_id": curAssignee,
+	})
+	return true
+}
+
+func userHasRoleCode(db *sql.DB, userID int64, roleCode string) bool {
+	if db == nil || userID <= 0 || roleCode == "" {
+		return false
+	}
+	var n int
+	_ = db.QueryRow(`SELECT COUNT(1) FROM iam_user_role ur
+		JOIN iam_role r ON r.id=ur.role_id
+		WHERE ur.user_id=? AND (r.code=? OR r.name=?)`, userID, roleCode, roleCode).Scan(&n)
+	return n > 0
 }
 
 func paramID(c *gin.Context) int64 {

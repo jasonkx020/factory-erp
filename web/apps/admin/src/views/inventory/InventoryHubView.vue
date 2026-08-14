@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { inventoryApi, productApi } from '@erp/shared'
 import {
   WarehouseSelect,
@@ -12,6 +12,7 @@ import {
 } from '../../components/select'
 import WarehouseInboundView from '../warehouse/WarehouseInboundView.vue'
 import StockLedgerView from './StockLedgerView.vue'
+import BoxCodesView from './BoxCodesView.vue'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
@@ -113,14 +114,6 @@ const purchaseReturnCols: MobileCardColumn[] = [
   { prop: 'status', label: '状态' },
   { prop: 'reason', label: '原因' },
 ]
-const boxCols: MobileCardColumn[] = [
-  { prop: 'code', label: '箱码', primary: true },
-  { prop: 'product_id', label: '物料' },
-  { prop: 'warehouse_id', label: '仓' },
-  { prop: 'weight', label: '重量' },
-  { prop: 'status', label: '状态' },
-  { prop: 'trace_code', label: '溯源码' },
-]
 
 const route = useRoute()
 const router = useRouter()
@@ -152,6 +145,7 @@ const active = computed(() => String(route.params.section || 'balances'))
 const title = computed(() => TITLE_MAP[active.value] || '库存管理')
 const embedInbound = computed(() => active.value === 'inbound')
 const embedLedger = computed(() => active.value === 'ledger')
+const embedBoxes = computed(() => active.value === 'boxes')
 
 const loading = ref(false)
 const list = ref<Row[]>([])
@@ -160,8 +154,6 @@ const detail = ref<Row | null>(null)
 const products = ref<Row[]>([])
 const transferTab = ref<'transfer' | 'consume'>('transfer')
 const assembleTab = ref<'assemble' | 'price'>('assemble')
-const boxCode = ref('')
-const boxTrace = ref<Row | null>(null)
 
 const transferCols = computed<MobileCardColumn[]>(() =>
   transferTab.value === 'transfer'
@@ -248,7 +240,6 @@ const payableForm = reactive({
   amount: 100,
   consume_txn_id: 0 as number,
 })
-const boxForm = reactive({ code: '', product_id: 1, warehouse_id: 1, weight: 0, batch_no: '', trace_code: '' })
 
 async function loadMeta() {
   const p = await productApi.list()
@@ -267,12 +258,11 @@ async function loadMeta() {
     assembleForm.child_product_id = pid
     priceForm.product_id = pid
     payableForm.product_id = pid
-    boxForm.product_id = pid
   }
 }
 
 async function refresh() {
-  if (embedInbound.value || embedLedger.value) return
+  if (embedInbound.value || embedLedger.value || embedBoxes.value) return
   loading.value = true
   detail.value = null
   hits.value = []
@@ -339,9 +329,6 @@ async function refresh() {
         break
       case 'purchase-returns':
         res = await inventoryApi.purchaseReturns()
-        break
-      case 'boxes':
-        res = await inventoryApi.listBoxes()
         break
       default:
         res = await inventoryApi.balances()
@@ -560,46 +547,6 @@ async function submitPayable(id: number) {
   await refresh()
 }
 
-async function createBox() {
-  if (!boxForm.code) return ElMessage.warning('填写箱码')
-  if (!String(boxForm.trace_code || '').trim()) return ElMessage.warning('箱码须绑定溯源码')
-  const res = await inventoryApi.createBox({ ...boxForm })
-  if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success('箱码已建')
-  boxForm.code = ''
-  boxForm.trace_code = ''
-  await refresh()
-}
-
-async function destroyBox(row: Row) {
-  const id = Number(row.id)
-  if (!id) return
-  const st = String(row.status || '').toLowerCase()
-  if (st === 'destroyed' || st === 'finished') return ElMessage.warning('该箱不可销毁')
-  try {
-    const { value } = await ElMessageBox.prompt('填写销毁原因（损耗等用不了的箱须标注销毁）', '销毁箱码', {
-      confirmButtonText: '确认销毁',
-      cancelButtonText: '取消',
-      inputPattern: /\S+/,
-      inputErrorMessage: '原因必填',
-      type: 'warning',
-    })
-    const res = await inventoryApi.destroyBox(id, { reason: String(value || '').trim() })
-    if (res.code !== 1) return ElMessage.error(res.msg)
-    ElMessage.success('已销毁')
-    await refresh()
-  } catch {
-    /* cancel */
-  }
-}
-
-async function doBoxTrace() {
-  if (!boxCode.value) return
-  const res = await inventoryApi.boxTrace(boxCode.value)
-  if (res.code !== 1) return ElMessage.error(res.msg)
-  boxTrace.value = (res.data as Row) || null
-}
-
 onMounted(async () => {
   await loadMeta()
   await refresh()
@@ -611,11 +558,12 @@ watch([active, transferTab, assembleTab], refresh)
   <div class="page" v-loading="loading">
     <div class="head">
       <h2>{{ title }}</h2>
-      <el-button size="small" @click="refresh" v-if="!embedInbound && !embedLedger">刷新</el-button>
+      <el-button size="small" @click="refresh" v-if="!embedInbound && !embedLedger && !embedBoxes">刷新</el-button>
     </div>
 
     <WarehouseInboundView v-if="embedInbound" />
     <StockLedgerView v-else-if="embedLedger" />
+    <BoxCodesView v-else-if="embedBoxes" />
 
     <template v-else>
       <!-- 库存查询 -->
@@ -1155,62 +1103,6 @@ watch([active, transferTab, assembleTab], refresh)
           </el-table>
           <template #extra="{ row }">
             <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
-          </template>
-        </TableOrCards>
-      </template>
-
-      <!-- 箱码 -->
-      <template v-else-if="active === 'boxes'">
-        <el-card header="新建箱码" class="mb">
-          <el-form inline size="small">
-            <el-form-item label="箱码"><el-input v-model="boxForm.code" style="width:160px" /></el-form-item>
-            <el-form-item label="溯源码"><el-input v-model="boxForm.trace_code" style="width:160px" placeholder="必填" /></el-form-item>
-            <el-form-item label="物料">
-              <el-select v-model="boxForm.product_id" style="width:160px" filterable>
-                <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="仓库"><WarehouseSelect v-model="boxForm.warehouse_id" /></el-form-item>
-            <el-form-item label="重量"><el-input-number v-model="boxForm.weight" :min="0" /></el-form-item>
-            <el-button type="primary" @click="createBox">新建</el-button>
-          </el-form>
-        </el-card>
-        <el-card header="箱码追溯" class="mb">
-          <el-form inline size="small">
-            <el-form-item label="箱码"><el-input v-model="boxCode" style="width:180px" /></el-form-item>
-            <el-button type="primary" @click="doBoxTrace">追溯</el-button>
-          </el-form>
-          <pre v-if="boxTrace" class="trace">{{ boxTrace }}</pre>
-        </el-card>
-        <TableOrCards :data="list" :loading="loading" :columns="boxCols">
-          <el-table :data="list" size="small">
-            <el-table-column prop="code" label="箱码" width="160" />
-            <el-table-column prop="product_id" label="物料" width="90" />
-            <el-table-column prop="warehouse_id" label="仓" width="80" />
-            <el-table-column prop="weight" label="重量" width="90" />
-            <el-table-column prop="status" label="状态" width="90" />
-            <el-table-column prop="trace_code" label="溯源码" min-width="140" />
-            <el-table-column label="操作" width="90" fixed="right">
-              <template #default="{ row }">
-                <el-button
-                  v-if="!['destroyed','finished'].includes(String(row.status||'').toLowerCase())"
-                  link
-                  type="danger"
-                  @click="destroyBox(row)"
-                >销毁</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-          <template #extra="{ row }">
-            <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
-          </template>
-          <template #actions="{ row }">
-            <el-button
-              v-if="!['destroyed','finished'].includes(String(row.status||'').toLowerCase())"
-              link
-              type="danger"
-              @click="destroyBox(row)"
-            >销毁</el-button>
           </template>
         </TableOrCards>
       </template>

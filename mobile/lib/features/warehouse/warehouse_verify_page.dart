@@ -7,7 +7,7 @@ import '../../widgets/form_row.dart';
 import '../../widgets/form_section_header.dart';
 import '../../widgets/form_sticky_actions.dart';
 
-/// 仓管核对页：入厂接收；已入厂则扫溯源分箱入库。填表 → 预览 → 直接提交。
+/// 仓管核对页：入厂接收（信息页直接拒收/接收）；已入厂则扫溯源分箱入库（填表→预览→提交）。
 class WarehouseVerifyPage extends StatefulWidget {
   const WarehouseVerifyPage({super.key, required this.ticket});
 
@@ -68,7 +68,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
 
   String get _kindLabel => _isBoxMode ? '分箱入库' : '入厂接收';
 
-  String get _confirmLabel => _isBoxMode ? '确认分箱入库' : '确认入厂接收';
+  String get _confirmLabel => _isBoxMode ? '确认分箱入库' : '接收入厂';
 
   bool get _ready => _isBoxMode || _ticket['stockin_ready'] == true;
 
@@ -288,7 +288,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('退回采购'),
+          title: const Text('拒绝接受'),
           content: SizedBox(
             width: 360,
             child: Column(
@@ -318,7 +318,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确认退回')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确认拒绝')),
           ],
         ),
       ),
@@ -327,7 +327,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
     reasonCtrl.dispose();
     if (ok != true || !mounted) return;
     if (reason.isEmpty) {
-      _prompt('请填写退回原因');
+      _prompt('请填写拒绝原因');
       return;
     }
     final body = <String, dynamic>{'reason': reason};
@@ -342,7 +342,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
     );
     if (!mounted) return;
     setState(() => _busy = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res.ok ? '已退回采购' : res.msg)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res.ok ? '已拒绝并退回采购' : res.msg)));
     if (res.ok) Navigator.of(context).pop(true);
   }
 
@@ -359,6 +359,43 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
     );
   }
 
+  Future<void> _showPhotoPreview(String url) async {
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(
+          children: [
+            Center(
+              child: InteractiveViewer(
+                minScale: 0.8,
+                maxScale: 4,
+                child: Image.network(
+                  url,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('图片加载失败', style: TextStyle(color: Colors.white)),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 0,
+              right: 0,
+              child: IconButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                icon: const Icon(Icons.close, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final imgs = _photoUrls();
@@ -367,7 +404,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
     final sum = _boxSum;
     final loss = _inboundLoss;
     final overPct = net > 0 && sum > net ? ((sum - net) / net * 100) : 0.0;
-    final title = _step == 1 ? '$_kindLabel · 预览' : _kindLabel;
+    final title = _isBoxMode && _step == 1 ? '$_kindLabel · 预览' : _kindLabel;
 
     return Scaffold(
       appBar: AppBar(
@@ -375,7 +412,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
-            if (_step == 1) {
+            if (_isBoxMode && _step == 1) {
               setState(() {
                 _step = 0;
                 _msg = '';
@@ -390,8 +427,31 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
       body: Column(
         children: [
           Expanded(
-            child: _step == 0
+            child: _isBoxMode && _step == 1
                 ? ListView(
+                    padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + bottomInset),
+                    children: [
+                      const Text('核对预览', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                      const Text('请核对以下信息，有误请返回修改', style: TextStyle(fontSize: 12, color: Colors.black54)),
+                      const SizedBox(height: 8),
+                      _kv('类型', _kindLabel),
+                      _kv('单号', '${_ticket['doc_no'] ?? '-'}'),
+                      _kv('溯源码', '${_ticket['trace_code'] ?? '-'}'),
+                      _kv('票净重', '${_ticket['net_weight'] ?? '-'} kg'),
+                      _kv('入库产品', _productLabel),
+                      _kv('箱数', '${_boxCtrls.length}'),
+                      _kv('分箱合计', '${sum.toStringAsFixed(2)} kg'),
+                      _kv('仓前损耗', loss > 0 ? '${loss.toStringAsFixed(2)} kg（${_lossRate.toStringAsFixed(1)}%）' : '0 kg'),
+                      for (var i = 0; i < _boxCtrls.length; i++)
+                        _kv('箱 ${i + 1}', '${_boxCtrls[i].text.trim()} kg'),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '确认后直接分箱入库并记仓前损耗。',
+                        style: TextStyle(fontSize: 12, color: Colors.black54),
+                      ),
+                    ],
+                  )
+                : ListView(
                     keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                     padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + bottomInset),
                     children: [
@@ -402,10 +462,26 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                       ),
                       const FormSectionHeader('单据信息'),
                       _kv('单号', '${_ticket['doc_no'] ?? '-'}'),
+                      if ((_ticket['party_name'] ?? _ticket['farmer_name'] ?? '').toString().isNotEmpty)
+                        _kv('农户', '${_ticket['party_name'] ?? _ticket['farmer_name']}'),
+                      if ((_ticket['product_name'] ?? _ticket['variety'] ?? '').toString().isNotEmpty)
+                        _kv('品种', '${_ticket['product_name'] ?? _ticket['variety']}'),
                       _kv('溯源码', '${_ticket['trace_code'] ?? '-'}'),
                       _kv('批号', '${_ticket['batch_no'] ?? '-'}'),
+                      if (_ticket['gross_weight'] != null)
+                        _kv('毛重', '${_ticket['gross_weight']} kg'),
+                      _kv(
+                        '扣损',
+                        _ticket['deduct_weight'] == null || '${_ticket['deduct_weight']}' == ''
+                            ? '-'
+                            : '${_ticket['deduct_weight']} kg'
+                                '${_ticket['deduct_rate'] != null && '${_ticket['deduct_rate']}' != '' ? '（${_ticket['deduct_rate']}%）' : ''}',
+                      ),
                       _kv('票净重', '${_ticket['net_weight'] ?? '-'} kg'),
-                      _kv('扣损', '${_ticket['deduct_weight'] ?? '-'}'),
+                      if ((_ticket['plate_no'] ?? '').toString().isNotEmpty)
+                        _kv('车牌', '${_ticket['plate_no']}'),
+                      if ((_ticket['biz_date'] ?? '').toString().isNotEmpty)
+                        _kv('业务日', '${_ticket['biz_date']}'),
                       if (!_ready)
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
@@ -496,7 +572,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                         const Padding(
                           padding: EdgeInsets.only(top: 8),
                           child: Text(
-                            '核对后确认接收进场；本环节不分箱。入厂后再扫溯源分箱。',
+                            '请核对以上信息。无误请接收入厂；有误请拒绝接受并退回采购。本环节不分箱。',
                             style: TextStyle(fontSize: 13, color: Colors.black54),
                           ),
                         ),
@@ -508,49 +584,34 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                             scrollDirection: Axis.horizontal,
                             itemCount: imgs.length,
                             separatorBuilder: (_, __) => const SizedBox(width: 8),
-                            itemBuilder: (_, i) => ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.network(
-                                imgs[i],
-                                width: 96,
-                                height: 96,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
-                                  width: 96,
-                                  height: 96,
-                                  color: Colors.black12,
-                                  child: const Icon(Icons.broken_image),
+                            itemBuilder: (_, i) {
+                              final url = imgs[i];
+                              return Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () => _showPhotoPreview(url),
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.network(
+                                      url,
+                                      width: 96,
+                                      height: 96,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Container(
+                                        width: 96,
+                                        height: 96,
+                                        color: Colors.black12,
+                                        child: const Icon(Icons.broken_image),
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
+                              );
+                            },
                           ),
                         ),
                       ],
-                    ],
-                  )
-                : ListView(
-                    padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + bottomInset),
-                    children: [
-                      const Text('核对预览', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                      const Text('请核对以下信息，有误请返回修改', style: TextStyle(fontSize: 12, color: Colors.black54)),
-                      const SizedBox(height: 8),
-                      _kv('类型', _kindLabel),
-                      _kv('单号', '${_ticket['doc_no'] ?? '-'}'),
-                      _kv('溯源码', '${_ticket['trace_code'] ?? '-'}'),
-                      _kv('票净重', '${_ticket['net_weight'] ?? '-'} kg'),
-                      if (_isBoxMode) ...[
-                        _kv('入库产品', _productLabel),
-                        _kv('箱数', '${_boxCtrls.length}'),
-                        _kv('分箱合计', '${sum.toStringAsFixed(2)} kg'),
-                        _kv('仓前损耗', loss > 0 ? '${loss.toStringAsFixed(2)} kg（${_lossRate.toStringAsFixed(1)}%）' : '0'),
-                        for (var i = 0; i < _boxCtrls.length; i++)
-                          _kv('箱 ${i + 1}', '${_boxCtrls[i].text.trim()} kg'),
-                      ],
-                      const SizedBox(height: 8),
-                      Text(
-                        _isBoxMode ? '确认后直接分箱入库并记仓前损耗。' : '确认后直接入厂接收，不分箱。',
-                        style: const TextStyle(fontSize: 12, color: Colors.black54),
-                      ),
                     ],
                   ),
           ),
@@ -566,23 +627,19 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                 ),
               ),
             ),
-          if (_step == 0)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                FormStickyActions(
-                  primaryLabel: '下一步',
-                  onPrimary: _busy ? null : _goPreview,
-                ),
-                if (!_isBoxMode)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                    child: OutlinedButton(
-                      onPressed: _busy ? null : _returnToPurchase,
-                      child: const Text('退回采购'),
-                    ),
-                  ),
-              ],
+          if (!_isBoxMode)
+            FormStickyActions(
+              secondaryLabel: '拒绝接受',
+              onSecondary: _busy ? null : _returnToPurchase,
+              primaryLabel: '接收入厂',
+              onPrimary: _busy || !_ready ? null : _confirm,
+              primaryBusy: _busy,
+              busyLabel: '处理中…',
+            )
+          else if (_step == 0)
+            FormStickyActions(
+              primaryLabel: '下一步',
+              onPrimary: _busy ? null : _goPreview,
             )
           else
             FormStickyActions(

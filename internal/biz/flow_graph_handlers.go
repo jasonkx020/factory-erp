@@ -732,6 +732,11 @@ func (s *Services) handlePurchaseRoleUsers(c *gin.Context) bool {
 			list = append(list, s.listUsersByRoleCode(alt)...)
 		}
 	}
+	if role == "warehouse" && len(list) == 0 {
+		for _, alt := range []string{"仓管", "仓管员"} {
+			list = append(list, s.listUsersByRoleCode(alt)...)
+		}
+	}
 	api.OK(c, gin.H{"list": list, "role": role})
 	return true
 }

@@ -1,40 +1,151 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { notifyApi, purchaseApi, parsePayload } from '@erp/shared'
+import { getApiBase, notifyApi, purchaseApi, parsePayload } from '@erp/shared'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
 type Row = Record<string, unknown>
 
 const loading = ref(false)
+const detailLoading = ref(false)
+const assignBusy = ref(false)
 const tasks = ref<Row[]>([])
+const warehouseUsers = ref<Row[]>([])
+
+const detailVisible = ref(false)
+const detail = ref<Row | null>(null)
+const detailPhotos = ref<string[]>([])
+const activeTask = ref<Row | null>(null)
+
+const assignVisible = ref(false)
+const assignForm = reactive({ to_user_id: null as number | null, comment: '' })
 
 function payloadOf(row: Row) {
   return parsePayload(row.payload ?? row.payload_json)
 }
 
+function mediaUrl(raw: unknown): string {
+  const u = String(raw || '').trim()
+  if (!u) return ''
+  if (/^https?:\/\//i.test(u)) return u
+  if (u.startsWith('/files') || u.startsWith('/uploads')) return u
+  const base = getApiBase().replace(/\/api\/v1\/?$/, '')
+  return `${base}${u.startsWith('/') ? u : `/${u}`}`
+}
+
+/** 待入厂 | 待入库 */
+function phaseOf(row: Row): 'gate' | 'stockin' {
+  const p = payloadOf(row)
+  const status = String(p.status || row.status || '').toLowerCase()
+  const kind = String(p.receive_kind || row.receive_kind || 'gate').toLowerCase()
+  if (status === 'gate_accepted' || p.box_stockin_ready === true || kind === 'stockin') {
+    return 'stockin'
+  }
+  return 'gate'
+}
+
+function phaseLabel(row: Row) {
+  return phaseOf(row) === 'stockin' ? '待入库' : '待入厂'
+}
+
+function rowClassName({ row }: { row: Row }) {
+  return phaseOf(row) === 'stockin' ? 'row-stockin' : 'row-gate'
+}
+
+function assigneeLabel(row: Row) {
+  const name = String(row.assignee_name || '').trim()
+  const id = Number(row.assignee_user_id || 0)
+  if (name) return name
+  if (id > 0) {
+    const u = warehouseUsers.value.find((x) => Number(x.user_id ?? x.id) === id)
+    if (u) return String(u.name || u.login_name || id)
+    return `#${id}`
+  }
+  return '未指定'
+}
+
 const taskCols: MobileCardColumn[] = [
   { prop: 'doc_no', label: '过磅单号', primary: true },
+  { prop: 'phase', label: '阶段' },
   { prop: 'trace_code', label: '溯源码' },
-  { prop: 'plate_no', label: '车牌' },
+  { prop: 'assignee', label: '处理人' },
   { prop: 'weights', label: '入场/净重' },
-  { prop: 'fees', label: '费用' },
   { prop: 'created_at', label: '推送时间' },
 ]
 
-/** 卡片展示用：展开 payload 字段，不改业务数据源 */
 const tasksForCards = computed(() =>
   tasks.value.map((row) => {
     const p = payloadOf(row)
     return {
       ...row,
+      phase: phaseLabel(row),
       plate_no: p.plate_no || '-',
       weights: `${p.gross_weight ?? '-'} / ${p.net_weight ?? '-'}`,
-      fees: `运${p.freight_fee ?? 0}/装${p.loading_fee ?? 0}/磅${p.weigh_fee ?? 0}`,
+      assignee: assigneeLabel(row),
+      _phase: phaseOf(row),
     }
   }),
 )
+
+function collectPhotos(m: Row): string[] {
+  const out: string[] = []
+  const add = (v: unknown) => {
+    if (Array.isArray(v)) {
+      v.forEach(add)
+      return
+    }
+    if (v && typeof v === 'object') {
+      add((v as Row).file_url ?? (v as Row).url)
+      return
+    }
+    const url = mediaUrl(v)
+    if (url && !out.includes(url)) out.push(url)
+  }
+  add(m.image_url)
+  add(m.image_urls)
+  add(m.verify_images)
+  add(m.site_photos)
+  add(m.evidences)
+  return out
+}
+
+function kv(label: string, value: unknown) {
+  if (value == null || value === '') return null
+  return { label, value: String(value) }
+}
+
+const detailKvs = computed(() => {
+  const m = detail.value
+  if (!m) return [] as { label: string; value: string }[]
+  const deduct = m.deduct_weight != null && `${m.deduct_weight}` !== ''
+    ? `${m.deduct_weight} kg${m.deduct_rate != null && `${m.deduct_rate}` !== '' ? `（${m.deduct_rate}%）` : ''}`
+    : null
+  return [
+    kv('单号', m.doc_no),
+    kv('状态', m.status),
+    kv('模式', String(m.receive_kind || '').toLowerCase() === 'stockin' ? '入库' : '入厂'),
+    kv('溯源码', m.trace_code),
+    kv('批号', m.batch_no),
+    kv('农户', m.party_name || m.farmer_name),
+    kv('品种', m.product_name || m.variety),
+    kv('车牌', m.plate_no),
+    kv('业务日', m.biz_date),
+    kv('毛重', m.gross_weight != null ? `${m.gross_weight} kg` : null),
+    kv('扣损', deduct),
+    kv('净重', m.net_weight != null ? `${m.net_weight} kg` : null),
+    kv('运费', m.freight_fee),
+    kv('装车费', m.loading_fee),
+    kv('过磅费', m.weigh_fee),
+  ].filter(Boolean) as { label: string; value: string }[]
+})
+
+async function loadWarehouseUsers() {
+  const res = await purchaseApi.purchaseRoleUsers('warehouse')
+  if (res.code !== 1) return
+  const list = (res.data as { list?: Row[] })?.list || []
+  warehouseUsers.value = list
+}
 
 async function refresh() {
   loading.value = true
@@ -42,45 +153,103 @@ async function refresh() {
     const res = await notifyApi.tasks('status=pending&page_num=1&page_size=50')
     if (res.code !== 1) return ElMessage.error(res.msg)
     const list = ((res.data as { list?: Row[] })?.list) || []
-    tasks.value = list.filter((t) => t.event_key === 'purchase.weigh_confirmed' || t.to_role === 'warehouse')
+    tasks.value = list.filter(
+      (t) => t.event_key === 'purchase.weigh_confirmed' || t.to_role === 'warehouse',
+    )
   } finally {
     loading.value = false
   }
 }
 
-async function claim(id: number) {
-  const res = await notifyApi.claimTask(id)
-  if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success('已认领')
-  await refresh()
-}
-
-async function confirmInbound(row: Row) {
-  const bizId = Number(row.biz_id)
+function bizIdOf(row: Row) {
   const p = payloadOf(row)
-  const kind = String(p.receive_kind || row.receive_kind || '').toLowerCase()
-  if (kind === 'stockin') {
-    return ElMessage.warning('入库须在 App 仓管核对页分箱复磅后确认（本页仅支持入厂接收）')
-  }
-  const res = await purchaseApi.warehouseConfirmWeigh(bizId, { verified: true, match_confirmed: true })
-  if (res.code !== 1) return ElMessage.error(res.msg)
-  const data = (res.data as Row) || {}
-  ElMessage.success(`入厂接收完成 溯源=${data.trace_code || '-'}`)
-  await refresh()
+  return Number(p.weigh_ticket_id || row.biz_id || p.biz_id || 0)
 }
 
-onMounted(refresh)
+async function openDetail(row: Row) {
+  const bizId = bizIdOf(row)
+  if (!bizId) return ElMessage.warning('未定位到过磅单')
+  activeTask.value = row
+  detailVisible.value = true
+  detailLoading.value = true
+  detail.value = null
+  detailPhotos.value = []
+  try {
+    const res = await purchaseApi.getWeighTicket(bizId)
+    if (res.code !== 1) {
+      ElMessage.error(res.msg)
+      return
+    }
+    const m = (res.data as Row) || {}
+    detail.value = m
+    detailPhotos.value = collectPhotos(m)
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+function openAssign(row: Row) {
+  activeTask.value = row
+  assignForm.to_user_id = Number(row.assignee_user_id || 0) || null
+  assignForm.comment = ''
+  assignVisible.value = true
+}
+
+async function submitAssign() {
+  const row = activeTask.value
+  if (!row) return
+  const tid = Number(row.id)
+  if (!tid) return
+  if (!assignForm.to_user_id) return ElMessage.warning('请选择仓管')
+  assignBusy.value = true
+  try {
+    const res = await notifyApi.assignTask(tid, {
+      to_user_id: assignForm.to_user_id,
+      comment: assignForm.comment || undefined,
+    })
+    if (res.code !== 1) return ElMessage.error(res.msg)
+    ElMessage.success('已指定仓管')
+    assignVisible.value = false
+    await refresh()
+  } finally {
+    assignBusy.value = false
+  }
+}
+
+onMounted(async () => {
+  await loadWarehouseUsers()
+  await refresh()
+})
 </script>
 
 <template>
   <div class="page" v-loading="loading">
     <h2>仓管待办</h2>
-    <p class="hint">采购出码后推送至此：先核对入厂接收；入厂后扫同一溯源码分箱入库（App）。</p>
-    <el-button type="primary" @click="refresh">刷新待办</el-button>
+    <p class="hint">
+      本页仅查看单据与指定仓管；入厂接收、分箱入库请在 App 由指定仓管处理。
+    </p>
+    <div class="toolbar">
+      <el-button type="primary" @click="refresh">刷新待办</el-button>
+      <div class="legend">
+        <span class="lg gate">待入厂</span>
+        <span class="lg stockin">待入库</span>
+      </div>
+    </div>
+
     <TableOrCards :data="tasksForCards" :loading="loading" :columns="taskCols" style="margin-top:12px">
-      <el-table :data="tasks" size="small" style="margin-top:12px">
+      <el-table :data="tasks" size="small" style="margin-top:12px" :row-class-name="rowClassName">
         <el-table-column prop="doc_no" label="过磅单号" width="160" />
-        <el-table-column prop="trace_code" label="溯源码" min-width="180" />
+        <el-table-column label="阶段" width="90">
+          <template #default="{ row }">
+            <el-tag :type="phaseOf(row) === 'stockin' ? 'success' : 'primary'" size="small">
+              {{ phaseLabel(row) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="trace_code" label="溯源码" min-width="160" show-overflow-tooltip />
+        <el-table-column label="处理人" width="110">
+          <template #default="{ row }">{{ assigneeLabel(row) }}</template>
+        </el-table-column>
         <el-table-column label="车牌" width="100">
           <template #default="{ row }">{{ payloadOf(row).plate_no || '-' }}</template>
         </el-table-column>
@@ -89,30 +258,120 @@ onMounted(refresh)
             {{ payloadOf(row).gross_weight ?? '-' }} / {{ payloadOf(row).net_weight ?? '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="费用" min-width="160">
-          <template #default="{ row }">
-            运{{ payloadOf(row).freight_fee ?? 0 }}
-            /装{{ payloadOf(row).loading_fee ?? 0 }}
-            /磅{{ payloadOf(row).weigh_fee ?? 0 }}
-          </template>
-        </el-table-column>
         <el-table-column prop="created_at" label="推送时间" width="160" />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="claim(Number(row.id))">认领</el-button>
-            <el-button link type="success" @click="confirmInbound(row)">确认接收/入库</el-button>
+            <el-button link type="primary" @click="openDetail(row)">查看详情</el-button>
+            <el-button link type="warning" @click="openAssign(row)">指定仓管</el-button>
           </template>
         </el-table-column>
       </el-table>
+      <template #extra="{ row }">
+        <el-tag :type="row._phase === 'stockin' ? 'success' : 'primary'" size="small">{{ row.phase }}</el-tag>
+        <span class="muted">{{ row.assignee }}</span>
+      </template>
       <template #actions="{ row }">
-        <el-button link type="primary" @click="claim(Number(row.id))">认领</el-button>
-        <el-button link type="success" @click="confirmInbound(row)">确认接收/入库</el-button>
+        <el-button link type="primary" @click="openDetail(row)">查看详情</el-button>
+        <el-button link type="warning" @click="openAssign(row)">指定仓管</el-button>
       </template>
     </TableOrCards>
+
+    <el-drawer v-model="detailVisible" title="过磅单详情" size="480px" destroy-on-close>
+      <div v-loading="detailLoading">
+        <template v-if="detail">
+          <div v-if="activeTask" class="phase-bar" :class="phaseOf(activeTask)">
+            {{ phaseLabel(activeTask) }}
+            <span class="muted">· 处理人 {{ assigneeLabel(activeTask) }}</span>
+          </div>
+          <div v-for="item in detailKvs" :key="item.label" class="kv">
+            <span class="k">{{ item.label }}</span>
+            <span class="v">{{ item.value }}</span>
+          </div>
+          <h4 class="sec">现场照片</h4>
+          <div v-if="detailPhotos.length" class="photos">
+            <el-image
+              v-for="(url, i) in detailPhotos"
+              :key="url + i"
+              :src="url"
+              :preview-src-list="detailPhotos"
+              :initial-index="i"
+              preview-teleported
+              fit="cover"
+              class="photo"
+            />
+          </div>
+          <p v-else class="muted">暂无现场照片</p>
+          <div class="drawer-actions">
+            <el-button type="warning" @click="activeTask && openAssign(activeTask)">指定仓管</el-button>
+          </div>
+        </template>
+      </div>
+    </el-drawer>
+
+    <el-dialog v-model="assignVisible" title="指定仓管" width="420px" align-center>
+      <el-form label-width="88px" size="small">
+        <el-form-item label="仓管">
+          <el-select v-model="assignForm.to_user_id" filterable placeholder="选择仓管" style="width:100%">
+            <el-option
+              v-for="u in warehouseUsers"
+              :key="String(u.user_id ?? u.id)"
+              :label="String(u.name || u.login_name || u.user_id)"
+              :value="Number(u.user_id ?? u.id)"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="assignForm.comment" type="textarea" :rows="2" placeholder="可选" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="assignVisible = false">取消</el-button>
+        <el-button type="primary" :loading="assignBusy" @click="submitAssign">确认指定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped>
 .page { padding: 16px 20px; }
 .hint { color: #667; font-size: 13px; margin: 0 0 12px; }
+.toolbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.legend { display: flex; gap: 8px; }
+.lg {
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 4px;
+}
+.lg.gate { background: #eef2ff; color: #3730a3; }
+.lg.stockin { background: #e6f7f2; color: #0f766e; }
+.muted { color: #889; font-size: 12px; }
+.kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f0f2f5;
+  font-size: 13px;
+}
+.k { color: #667; flex: 0 0 88px; }
+.v { text-align: right; word-break: break-all; font-weight: 500; }
+.sec { margin: 16px 0 8px; font-size: 14px; }
+.photos { display: flex; flex-wrap: wrap; gap: 8px; }
+.photo { width: 96px; height: 96px; border-radius: 8px; cursor: pointer; }
+.drawer-actions { margin-top: 20px; }
+.phase-bar {
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.phase-bar.gate { background: #eef2ff; color: #3730a3; }
+.phase-bar.stockin { background: #e6f7f2; color: #0f766e; }
+</style>
+
+<style>
+/* 行背景：待入厂 / 待入库 */
+.el-table .row-gate > td.el-table__cell { background: #eef2ff !important; }
+.el-table .row-stockin > td.el-table__cell { background: #e6f7f2 !important; }
 </style>

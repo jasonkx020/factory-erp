@@ -9,6 +9,19 @@ import (
 	"erp/internal/middleware"
 )
 
+func (s *Services) requireMobileClient(c *gin.Context) bool {
+	cl := middleware.Claims(c)
+	if cl == nil {
+		api.FailJSON(c, "UNAUTHORIZED")
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(cl.ClientType), "mobile") {
+		api.FailJSON(c, "APP_ONLY")
+		return false
+	}
+	return true
+}
+
 func (s *Services) requireAnyRole(c *gin.Context, roles ...string) bool {
 	cl := middleware.Claims(c)
 	if cl == nil {
