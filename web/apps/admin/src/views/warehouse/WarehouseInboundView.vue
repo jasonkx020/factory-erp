@@ -16,6 +16,7 @@ const warehouseUsers = ref<Row[]>([])
 const detailVisible = ref(false)
 const detail = ref<Row | null>(null)
 const detailPhotos = ref<string[]>([])
+const detailBoxes = ref<Row[]>([])
 const activeTask = ref<Row | null>(null)
 
 const assignVisible = ref(false)
@@ -96,7 +97,10 @@ function collectPhotos(m: Row): string[] {
       return
     }
     if (v && typeof v === 'object') {
-      add((v as Row).file_url ?? (v as Row).url)
+      const row = v as Row
+      // 分箱复磅图单独展示，现场照片区跳过 box_reweigh
+      if (String(row.evidence_type || '') === 'box_reweigh') return
+      add(row.file_url ?? row.url)
       return
     }
     const url = mediaUrl(v)
@@ -107,6 +111,21 @@ function collectPhotos(m: Row): string[] {
   add(m.verify_images)
   add(m.site_photos)
   add(m.evidences)
+  return out
+}
+
+function boxPhotos(box: Row): string[] {
+  const out: string[] = []
+  const add = (v: unknown) => {
+    if (Array.isArray(v)) {
+      v.forEach(add)
+      return
+    }
+    const url = mediaUrl(v)
+    if (url && !out.includes(url)) out.push(url)
+  }
+  add(box.image_url)
+  add(box.image_urls)
   return out
 }
 
@@ -134,6 +153,7 @@ const detailKvs = computed(() => {
     kv('毛重', m.gross_weight != null ? `${m.gross_weight} kg` : null),
     kv('扣损', deduct),
     kv('净重', m.net_weight != null ? `${m.net_weight} kg` : null),
+    kv('已分箱', m.boxed_qty != null ? `${m.boxed_qty} 箱 / ${m.boxed_weight ?? '-'} kg` : null),
     kv('运费', m.freight_fee),
     kv('装车费', m.loading_fee),
     kv('过磅费', m.weigh_fee),
@@ -174,6 +194,7 @@ async function openDetail(row: Row) {
   detailLoading.value = true
   detail.value = null
   detailPhotos.value = []
+  detailBoxes.value = []
   try {
     const res = await purchaseApi.getWeighTicket(bizId)
     if (res.code !== 1) {
@@ -183,6 +204,8 @@ async function openDetail(row: Row) {
     const m = (res.data as Row) || {}
     detail.value = m
     detailPhotos.value = collectPhotos(m)
+    const boxes = m.boxes
+    detailBoxes.value = Array.isArray(boxes) ? (boxes as Row[]) : []
   } finally {
     detailLoading.value = false
   }
@@ -301,6 +324,31 @@ onMounted(async () => {
             />
           </div>
           <p v-else class="muted">暂无现场照片</p>
+
+          <h4 class="sec">已分箱复磅</h4>
+          <div v-if="detailBoxes.length" class="box-list">
+            <div v-for="box in detailBoxes" :key="String(box.id || box.code)" class="box-item">
+              <div class="box-meta">
+                <strong>{{ box.code || '-' }}</strong>
+                <span>{{ box.weight ?? '-' }} kg</span>
+              </div>
+              <div v-if="boxPhotos(box).length" class="photos">
+                <el-image
+                  v-for="(url, i) in boxPhotos(box)"
+                  :key="url + i"
+                  :src="url"
+                  :preview-src-list="boxPhotos(box)"
+                  :initial-index="i"
+                  preview-teleported
+                  fit="cover"
+                  class="photo sm"
+                />
+              </div>
+              <p v-else class="muted">无复磅图</p>
+            </div>
+          </div>
+          <p v-else class="muted">暂无已分箱记录</p>
+
           <div class="drawer-actions">
             <el-button type="warning" @click="activeTask && openAssign(activeTask)">指定仓管</el-button>
           </div>
@@ -358,6 +406,21 @@ onMounted(async () => {
 .sec { margin: 16px 0 8px; font-size: 14px; }
 .photos { display: flex; flex-wrap: wrap; gap: 8px; }
 .photo { width: 96px; height: 96px; border-radius: 8px; cursor: pointer; }
+.photo.sm { width: 72px; height: 72px; }
+.box-list { display: flex; flex-direction: column; gap: 10px; }
+.box-item {
+  border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+.box-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
 .drawer-actions { margin-top: 20px; }
 .phase-bar {
   padding: 8px 12px;

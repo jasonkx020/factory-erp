@@ -184,6 +184,7 @@ func EnsureAutomationSchema(db *sql.DB) {
 		`ALTER TABLE inv_box_code ADD COLUMN destroyed_at TEXT`,
 		`ALTER TABLE inv_box_code ADD COLUMN destroyed_by INTEGER`,
 		`ALTER TABLE inv_box_code ADD COLUMN destroy_reason TEXT`,
+		`ALTER TABLE inv_box_code ADD COLUMN image_url TEXT`,
 		`UPDATE inv_warehouse SET name='保鲜库' WHERE code='WH-RAW' AND name='原料仓'`,
 		`UPDATE inv_warehouse SET name='半成品库' WHERE code='WH-SEMI' AND name='半成品仓'`,
 		`UPDATE inv_warehouse SET name='成品冷库' WHERE code='WH-FG' AND name='成品仓'`,

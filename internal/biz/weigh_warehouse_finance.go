@@ -62,6 +62,8 @@ func maskWeighPayloadForWarehouse(src map[string]interface{}) map[string]interfa
 		"process_logs": true, "applicant_name": true, "currency": true, "currency_label": true,
 		"settlement_doc_no": true, "settlement_amount": true, "wf_ticket_id": true, "wf_ticket_status": true,
 		"next_handler_name": true, "next_handler_hint": true,
+		"boxed_qty": true, "boxed_weight": true, "remaining_weight": true, "boxes": true,
+		"box_stockin_ready": true,
 	}
 	out := map[string]interface{}{}
 	for k, v := range src {
@@ -267,6 +269,7 @@ func (s *Services) resolveWeighByTraceCode(c *gin.Context) bool {
 	if st == "gate_accepted" {
 		out["box_stockin_ready"] = true
 		out["reason"] = "AWAIT_BOX_STOCKIN"
+		s.attachWeighBoxProgress(out, id)
 		api.OK(c, out)
 		return true
 	}

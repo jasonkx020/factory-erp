@@ -680,6 +680,8 @@ export const purchaseApi = {
     api.post(`/purchase/weigh-tickets/${id}/warehouse-confirm`, body || {}),
   boxStockInWeigh: (id: number, body: Record<string, unknown>) =>
     api.post(`/purchase/weigh-tickets/${id}/box-stock-in`, body),
+  completeBoxStockInWeigh: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/purchase/weigh-tickets/${id}/box-stock-in/complete`, body || {}),
   warehouseReturnWeigh: (id: number, body: Record<string, unknown>) =>
     api.post(`/purchase/weigh-tickets/${id}/warehouse-return`, body),
   purchaseRoleUsers: (role = 'purchase') =>

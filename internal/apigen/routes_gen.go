@@ -600,6 +600,7 @@ func RegisterGenerated(r *gin.RouterGroup, h Handler) {
 	r.GET("/purchase/weigh-tickets/:id/label", h.Dispatch("GET", "/api/v1/purchase/weigh-tickets/{id}/label", "/purchase/weigh-tickets/:id/label", "purchase/weigh-tickets", "list"))
 	r.POST("/purchase/weigh-tickets/:id/warehouse-confirm", h.Dispatch("POST", "/api/v1/purchase/weigh-tickets/{id}/warehouse-confirm", "/purchase/weigh-tickets/:id/warehouse-confirm", "purchase/weigh-tickets", "action:warehouse-confirm"))
 	r.POST("/purchase/weigh-tickets/:id/box-stock-in", h.Dispatch("POST", "/api/v1/purchase/weigh-tickets/{id}/box-stock-in", "/purchase/weigh-tickets/:id/box-stock-in", "purchase/weigh-tickets", "action:box-stock-in"))
+	r.POST("/purchase/weigh-tickets/:id/box-stock-in/complete", h.Dispatch("POST", "/api/v1/purchase/weigh-tickets/{id}/box-stock-in/complete", "/purchase/weigh-tickets/:id/box-stock-in/complete", "purchase/weigh-tickets", "action:box-stock-in"))
 	r.POST("/purchase/weigh-tickets/:id/warehouse-return", h.Dispatch("POST", "/api/v1/purchase/weigh-tickets/{id}/warehouse-return", "/purchase/weigh-tickets/:id/warehouse-return", "purchase/weigh-tickets", "action:warehouse-return"))
 	r.GET("/purchase/role-users", h.Dispatch("GET", "/api/v1/purchase/role-users", "/purchase/role-users", "purchase/role-users", "list"))
 	r.GET("/purchase/farmer-settlements/summary", h.Dispatch("GET", "/api/v1/purchase/farmer-settlements/summary", "/purchase/farmer-settlements/summary", "purchase/farmer-settlements/summary", "list"))

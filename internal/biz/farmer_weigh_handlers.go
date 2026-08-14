@@ -218,13 +218,17 @@ func (s *Services) handleWeighTickets(c *gin.Context, method, action string) boo
 		m["evidences"] = s.listEvidence("weigh_ticket", id)
 		s.attachWeighProcessTrail(m, id)
 		s.attachWeighVerifyMedia(m, id, strOr(m["image_url"]))
+		s.attachWeighBoxProgress(m, id)
 		if claimsIsWarehouseOnly(middleware.Claims(c)) {
 			m = maskWeighTicketForWarehouse(m)
+			s.attachWeighBoxProgress(m, id) // mask 可能丢掉 boxes，再挂一次允许字段
 		}
 		api.OK(c, m)
 		return true
 	case strings.Contains(path, "/warehouse-confirm") || strings.HasSuffix(action, "warehouse-confirm"):
 		return s.stockInWeighTicket(c)
+	case strings.Contains(path, "/box-stock-in/complete") || strings.HasSuffix(action, "box-stock-in-complete"):
+		return s.completeBoxStockInWeighTicket(c)
 	case strings.Contains(path, "/box-stock-in") || strings.HasSuffix(action, "box-stock-in"):
 		return s.boxStockInWeighTicket(c)
 	case strings.Contains(path, "/warehouse-return") || strings.HasSuffix(action, "warehouse-return"):
@@ -994,7 +998,7 @@ func (s *Services) stockInWeighTicket(c *gin.Context) bool {
 	return true
 }
 
-// boxStockInWeighTicket 仓管扫溯源后对已入厂批次分箱入库。
+// boxStockInWeighTicket 仓管扫溯源后对已入厂批次分批分箱入库（不完结）。
 func (s *Services) boxStockInWeighTicket(c *gin.Context) bool {
 	if !s.requireAnyRole(c, "warehouse") {
 		return true
@@ -1006,14 +1010,15 @@ func (s *Services) boxStockInWeighTicket(c *gin.Context) bool {
 	s.takeOverWeighTicketForWarehouse(c, id)
 	body := bindBody(c)
 
-	var status, trace, kind string
-	if err := s.DB.QueryRow(`SELECT status, COALESCE(trace_code,''), COALESCE(receive_kind,'') FROM pur_weigh_ticket WHERE id=?`, id).
-		Scan(&status, &trace, &kind); err != nil {
+	var status, trace string
+	if err := s.DB.QueryRow(`SELECT status, COALESCE(trace_code,'') FROM pur_weigh_ticket WHERE id=?`, id).
+		Scan(&status, &trace); err != nil {
 		api.FailJSON(c, "NOT_FOUND")
 		return true
 	}
 	if status == "stocked" {
 		out := s.loadWeighTicket(id)
+		s.attachWeighBoxProgress(out, id)
 		api.OK(c, out)
 		return true
 	}
@@ -1026,19 +1031,79 @@ func (s *Services) boxStockInWeighTicket(c *gin.Context) bool {
 		return true
 	}
 
-	ok, msg, inboundLoss := s.doWeighStockIn(id, body)
+	ok, msg, batchSum, boxCodes := s.doWeighStockInBatch(c, id, body, true)
 	if !ok {
 		api.FailJSON(c, msg)
 		return true
 	}
-	_, _ = s.DB.Exec(`UPDATE pur_inbound_arrival SET status='stocked', updated_at=datetime('now') WHERE id=(SELECT arrival_id FROM pur_weigh_ticket WHERE id=?)`, id)
+
+	m := s.loadWeighTicket(id)
+	s.writeAuditCtx(c, "weigh_ticket", id, "box_stock_in", "box_stockin_batch", nil, m)
+	if cl := middleware.Claims(c); cl != nil {
+		var tid int64
+		_ = s.DB.QueryRow(`SELECT id FROM wf_ticket WHERE biz_type='weigh_ticket' AND biz_id=? AND status IN ('open','in_progress') ORDER BY id DESC LIMIT 1`, id).Scan(&tid)
+		if tid > 0 {
+			s.appendTicketLog(tid, "box_stock_in", cl.UserID, 0, fmt.Sprintf("batch boxes=%d sum=%.2f", len(boxCodes), batchSum))
+		}
+	}
+
+	out := s.loadWeighTicket(id)
+	s.attachWeighBoxProgress(out, id)
+	out["batch_box_codes"] = boxCodes
+	out["batch_sum_kg"] = batchSum
+	out["completed"] = false
+	api.OK(c, out)
+	return true
+}
+
+// completeBoxStockInWeighTicket 完成本批分箱：记仓前损耗、标 stocked、推结算。
+func (s *Services) completeBoxStockInWeighTicket(c *gin.Context) bool {
+	if !s.requireAnyRole(c, "warehouse") {
+		return true
+	}
+	if !s.requireMobileClient(c) {
+		return true
+	}
+	id := paramID(c)
+	s.takeOverWeighTicketForWarehouse(c, id)
+	body := bindBody(c)
+
+	var status, trace string
+	if err := s.DB.QueryRow(`SELECT status, COALESCE(trace_code,'') FROM pur_weigh_ticket WHERE id=?`, id).
+		Scan(&status, &trace); err != nil {
+		api.FailJSON(c, "NOT_FOUND")
+		return true
+	}
+	if status == "stocked" {
+		out := s.loadWeighTicket(id)
+		s.attachWeighBoxProgress(out, id)
+		api.OK(c, out)
+		return true
+	}
+	if status != "gate_accepted" {
+		api.FailJSON(c, "GATE_ACCEPT_REQUIRED")
+		return true
+	}
+
+	// 允许完成前再交最后一批箱子
+	if raw, ok := body["boxes"].([]interface{}); ok && len(raw) > 0 {
+		ok2, msg, _, _ := s.doWeighStockInBatch(c, id, body, true)
+		if !ok2 {
+			api.FailJSON(c, msg)
+			return true
+		}
+	}
+
+	inboundLoss, errMsg := s.finalizeWeighBoxStockIn(id)
+	if errMsg != "" {
+		api.FailJSON(c, errMsg)
+		return true
+	}
 
 	m := s.loadWeighTicket(id)
 	ticketNet := asFloatOr0(m["net_weight"])
-	boxSum := ticketNet - inboundLoss
-	if boxSum < 0 {
-		boxSum = 0
-	}
+	_, boxedSum := s.weighBoxedProgress(trace)
+	boxSum := boxedSum
 	lossRate := 0.0
 	if ticketNet > 0 && inboundLoss > 0 {
 		lossRate = inboundLoss / ticketNet
@@ -1060,16 +1125,17 @@ func (s *Services) boxStockInWeighTicket(c *gin.Context) bool {
 		"inbound_loss_kg": inboundLoss, "inbound_loss_rate": lossRate, "box_sum_kg": boxSum,
 		"settlement_id": settleID, "settle_breakdown": breakdown,
 	})
-	s.writeAuditCtx(c, "weigh_ticket", id, "box_stock_in", "box_stockin", nil, m)
+	s.writeAuditCtx(c, "weigh_ticket", id, "box_stock_in", "box_stockin_complete", nil, m)
 	if cl := middleware.Claims(c); cl != nil {
 		var tid int64
 		_ = s.DB.QueryRow(`SELECT id FROM wf_ticket WHERE biz_type='weigh_ticket' AND biz_id=? AND status IN ('open','in_progress') ORDER BY id DESC LIMIT 1`, id).Scan(&tid)
 		if tid > 0 {
-			s.appendTicketLog(tid, "box_stock_in", cl.UserID, 0, "box_stockin")
+			s.appendTicketLog(tid, "box_stock_in", cl.UserID, 0, "box_stockin_complete")
 		}
 	}
 
 	if s.Notify != nil {
+		s.Notify.CompleteTask("weigh_ticket", id, "purchase.weigh_confirmed")
 		s.Notify.NotifyNext(c, notify.Event{
 			Key: "purchase.stocked", BizType: "weigh_ticket", BizID: id,
 			DocNo: strOr(m["doc_no"]), TraceCode: strOr(m["trace_code"]),
@@ -1092,9 +1158,11 @@ func (s *Services) boxStockInWeighTicket(c *gin.Context) bool {
 	}
 
 	out := s.loadWeighTicket(id)
+	s.attachWeighBoxProgress(out, id)
 	out["inbound_loss_kg"] = inboundLoss
 	out["inbound_loss_rate"] = lossRate
 	out["box_sum_kg"] = boxSum
+	out["completed"] = true
 	if settleID > 0 {
 		out["settlement_id"] = settleID
 		out["settle_breakdown"] = breakdown
@@ -1378,7 +1446,12 @@ func asFloatDef(v interface{}) float64 {
 	return f
 }
 
-func parseInboundBoxWeights(body map[string]interface{}) ([]float64, string) {
+type inboundBoxLine struct {
+	Weight    float64
+	ImageURLs []string
+}
+
+func parseInboundBoxLines(body map[string]interface{}, requirePhotos bool) ([]inboundBoxLine, string) {
 	if body == nil {
 		return nil, "BOXES_REQUIRED"
 	}
@@ -1386,7 +1459,7 @@ func parseInboundBoxWeights(body map[string]interface{}) ([]float64, string) {
 	if !ok || len(raw) == 0 {
 		return nil, "BOXES_REQUIRED"
 	}
-	weights := make([]float64, 0, len(raw))
+	lines := make([]inboundBoxLine, 0, len(raw))
 	for _, item := range raw {
 		m, _ := item.(map[string]interface{})
 		if m == nil {
@@ -1396,7 +1469,44 @@ func parseInboundBoxWeights(body map[string]interface{}) ([]float64, string) {
 		if !ok || w <= 0 {
 			return nil, "BOX_WEIGHT_REQUIRED"
 		}
-		weights = append(weights, w)
+		urls := []string{}
+		collectURL := func(v interface{}) {
+			switch t := v.(type) {
+			case string:
+				u := strings.TrimSpace(t)
+				if u != "" {
+					urls = append(urls, u)
+				}
+			case []interface{}:
+				for _, e := range t {
+					if s, ok := e.(string); ok {
+						u := strings.TrimSpace(s)
+						if u != "" {
+							urls = append(urls, u)
+						}
+					}
+				}
+			}
+		}
+		collectURL(m["image_urls"])
+		collectURL(m["image_url"])
+		if requirePhotos && len(urls) == 0 {
+			return nil, "BOX_PHOTO_REQUIRED"
+		}
+		lines = append(lines, inboundBoxLine{Weight: w, ImageURLs: urls})
+	}
+	return lines, ""
+}
+
+// deprecated shim for callers expecting weights only
+func parseInboundBoxWeights(body map[string]interface{}) ([]float64, string) {
+	lines, errMsg := parseInboundBoxLines(body, false)
+	if errMsg != "" {
+		return nil, errMsg
+	}
+	weights := make([]float64, len(lines))
+	for i, ln := range lines {
+		weights[i] = ln.Weight
 	}
 	return weights, ""
 }
@@ -1411,6 +1521,77 @@ func weighBoxOverweight(ticketNet, boxSum float64) bool {
 		tol = 5
 	}
 	return diff > tol
+}
+
+func (s *Services) weighBoxedProgress(trace string) (count int, sum float64) {
+	trace = strings.TrimSpace(trace)
+	if trace == "" {
+		return 0, 0
+	}
+	_ = s.DB.QueryRow(`SELECT COUNT(1), COALESCE(SUM(weight),0) FROM inv_box_code
+		WHERE COALESCE(is_deleted,0)=0 AND UPPER(COALESCE(trace_code,''))=UPPER(?)`, trace).Scan(&count, &sum)
+	return count, sum
+}
+
+func (s *Services) listWeighBoxes(trace string) []gin.H {
+	trace = strings.TrimSpace(trace)
+	out := []gin.H{}
+	if trace == "" {
+		return out
+	}
+	rows, err := s.DB.Query(`SELECT id, code, COALESCE(weight,0), COALESCE(image_url,''), COALESCE(status,''), COALESCE(created_at,'')
+		FROM inv_box_code WHERE COALESCE(is_deleted,0)=0 AND UPPER(COALESCE(trace_code,''))=UPPER(?)
+		ORDER BY id`, trace)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var code, img, st, created string
+		var w float64
+		_ = rows.Scan(&id, &code, &w, &img, &st, &created)
+		imgs := []string{}
+		if img != "" {
+			imgs = append(imgs, img)
+		}
+		for _, e := range s.listEvidence("box_code", id) {
+			if u := strOr(e["file_url"]); u != "" {
+				dup := false
+				for _, x := range imgs {
+					if x == u {
+						dup = true
+						break
+					}
+				}
+				if !dup {
+					imgs = append(imgs, u)
+				}
+			}
+		}
+		out = append(out, gin.H{
+			"id": id, "code": code, "weight": w, "image_url": img, "image_urls": imgs,
+			"status": st, "created_at": created,
+		})
+	}
+	return out
+}
+
+func (s *Services) attachWeighBoxProgress(out gin.H, id int64) {
+	if out == nil {
+		return
+	}
+	trace := strings.TrimSpace(strOr(out["trace_code"]))
+	cnt, sum := s.weighBoxedProgress(trace)
+	net := asFloatOr0(out["net_weight"])
+	remain := net - sum
+	if remain < 0 {
+		remain = 0
+	}
+	out["boxed_qty"] = cnt
+	out["boxed_weight"] = sum
+	out["remaining_weight"] = remain
+	out["boxes"] = s.listWeighBoxes(trace)
 }
 
 func (s *Services) writeInboundLossTxn(weighID, warehouseID, productID int64, loss float64, bizDate string) error {
@@ -1459,6 +1640,7 @@ func (s *Services) allocInboundBoxCode(trace string, seq int) string {
 	return fmt.Sprintf("BX%d", time.Now().UnixNano()%1e12)
 }
 
+// doWeighStockIn 一次性分箱并完结（旧 stockin 路径）；requirePhotos=false。
 func (s *Services) doWeighStockIn(id int64, body map[string]interface{}) (bool, string, float64) {
 	m := s.loadWeighTicket(id)
 	if m["id"] == nil {
@@ -1467,39 +1649,57 @@ func (s *Services) doWeighStockIn(id int64, body map[string]interface{}) (bool, 
 	if strOr(m["status"]) == "stocked" {
 		return true, "", 0
 	}
-	weights, errMsg := parseInboundBoxWeights(body)
+	ok, msg, batchSum, _ := s.doWeighStockInBatch(nil, id, body, false)
+	if !ok {
+		return false, msg, 0
+	}
+	loss, errMsg := s.finalizeWeighBoxStockIn(id)
 	if errMsg != "" {
 		return false, errMsg, 0
+	}
+	_ = batchSum
+	return true, "", loss
+}
+
+// doWeighStockInBatch 增量创建箱并入库过账，不标记 stocked、不记仓前损耗。
+func (s *Services) doWeighStockInBatch(c *gin.Context, id int64, body map[string]interface{}, requirePhotos bool) (ok bool, errCode string, batchSum float64, boxCodes []string) {
+	m := s.loadWeighTicket(id)
+	if m["id"] == nil {
+		return false, "NOT_FOUND", 0, nil
+	}
+	st := strOr(m["status"])
+	if st == "stocked" {
+		return false, "ALREADY_STOCKED", 0, nil
+	}
+	lines, errMsg := parseInboundBoxLines(body, requirePhotos)
+	if errMsg != "" {
+		return false, errMsg, 0, nil
 	}
 	productID, _ := asInt64(body["product_id"])
 	if productID <= 0 {
 		productID, _ = asInt64(m["product_id"])
 	}
 	if productID <= 0 {
-		return false, "PRODUCT_REQUIRED", 0
+		return false, "PRODUCT_REQUIRED", 0, nil
 	}
 	procID, stepID, stepWH, errMsg := s.resolveInboundEntryStep(productID)
 	if errMsg != "" {
-		return false, errMsg, 0
+		return false, errMsg, 0, nil
 	}
-	var boxSum float64
-	for _, w := range weights {
-		boxSum += w
+	for _, ln := range lines {
+		batchSum += ln.Weight
 	}
+	trace := strings.TrimSpace(strOr(m["trace_code"]))
+	if trace == "" {
+		return false, "TRACE_CODE_REQUIRED", 0, nil
+	}
+	existCnt, existSum := s.weighBoxedProgress(trace)
 	ticketNet, _ := asFloat(m["net_weight"])
-	if weighBoxOverweight(ticketNet, boxSum) {
-		return false, "WEIGHT_MISMATCH", 0
-	}
-	inboundLoss := 0.0
-	if ticketNet > boxSum {
-		inboundLoss = ticketNet - boxSum
+	if weighBoxOverweight(ticketNet, existSum+batchSum) {
+		return false, "WEIGHT_MISMATCH", 0, nil
 	}
 
 	farmerID, _ := asInt64(m["farmer_id"])
-	trace := strings.TrimSpace(strOr(m["trace_code"]))
-	if trace == "" {
-		return false, "TRACE_CODE_REQUIRED", 0
-	}
 	origin := strOr(m["origin"])
 	bizDate := strOr(m["biz_date"])
 	sourceType := strOrDef(m["source_type"], "self")
@@ -1518,20 +1718,33 @@ func (s *Services) doWeighStockIn(id int64, body map[string]interface{}) (bool, 
 		}
 	}
 
-	boxCodes := make([]string, 0, len(weights))
-	for i, w := range weights {
-		code := s.allocInboundBoxCode(trace, i+1)
-		_, err := s.DB.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, farmer_id, trace_code, origin, receive_date, source_type, status, current_process_id, current_step_id)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,'open',?,?)`,
-			code, productID, wh, bizDate, w, w, farmerID, trace, origin, bizDate, sourceType, procID, stepID)
+	boxCodes = make([]string, 0, len(lines))
+	for i, ln := range lines {
+		code := s.allocInboundBoxCode(trace, existCnt+i+1)
+		img0 := ""
+		if len(ln.ImageURLs) > 0 {
+			img0 = ln.ImageURLs[0]
+		}
+		res, err := s.DB.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, farmer_id, trace_code, origin, receive_date, source_type, status, current_process_id, current_step_id, image_url)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,'open',?,?,?)`,
+			code, productID, wh, bizDate, ln.Weight, ln.Weight, farmerID, trace, origin, bizDate, sourceType, procID, stepID, img0)
 		if err != nil {
 			code = fmt.Sprintf("BX%d", time.Now().UnixNano()%1e12)
-			_, err = s.DB.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, farmer_id, trace_code, origin, receive_date, source_type, status, current_process_id, current_step_id)
-				VALUES(?,?,?,?,?,?,?,?,?,?,?,'open',?,?)`,
-				code, productID, wh, bizDate, w, w, farmerID, trace, origin, bizDate, sourceType, procID, stepID)
+			res, err = s.DB.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, farmer_id, trace_code, origin, receive_date, source_type, status, current_process_id, current_step_id, image_url)
+				VALUES(?,?,?,?,?,?,?,?,?,?,?,'open',?,?,?)`,
+				code, productID, wh, bizDate, ln.Weight, ln.Weight, farmerID, trace, origin, bizDate, sourceType, procID, stepID, img0)
 			if err != nil {
-				return false, "BOX_CREATE_ERROR:" + err.Error(), 0
+				return false, "BOX_CREATE_ERROR:" + err.Error(), 0, nil
 			}
+		}
+		boxID, _ := res.LastInsertId()
+		for _, u := range ln.ImageURLs {
+			_, _ = s.addEvidence(c, "box_code", boxID, "box_reweigh", u, map[string]interface{}{
+				"weigh_ticket_id": id, "box_code": code, "weight": ln.Weight,
+			})
+			_, _ = s.addEvidence(c, "weigh_ticket", id, "box_reweigh", u, map[string]interface{}{
+				"box_id": boxID, "box_code": code, "weight": ln.Weight,
+			})
 		}
 		boxCodes = append(boxCodes, code)
 	}
@@ -1540,37 +1753,71 @@ func (s *Services) doWeighStockIn(id int64, body map[string]interface{}) (bool, 
 		firstBox = boxCodes[0]
 	}
 
-	txnNo := fmt.Sprintf("ST-WT-%d", id)
+	txnNo := fmt.Sprintf("ST-WT-%d-%d", id, time.Now().UnixNano()%1e9)
 	docType := "purchase_in"
 	if sourceType == "outsource" {
 		docType = "outsource_in"
 	}
 	tres, err := s.DB.Exec(`INSERT INTO inv_stock_txn(doc_no, doc_type, biz_date, status, warehouse_id, remark) VALUES(?,?,?,'draft',?,?)`,
-		txnNo, docType, bizDate, wh, fmt.Sprintf("weigh ticket #%d farmer=%d boxes=%d", id, farmerID, len(weights)))
+		txnNo, docType, bizDate, wh, fmt.Sprintf("weigh ticket #%d farmer=%d boxes=%d batch", id, farmerID, len(lines)))
 	if err != nil {
-		return false, "STOCK_TXN_ERROR:" + err.Error(), 0
+		return false, "STOCK_TXN_ERROR:" + err.Error(), 0, nil
 	}
 	tid, _ := tres.LastInsertId()
-	for i, w := range weights {
+	for i, ln := range lines {
 		_, _ = s.DB.Exec(`INSERT INTO inv_stock_txn_line(txn_id, line_no, product_id, qty, base_qty, direction, batch_no) VALUES(?,?,?,?,?,'in',?)`,
-			tid, i+1, productID, w, w, bizDate)
+			tid, i+1, productID, ln.Weight, ln.Weight, bizDate)
 	}
-	if err := s.adjustBalanceBatch(wh, productID, bizDate, boxSum); err != nil {
-		return false, "BALANCE_ERROR:" + err.Error(), 0
+	if err := s.adjustBalanceBatch(wh, productID, bizDate, batchSum); err != nil {
+		return false, "BALANCE_ERROR:" + err.Error(), 0, nil
 	}
 	_, _ = s.DB.Exec(`UPDATE inv_stock_txn SET status='posted', posted_at=datetime('now') WHERE id=?`, tid)
+	_, _ = s.DB.Exec(`UPDATE pur_weigh_ticket SET product_id=?, box_code=COALESCE(NULLIF(box_code,''),?), warehouse_id=?, updated_at=datetime('now') WHERE id=?`,
+		productID, firstBox, wh, id)
+	return true, "", batchSum, boxCodes
+}
 
-	// 仓前损耗：票净重 − 分箱合计（欠重自动记损，不硬拒）
+// finalizeWeighBoxStockIn 完成本批分箱：记仓前损耗并标记 stocked。
+func (s *Services) finalizeWeighBoxStockIn(id int64) (inboundLoss float64, errCode string) {
+	m := s.loadWeighTicket(id)
+	if m["id"] == nil {
+		return 0, "NOT_FOUND"
+	}
+	if strOr(m["status"]) == "stocked" {
+		return 0, ""
+	}
+	trace := strings.TrimSpace(strOr(m["trace_code"]))
+	_, boxedSum := s.weighBoxedProgress(trace)
+	if boxedSum <= 0 {
+		return 0, "BOXES_REQUIRED"
+	}
+	ticketNet := asFloatOr0(m["net_weight"])
+	if weighBoxOverweight(ticketNet, boxedSum) {
+		return 0, "WEIGHT_MISMATCH"
+	}
+	if ticketNet > boxedSum {
+		inboundLoss = ticketNet - boxedSum
+	}
+	productID := asInt64Or0(m["product_id"])
+	wh := asInt64Or0(m["warehouse_id"])
+	if wh <= 0 {
+		wh = 1
+	}
+	bizDate := strOr(m["biz_date"])
 	if inboundLoss > 0 {
 		if err := s.writeInboundLossTxn(id, wh, productID, inboundLoss, bizDate); err != nil {
-			return false, "INBOUND_LOSS_ERROR:" + err.Error(), 0
+			return 0, "INBOUND_LOSS_ERROR:" + err.Error()
 		}
 	}
-
-	_, _ = s.DB.Exec(`UPDATE pur_weigh_ticket SET status='stocked', product_id=?, box_code=?, warehouse_id=?, updated_at=datetime('now') WHERE id=?`,
-		productID, firstBox, wh, id)
+	firstBox := strOr(m["box_code"])
+	if firstBox == "" {
+		_ = s.DB.QueryRow(`SELECT code FROM inv_box_code WHERE COALESCE(is_deleted,0)=0 AND UPPER(COALESCE(trace_code,''))=UPPER(?) ORDER BY id LIMIT 1`, trace).Scan(&firstBox)
+	}
+	_, _ = s.DB.Exec(`UPDATE pur_weigh_ticket SET status='stocked', box_code=COALESCE(NULLIF(?,''),box_code), updated_at=datetime('now') WHERE id=?`,
+		firstBox, id)
 	_, _ = s.DB.Exec(`UPDATE pur_trace_lot SET status='stocked' WHERE weigh_ticket_id=?`, id)
-	return true, "", inboundLoss
+	_, _ = s.DB.Exec(`UPDATE pur_inbound_arrival SET status='stocked', updated_at=datetime('now') WHERE id=(SELECT arrival_id FROM pur_weigh_ticket WHERE id=?)`, id)
+	return inboundLoss, ""
 }
 
 func (s *Services) loadWeighTicket(id int64) gin.H {
@@ -1974,17 +2221,33 @@ func (s *Services) traceTimeline(c *gin.Context, code string) bool {
 	if arrivalID > 0 {
 		events = append(events, gin.H{"step": "arrival", "data": s.loadArrival(arrivalID), "evidences": s.listEvidence("inbound_arrival", arrivalID)})
 	}
+	var weighData gin.H
 	if wtID > 0 {
-		events = append(events, gin.H{"step": "weigh", "data": s.loadWeighTicket(wtID), "evidences": s.listEvidence("weigh_ticket", wtID)})
+		weighData = s.loadWeighTicket(wtID)
+		events = append(events, gin.H{"step": "weigh", "data": weighData, "evidences": s.listEvidence("weigh_ticket", wtID)})
 	} else {
 		var wid int64
 		_ = s.DB.QueryRow(`SELECT id FROM pur_weigh_ticket WHERE trace_code=? LIMIT 1`, code).Scan(&wid)
 		if wid > 0 {
 			wtID = wid
-			events = append(events, gin.H{"step": "weigh", "data": s.loadWeighTicket(wid), "evidences": s.listEvidence("weigh_ticket", wid)})
+			weighData = s.loadWeighTicket(wid)
+			events = append(events, gin.H{"step": "weigh", "data": weighData, "evidences": s.listEvidence("weigh_ticket", wid)})
 		}
 	}
-	// box
+	// 该溯源码下已分箱列表（含复磅图）
+	boxTrace := strings.TrimSpace(code)
+	if weighData != nil {
+		if t := strOr(weighData["trace_code"]); t != "" {
+			boxTrace = t
+		}
+	}
+	if boxTrace != "" {
+		boxes := s.listWeighBoxes(boxTrace)
+		if len(boxes) > 0 {
+			events = append(events, gin.H{"step": "boxes", "boxes": boxes})
+		}
+	}
+	// box（按码精确命中时仍保留单箱/家族步骤）
 	var boxID int64
 	var boxCode string
 	_ = s.DB.QueryRow(`SELECT id, code FROM inv_box_code WHERE code=? OR trace_code=? LIMIT 1`, code, code).Scan(&boxID, &boxCode)

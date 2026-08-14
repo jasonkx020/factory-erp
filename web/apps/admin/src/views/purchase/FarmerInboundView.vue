@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { purchaseApi, bizApi } from '@erp/shared'
 import ConfirmSnapshotCompare from '../../components/closed-loop/ConfirmSnapshotCompare.vue'
+import TraceLotPanel from '../../components/trace/TraceLotPanel.vue'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
@@ -146,7 +147,44 @@ const correctDlg = ref(false)
 const correctForm = reactive({ biz_type: 'weigh_ticket', biz_id: 0, reason: '', unit_price: '', net_weight: '' })
 const labelPreview = ref<Row | null>(null)
 const traceCode = ref('')
-const traceResult = ref<Row | null>(null)
+const traceListKeyword = ref('')
+const selectedTraceTicketId = ref<number | null>(null)
+
+const traceTicketCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '单号', primary: true },
+  { prop: 'trace_code', label: '溯源码' },
+  { prop: 'farmer_name', label: '农户' },
+  { prop: 'net_weight', label: '净重' },
+  { prop: 'status', label: '状态' },
+]
+
+const ticketsWithTrace = computed(() => {
+  const kw = traceListKeyword.value.trim().toLowerCase()
+  return tickets.value.filter((t) => {
+    const code = String(t.trace_code || '').trim()
+    if (!code && !String(t.batch_no || '').trim() && !String(t.doc_no || '').trim()) return false
+    if (!kw) return Boolean(code || t.batch_no || t.doc_no)
+    const hay = [t.doc_no, t.trace_code, t.batch_no, t.farmer_name, t.party_name, t.status]
+      .map((x) => String(x || '').toLowerCase())
+      .join(' ')
+    return hay.includes(kw)
+  })
+})
+
+const labelPreviewFields = computed(() => {
+  const m = labelPreview.value
+  if (!m) return [] as { label: string; value: string }[]
+  const kv = (label: string, v: unknown) =>
+    v != null && v !== '' ? { label, value: String(v) } : null
+  return [
+    kv('溯源码', m.trace_code || m.code),
+    kv('批号', m.batch_no),
+    kv('品种', m.variety || m.product_name),
+    kv('净重', m.net_weight != null ? `${m.net_weight} kg` : null),
+    kv('农户', m.farmer_name || m.party_name),
+    kv('单号', m.doc_no),
+  ].filter(Boolean) as { label: string; value: string }[]
+})
 
 const ocrDraft = computed(() => {
   const raw = String(confirmTicket.value?.ocr_draft_json || weighForm.ocr_draft_json || '')
@@ -494,19 +532,26 @@ async function doCorrect() {
   await refresh()
 }
 
-async function doTrace() {
-  if (!traceCode.value) return
-  const res = await purchaseApi.traceLot(traceCode.value)
-  if (res.code !== 1) return ElMessage.error(res.msg)
-  traceResult.value = (res.data as Row) || null
+function pickTraceCode(row: Row): string {
+  return String(row.trace_code || row.batch_no || row.doc_no || '').trim()
+}
+
+function selectTraceTicket(row: Row) {
+  selectedTraceTicketId.value = Number(row.id) || null
+  const code = pickTraceCode(row)
+  if (!code) {
+    ElMessage.warning('该单据暂无溯源码/批号')
+    return
+  }
+  traceCode.value = code
 }
 
 async function applyTraceQueryCode() {
   if (!showTrace.value) return
   const code = String(route.query.code || '').trim()
   if (!code) return
+  selectedTraceTicketId.value = null
   traceCode.value = code
-  await doTrace()
 }
 
 onMounted(async () => {
@@ -758,11 +803,63 @@ watch(
           <el-button link type="warning" @click="openCorrect(row, 'weigh_ticket')">纠错</el-button>
         </template>
       </TableOrCards>
-      <pre v-if="labelPreview" class="trace">标签预览：{{ JSON.stringify(labelPreview, null, 2) }}</pre>
+      <div v-if="labelPreview" class="label-preview">
+        <h4 class="sec">标签预览</h4>
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item v-for="f in labelPreviewFields" :key="f.label" :label="f.label">
+            {{ f.value }}
+          </el-descriptions-item>
+        </el-descriptions>
+      </div>
     </el-card>
 
-    <el-row v-if="showSettlements || showTrace" :gutter="16" style="margin-top:16px">
-      <el-col v-if="showSettlements" :span="showTrace ? 14 : 24" :xs="24">
+    <!-- 原料溯源：列表 + 详情 -->
+    <el-row v-if="showTrace && props.section === 'trace'" :gutter="16" style="margin-top:16px">
+      <el-col :span="10" :xs="24">
+        <el-card header="过磅单据（点选倒查）">
+          <el-input
+            v-model="traceListKeyword"
+            clearable
+            placeholder="过滤单号/溯源码/农户"
+            size="small"
+            style="margin-bottom:10px"
+          />
+          <TableOrCards :data="ticketsWithTrace" :loading="loading" :columns="traceTicketCols">
+            <el-table
+              :data="ticketsWithTrace"
+              size="small"
+              highlight-current-row
+              :row-class-name="({ row }: { row: Row }) => (Number(row.id) === selectedTraceTicketId ? 'is-selected' : '')"
+              @row-click="selectTraceTicket"
+            >
+              <el-table-column prop="doc_no" label="单号" min-width="120" show-overflow-tooltip />
+              <el-table-column prop="trace_code" label="溯源码" min-width="140" show-overflow-tooltip />
+              <el-table-column label="农户" width="90">
+                <template #default="{ row }">{{ row.farmer_name || row.party_name || '-' }}</template>
+              </el-table-column>
+              <el-table-column prop="net_weight" label="净重" width="70" />
+              <el-table-column prop="status" label="状态" width="90" />
+              <el-table-column label="操作" width="70" fixed="right">
+                <template #default="{ row }">
+                  <el-button link type="primary" @click.stop="selectTraceTicket(row)">倒查</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <template #actions="{ row }">
+              <el-button link type="primary" @click="selectTraceTicket(row)">倒查</el-button>
+            </template>
+          </TableOrCards>
+        </el-card>
+      </el-col>
+      <el-col :span="14" :xs="24">
+        <el-card header="溯源详情">
+          <TraceLotPanel v-model:code="traceCode" />
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-row v-if="showSettlements || (showTrace && props.section !== 'trace')" :gutter="16" style="margin-top:16px">
+      <el-col v-if="showSettlements" :span="showTrace && props.section !== 'trace' ? 14 : 24" :xs="24">
         <el-card header="农户结算（财务支付须转账单号+回单）">
           <TableOrCards :data="settlements" :loading="loading" :columns="settlementCols">
             <el-table :data="settlements" size="small">
@@ -790,16 +887,9 @@ watch(
           </TableOrCards>
         </el-card>
       </el-col>
-      <el-col v-if="showTrace" :span="showSettlements ? 10 : 24" :xs="24">
-        <el-card header="溯源倒查时间轴">
-          <el-input v-model="traceCode" placeholder="溯源批号 / T1- / 箱码 / 过磅单号" style="max-width:280px;margin-right:8px" />
-          <el-button type="primary" @click="doTrace">倒查</el-button>
-          <div v-if="traceResult" class="timeline">
-            <div v-for="(ev, i) in ((traceResult.timeline as Row[]) || [])" :key="i" class="tl-item">
-              <strong>{{ ev.step }}</strong>
-              <pre>{{ JSON.stringify(ev, null, 2) }}</pre>
-            </div>
-          </div>
+      <el-col v-if="showTrace && props.section !== 'trace'" :span="showSettlements ? 10 : 24" :xs="24">
+        <el-card header="溯源倒查">
+          <TraceLotPanel v-model:code="traceCode" />
         </el-card>
       </el-col>
     </el-row>
@@ -873,8 +963,7 @@ watch(
 <style scoped>
 .page { padding: 16px 20px; }
 .hint { color: #667; font-size: 13px; margin: 0 0 12px; }
-.trace { background: #f6f8fa; padding: 12px; border-radius: 8px; margin-top: 12px; max-height: 240px; overflow: auto; font-size: 12px; }
-.timeline { margin-top: 12px; max-height: 480px; overflow: auto; }
-.tl-item { border-left: 3px solid #0d7a6f; padding: 0 0 12px 12px; margin-bottom: 8px; }
-.tl-item pre { background: #f6f8fa; padding: 8px; border-radius: 6px; font-size: 11px; margin: 4px 0 0; }
+.sec { margin: 12px 0 8px; font-size: 14px; font-weight: 600; }
+.label-preview { margin-top: 12px; }
+:deep(.el-table .is-selected > td) { background: #ecf8f6 !important; }
 </style>
