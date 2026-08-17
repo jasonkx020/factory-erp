@@ -5,7 +5,7 @@ import (
 	"log"
 )
 
-// demoPasswordHash is bcrypt(admin123) cost=10 — same as db/sqlite/seed.sql admin.
+// demoPasswordHash is bcrypt(admin123) cost=10 — same as migrations/erp/data-dev.sql admin.
 const demoPasswordHash = "$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0."
 
 type demoRoleUser struct {

@@ -298,14 +298,14 @@ npm run e2e:onboard
 | `web/` | portal / admin / boss（构建后 embed 或外置） |
 | `internal/webui` | 静态站 go:embed + SPA 托管 |
 | `mobile/` | Flutter 员工 App（Android/iOS） |
-| `db/` | SQLite 开发脚本与 MySQL 生产 DDL |
+| `migrations/erp/` | PostgreSQL 基线、增量与历史归档 |
 
 约定摘要：统一信封 `{ code, msg, data }`（`code=1` 成功）、Bearer JWT、权限码 `域:模块:动作`；员工与管理员共享 `iam_user` 等表，登录不同系统签发独立 token（claims 含 `client_type` + `jti`，写入 `iam_user_session`）。
 
-## 生产 MySQL
+## 生产 PostgreSQL
 
-1. 按 `db/schema`（及说明文档）建库并导入  
-2. 复制 `configs/erp.prod.example.yaml` 为本地配置并填写 DSN  
+1. 用 `erp-db baseline` / `upgrade --all` 建库（见 [docs/PostgreSQL运维手册.md](docs/PostgreSQL运维手册.md)）  
+2. 复制 `configs/erp.prod.example.yaml` 为本地配置并填写 DSN（`init_schema: false`）  
 3. 启动：`go run ./cmd/erp-api -config <你的生产配置文件>`  
    或先 `scripts/build_release.*` 打出带内嵌 Web 的单二进制，`web_root` 留空即可只开 `:18080` 访问门户/Admin/Boss。
 
