@@ -7,9 +7,10 @@ withDefaults(
     modelValue?: number | null
     placeholder?: string
     clearable?: boolean
+    disabled?: boolean
     style?: string
   }>(),
-  { placeholder: '选择员工（可搜索）', clearable: true, style: 'width:180px' },
+  { placeholder: '选择员工（可搜索）', clearable: true, disabled: false, style: 'width:180px' },
 )
 
 defineEmits<{ 'update:modelValue': [number | null] }>()
@@ -29,6 +30,7 @@ function employeeLabel(row: Record<string, unknown>) {
     :label-fn="employeeLabel"
     :placeholder="placeholder"
     :clearable="clearable"
+    :disabled="disabled"
     :style="style"
     @update:model-value="$emit('update:modelValue', $event as number | null)"
   />

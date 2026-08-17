@@ -14,6 +14,7 @@ func openIssueDB(t *testing.T) *Services {
 			id BIGSERIAL PRIMARY KEY, board_id BIGINT, board_code TEXT, trace_code TEXT,
 			process_id BIGINT, step_id BIGINT, worker_id BIGINT DEFAULT 0,
 			issue_kg DOUBLE PRECISION DEFAULT 0, returned_kg DOUBLE PRECISION DEFAULT 0, completed_kg DOUBLE PRECISION DEFAULT 0,
+			wage_settled_kg DOUBLE PRECISION DEFAULT 0,
 			status TEXT DEFAULT 'open', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
 		`CREATE TEMP TABLE IF NOT EXISTS pd_process_move(
 			id BIGSERIAL PRIMARY KEY, board_id BIGINT, board_code TEXT, trace_code TEXT,
@@ -30,18 +31,28 @@ func openIssueDB(t *testing.T) *Services {
 			id BIGSERIAL PRIMARY KEY, trace_code TEXT, process_id BIGINT,
 			input_kg DOUBLE PRECISION DEFAULT 0, output_kg DOUBLE PRECISION DEFAULT 0, loss_kg DOUBLE PRECISION DEFAULT 0, loss_rate DOUBLE PRECISION DEFAULT 0,
 			board_count INTEGER DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(trace_code, process_id))`,
+		`CREATE TEMP TABLE IF NOT EXISTS pd_station_flow_log(
+			id BIGSERIAL PRIMARY KEY, event_type TEXT, biz_date TEXT DEFAULT '', board_id BIGINT DEFAULT 0,
+			board_code TEXT DEFAULT '', trace_code TEXT DEFAULT '', process_id BIGINT DEFAULT 0, step_id BIGINT DEFAULT 0,
+			process_name TEXT DEFAULT '', worker_id BIGINT DEFAULT 0, worker_name TEXT DEFAULT '', badge_code TEXT DEFAULT '',
+			actor_user_id BIGINT DEFAULT 0, operator_employee_id BIGINT DEFAULT 0, kg DOUBLE PRECISION DEFAULT 0,
+			pay_mode TEXT DEFAULT 'none', emp_type TEXT DEFAULT '', rate DOUBLE PRECISION DEFAULT 0, amount DOUBLE PRECISION DEFAULT 0,
+			ref_type TEXT DEFAULT '', ref_id BIGINT DEFAULT 0, before_json TEXT, after_json TEXT, remark TEXT, payload_json TEXT,
+			created_at TIMESTAMPTZ DEFAULT NOW())`,
 		`ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS is_deleted INTEGER DEFAULT 0`,
+		`ALTER TABLE pd_process ADD COLUMN IF NOT EXISTS pay_mode TEXT DEFAULT 'none'`,
+		`ALTER TABLE hr_employee ADD COLUMN IF NOT EXISTS emp_type TEXT DEFAULT ''`,
 		`UPDATE inv_box_code SET current_process_id=1, current_step_id=10, weight=100, qty=100, trace_code='T-ISSUE' WHERE code='BX-SMOKE'`,
 		`INSERT INTO pay_process_wage_rate(process_id, rate, status) SELECT 1, 0.5, 'active'
 			WHERE NOT EXISTS (SELECT 1 FROM pay_process_wage_rate WHERE process_id=1)`,
-		`UPDATE pd_process SET is_piecework=1 WHERE id=1`,
+		`UPDATE pd_process SET is_piecework=1, pay_mode='weight' WHERE id=1`,
 		`UPDATE pd_routing_step SET is_piecework=1, auto_next=1 WHERE id=10`,
-		`INSERT INTO hr_employee(id, name, badge_code, emp_no, status) VALUES
-			(7,'工人甲','BADGE-A','E7','active') ON CONFLICT (id) DO NOTHING`,
-		`INSERT INTO hr_employee(id, name, badge_code, emp_no, status) VALUES
-			(8,'工人乙','BADGE-B','E8','active') ON CONFLICT (id) DO NOTHING`,
-		`INSERT INTO hr_employee(id, name, badge_code, emp_no, status) VALUES
-			(9,'工人丙','BADGE-C','E9','active') ON CONFLICT (id) DO NOTHING`,
+		`INSERT INTO hr_employee(id, name, badge_code, emp_no, emp_type, status) VALUES
+			(7,'工人甲','BADGE-A','E7','piece','active') ON CONFLICT (id) DO UPDATE SET emp_type='piece'`,
+		`INSERT INTO hr_employee(id, name, badge_code, emp_no, emp_type, status) VALUES
+			(8,'工人乙','BADGE-B','E8','piece','active') ON CONFLICT (id) DO UPDATE SET emp_type='piece'`,
+		`INSERT INTO hr_employee(id, name, badge_code, emp_no, emp_type, status) VALUES
+			(9,'工人丙','BADGE-C','E9','piece','active') ON CONFLICT (id) DO UPDATE SET emp_type='piece'`,
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {
@@ -105,46 +116,79 @@ func TestBoardIssueReturnMovePiecework(t *testing.T) {
 		t.Fatalf("wip should stay 100 after return, got %v", wip)
 	}
 
-	out, fail := s.moveBoardKg(board, 9, 30, "next", 1)
+	if _, fail := s.moveBoardKg(board, 9, 30, "next", 1, 1, 10); fail != "AUTO_ROUTING_DISABLED" {
+		t.Fatalf("next must be disabled, got %s", fail)
+	}
+	out, fail := s.moveBoardKg(board, 9, 30, "stock_in", 1, 1, 10)
 	if fail != "" {
-		t.Fatalf("move: %s", fail)
+		t.Fatalf("stock_in: %s", fail)
 	}
-	if roundKg(asFloatOr0(out["settled_kg"])) != 30 {
-		t.Fatalf("settled kg want 30 got %v", out["settled_kg"])
+	if roundKg(asFloatOr0(out["settled_wage_amount"])) != 0 {
+		t.Fatalf("stock_in must not settle wage, got %v", out["settled_wage_amount"])
 	}
-	if roundKg(asFloatOr0(out["settled_wage_amount"])) != 15 {
-		t.Fatalf("settled wage want 15 got %v", out["settled_wage_amount"])
+	newCode := strOr(out["new_board_code"])
+	if newCode == "" {
+		t.Fatal("stock_in must return new_board_code")
 	}
 	board, _ = s.loadBoardByCode("BX-SMOKE")
 	fromWip := roundKg(board.Weight + s.processOpenKg(board.ID, 1) + s.poolOpenKg(board.ID, 1))
-	if board.ProcessID == 1 && fromWip != 70 {
+	if fromWip != 70 {
 		t.Fatalf("from wip want 70 got %v (process=%d weight=%v)", fromWip, board.ProcessID, board.Weight)
 	}
-	toOpen := s.processOpenKg(board.ID, 2)
+	child, errMsg := s.loadBoardByCode(newCode)
+	if errMsg != "" || child == nil {
+		t.Fatalf("load new board: %s", errMsg)
+	}
+	if _, fail := s.issueBoardKg(child, 9, 2, 11, 30); fail != "" {
+		t.Fatalf("manual issue into process 2: %s", fail)
+	}
+	toOpen := s.processOpenKg(child.ID, 2)
 	if roundKg(toOpen) != 30 {
 		t.Fatalf("to occupancy want 30 got %v", toOpen)
 	}
 
 	var pwAmt float64
 	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(qty),0), COALESCE(SUM(amount),0) FROM pd_piecework_summary WHERE process_id=1`).Scan(&pwQty, &pwAmt)
-	if roundKg(pwQty) != 30 {
-		t.Fatalf("piecework summary qty want 30 (completed only) got %v", pwQty)
+	if roundKg(pwQty) != 0 {
+		t.Fatalf("stock_in must not write piecework summary, got qty %v", pwQty)
 	}
-	if roundKg(pwAmt) != 15 { // 30 * 0.5
-		t.Fatalf("piecework amount want 15 got %v", pwAmt)
+	// 净占用=领取−退库；入库不减锁定。A=20，B=20
+	if got := s.workerLockedPieceworkKg(7, 1); roundKg(got) != 20 {
+		t.Fatalf("worker A locked after stock_in want 20 got %v", got)
+	}
+	if got := s.workerLockedPieceworkKg(8, 1); roundKg(got) != 20 {
+		t.Fatalf("worker B locked after stock_in want 20 got %v", got)
 	}
 
-	if _, fail := s.returnBoardKg(board, 9, 5); fail != "" {
-		t.Fatalf("next worker return: %s", fail)
+	s.upsertPieceworkSummaryKeyedOnDate(7, 1, "2026-08-17", "DAY:2026-08-17:testA", 20, 20, 20, 0, 1)
+	_, _ = s.DB.Exec(`UPDATE pd_process_issue SET wage_settled_kg=issue_kg-returned_kg WHERE worker_id=7 AND process_id=1`)
+	s.upsertPieceworkSummaryKeyedOnDate(8, 1, "2026-08-17", "DAY:2026-08-17:testB", 20, 20, 20, 0, 1)
+	_, _ = s.DB.Exec(`UPDATE pd_process_issue SET wage_settled_kg=issue_kg-returned_kg WHERE worker_id=8 AND process_id=1`)
+	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(qty),0), COALESCE(SUM(amount),0) FROM pd_piecework_summary WHERE process_id=1`).Scan(&pwQty, &pwAmt)
+	if roundKg(pwQty) != 40 {
+		t.Fatalf("after day settle qty want 40 got %v", pwQty)
+	}
+	if roundKg(pwAmt) != 20 { // 40 * 0.5
+		t.Fatalf("piecework amount want 20 got %v", pwAmt)
+	}
+	if got := s.workerLockedPieceworkKg(7, 1); roundKg(got) != 0 {
+		t.Fatalf("worker A locked after settle want 0 got %v", got)
+	}
+	if got := s.workerLockedPieceworkKg(8, 1); roundKg(got) != 0 {
+		t.Fatalf("worker B locked after settle want 0 got %v", got)
+	}
+
+	if _, fail := s.returnBoardKg(child, 9, 5); fail != "" {
+		t.Fatalf("next process return: %s", fail)
 	}
 	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(qty),0) FROM pd_piecework_summary WHERE process_id=1`).Scan(&pwQty)
-	if roundKg(pwQty) != 30 {
+	if roundKg(pwQty) != 40 {
 		t.Fatalf("return must not change from-process piecework, got %v", pwQty)
 	}
 	var toPW float64
 	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(qty),0) FROM pd_piecework_summary WHERE process_id=2`).Scan(&toPW)
 	if toPW != 0 {
-		t.Fatalf("to-process piecework should wait for later move, got %v", toPW)
+		t.Fatalf("to-process piecework should wait for day settle, got %v", toPW)
 	}
 	var yieldN int
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_board_process_yield WHERE board_id=?`, board.ID).Scan(&yieldN)
@@ -191,8 +235,12 @@ func TestBoardYieldSnapshotOnceAndNoDoubleCount(t *testing.T) {
 		t.Fatalf("yield before close want 0 got %d", n)
 	}
 	board, _ = s.loadBoardByCode("BX-SMOKE")
-	if _, fail := s.moveBoardKg(board, 7, 100, "finish_in", 1); fail != "" {
+	out, fail := s.moveBoardKg(board, 7, 100, "finish_in", 1, 1, 10)
+	if fail != "" {
 		t.Fatalf("finish move: %s", fail)
+	}
+	if code := strOr(out["new_board_code"]); code != "" {
+		_, _ = s.DB.Exec(`UPDATE inv_box_code SET status='finished', weight=0, qty=0 WHERE code=?`, code)
 	}
 	board, _ = s.loadBoardByCode("BX-SMOKE")
 	if board.Status == "finished" {
@@ -241,8 +289,12 @@ func TestBoardYieldSnapshotOnceAndNoDoubleCount(t *testing.T) {
 		t.Fatalf("issue board2: %s", fail)
 	}
 	b2, _ = s.loadBoardByCode("BX-SMOKE-2")
-	if _, fail := s.moveBoardKg(b2, 7, 80, "finish_in", 1); fail != "" {
+	out2, fail := s.moveBoardKg(b2, 7, 80, "finish_in", 1, 1, 10)
+	if fail != "" {
 		t.Fatalf("finish board2 move: %s", fail)
+	}
+	if code := strOr(out2["new_board_code"]); code != "" {
+		_, _ = s.DB.Exec(`UPDATE inv_box_code SET status='finished', weight=0, qty=0 WHERE code=?`, code)
 	}
 	if _, fail := s.closeBoard(b2, false); fail != "" {
 		t.Fatalf("close board2: %s", fail)
@@ -278,7 +330,7 @@ func TestBoardIssueRequiresTraceAndRejectsFinished(t *testing.T) {
 	if _, fail := s.returnBoardKg(board, 7, 1); fail != "TRACE_CODE_REQUIRED" {
 		t.Fatalf("return without trace want TRACE_CODE_REQUIRED got %s", fail)
 	}
-	if _, fail := s.moveBoardKg(board, 7, 10, "finish_in", 1); fail != "TRACE_CODE_REQUIRED" {
+	if _, fail := s.moveBoardKg(board, 7, 10, "finish_in", 1, 1, 10); fail != "TRACE_CODE_REQUIRED" {
 		t.Fatalf("move without trace want TRACE_CODE_REQUIRED got %s", fail)
 	}
 	if _, err := s.DB.Exec(`UPDATE inv_box_code SET trace_code='T-ISSUE', status='finished' WHERE code='BX-SMOKE'`); err != nil {
@@ -308,7 +360,7 @@ func TestBoardCloseYieldSnapshot(t *testing.T) {
 		t.Fatalf("issue: %s", fail)
 	}
 	board, _ = s.loadBoardByCode("BX-SMOKE")
-	if _, fail := s.moveBoardKg(board, 7, 80, "finish_in", 1); fail != "" {
+	if _, fail := s.moveBoardKg(board, 7, 80, "finish_in", 1, 1, 10); fail != "" {
 		t.Fatalf("partial finish: %s", fail)
 	}
 	board, _ = s.loadBoardByCode("BX-SMOKE")
@@ -383,7 +435,7 @@ func TestBoardCloseYieldSnapshot(t *testing.T) {
 		t.Fatalf("issue b2: %s", fail)
 	}
 	b2, _ = s.loadBoardByCode("BX-LB-2")
-	if _, fail := s.moveBoardKg(b2, 7, 80, "finish_in", 1); fail != "" {
+	if _, fail := s.moveBoardKg(b2, 7, 80, "finish_in", 1, 1, 10); fail != "" {
 		t.Fatalf("partial b2: %s", fail)
 	}
 	b2, _ = s.loadBoardByCode("BX-LB-2")
@@ -400,5 +452,65 @@ func TestBoardCloseYieldSnapshot(t *testing.T) {
 	_ = s.DB.QueryRow(`SELECT COUNT(1), COALESCE(SUM(input_kg),0) FROM pd_board_process_yield WHERE board_id=? AND process_id=1`, b2.ID).Scan(&n, &input)
 	if n != 1 || roundKg(input) != 100 {
 		t.Fatalf("resnapshot must not double, rows=%d input=%v", n, input)
+	}
+}
+
+func TestBoardStockInNewCodeAndReissue(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := openIssueDB(t)
+	board, errMsg := s.loadBoardByCode("BX-SMOKE")
+	if errMsg != "" || board == nil {
+		t.Fatalf("load board: %s", errMsg)
+	}
+	if _, fail := s.issueBoardKg(board, 7, 1, 10, 40); fail != "" {
+		t.Fatalf("issue: %s", fail)
+	}
+	board, _ = s.loadBoardByCode("BX-SMOKE")
+	out, fail := s.moveBoardKg(board, 7, 40, "stock_in", 1, 1, 10)
+	if fail != "" {
+		t.Fatalf("stock_in: %s", fail)
+	}
+	newCode := strOr(out["new_board_code"])
+	if newCode == "" {
+		t.Fatal("stock_in must return new_board_code")
+	}
+	if kind := strOr(out["move_kind"]); kind != "stock_in" {
+		t.Fatalf("move_kind want stock_in got %s", kind)
+	}
+	child, errMsg := s.loadBoardByCode(newCode)
+	if errMsg != "" || child == nil {
+		t.Fatalf("load new board: %s", errMsg)
+	}
+	if child.ProcessID != 1 || child.StepID != 10 {
+		t.Fatalf("new board must mark completed process/step 1/10 got %d/%d", child.ProcessID, child.StepID)
+	}
+	if roundKg(child.Weight) != 40 {
+		t.Fatalf("new board weight want 40 got %v", child.Weight)
+	}
+	var parentID int64
+	_ = s.DB.QueryRow(`SELECT COALESCE(parent_box_id,0) FROM inv_box_code WHERE code=?`, newCode).Scan(&parentID)
+	if parentID != board.ID {
+		t.Fatalf("parent_box_id want %d got %d", board.ID, parentID)
+	}
+	var bal float64
+	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(qty),0) FROM inv_balance WHERE box_code_id=?`, child.ID).Scan(&bal)
+	if roundKg(bal) != 40 {
+		t.Fatalf("box balance want 40 got %v", bal)
+	}
+	board, _ = s.loadBoardByCode("BX-SMOKE")
+	if roundKg(board.Weight+s.processOpenKg(board.ID, 1)) > 60.0005 {
+		t.Fatalf("source wip after stock_in should drop by 40, weight=%v open=%v", board.Weight, s.processOpenKg(board.ID, 1))
+	}
+
+	// Re-issue into next process from warehouse buffer board (manual process choice).
+	if _, fail := s.issueBoardKg(child, 8, 2, 11, 40); fail != "" {
+		t.Fatalf("reissue next process: %s", fail)
+	}
+	child, _ = s.loadBoardByCode(newCode)
+	if child.ProcessID != 2 || child.StepID != 11 {
+		t.Fatalf("after reissue current want process 2 step 11 got %d/%d", child.ProcessID, child.StepID)
+	}
+	if got := s.workerOpenKg(child.ID, 2, 8); roundKg(got) != 40 {
+		t.Fatalf("worker open on next want 40 got %v", got)
 	}
 }

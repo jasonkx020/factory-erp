@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
+import '../../core/carrier_code_labels.dart';
 import '../../core/employee_modules.dart';
 import '../../core/notify_service.dart';
 import '../../widgets/form_row.dart';
@@ -66,16 +67,20 @@ class _WarehousePageState extends State<WarehousePage> {
 
   bool get _isSubPage => widget.initialSection != WarehouseSection.home;
 
+  String get _codeLabel => context.read<CarrierCodeLabels>().code;
+  String get _shortLabel => context.read<CarrierCodeLabels>().short;
+
   String get _pageTitle {
+    final c = context.read<CarrierCodeLabels>();
     switch (_section) {
       case WarehouseSection.home:
         return '仓管作业';
       case WarehouseSection.scan:
-        return '扫溯源接收/分板';
+        return '扫溯源接收/${c.splitVerb}';
       case WarehouseSection.todos:
         return '待办';
       case WarehouseSection.boxes:
-        return '板码';
+        return c.code;
       case WarehouseSection.stocktake:
         return _formStep == 1 ? '盘点 · 预览' : '盘点';
       case WarehouseSection.txn:
@@ -374,14 +379,14 @@ class _WarehousePageState extends State<WarehousePage> {
     if (id == null || id <= 0) return;
     final st = (m['status'] ?? '').toString().toLowerCase();
     if (st == 'destroyed' || st == 'finished') {
-      _prompt('该板不可销毁');
+      _prompt('该$_shortLabel不可销毁');
       return;
     }
     final reasonCtrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('销毁板码 ${m['code'] ?? ''}'),
+        title: Text('销毁$_codeLabel ${m['code'] ?? ''}'),
         content: TextField(
           controller: reasonCtrl,
           decoration: const InputDecoration(
@@ -644,8 +649,8 @@ class _WarehousePageState extends State<WarehousePage> {
         const SizedBox(height: 8),
         HubEntryTile(
           icon: Icons.qr_code_scanner,
-          title: '扫溯源接收/分板',
-          subtitle: '扫或手输溯源码，入厂接收或分板入库',
+          title: '扫溯源接收/${context.watch<CarrierCodeLabels>().splitVerb}',
+          subtitle: '扫或手输溯源码，入厂接收或${context.watch<CarrierCodeLabels>().splitVerb}入库',
           onTap: () => _openSection(WarehouseSection.scan),
         ),
         HubEntryTile(
@@ -656,8 +661,8 @@ class _WarehousePageState extends State<WarehousePage> {
         ),
         HubEntryTile(
           icon: Icons.qr_code_2,
-          title: '板码',
-          subtitle: '查询板码、销毁未用板',
+          title: context.watch<CarrierCodeLabels>().code,
+          subtitle: '查询${context.watch<CarrierCodeLabels>().code}、销毁未用${context.watch<CarrierCodeLabels>().short}',
           onTap: () => _openSection(WarehouseSection.boxes),
         ),
         HubEntryTile(
@@ -669,7 +674,7 @@ class _WarehousePageState extends State<WarehousePage> {
         HubEntryTile(
           icon: Icons.swap_horiz,
           title: '出入库',
-          subtitle: '扫板码或手选产品，预览后过账',
+          subtitle: '扫${context.watch<CarrierCodeLabels>().code}或手选产品，预览后过账',
           onTap: () => _openSection(WarehouseSection.txn),
         ),
         HubEntryTile(
@@ -795,12 +800,12 @@ class _WarehousePageState extends State<WarehousePage> {
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + bottomInset),
       children: [
-        const FormSectionHeader('板码查询'),
+        FormSectionHeader('$_codeLabel查询'),
         TraceCodeField(
           controller: _boxQuery,
-          label: '板码',
+          label: _codeLabel,
           hint: '手输或扫码',
-          scannerTitle: '扫描板码',
+          scannerTitle: '扫描$_codeLabel',
           textCapitalization: TextCapitalization.none,
           onEditingComplete: _traceBox,
           onScanned: (_) => _traceBox(),
@@ -823,7 +828,7 @@ class _WarehousePageState extends State<WarehousePage> {
           ),
         ],
         const Divider(),
-        const Text('最近板码', style: TextStyle(fontWeight: FontWeight.bold)),
+        Text('最近$_codeLabel', style: const TextStyle(fontWeight: FontWeight.bold)),
         ..._boxes.map((e) {
           final m = Map<String, dynamic>.from(e as Map);
           final st = (m['status'] ?? '').toString().toLowerCase();
@@ -1044,9 +1049,9 @@ class _WarehousePageState extends State<WarehousePage> {
                     const FormSectionHeader('新建出入库'),
                     TraceCodeField(
                       controller: _txnScan,
-                      label: '板码',
+                      label: _codeLabel,
                       hint: '手输或扫码，可带出产品',
-                      scannerTitle: '扫描板码',
+                      scannerTitle: '扫描$_codeLabel',
                       textCapitalization: TextCapitalization.none,
                       onEditingComplete: _resolveTxnScan,
                       onScanned: (_) => _resolveTxnScan(),
@@ -1104,7 +1109,7 @@ class _WarehousePageState extends State<WarehousePage> {
                     const Text('请核对以下信息，确认后一次过账', style: TextStyle(fontSize: 12, color: Colors.black54)),
                     const SizedBox(height: 8),
                     _previewRow('方向', _txnDirection == 'in' ? '入库' : '出库'),
-                    _previewRow('板码', _txnScan.text.trim().isEmpty ? '-' : _txnScan.text.trim()),
+                    _previewRow(_codeLabel, _txnScan.text.trim().isEmpty ? '-' : _txnScan.text.trim()),
                     _previewRow('仓库', _warehouseLabel(_txnWarehouseId)),
                     _previewRow('产品', _productName(_txnProductId)),
                     _previewRow('数量', _txnQty.text.trim()),

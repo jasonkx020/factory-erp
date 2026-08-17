@@ -8,16 +8,19 @@ import { inventoryApi, productApi } from '@erp/shared'
 import { WarehouseSelect } from '../../components/select'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
+import { useCarrierCodeLabel } from '../../composables/useCarrierCodeLabel'
 
 type Row = Record<string, unknown>
 
-const boxCols: MobileCardColumn[] = [
-  { prop: 'code', label: '箱码', primary: true },
+const { codeLabel, short, ensureLoaded } = useCarrierCodeLabel()
+
+const boxCols = computed<MobileCardColumn[]>(() => [
+  { prop: 'code', label: codeLabel.value, primary: true },
   { prop: 'status', label: '状态' },
   { prop: 'weight', label: '重量' },
   { prop: 'trace_code', label: '溯源码' },
   { prop: 'product_id', label: '物料' },
-]
+])
 
 const loading = ref(false)
 const exporting = ref(false)
@@ -137,11 +140,11 @@ async function refresh() {
 }
 
 async function createBox() {
-  if (!boxForm.code) return ElMessage.warning('填写箱码')
-  if (!String(boxForm.trace_code || '').trim()) return ElMessage.warning('箱码须绑定溯源码')
+  if (!boxForm.code) return ElMessage.warning(`填写${codeLabel.value}`)
+  if (!String(boxForm.trace_code || '').trim()) return ElMessage.warning(`${codeLabel.value}须绑定溯源码`)
   const res = await inventoryApi.createBox({ ...boxForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success('箱码已建')
+  ElMessage.success(`${codeLabel.value}已建`)
   boxForm.code = ''
   boxForm.trace_code = ''
   await refresh()
@@ -151,7 +154,10 @@ async function destroyBox(row: Row) {
   const id = Number(row.id)
   if (!id) return
   try {
-    const { value } = await ElMessageBox.prompt('填写销毁原因（损耗等用不了的箱须标注销毁）', '销毁箱码', {
+    const { value } = await ElMessageBox.prompt(
+      `填写销毁原因（损耗等用不了的${short.value}须标注销毁）`,
+      `销毁${codeLabel.value}`,
+      {
       confirmButtonText: '销毁',
       cancelButtonText: '取消',
       inputPattern: /\S+/,
@@ -191,13 +197,17 @@ function copyCodes() {
   const text = exportCodes.value.join('\n')
   if (!text) return ElMessage.warning('无数据')
   void navigator.clipboard.writeText(text).then(() =>
-    ElMessage.success(selected.value.length ? `已复制选中 ${exportCodes.value.length} 个箱码` : '已复制当前列表箱码'),
+    ElMessage.success(
+      selected.value.length
+        ? `已复制选中 ${exportCodes.value.length} 个${codeLabel.value}`
+        : `已复制当前列表${codeLabel.value}`,
+    ),
   )
 }
 
 function printLabels() {
   const codes = exportCodes.value
-  if (!codes.length) return ElMessage.warning(selected.value.length ? '请先勾选箱码' : '无箱码可打印')
+  if (!codes.length) return ElMessage.warning(selected.value.length ? `请先勾选${codeLabel.value}` : `无${codeLabel.value}可打印`)
   void Promise.all(codes.map((c) => buildQr(c))).then(() => {
     const win = window.open('', '_blank', 'noopener,noreferrer')
     if (!win) return ElMessage.error('浏览器拦截了打印窗口，请允许弹窗')
@@ -207,7 +217,7 @@ function printLabels() {
         return `<div class="label"><img src="${src}" alt=""/><div class="code">${code}</div></div>`
       })
       .join('')
-    win.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>箱码二维码</title>
+    win.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>${codeLabel.value}二维码</title>
 <style>
   @page { margin: 10mm; }
   body { font-family: Arial, "Microsoft YaHei", sans-serif; margin: 0; }
@@ -226,7 +236,7 @@ function printLabels() {
 /** A4 批量 PDF：4 列 × 5 行 / 页；优先导出勾选行，未勾选则导出当前列表 */
 async function exportPdf() {
   const codes = exportCodes.value
-  if (!codes.length) return ElMessage.warning('请先勾选要导出的箱码，或确保列表有数据')
+  if (!codes.length) return ElMessage.warning(`请先勾选要导出的${codeLabel.value}，或确保列表有数据`)
   exporting.value = true
   try {
     await Promise.all(codes.map((c) => buildQr(c, true)))
@@ -295,6 +305,7 @@ watch(viewMode, (m) => {
 })
 
 onMounted(async () => {
+  await ensureLoaded()
   await loadProducts()
   await refresh()
 })
@@ -302,9 +313,9 @@ onMounted(async () => {
 
 <template>
   <div v-loading="loading || exporting" :element-loading-text="exporting ? '正在生成 PDF…' : ''">
-    <el-card header="新建箱码" class="mb">
+    <el-card :header="`新建${codeLabel}`" class="mb">
       <el-form inline size="small">
-        <el-form-item label="箱码"><el-input v-model="boxForm.code" style="width:160px" /></el-form-item>
+        <el-form-item :label="codeLabel"><el-input v-model="boxForm.code" style="width:160px" /></el-form-item>
         <el-form-item label="溯源码"><el-input v-model="boxForm.trace_code" style="width:160px" placeholder="必填" /></el-form-item>
         <el-form-item label="物料">
           <el-select v-model="boxForm.product_id" style="width:160px" filterable>
@@ -315,12 +326,12 @@ onMounted(async () => {
         <el-form-item label="重量"><el-input-number v-model="boxForm.weight" :min="0" /></el-form-item>
         <el-button type="primary" @click="createBox">新建</el-button>
       </el-form>
-      <p class="hint">可勾选箱码批量导出 PDF（含二维码）便于打印；未勾选时导出当前筛选列表。</p>
+      <p class="hint">可勾选{{ codeLabel }}批量导出 PDF（含二维码）便于打印；未勾选时导出当前筛选列表。</p>
     </el-card>
 
-    <el-card header="箱码追溯" class="mb">
+    <el-card :header="`${codeLabel}追溯`" class="mb">
       <el-form inline size="small">
-        <el-form-item label="箱码"><el-input v-model="boxCode" style="width:180px" /></el-form-item>
+        <el-form-item :label="codeLabel"><el-input v-model="boxCode" style="width:180px" /></el-form-item>
         <el-button type="primary" @click="doBoxTrace">追溯</el-button>
       </el-form>
       <pre v-if="boxTrace" class="trace">{{ boxTrace }}</pre>
@@ -329,12 +340,12 @@ onMounted(async () => {
     <el-card>
       <template #header>
         <div class="hdr">
-          <span>箱码 / 二维码 · 共 {{ total }}</span>
+          <span>{{ codeLabel }} / 二维码 · 共 {{ total }}</span>
           <div class="hdr-actions">
             <el-input
               v-model="filter.q"
               clearable
-              placeholder="箱码"
+              :placeholder="codeLabel"
               size="small"
               style="width: 140px"
               @keyup.enter="refresh"
@@ -362,7 +373,7 @@ onMounted(async () => {
               <el-radio-button value="labels">标签预览</el-radio-button>
             </el-radio-group>
             <el-button size="small" @click="refresh">刷新</el-button>
-            <el-button size="small" @click="copyCodes">复制箱码</el-button>
+            <el-button size="small" @click="copyCodes">复制{{ codeLabel }}</el-button>
             <el-button size="small" @click="printLabels">浏览器打印</el-button>
             <el-button type="primary" size="small" :loading="exporting" @click="exportPdf">
               {{ selected.length ? `导出选中 PDF(${selected.length})` : '导出列表 PDF' }}
@@ -393,7 +404,7 @@ onMounted(async () => {
               <span v-else class="muted">…</span>
             </template>
           </el-table-column>
-          <el-table-column prop="code" label="箱码" min-width="150" />
+          <el-table-column prop="code" :label="codeLabel" min-width="150" />
           <el-table-column label="使用状态" width="110">
             <template #default="{ row }">
               <el-tag :type="statusTagType(row.status)" size="small" :title="String(row.status || '')">
@@ -452,11 +463,11 @@ onMounted(async () => {
           <div class="code">{{ row.code }}</div>
           <div class="meta">{{ statusLabel(row.status) }} · {{ productName(row.product_id) }}</div>
         </div>
-        <el-empty v-if="!list.length" description="暂无箱码" />
+        <el-empty v-if="!list.length" :description="`暂无${codeLabel}`" />
       </div>
     </el-card>
 
-    <el-dialog v-model="previewVisible" title="箱码二维码" width="380px" align-center>
+    <el-dialog v-model="previewVisible" :title="`${codeLabel}二维码`" width="380px" align-center>
       <div class="preview">
         <img v-if="previewQr" :src="previewQr" alt="qr" />
         <div class="preview-code">{{ previewCode }}</div>

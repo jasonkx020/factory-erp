@@ -113,29 +113,26 @@ func (s *Services) handleScan(c *gin.Context, resolveOnly bool) bool {
 		return true
 	}
 
+	reqProcessID, _ := asInt64(body["process_id"])
+	reqStepID, _ := asInt64(body["step_id"])
+	if reqProcessID <= 0 {
+		api.FailJSON(c, "PROCESS_REQUIRED")
+		return true
+	}
+	processID = reqProcessID
+	if reqStepID > 0 {
+		stepID = reqStepID
+	} else {
+		stepID = 0
+	}
+	if stepID > 0 && s.loadStep(stepID) == nil {
+		stepID = 0
+	}
+
 	// locate open dispatch for current process
 	var dispatchID int64
 	if woID > 0 {
 		_ = s.DB.QueryRow(`SELECT id FROM pd_dispatch WHERE work_order_id=? AND status IN ('dispatched','received','open') ORDER BY id DESC LIMIT 1`, woID).Scan(&dispatchID)
-	}
-	// stale step after routing recompile
-	if stepID > 0 && s.loadStep(stepID) == nil {
-		stepID = 0
-	}
-	if processID == 0 || stepID == 0 {
-		rid := s.resolveRoutingID(taskID, productID)
-		var step *routingStep
-		if processID > 0 {
-			step = s.stepByProcess(rid, processID)
-		}
-		if step == nil {
-			step = s.firstStep(rid)
-		}
-		if step != nil {
-			processID = step.ProcessID
-			stepID = step.ID
-			s.advanceBoxToStep(boxID, step)
-		}
 	}
 	if !s.workerShiftAuthorized(workerID, processID) {
 		api.FailJSON(c, "SHIFT_NOT_AUTHORIZED")

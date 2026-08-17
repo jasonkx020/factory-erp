@@ -32,7 +32,7 @@ async function runPiecework() {
       const c = await productApi.create({ code: `PW${Date.now()}`, name: '计件原料', product_type: 'raw' })
       productId = Number((c.data as { id: number })?.id)
     }
-    await payrollApi.createWageRate({ process_id: 1, rate: 2.5 })
+    await payrollApi.createWageRate({ process_id: 1, rate: 2.5 }) // 同工序会停用旧 active，不堆重复
     const txn = await inventoryApi.createTxn({
       doc_type: 'purchase_in',
       warehouse_id: 1,

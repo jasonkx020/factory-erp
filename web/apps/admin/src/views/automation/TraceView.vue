@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { inventoryApi, systemApi } from '@erp/shared'
 import { ElMessage } from 'element-plus'
 import TraceLotPanel from '../../components/trace/TraceLotPanel.vue'
+import { useCarrierCodeLabel } from '../../composables/useCarrierCodeLabel'
 
 type Row = Record<string, unknown>
+
+const { codeLabel, short, ensureLoaded } = useCarrierCodeLabel()
 
 const boxCode = ref('')
 const traceId = ref('')
@@ -15,7 +18,7 @@ const opLoading = ref(false)
 
 async function loadBox() {
   const code = boxCode.value.trim()
-  if (!code) return ElMessage.warning('请输入箱码')
+  if (!code) return ElMessage.warning(`请输入${codeLabel.value}`)
   boxLoading.value = true
   try {
     const res = await inventoryApi.boxTrace(code)
@@ -46,14 +49,14 @@ const boxSummary = computed(() => {
     v != null && String(v) !== '' ? { label, value: String(v) } : null
   const farmer = (m.farmer as Row) || {}
   return [
-    kv('箱码', m.box_code),
+    kv(codeLabel.value, m.box_code),
     kv('溯源码', m.trace_code),
     kv('产地', m.origin),
     kv('收货日', m.receive_date),
     kv('来源类型', m.source_type),
     kv('农户', farmer.name),
     kv('农户电话', farmer.mobile),
-    kv('关联箱数', Array.isArray(m.related_boxes) ? (m.related_boxes as unknown[]).length : null),
+    kv(`关联${short.value}数`, Array.isArray(m.related_boxes) ? (m.related_boxes as unknown[]).length : null),
   ].filter(Boolean) as { label: string; value: string }[]
 })
 
@@ -88,6 +91,10 @@ function triggerLabel(v: unknown) {
   }
   return map[s] || s || '-'
 }
+
+onMounted(() => {
+  void ensureLoaded()
+})
 </script>
 
 <template>
@@ -98,24 +105,24 @@ function triggerLabel(v: unknown) {
         <TraceLotPanel />
       </el-tab-pane>
 
-      <el-tab-pane label="按箱码">
+      <el-tab-pane :label="`按${codeLabel}`">
         <div class="row">
-          <el-input v-model="boxCode" placeholder="箱码" clearable style="max-width:280px" @keyup.enter="loadBox" />
+          <el-input v-model="boxCode" :placeholder="codeLabel" clearable style="max-width:280px" @keyup.enter="loadBox" />
           <el-button type="primary" :loading="boxLoading" @click="loadBox">查询</el-button>
         </div>
         <div v-if="boxTrace" v-loading="boxLoading">
-          <h4 class="sec">箱信息</h4>
+          <h4 class="sec">{{ short }}信息</h4>
           <el-descriptions :column="2" border size="small">
             <el-descriptions-item v-for="f in boxSummary" :key="f.label" :label="f.label">
               {{ f.value }}
             </el-descriptions-item>
           </el-descriptions>
 
-          <h4 class="sec">关联箱码</h4>
+          <h4 class="sec">关联{{ codeLabel }}</h4>
           <div v-if="relatedBoxes.length" class="tags">
             <el-tag v-for="c in relatedBoxes" :key="c" size="small" class="tag">{{ c }}</el-tag>
           </div>
-          <p v-else class="muted">无关联箱</p>
+          <p v-else class="muted">无关联{{ short }}</p>
 
           <h4 class="sec">工艺流转事件</h4>
           <el-table v-if="flowEvents.length" :data="flowEvents" size="small" border>
@@ -138,7 +145,7 @@ function triggerLabel(v: unknown) {
             <el-table-column prop="created_at" label="时间" width="160" />
             <el-table-column prop="module" label="模块" width="120" />
             <el-table-column prop="action" label="动作" width="120" />
-            <el-table-column prop="box_code" label="箱码" min-width="140" />
+            <el-table-column prop="box_code" :label="codeLabel" min-width="140" />
             <el-table-column prop="trace_id" label="Trace" min-width="140" show-overflow-tooltip />
           </el-table>
           <p v-else class="muted">暂无操作日志</p>
@@ -149,7 +156,7 @@ function triggerLabel(v: unknown) {
             </el-collapse-item>
           </el-collapse>
         </div>
-        <p v-else-if="!boxLoading" class="muted">输入箱码后查询</p>
+        <p v-else-if="!boxLoading" class="muted">输入{{ codeLabel }}后查询</p>
       </el-tab-pane>
 
       <el-tab-pane label="按 Trace ID">

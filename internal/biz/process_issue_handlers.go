@@ -124,6 +124,12 @@ func (s *Services) handleBoardCloseHTTP(c *gin.Context) bool {
 		api.FailJSON(c, fail)
 		return true
 	}
+	s.appendStationFlowLog(stationFlowEvent{
+		EventType: "board_close", BoardID: board.ID, BoardCode: board.Code, TraceCode: board.Trace,
+		ProcessID: board.ProcessID, StepID: board.StepID, ActorUserID: claimsUserID(c),
+		Payload: gin.H{"confirm_loss": confirmLoss, "writeoff_kg": out["writeoff_kg"]},
+		After:   out,
+	})
 	api.OK(c, out)
 	return true
 }
@@ -153,7 +159,7 @@ func (s *Services) parseBoardAction(c *gin.Context) (body map[string]interface{}
 	if errMsg != "" {
 		return body, nil, 0, "", "", 0, errMsg
 	}
-	s.ensureBoardProcess(board)
+	s.sanitizeBoardProcessRefs(board)
 	if strings.TrimSpace(board.Trace) == "" {
 		return body, nil, 0, "", "", 0, "TRACE_CODE_REQUIRED"
 	}
@@ -163,19 +169,25 @@ func (s *Services) parseBoardAction(c *gin.Context) (body map[string]interface{}
 	return body, board, workerID, workerName, badge, kg, ""
 }
 
+func (s *Services) requireBodyProcessID(body map[string]interface{}) (processID, stepID int64, errMsg string) {
+	processID, _ = asInt64(body["process_id"])
+	stepID, _ = asInt64(body["step_id"])
+	if processID <= 0 {
+		return 0, 0, "PROCESS_REQUIRED"
+	}
+	return processID, stepID, ""
+}
+
 func (s *Services) handleBoardIssueHTTP(c *gin.Context) bool {
 	body, board, workerID, workerName, badge, kg, errMsg := s.parseBoardAction(c)
 	if errMsg != "" {
 		api.FailJSON(c, errMsg)
 		return true
 	}
-	processID, _ := asInt64(body["process_id"])
-	stepID, _ := asInt64(body["step_id"])
-	if processID <= 0 {
-		processID = board.ProcessID
-	}
-	if stepID <= 0 {
-		stepID = board.StepID
+	processID, stepID, errMsg := s.requireBodyProcessID(body)
+	if errMsg != "" {
+		api.FailJSON(c, errMsg)
+		return true
 	}
 	if !s.workerShiftAuthorized(workerID, processID) {
 		api.FailJSON(c, "SHIFT_NOT_AUTHORIZED")
@@ -190,14 +202,32 @@ func (s *Services) handleBoardIssueHTTP(c *gin.Context) bool {
 	out["worker_name"] = workerName
 	out["badge_code"] = badge
 	s.attachBoardPreview(out, board.ID, board.Code, processID, stepID, workerID)
+	rate, _ := asFloat(out["rate"])
+	amt, _ := asFloat(out["issue_locked_wage_amount"])
+	s.appendStationFlowLog(stationFlowEvent{
+		EventType: "issue", BoardID: board.ID, BoardCode: board.Code, TraceCode: board.Trace,
+		ProcessID: processID, StepID: stepID, WorkerID: workerID, WorkerName: workerName, Badge: badge,
+		ActorUserID: claimsUserID(c), Kg: kg, PayMode: s.processPayMode(processID), EmpType: s.workerEmpType(workerID),
+		Rate: rate, Amount: amt, RefType: "pd_process_issue", RefID: asInt64Or0(out["id"]),
+		After: out,
+	})
 	api.OK(c, out)
 	return true
 }
 
 func (s *Services) handleBoardReturnHTTP(c *gin.Context) bool {
-	_, board, workerID, workerName, badge, kg, errMsg := s.parseBoardAction(c)
+	body, board, workerID, workerName, badge, kg, errMsg := s.parseBoardAction(c)
 	if errMsg != "" {
 		api.FailJSON(c, errMsg)
+		return true
+	}
+	processID, stepID, errMsg := s.requireBodyProcessID(body)
+	if errMsg != "" {
+		api.FailJSON(c, errMsg)
+		return true
+	}
+	if !s.workerShiftAuthorized(workerID, processID) {
+		api.FailJSON(c, "SHIFT_NOT_AUTHORIZED")
 		return true
 	}
 	out, fail := s.returnBoardKg(board, workerID, kg)
@@ -208,7 +238,19 @@ func (s *Services) handleBoardReturnHTTP(c *gin.Context) bool {
 	out["worker_id"] = workerID
 	out["worker_name"] = workerName
 	out["badge_code"] = badge
-	s.attachBoardPreview(out, board.ID, board.Code, board.ProcessID, board.StepID, workerID)
+	s.attachBoardPreview(out, board.ID, board.Code, processID, stepID, workerID)
+	rate, _ := asFloat(out["rate"])
+	amt, _ := asFloat(out["released_locked_wage_amount"])
+	if amt > 0 {
+		amt = -amt
+	}
+	s.appendStationFlowLog(stationFlowEvent{
+		EventType: "return", BoardID: board.ID, BoardCode: board.Code, TraceCode: board.Trace,
+		ProcessID: processID, StepID: stepID, WorkerID: workerID, WorkerName: workerName, Badge: badge,
+		ActorUserID: claimsUserID(c), Kg: kg, PayMode: s.processPayMode(processID), EmpType: s.workerEmpType(workerID),
+		Rate: rate, Amount: amt, RefType: "pd_process_issue_return",
+		After: out,
+	})
 	api.OK(c, out)
 	return true
 }
@@ -219,21 +261,29 @@ func (s *Services) handleBoardMoveHTTP(c *gin.Context) bool {
 		api.FailJSON(c, errMsg)
 		return true
 	}
-	kind := strings.TrimSpace(strOrDef(body["move_kind"], "next"))
-	if kind == "finish" {
-		kind = "finish_in"
+	kind := strings.TrimSpace(strOrDef(body["move_kind"], "stock_in"))
+	if kind == "finish" || kind == "finish_in" {
+		kind = "stock_in"
 	}
-	if kind != "next" && kind != "finish_in" {
+	if kind == "next" {
+		api.FailJSON(c, "AUTO_ROUTING_DISABLED")
+		return true
+	}
+	if kind != "stock_in" {
 		api.FailJSON(c, "INVALID_MOVE_KIND")
 		return true
 	}
-	fromProcess := board.ProcessID
-	if !s.workerShiftAuthorized(workerID, fromProcess) {
+	processID, stepID, errMsg := s.requireBodyProcessID(body)
+	if errMsg != "" {
+		api.FailJSON(c, errMsg)
+		return true
+	}
+	if !s.workerShiftAuthorized(workerID, processID) {
 		api.FailJSON(c, "SHIFT_NOT_AUTHORIZED")
 		return true
 	}
 	createdBy := claimsUserID(c)
-	out, fail := s.moveBoardKg(board, workerID, kg, kind, createdBy)
+	out, fail := s.moveBoardKg(board, workerID, kg, kind, createdBy, processID, stepID)
 	if fail != "" {
 		api.FailJSON(c, fail)
 		return true
@@ -241,15 +291,15 @@ func (s *Services) handleBoardMoveHTTP(c *gin.Context) bool {
 	out["worker_id"] = workerID
 	out["worker_name"] = workerName
 	out["badge_code"] = badge
-	previewProc := board.ProcessID
-	previewStep := board.StepID
-	if v, ok := out["to_process_id"].(int64); ok && v > 0 {
-		previewProc = v
-	}
-	if v, ok := out["to_step_id"].(int64); ok && v > 0 {
-		previewStep = v
-	}
-	s.attachBoardPreview(out, board.ID, board.Code, previewProc, previewStep, workerID)
+	s.attachBoardPreview(out, board.ID, board.Code, processID, stepID, workerID)
+	s.appendStationFlowLog(stationFlowEvent{
+		EventType: "stock_in", BoardID: board.ID, BoardCode: board.Code, TraceCode: board.Trace,
+		ProcessID: processID, StepID: stepID, WorkerID: workerID, WorkerName: workerName, Badge: badge,
+		ActorUserID: createdBy, Kg: kg, PayMode: s.processPayMode(processID), EmpType: s.workerEmpType(workerID),
+		RefType: "pd_process_move", RefID: asInt64Or0(out["id"]),
+		Payload: gin.H{"new_board_code": out["new_board_code"], "new_board_id": out["new_board_id"]},
+		After:   out,
+	})
 	api.OK(c, out)
 	return true
 }
@@ -283,30 +333,19 @@ func (s *Services) reloadBoardTx(tx *sql.Tx, id int64) (*boardState, string) {
 	return &b, ""
 }
 
-func (s *Services) ensureBoardProcess(b *boardState) {
+// sanitizeBoardProcessRefs clears stale routing step refs; does not auto-assign next/first step.
+func (s *Services) sanitizeBoardProcessRefs(b *boardState) {
 	if b == nil {
 		return
 	}
 	if b.StepID > 0 && s.loadStep(b.StepID) == nil {
 		b.StepID = 0
 	}
-	if b.ProcessID > 0 && b.StepID > 0 {
-		return
-	}
-	rid := s.resolveRoutingID(b.TaskID, b.ProductID)
-	var step *routingStep
-	if b.ProcessID > 0 {
-		step = s.stepByProcess(rid, b.ProcessID)
-	}
-	if step == nil {
-		step = s.firstStep(rid)
-	}
-	if step == nil {
-		return
-	}
-	b.ProcessID = step.ProcessID
-	b.StepID = step.ID
-	s.advanceBoxToStep(b.ID, step)
+}
+
+// ensureBoardProcess kept for callers that only need stale-step cleanup (no routing auto-flow).
+func (s *Services) ensureBoardProcess(b *boardState) {
+	s.sanitizeBoardProcessRefs(b)
 }
 
 func (s *Services) boardAvailableKg(boardID, processID int64, currentProcessID int64, weight float64) float64 {
@@ -360,7 +399,9 @@ func (s *Services) attachBoardPreview(dst gin.H, boardID int64, code string, pro
 	if stepID <= 0 {
 		stepID = curStep
 	}
-	avail := s.boardAvailableKg(boardID, processID, curProc, weight)
+	step := s.loadStep(stepID)
+	// Manual process selection: board weight is claimable into the chosen process (no routing auto-next).
+	avail := roundKg(weight + s.poolOpenKg(boardID, processID))
 	myOpen := s.workerOpenKg(boardID, processID, workerID)
 	procOpen := s.processOpenKg(boardID, processID)
 	dst["board_id"] = boardID
@@ -369,26 +410,40 @@ func (s *Services) attachBoardPreview(dst gin.H, boardID int64, code string, pro
 	dst["trace_code"] = trace
 	dst["process_id"] = processID
 	dst["step_id"] = stepID
+	dst["board_process_id"] = curProc
+	dst["board_step_id"] = curStep
 	dst["available_kg"] = avail
 	dst["my_open_kg"] = myOpen
 	dst["process_open_kg"] = procOpen
 	dst["wip_kg"] = roundKg(avail + procOpen)
-	if step := s.loadStep(stepID); step != nil {
+	dst["buffer_reentry"] = processID != curProc && weight > kgEps
+	dst["has_next"] = false
+	dst["can_next"] = false
+	dst["can_stock_in"] = true
+	if step != nil {
 		dst["step_name"] = step.StepName
 		dst["is_piecework"] = step.IsPiecework
-		next := s.nextStep(step)
-		if next != nil {
-			dst["has_next"] = true
-			dst["next_process_id"] = next.ProcessID
-			dst["next_step_id"] = next.ID
-			dst["next_step_name"] = next.StepName
-		} else {
-			dst["has_next"] = false
+		wh := step.WarehouseID
+		if wh <= 0 {
+			_ = s.DB.QueryRow(`SELECT COALESCE(warehouse_id,0) FROM inv_box_code WHERE id=?`, boardID).Scan(&wh)
+		}
+		if wh > 0 {
+			dst["stock_in_warehouse_id"] = wh
+		}
+	} else if processID > 0 {
+		dst["is_piecework"] = s.isPieceworkProcess(processID, 0)
+		var wh int64
+		_ = s.DB.QueryRow(`SELECT COALESCE(warehouse_id,0) FROM inv_box_code WHERE id=?`, boardID).Scan(&wh)
+		if wh > 0 {
+			dst["stock_in_warehouse_id"] = wh
 		}
 	}
 	var processName string
 	_ = s.DB.QueryRow(`SELECT COALESCE(name,'') FROM pd_process WHERE id=?`, processID).Scan(&processName)
 	dst["process_name"] = processName
+	if step == nil && processName != "" {
+		dst["step_name"] = processName
+	}
 	s.attachPieceworkLockPreview(dst, workerID, processID, stepID)
 }
 
@@ -411,9 +466,17 @@ func (s *Services) issueBoardKg(board *boardState, workerID, processID, stepID i
 	if fail != "" {
 		return nil, fail
 	}
-	avail := b.Weight
-	if b.ProcessID != processID {
-		avail = 0
+	// Manual process choice: board warehouse weight can be issued into any selected process.
+	reentry := false
+	if b.ProcessID != processID && b.Weight > kgEps {
+		reentry = true
+		if stepID <= 0 {
+			stepID = b.StepID
+		}
+	}
+	avail := 0.0
+	if b.ProcessID == processID || reentry {
+		avail = b.Weight
 	}
 	var pool float64
 	_ = tx.QueryRow(`SELECT COALESCE(SUM(issue_kg - returned_kg - completed_kg),0)
@@ -423,11 +486,18 @@ func (s *Services) issueBoardKg(board *boardState, workerID, processID, stepID i
 		return nil, "QTY_EXCEEDS_AVAILABLE"
 	}
 	need := kg
-	if b.ProcessID == processID && b.Weight > kgEps && need > kgEps {
+	if (b.ProcessID == processID || reentry) && b.Weight > kgEps && need > kgEps {
 		take := math.Min(b.Weight, need)
 		b.Weight = roundKg(b.Weight - take)
 		need = roundKg(need - take)
-		if _, err := tx.Exec(`UPDATE inv_box_code SET weight=?, qty=?, updated_at=NOW() WHERE id=?`, b.Weight, b.Weight, b.ID); err != nil {
+		if reentry || b.ProcessID != processID {
+			if _, err := tx.Exec(`UPDATE inv_box_code SET current_process_id=?, current_step_id=?, weight=?, qty=?, updated_at=NOW() WHERE id=?`,
+				processID, stepID, b.Weight, b.Weight, b.ID); err != nil {
+				return nil, "DB_ERROR:" + err.Error()
+			}
+			b.ProcessID = processID
+			b.StepID = stepID
+		} else if _, err := tx.Exec(`UPDATE inv_box_code SET weight=?, qty=?, updated_at=NOW() WHERE id=?`, b.Weight, b.Weight, b.ID); err != nil {
 			return nil, "DB_ERROR:" + err.Error()
 		}
 	}
@@ -449,14 +519,15 @@ func (s *Services) issueBoardKg(board *boardState, workerID, processID, stepID i
 	board.ProcessID = b.ProcessID
 	board.StepID = b.StepID
 	out := gin.H{"id": iid, "issue_kg": kg, "action": "issue"}
-	if s.isPieceworkProcess(processID, stepID) {
+	if s.shouldLockYieldWage(processID, workerID) {
 		rate := s.processWageRate(processID)
 		out["piecework"] = true
+		out["pay_mode"] = s.processPayMode(processID)
 		out["rate"] = rate
 		out["issue_locked_kg"] = kg
 		out["issue_locked_wage_amount"] = roundMoney(kg * rate)
 		out["piecework_status"] = "locked"
-		out["piecework_hint"] = "计件已预锁定，进下道或完工入库后结算"
+		out["piecework_hint"] = "预估工钱，当日日结入账"
 	}
 	return out, ""
 }
@@ -623,14 +694,15 @@ func (s *Services) returnBoardKg(board *boardState, workerID int64, kg float64) 
 			procID = pid
 			break
 		}
-		if procID > 0 && s.isPieceworkProcess(procID, stepByProcess[procID]) {
+		if procID > 0 && s.shouldLockYieldWage(procID, workerID) {
 			rate := s.processWageRate(procID)
 			out["piecework"] = true
+			out["pay_mode"] = s.processPayMode(procID)
 			out["rate"] = rate
 			out["released_locked_kg"] = returnedTotal
 			out["released_locked_wage_amount"] = roundMoney(returnedTotal * rate)
 			out["piecework_status"] = "locked"
-			out["piecework_hint"] = "退库扣减计件锁定，未结算部分不入日汇总"
+			out["piecework_hint"] = "退库扣减预估工钱，未日结部分不入汇总"
 		}
 	}
 	return out, ""
@@ -704,7 +776,7 @@ func writeoffBoardProcessRemainTx(tx *sql.Tx, b *boardState, processID int64) (f
 	return writeoff, ""
 }
 
-func (s *Services) moveBoardKg(board *boardState, toWorkerID int64, kg float64, kind string, createdBy int64) (gin.H, string) {
+func (s *Services) moveBoardKg(board *boardState, toWorkerID int64, kg float64, kind string, createdBy, fromProcessID, fromStepIDHint int64) (gin.H, string) {
 	if board == nil || kg <= kgEps {
 		return nil, "INVALID_QTY"
 	}
@@ -714,17 +786,27 @@ func (s *Services) moveBoardKg(board *boardState, toWorkerID int64, kg float64, 
 	if board.Status == "finished" {
 		return nil, "BOARD_FINISHED"
 	}
-	fromStep := s.loadStep(board.StepID)
-	var toStep *routingStep
-	if kind == "next" {
-		if fromStep == nil {
-			return nil, "ROUTING_REQUIRED"
-		}
-		toStep = s.nextStep(fromStep)
-		if toStep == nil {
-			return nil, "NO_NEXT_STEP"
-		}
+	if kind == "finish" || kind == "finish_in" {
+		kind = "stock_in"
 	}
+	if kind == "next" {
+		return nil, "AUTO_ROUTING_DISABLED"
+	}
+	if kind != "stock_in" {
+		return nil, "INVALID_MOVE_KIND"
+	}
+	fromProcess := fromProcessID
+	if fromProcess <= 0 {
+		fromProcess = board.ProcessID
+	}
+	if fromProcess <= 0 {
+		return nil, "PROCESS_REQUIRED"
+	}
+	fromStepID := fromStepIDHint
+	if fromStepID <= 0 {
+		fromStepID = board.StepID
+	}
+	fromStep := s.loadStep(fromStepID)
 	tx, err := s.DB.Begin()
 	if err != nil {
 		return nil, "DB_ERROR"
@@ -734,8 +816,6 @@ func (s *Services) moveBoardKg(board *boardState, toWorkerID int64, kg float64, 
 	if fail != "" {
 		return nil, fail
 	}
-	fromProcess := b.ProcessID
-	fromStepID := b.StepID
 	wip := 0.0
 	if b.ProcessID == fromProcess {
 		wip += b.Weight
@@ -812,22 +892,13 @@ func (s *Services) moveBoardKg(board *boardState, toWorkerID int64, kg float64, 
 		need = 0
 	}
 
-	var toProcessID, toStepID int64
-	if toStep != nil {
-		toProcessID = toStep.ProcessID
-		toStepID = toStep.ID
-	}
 	issueIDs := make([]string, 0, len(allocs))
 	for _, a := range allocs {
 		issueIDs = append(issueIDs, fmt.Sprintf("%d", a.issueID))
 	}
-	var toProcArg, toStepArg interface{}
-	if toProcessID > 0 {
-		toProcArg, toStepArg = toProcessID, toStepID
-	}
 	res, err := tx.Exec(`INSERT INTO pd_process_move(board_id, board_code, trace_code, from_process_id, from_step_id, to_process_id, to_step_id, to_worker_id, kg, move_kind, issue_ids, created_by)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-		b.ID, b.Code, b.Trace, fromProcess, fromStepID, toProcArg, toStepArg, toWorkerID, kg, kind, strings.Join(issueIDs, ","), nullIf0(createdBy))
+		b.ID, b.Code, b.Trace, fromProcess, fromStepID, nil, nil, toWorkerID, kg, kind, strings.Join(issueIDs, ","), nullIf0(createdBy))
 	if err != nil {
 		return nil, "DB_ERROR:" + err.Error()
 	}
@@ -835,67 +906,35 @@ func (s *Services) moveBoardKg(board *boardState, toWorkerID int64, kg float64, 
 	for _, a := range allocs {
 		_, _ = tx.Exec(`INSERT INTO pd_process_move_alloc(move_id, issue_id, kg) VALUES(?,?,?)`, moveID, a.issueID, a.kg)
 	}
-	if kind == "next" && toProcessID > 0 && toWorkerID > 0 {
-		_, err = tx.Exec(`INSERT INTO pd_process_issue(board_id, board_code, trace_code, process_id, step_id, worker_id, issue_kg, returned_kg, completed_kg, status)
-			VALUES(?,?,?,?,?,?,?,0,0,'open')`, b.ID, b.Code, b.Trace, toProcessID, toStepID, toWorkerID, kg)
-		if err != nil {
-			return nil, "DB_ERROR:" + err.Error()
-		}
-	}
 
 	fromRemain := boardProcessRemainKgTx(tx, b.ID, fromProcess, b.ProcessID, b.Weight)
 	if fromRemain <= kgEps {
-		if kind == "finish_in" {
-			if _, err := tx.Exec(`UPDATE inv_box_code SET weight=0, qty=0, updated_at=NOW() WHERE id=?`, b.ID); err != nil {
-				return nil, "DB_ERROR:" + err.Error()
-			}
-			b.Weight = 0
-		} else if toStep != nil {
-			var poolTo float64
-			_ = tx.QueryRow(`SELECT COALESCE(SUM(issue_kg - returned_kg - completed_kg),0)
-				FROM pd_process_issue WHERE board_id=? AND process_id=? AND status='open' AND COALESCE(worker_id,0)=0`, b.ID, toProcessID).Scan(&poolTo)
-			if poolTo > kgEps {
-				if fail := takePoolTx(tx, b.ID, toProcessID, poolTo); fail != "" {
-					return nil, fail
-				}
-				b.Weight = roundKg(poolTo)
-			} else {
-				b.Weight = 0
-			}
-			if _, err := tx.Exec(`UPDATE inv_box_code SET current_process_id=?, current_step_id=?, weight=?, qty=?, updated_at=NOW() WHERE id=?`,
-				toProcessID, toStepID, b.Weight, b.Weight, b.ID); err != nil {
-				return nil, "DB_ERROR:" + err.Error()
-			}
-			b.ProcessID = toProcessID
-			b.StepID = toStepID
+		if _, err := tx.Exec(`UPDATE inv_box_code SET weight=0, qty=0, updated_at=NOW() WHERE id=?`, b.ID); err != nil {
+			return nil, "DB_ERROR:" + err.Error()
 		}
+		b.Weight = 0
 	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, "DB_ERROR:" + err.Error()
 	}
 
-	doPiece := fromProcess > 0 && (fromStep == nil || fromStep.IsPiecework)
-	if fromStep == nil && fromProcess > 0 {
-		var pPiece int
-		_ = s.DB.QueryRow(`SELECT COALESCE(is_piecework,0) FROM pd_process WHERE id=?`, fromProcess).Scan(&pPiece)
-		doPiece = pPiece == 1
+	var newBoardCode string
+	var newBoardID int64
+	wh := b.WarehouseID
+	if fromStep != nil && fromStep.WarehouseID > 0 {
+		wh = fromStep.WarehouseID
 	}
-	pieceKg := 0.0
-	settledAmt := 0.0
-	if doPiece {
-		src := fmt.Sprintf("M%d", moveID)
-		rate := s.processWageRate(fromProcess)
-		for _, a := range allocs {
-			if !a.piece || a.workerID <= 0 || a.kg <= kgEps {
-				continue
-			}
-			s.upsertPieceworkSummaryKeyed(a.workerID, fromProcess, src, a.kg, a.kg, a.kg, 0, 1)
-			pieceKg = roundKg(pieceKg + a.kg)
-			settledAmt = roundMoney(settledAmt + a.kg*rate)
-		}
+	code, nid, serr := s.stockInNewBoardFrom(&boardState{
+		ID: b.ID, Code: b.Code, ProductID: b.ProductID, WarehouseID: b.WarehouseID,
+		TaskID: b.TaskID, WoID: b.WoID, Trace: b.Trace,
+	}, wh, fromProcess, fromStepID, kg)
+	if serr != nil {
+		return nil, "STOCK_IN_FAILED:" + serr.Error()
 	}
+	newBoardCode, newBoardID = code, nid
 
+	// Wage settles at day-end, not on stock_in.
 	board.Weight = b.Weight
 	board.ProcessID = b.ProcessID
 	board.StepID = b.StepID
@@ -903,25 +942,9 @@ func (s *Services) moveBoardKg(board *boardState, toWorkerID int64, kg float64, 
 	out := gin.H{
 		"id": moveID, "action": kind, "kg": kg, "move_kind": kind,
 		"from_process_id": fromProcess, "from_step_id": fromStepID,
-		"settled_kg": pieceKg, "settled_wage_amount": settledAmt,
-	}
-	if doPiece && pieceKg > kgEps {
-		out["piecework"] = true
-		out["piecework_status"] = "settled"
-		out["piecework_hint"] = "本道工序计件已结算入日汇总"
-	}
-	if kind == "next" && toProcessID > 0 && toWorkerID > 0 && s.isPieceworkProcess(toProcessID, toStepID) {
-		rateTo := s.processWageRate(toProcessID)
-		out["to_locked_kg"] = kg
-		out["to_locked_wage_amount"] = roundMoney(kg * rateTo)
-		out["to_piecework_status"] = "locked"
-	}
-	if toProcessID > 0 {
-		out["to_process_id"] = toProcessID
-		out["to_step_id"] = toStepID
-		if toStep != nil {
-			out["to_step_name"] = toStep.StepName
-		}
+		"settled_kg": 0.0, "settled_wage_amount": 0.0,
+		"new_board_code": newBoardCode, "new_box_code": newBoardCode, "new_board_id": newBoardID,
+		"piecework_hint": "入库仅换码；产量工钱请日结入账",
 	}
 	return out, ""
 }

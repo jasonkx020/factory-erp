@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getApiBase, purchaseApi } from '@erp/shared'
+import { useCarrierCodeLabel } from '../../composables/useCarrierCodeLabel'
 
 type Row = Record<string, unknown>
 
@@ -22,6 +23,8 @@ const emit = defineEmits<{
   loaded: [Row | null]
 }>()
 
+const { codeLabel, short, ensureLoaded } = useCarrierCodeLabel()
+
 const inputCode = ref('')
 const loading = ref(false)
 const result = ref<Row | null>(null)
@@ -35,16 +38,16 @@ function mediaUrl(raw: unknown): string {
   return `${base}${u.startsWith('/') ? u : `/${u}`}`
 }
 
-const STEP_META: Record<string, { label: string; color: string }> = {
+const STEP_META = computed(() => ({
   trace_lot: { label: '溯源批次', color: '#0d7a6f' },
   arrival: { label: '到货登记', color: '#409eff' },
   weigh: { label: '过磅收货', color: '#e6a23c' },
   box: { label: '分板入库', color: '#67c23a' },
   boxes: { label: '已分板明细', color: '#67c23a' },
-  box_family: { label: '关联箱码', color: '#909399' },
+  box_family: { label: `关联${codeLabel.value}`, color: '#909399' },
   farmer_settlement: { label: '农户结算', color: '#f56c6c' },
   audit: { label: '审计纠错', color: '#909399' },
-}
+}))
 
 const STATUS_MAP: Record<string, string> = {
   draft: '草稿',
@@ -79,12 +82,12 @@ function fmtMoney(v: unknown) {
 
 function stepLabel(step: unknown) {
   const s = String(step || '')
-  return STEP_META[s]?.label || s || '未知步骤'
+  return STEP_META.value[s as keyof typeof STEP_META.value]?.label || s || '未知步骤'
 }
 
 function stepColor(step: unknown) {
   const s = String(step || '')
-  return STEP_META[s]?.color || '#909399'
+  return STEP_META.value[s as keyof typeof STEP_META.value]?.color || '#909399'
 }
 
 function evidenceUrls(ev: Row): string[] {
@@ -171,21 +174,21 @@ function eventFields(ev: Row): Field[] {
   }
   if (step === 'box') {
     return [
-      ...(ev.box_code ? [{ label: '箱码', value: String(ev.box_code) }] : []),
-      ...(ev.box_id ? [{ label: '箱ID', value: String(ev.box_id) }] : []),
+      ...(ev.box_code ? [{ label: codeLabel.value, value: String(ev.box_code) }] : []),
+      ...(ev.box_id ? [{ label: `${short.value}ID`, value: String(ev.box_id) }] : []),
     ]
   }
   if (step === 'box_family') {
     const related = ev.related_boxes
     const text = Array.isArray(related) ? related.map(String).join('、') : String(related || '')
-    return text ? [{ label: '关联箱', value: text }] : []
+    return text ? [{ label: `关联${short.value}`, value: text }] : []
   }
   if (step === 'boxes') {
     const boxes = (ev.boxes as Row[]) || (data.boxes as Row[]) || []
-    if (!boxes.length) return [{ label: '箱数', value: '0' }]
+    if (!boxes.length) return [{ label: `${short.value}数`, value: '0' }]
     const totalW = boxes.reduce((s, b) => s + (Number(b.weight) || 0), 0)
     return [
-      { label: '箱数', value: String(boxes.length) },
+      { label: `${short.value}数`, value: String(boxes.length) },
       { label: '合计重量', value: fmtKg(totalW) },
     ]
   }
@@ -285,7 +288,7 @@ const signatureValid = computed(() => {
 async function load(code?: string) {
   const c = String(code ?? inputCode.value ?? props.code ?? '').trim()
   if (!c) {
-    ElMessage.warning('请输入溯源批号 / 溯源码 / 箱码 / 过磅单号')
+    ElMessage.warning(`请输入溯源批号 / 溯源码 / ${codeLabel.value} / 过磅单号`)
     return
   }
   inputCode.value = c
@@ -324,6 +327,10 @@ watch(
 )
 
 defineExpose({ load, clear, result })
+
+onMounted(() => {
+  void ensureLoaded()
+})
 </script>
 
 <template>
@@ -332,7 +339,7 @@ defineExpose({ load, clear, result })
       <el-input
         v-model="inputCode"
         clearable
-        placeholder="溯源批号 / T1- / 箱码 / 过磅单号"
+        :placeholder="`溯源批号 / T1- / ${codeLabel} / 过磅单号`"
         @keyup.enter="load()"
       />
       <el-button type="primary" @click="load()">倒查</el-button>

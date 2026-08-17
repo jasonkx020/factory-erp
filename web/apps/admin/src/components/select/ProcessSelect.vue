@@ -7,9 +7,10 @@ withDefaults(
     modelValue?: number | null
     placeholder?: string
     clearable?: boolean
+    disabled?: boolean
     style?: string
   }>(),
-  { placeholder: '选择工序', clearable: true, style: 'width:180px' },
+  { placeholder: '选择工序', clearable: true, disabled: false, style: 'width:180px' },
 )
 
 defineEmits<{ 'update:modelValue': [number | null] }>()
@@ -21,6 +22,7 @@ defineEmits<{ 'update:modelValue': [number | null] }>()
     :load="loadProcesses"
     :placeholder="placeholder"
     :clearable="clearable"
+    :disabled="disabled"
     :style="style"
     @update:model-value="$emit('update:modelValue', $event as number | null)"
   />

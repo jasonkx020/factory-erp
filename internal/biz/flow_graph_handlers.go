@@ -635,7 +635,6 @@ func (s *Services) spawnWeighCollabTicketWithRole(c *gin.Context, kind string, w
 			assignee = 0
 		}
 	}
-	// 禁止建单人自指派为下一处理人（无其他处理人时仍拒绝，避免自建自办）。
 	if assignee <= 0 || assignee == applicant {
 		return 0
 	}

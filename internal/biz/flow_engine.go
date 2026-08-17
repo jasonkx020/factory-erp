@@ -268,30 +268,18 @@ func (s *Services) autoStock(boxCode string, warehouseID, processID int64, qty f
 }
 
 func (s *Services) autoStockInNewBox(oldCode string, warehouseID, processID int64, qty float64, taskID, woID, stepID int64) (string, error) {
-	var productID int64 = 2
-	if warehouseID == 3 {
-		productID = 3
-	} else if warehouseID == 1 {
-		productID = 1
+	old, fail := s.loadBoardByCode(oldCode)
+	if fail != "" || old == nil {
+		return "", fmt.Errorf("%s", fail)
 	}
-	var farmerID int64
-	var trace, origin, receiveDate, sourceType string
-	_ = s.DB.QueryRow(`SELECT COALESCE(farmer_id,0), COALESCE(trace_code,''), COALESCE(origin,''), COALESCE(receive_date,''), COALESCE(source_type,'')
-		FROM inv_box_code WHERE code=?`, oldCode).Scan(&farmerID, &trace, &origin, &receiveDate, &sourceType)
-	newCode := fmt.Sprintf("BX%d", time.Now().UnixNano()%1e12)
-	_, err := s.DB.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, parent_box_id, current_process_id, current_step_id, task_id, work_order_id, farmer_id, trace_code, origin, receive_date, source_type, status)
-		VALUES(?,?,?,?,?,?, (SELECT id FROM inv_box_code WHERE code=?), ?,?,?,?,?,?,?,?,?,'open')`,
-		newCode, productID, warehouseID, time.Now().Format("20060102"), qty, qty, oldCode, processID, stepID, taskID, woID,
-		nullIf0(farmerID), trace, origin, receiveDate, sourceType)
-	if err != nil {
-		return "", err
+	if taskID > 0 {
+		old.TaskID = taskID
 	}
-	if err := s.autoStock(newCode, warehouseID, processID, qty, "produce_in"); err != nil {
-		return newCode, err
+	if woID > 0 {
+		old.WoID = woID
 	}
-	_, _ = s.DB.Exec(`UPDATE inv_box_code SET qty=?, weight=?, warehouse_id=?, product_id=?, updated_at=NOW() WHERE code=?`,
-		qty, qty, warehouseID, productID, newCode)
-	return newCode, nil
+	newCode, _, err := s.stockInNewBoardFrom(old, warehouseID, processID, stepID, qty)
+	return newCode, err
 }
 
 func (s *Services) writeFlowEvent(sourceType string, sourceID, fromStep, toStep int64, trigger, traceID, status, errMsg, payload string) int64 {

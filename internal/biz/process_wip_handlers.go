@@ -72,7 +72,10 @@ func (s *Services) getProcessWip(c *gin.Context) bool {
 		stepCode, stepName, processName            string
 		boxCount                                   int
 		availableKg, occupiedKg, wipWeight, wipQty float64
+		stockKg                                    float64
+		stockBoxCount                              int
 		boards                                     map[int64]struct{}
+		stockBoards                                map[int64]struct{}
 	}
 	steps := []stepAgg{}
 	rows, err := s.DB.Query(`SELECT rs.id, rs.seq_no, COALESCE(rs.step_code,''), COALESCE(rs.step_name,''),
@@ -92,6 +95,7 @@ func (s *Services) getProcessWip(c *gin.Context) bool {
 			continue
 		}
 		st.boards = map[int64]struct{}{}
+		st.stockBoards = map[int64]struct{}{}
 		stepIndex[st.stepID] = len(steps)
 		if st.processID > 0 {
 			if _, ok := processToStep[st.processID]; !ok {
@@ -194,6 +198,40 @@ func (s *Services) getProcessWip(c *gin.Context) bool {
 	}
 	irows.Close()
 
+	// In-warehouse buffer boards created by stock_in (have parent_box_id), keyed by completed process.
+	sq := `SELECT b.id, COALESCE(b.current_step_id,0), COALESCE(b.current_process_id,0), COALESCE(b.weight, b.qty, 0)
+		FROM inv_box_code b
+		WHERE COALESCE(b.is_deleted,0)=0 AND b.status IN ('open','active')
+		  AND COALESCE(b.parent_box_id,0)>0`
+	sargs := []interface{}{}
+	if productFilter > 0 {
+		sq += ` AND b.product_id=?`
+		sargs = append(sargs, productFilter)
+	}
+	srows, err := s.DB.Query(sq, sargs...)
+	if err == nil {
+		for srows.Next() {
+			var boardID, stepID, procID int64
+			var w float64
+			if err := srows.Scan(&boardID, &stepID, &procID, &w); err != nil {
+				continue
+			}
+			if w <= kgEps {
+				continue
+			}
+			idx, ok := stepIndex[stepID]
+			if !ok && procID > 0 {
+				idx, ok = processToStep[procID]
+			}
+			if !ok {
+				continue
+			}
+			steps[idx].stockKg = roundKg(steps[idx].stockKg + w)
+			steps[idx].stockBoards[boardID] = struct{}{}
+		}
+		srows.Close()
+	}
+
 	var pendingCnt int
 	var pendingWeight float64
 	_ = s.DB.QueryRow(`SELECT COUNT(1), COALESCE(SUM(COALESCE(r.weight, r.qty, 0)),0)
@@ -202,27 +240,33 @@ func (s *Services) getProcessWip(c *gin.Context) bool {
 
 	totalBoxes := 0
 	totalWeight := 0.0
+	totalStock := 0.0
 	list := make([]gin.H, 0, len(steps))
 	for i := range steps {
 		st := &steps[i]
 		st.boxCount = len(st.boards)
+		st.stockBoxCount = len(st.stockBoards)
 		st.wipWeight = roundKg(st.availableKg + st.occupiedKg)
 		st.wipQty = st.wipWeight
 		totalBoxes += st.boxCount
 		totalWeight += st.wipWeight
+		totalStock += st.stockKg
 		list = append(list, gin.H{
 			"step_id": st.stepID, "seq_no": st.seqNo, "step_code": st.stepCode, "step_name": st.stepName,
 			"process_id": st.processID, "process_name": st.processName, "warehouse_id": st.warehouseID,
 			"box_count": st.boxCount, "board_count": st.boxCount,
 			"available_kg": st.availableKg, "occupied_kg": st.occupiedKg,
 			"wip_weight": st.wipWeight, "wip_qty": st.wipQty,
+			"stock_kg": st.stockKg, "stock_box_count": st.stockBoxCount,
 		})
 	}
 	totalWeight = roundKg(totalWeight)
+	totalStock = roundKg(totalStock)
 	api.OK(c, gin.H{
 		"routing_id": routingID, "routing_code": routingCode,
 		"product_id":  productFilter,
 		"total_boxes": totalBoxes, "total_boards": totalBoxes, "total_weight": totalWeight,
+		"total_stock_kg": totalStock,
 		"pending_confirm_reports": pendingCnt, "pending_confirm_weight": pendingWeight,
 		"unassigned": gin.H{"box_count": unassignedBoxes, "board_count": unassignedBoxes, "wip_weight": roundKg(unassignedWeight)},
 		"steps":      list,
