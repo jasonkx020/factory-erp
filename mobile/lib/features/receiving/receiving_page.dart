@@ -88,7 +88,11 @@ class _ReceivingPageState extends State<ReceivingPage> {
   bool _loading = false;
   bool _batchOk = false;
   bool _searchingFarmer = false;
+  /// 溯源码过站中：农户/产品锁定
+  bool _bindingLocked = false;
   String _boundFarmerName = '';
+  List<dynamic> _farmerCodes = [];
+  bool _loadingFarmerCodes = false;
   Timer? _searchDebounce;
   /// 单据列表日期范围（默认近 3 日：今天-2 ～ 今天）
   late DateTime _ticketDateFrom;
@@ -220,8 +224,14 @@ class _ReceivingPageState extends State<ReceivingPage> {
   String _batchErrorMessage(String code) {
     final c = code.trim();
     switch (c) {
+      case 'SELF_ASSIGN_FORBIDDEN':
+        return '不能指派自己为下一处理人，请选择其他仓管账号';
+      case 'NO_ASSIGNEE_AVAILABLE':
+        return '没有可指派的下一处理人，请先配置仓管人员';
       case 'BATCH_CODE_USED':
-        return '该溯源码已被绑定，不可再用';
+        return '该溯源码状态异常，请刷新后重试';
+      case 'BATCH_CODE_ENDED':
+        return '该溯源码已结束，不可再追加采购单';
       case 'BATCH_CODE_RESERVED':
         return '该溯源码正被他人占用，请换码或稍后再试';
       case 'BATCH_CODE_VOID':
@@ -232,6 +242,10 @@ class _ReceivingPageState extends State<ReceivingPage> {
         return '溯源码不存在';
       case 'BATCH_CODE_UNAVAILABLE':
         return '溯源码当前不可用';
+      case 'TRACE_FARMER_LOCKED':
+        return '该溯源码已锁定农户，不可更换';
+      case 'TRACE_PRODUCT_LOCKED':
+        return '该溯源码已锁定产品/品种，不可更换';
       case 'GATE_BINDING_REQUIRED':
         return '请先完成入厂绑定后再入库';
       case 'DATE_RANGE_TOO_LARGE':
@@ -392,12 +406,91 @@ class _ReceivingPageState extends State<ReceivingPage> {
       _unitPrice.text = price.toString();
     }
     _farmerSearch.text = '${m['name'] ?? ''} ${m['mobile'] ?? ''}'.trim();
+    // 换农户后需重新选码
+    _batchOk = false;
+    _bindingLocked = false;
+    _boundFarmerName = '';
+    _batchNo.clear();
   }
 
   void _clearFarmerLink() {
     _farmerId = null;
     _farmerSearch.clear();
     _farmerHits = [];
+    _farmerCodes = [];
+    _batchOk = false;
+    _bindingLocked = false;
+    _boundFarmerName = '';
+    _batchNo.clear();
+  }
+
+  Future<void> _loadFarmerCodes() async {
+    final fid = _farmerId;
+    if (fid == null || fid <= 0) {
+      setState(() => _farmerCodes = []);
+      return;
+    }
+    setState(() => _loadingFarmerCodes = true);
+    final r = await context.read<AuthState>().api.get(
+          '/purchase/trace-batch-codes?farmer_id=$fid&page_size=50',
+        );
+    if (!mounted) return;
+    final list = r.ok && r.data is Map ? ApiClient.listOf((r.data as Map)['list']) : <dynamic>[];
+    setState(() {
+      _loadingFarmerCodes = false;
+      _farmerCodes = list;
+      if (!r.ok) {
+        _msgIsError = true;
+        _msg = _batchErrorMessage(r.msg.isNotEmpty ? r.msg : '倒查溯源码失败');
+      }
+    });
+  }
+
+  Future<void> _pickFarmerCode(Map<String, dynamic> m) async {
+    final code = (m['code'] ?? '').toString().trim().toUpperCase();
+    if (code.isEmpty) return;
+    final selectable = m['can_append'] == true || m['selectable'] == true ||
+        m['status'] == 'in_progress' || m['status'] == 'used';
+    if (!selectable) {
+      _promptRequired('该溯源码不可用（${m['status_label'] ?? m['status'] ?? ''}）');
+      return;
+    }
+    _batchNo.text = code;
+    await _validateBatch();
+  }
+
+  Future<void> _generateTraceCodeForGate() async {
+    if (_farmerId == null || _farmerId! <= 0) {
+      _promptRequired('请先关联农户再生成溯源码');
+      return;
+    }
+    final r = await context.read<AuthState>().api.post('/purchase/trace-batch-codes/generate', {
+      'biz_date': DateTime.now().toIso8601String().substring(0, 10),
+      'lot_no': '01',
+      'qty': 1,
+    });
+    if (!mounted) return;
+    if (!r.ok || r.data is! Map) {
+      _promptRequired(_batchErrorMessage(r.msg.isNotEmpty ? r.msg : '生成溯源码失败'));
+      return;
+    }
+    final data = Map<String, dynamic>.from(r.data as Map);
+    final list = ApiClient.listOf(data['list']);
+    String code = '';
+    if (list.isNotEmpty) {
+      code = (Map<String, dynamic>.from(list.first as Map)['code'] ?? '').toString();
+    }
+    if (code.isEmpty) {
+      _promptRequired('生成成功但未返回批号');
+      return;
+    }
+    _batchNo.text = code.toUpperCase();
+    setState(() {
+      _msgIsError = false;
+      _msg = '已生成新溯源码 $code，校验中…';
+    });
+    await _validateBatch();
+    await _loadFarmerCodes();
   }
 
   void _applyVariety(Map<String, dynamic> m) {
@@ -509,6 +602,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
     if (code.isEmpty) {
       setState(() {
         _batchOk = false;
+        _bindingLocked = false;
         _boundFarmerName = '';
       });
       _promptRequired('请填写溯源批号');
@@ -522,21 +616,41 @@ class _ReceivingPageState extends State<ReceivingPage> {
     if (!r.ok || r.data is! Map) {
       setState(() {
         _batchOk = false;
+        _bindingLocked = false;
         _boundFarmerName = '';
       });
       _promptRequired(_batchErrorMessage(r.msg.isNotEmpty ? r.msg : '溯源批号校验失败'));
       return;
     }
     final m = Map<String, dynamic>.from(r.data as Map);
+    final lockedFid = (m['farmer_id'] as num?)?.toInt() ?? 0;
+    if (_receiveKind == 'gate' &&
+        lockedFid > 0 &&
+        _farmerId != null &&
+        _farmerId! > 0 &&
+        lockedFid != _farmerId &&
+        (m['binding_locked'] == true || m['status'] == 'in_progress' || m['can_append'] == true)) {
+      setState(() {
+        _batchOk = false;
+        _bindingLocked = false;
+      });
+      _promptRequired('该溯源码已绑定其他农户，请换码或改选农户');
+      return;
+    }
     setState(() {
       _batchOk = true;
       _applyBatchBinding(m);
       _msgIsError = false;
       final bound = _boundFarmerName;
+      final st = (m['status'] ?? '').toString();
       if (_receiveKind == 'stockin') {
         _msg = bound.isEmpty
             ? '批号校验通过（入库）'
             : '批号校验通过 · 已同步农户/产品：$bound';
+      } else if (st == 'in_progress' || m['can_append'] == true) {
+        _msg = bound.isEmpty
+            ? '批号过站中，可追加同农户同产品采购单'
+            : '批号过站中 · 已锁定 $bound，可追加本单';
       } else {
         _msg = bound.isEmpty ? '批号校验通过（可入厂占用）' : '批号校验通过 · 已同步 $bound';
       }
@@ -550,6 +664,8 @@ class _ReceivingPageState extends State<ReceivingPage> {
     final origin = (m['origin'] ?? '').toString().trim();
     final fid = (m['farmer_id'] as num?)?.toInt() ?? 0;
     _boundFarmerName = name;
+    final st = (m['status'] ?? '').toString();
+    _bindingLocked = m['binding_locked'] == true || st == 'in_progress' || m['can_append'] == true;
 
     if (fid > 0) {
       _farmerId = fid;
@@ -601,6 +717,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
     setState(() {
       _receiveKind = kind;
       _batchOk = false;
+      _bindingLocked = false;
       _boundFarmerName = '';
       _stockinStep = 0;
       if (kind == 'stockin') {
@@ -654,6 +771,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
       _msgIsError = false;
       _formEpoch++;
       _batchOk = false;
+      _bindingLocked = false;
       _boundFarmerName = '';
     });
   }
@@ -664,9 +782,11 @@ class _ReceivingPageState extends State<ReceivingPage> {
     _batchNo.clear();
     _photoUrls.clear();
     _batchOk = false;
+    _bindingLocked = false;
     _boundFarmerName = '';
     _farmerId = null;
     _farmerHits = [];
+    _farmerCodes = [];
     _farmerSearch.clear();
     _bagQty.clear();
     _remark.clear();
@@ -786,6 +906,13 @@ class _ReceivingPageState extends State<ReceivingPage> {
       });
     }
     if (_receiveKind == 'gate') {
+      final myId = context.read<AuthState>().userId;
+      if (myId <= 0) context.read<AuthState>().syncUserIdFromToken();
+      final selfId = context.read<AuthState>().userId;
+      if (nextAssigneeUserId != null && selfId > 0 && nextAssigneeUserId == selfId) {
+        _promptRequired('不能指派自己为下一处理人，请选择其他仓管账号');
+        return false;
+      }
       final gross = double.tryParse(_gross.text) ?? 0;
       if (gross <= 0) {
         _promptRequired('请填写入场重量（kg）');
@@ -868,6 +995,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
       partyMobile: _partyMobile,
       origin: _origin,
       batchOk: _batchOk,
+      bindingLocked: _bindingLocked,
       photoUrls: _photoUrls,
       varieties: _varieties,
       varietyId: _varietyId,
@@ -877,25 +1005,52 @@ class _ReceivingPageState extends State<ReceivingPage> {
       farmerId: _farmerId,
       farmerHits: _farmerHits,
       searchingFarmer: _searchingFarmer,
+      farmerCodes: _farmerCodes,
+      loadingFarmerCodes: _loadingFarmerCodes,
       msg: _msg,
       msgIsError: _msgIsError,
       onBatchChanged: (_) => setState(() {
         _batchOk = false;
+        _bindingLocked = false;
         _boundFarmerName = '';
       }),
       onValidateBatch: _validateBatch,
       onFarmerSearchChanged: (v) {
+        if (_bindingLocked) return;
         if (_farmerId != null) setState(() => _farmerId = null);
         _onFarmerSearchChanged(v);
       },
       onSearchFarmers: _searchFarmers,
-      onApplyFarmer: (m) => setState(() {
-        _applyFarmer(m);
-        _farmerHits = [];
-      }),
-      onClearFarmer: () => setState(_clearFarmerLink),
-      onShowOnsiteFarmer: _showOnsiteFarmerDialog,
-      onApplyVariety: (m) => setState(() => _applyVariety(m)),
+      onApplyFarmer: (m) async {
+        if (_bindingLocked) return;
+        setState(() {
+          _applyFarmer(m);
+          _farmerHits = [];
+        });
+        await _loadFarmerCodes();
+      },
+      onClearFarmer: () {
+        if (_bindingLocked) return;
+        setState(_clearFarmerLink);
+      },
+      onShowOnsiteFarmer: () async {
+        if (_bindingLocked) {
+          _promptRequired('该溯源码已锁定农户，不可更换');
+          return;
+        }
+        await _showOnsiteFarmerDialog();
+        if (_farmerId != null) await _loadFarmerCodes();
+      },
+      onRefreshFarmerCodes: _loadFarmerCodes,
+      onPickFarmerCode: _pickFarmerCode,
+      onGenerateTraceCode: _generateTraceCodeForGate,
+      onApplyVariety: (m) {
+        if (_bindingLocked) {
+          _promptRequired('该溯源码已锁定品种，不可更换');
+          return;
+        }
+        setState(() => _applyVariety(m));
+      },
       onChannelChanged: (v) => setState(() => _channel = v),
       onColdStoreChanged: (v) => setState(() => _coldStore = v),
       onGradeChanged: (v) => setState(() => _grade = v),
@@ -1050,12 +1205,14 @@ class _ReceivingPageState extends State<ReceivingPage> {
         scannerTitle: '扫描溯源批号',
         onChanged: (_) => setState(() {
           _batchOk = false;
+          _bindingLocked = false;
           _boundFarmerName = '';
         }),
         onEditingComplete: _validateBatch,
         onScanned: (_) async {
           setState(() {
             _batchOk = false;
+            _bindingLocked = false;
             _boundFarmerName = '';
             _msg = '已扫到批号，校验中…';
           });

@@ -390,8 +390,8 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 	var st string
 	var reservedBy int64
 	_ = s.DB.QueryRow(`SELECT status, COALESCE(reserved_by,0) FROM pur_trace_batch_code WHERE code=?`, batchNo).Scan(&st, &reservedBy)
-	if st == "used" {
-		api.FailJSON(c, "BATCH_CODE_USED")
+	if st == "ended" {
+		api.FailJSON(c, "BATCH_CODE_ENDED")
 		return true
 	}
 	if st == "reserved" {
@@ -403,13 +403,6 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 			api.FailJSON(c, "BATCH_CODE_RESERVED")
 			return true
 		}
-	}
-	var existID int64
-	_ = s.DB.QueryRow(`SELECT id FROM pur_weigh_ticket WHERE UPPER(batch_no)=? AND LOWER(COALESCE(receive_kind,''))='gate'
-		AND status IN ('weighed','stocked','posted','gate_accepted') AND COALESCE(is_deleted,0)=0 LIMIT 1`, batchNo).Scan(&existID)
-	if existID > 0 {
-		api.FailJSON(c, "BATCH_CODE_USED")
-		return true
 	}
 	imgs := collectImageURLs(body)
 	if len(imgs) == 0 {
@@ -491,6 +484,37 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 	s.resolveWeighVariety(body, &variety, &productID)
 	if productID <= 0 {
 		productID = 1
+	}
+	// 过站中：强制同农户同产品；请求不一致则拒，空则回填首单锁定值
+	if isTraceBatchInProgress(st) {
+		var lockFarmer, lockProduct int64
+		var lockVariety string
+		_ = s.DB.QueryRow(`SELECT COALESCE(farmer_id,0), COALESCE(product_id,0), COALESCE(variety,'')
+			FROM pur_trace_batch_code WHERE code=?`, batchNo).Scan(&lockFarmer, &lockProduct, &lockVariety)
+		if lockFarmer > 0 {
+			if farmerID > 0 && farmerID != lockFarmer {
+				api.FailJSON(c, "TRACE_FARMER_LOCKED")
+				return true
+			}
+			farmerID = lockFarmer
+			if partyName == "" {
+				_ = s.DB.QueryRow(`SELECT COALESCE(name,'') FROM pur_farmer WHERE id=?`, lockFarmer).Scan(&partyName)
+			}
+		}
+		if lockProduct > 0 {
+			if bodyPID, ok := asInt64(body["product_id"]); ok && bodyPID > 0 && bodyPID != lockProduct {
+				api.FailJSON(c, "TRACE_PRODUCT_LOCKED")
+				return true
+			}
+			productID = lockProduct
+		}
+		if lockVariety != "" {
+			if bodyVar := strings.TrimSpace(strOr(body["variety"])); bodyVar != "" && !strings.EqualFold(bodyVar, lockVariety) {
+				api.FailJSON(c, "TRACE_PRODUCT_LOCKED")
+				return true
+			}
+			variety = lockVariety
+		}
 	}
 	if bizDate == "" {
 		bizDate = time.Now().Format("2006-01-02")
@@ -612,7 +636,7 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 		if cl := middleware.Claims(c); cl != nil {
 			occupyUID = cl.UserID
 		}
-		if err := s.occupyTraceBatchCode(batchNo, id, occupyUID); err != nil {
+		if err := s.occupyTraceBatchCode(batchNo, id, occupyUID, farmerID, productID, variety); err != nil {
 			_, _ = s.DB.Exec(`DELETE FROM pur_weigh_ticket WHERE id=?`, id)
 			api.FailJSON(c, err.Error())
 			return true
@@ -658,7 +682,8 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 	if ticketID <= 0 {
 		s.releaseTraceBatchCode(id)
 		_, _ = s.DB.Exec(`DELETE FROM pur_weigh_ticket WHERE id=?`, id)
-		api.FailJSON(c, "SELF_ASSIGN_FORBIDDEN")
+		// spawn 失败多数是无可用下一处理人（含仅剩自己）
+		api.FailJSON(c, "NO_ASSIGNEE_AVAILABLE")
 		return true
 	}
 
@@ -1362,9 +1387,9 @@ func (s *Services) ensureWeighIssued(c *gin.Context, id int64, body map[string]i
 	if err != nil {
 		return "DB_ERROR:" + err.Error()
 	}
-	// 同一批号（溯源码）只建一条 lot；入库单复用入厂绑定，不重复插入
+	// 每张过磅单一条 lot（一码可多单；结算仍按单）
 	var lotID int64
-	_ = s.DB.QueryRow(`SELECT id FROM pur_trace_lot WHERE UPPER(trace_code)=? OR weigh_ticket_id=? ORDER BY id LIMIT 1`, trace, id).Scan(&lotID)
+	_ = s.DB.QueryRow(`SELECT id FROM pur_trace_lot WHERE weigh_ticket_id=? ORDER BY id LIMIT 1`, id).Scan(&lotID)
 	if lotID <= 0 {
 		_, err = s.DB.Exec(`INSERT INTO pur_trace_lot(trace_code, biz_date, batch_no, farmer_id, grade, arrival_id, weigh_ticket_id, channel, source_type, net_weight, payload_canonical, signature, status)
 			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'open')`,

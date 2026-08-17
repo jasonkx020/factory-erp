@@ -16,10 +16,45 @@ const batchCols: MobileCardColumn[] = [
   { prop: 'code', label: '溯源批号', primary: true },
   { prop: 'seq_no', label: '流水' },
   { prop: 'lot_no', label: '批次' },
-  { prop: 'status', label: '状态' },
-  { prop: 'weigh_ticket_id', label: '过磅单' },
+  { prop: 'status_label', label: '状态' },
+  { prop: 'farmer_name', label: '锁定农户' },
+  { prop: 'product_name', label: '锁定产品' },
+  { prop: 'weigh_ticket_id', label: '最近过磅单' },
   { prop: 'created_at', label: '生成时间' },
 ]
+
+function statusLabel(row: Row) {
+  const label = String(row.status_label || '')
+  if (label) return label
+  const st = String(row.status || '')
+  const map: Record<string, string> = {
+    available: '未启用',
+    reserved: '预占',
+    in_progress: '过站中',
+    used: '过站中',
+    ended: '已结束',
+    void: '作废',
+  }
+  return map[st] || st
+}
+
+function statusTagType(st: string) {
+  switch (st) {
+    case 'available':
+      return 'success'
+    case 'reserved':
+      return 'warning'
+    case 'in_progress':
+    case 'used':
+      return 'primary'
+    case 'ended':
+      return 'info'
+    case 'void':
+      return 'danger'
+    default:
+      return 'info'
+  }
+}
 
 const loading = ref(false)
 const exporting = ref(false)
@@ -97,6 +132,13 @@ async function voidCode(row: Row) {
   const res = await purchaseApi.voidTraceBatchCode({ code: String(row.code || '') })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success('已作废')
+  await refresh()
+}
+
+async function endCode(row: Row) {
+  const res = await purchaseApi.endTraceBatchCode({ code: String(row.code || '') })
+  if (res.code !== 1) return ElMessage.error(res.msg)
+  ElMessage.success('已结束（不可再追加采购单）')
   await refresh()
 }
 
@@ -249,8 +291,10 @@ onMounted(refresh)
           <div class="hdr-actions">
             <el-date-picker v-model="filter.biz_date" type="date" value-format="YYYY-MM-DD" size="small" @change="refresh" />
             <el-select v-model="filter.status" clearable placeholder="状态" size="small" style="width: 120px" @change="refresh">
-              <el-option value="available" label="可用" />
-              <el-option value="used" label="已用" />
+              <el-option value="available" label="未启用" />
+              <el-option value="reserved" label="预占" />
+              <el-option value="in_progress" label="过站中" />
+              <el-option value="ended" label="已结束" />
               <el-option value="void" label="作废" />
             </el-select>
             <el-radio-group v-model="viewMode" size="small">
@@ -282,13 +326,29 @@ onMounted(refresh)
           <el-table-column prop="code" label="溯源批号" min-width="200" />
           <el-table-column prop="seq_no" label="流水" width="80" />
           <el-table-column prop="lot_no" label="批次" width="70" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column prop="weigh_ticket_id" label="过磅单" width="90" />
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag size="small" :type="statusTagType(String(row.status || ''))">{{ statusLabel(row) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="farmer_name" label="锁定农户" min-width="100" />
+          <el-table-column label="锁定产品" min-width="120">
+            <template #default="{ row }">
+              {{ row.product_name || row.variety || '—' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="weigh_ticket_id" label="最近过磅单" width="100" />
           <el-table-column prop="created_at" label="生成时间" width="160" />
-          <el-table-column label="操作" width="220">
+          <el-table-column label="操作" width="260">
             <template #default="{ row }">
               <el-button link type="primary" @click="openPreview(row)">查看</el-button>
               <el-button link type="primary" @click="openInboundInfo(row)">入库信息</el-button>
+              <el-button
+                v-if="row.status === 'in_progress' || row.status === 'used'"
+                link
+                type="warning"
+                @click="endCode(row)"
+              >结束</el-button>
               <el-button v-if="row.status === 'available'" link type="danger" @click="voidCode(row)">作废</el-button>
             </template>
           </el-table-column>
@@ -305,6 +365,12 @@ onMounted(refresh)
         <template #actions="{ row }">
           <el-button link type="primary" @click="openPreview(row)">查看</el-button>
           <el-button link type="primary" @click="openInboundInfo(row)">入库信息</el-button>
+          <el-button
+            v-if="row.status === 'in_progress' || row.status === 'used'"
+            link
+            type="warning"
+            @click="endCode(row)"
+          >结束</el-button>
           <el-button v-if="row.status === 'available'" link type="danger" @click="voidCode(row)">作废</el-button>
         </template>
       </TableOrCards>
@@ -313,7 +379,7 @@ onMounted(refresh)
         <div v-for="row in list" :key="String(row.code)" class="label-card" @click="openPreview(row)">
           <img v-if="qrMap[String(row.code || '')]" :src="qrMap[String(row.code || '')]" alt="" />
           <div class="code">{{ row.code }}</div>
-          <div class="meta">{{ row.status }} · #{{ row.seq_no }}</div>
+          <div class="meta">{{ statusLabel(row) }} · #{{ row.seq_no }}</div>
         </div>
         <el-empty v-if="!list.length" description="当日无批号" />
       </div>

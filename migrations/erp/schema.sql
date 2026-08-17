@@ -823,6 +823,10 @@ CREATE TABLE IF NOT EXISTS pay_process_wage_rate (
   created_at TEXT NOT NULL DEFAULT NOW(),
   FOREIGN KEY(process_id) REFERENCES pd_process(id)
 );
+-- 同工序仅允许一条 active 工价（避免开发种子/重复创建堆叠）
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pay_process_wage_rate_active_process
+  ON pay_process_wage_rate (process_id)
+  WHERE status = 'active';
 
 CREATE TABLE IF NOT EXISTS appr_task (
   id BIGSERIAL PRIMARY KEY,
@@ -834,6 +838,11 @@ CREATE TABLE IF NOT EXISTS appr_task (
   status TEXT NOT NULL DEFAULT 'pending',
   acted_at TEXT,
   comment TEXT,
+  title TEXT,
+  doc_no TEXT,
+  amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+  applicant_id BIGINT NOT NULL DEFAULT 0,
+  remark TEXT,
   created_at TEXT NOT NULL DEFAULT NOW()
 );
 
@@ -2199,13 +2208,19 @@ CREATE TABLE IF NOT EXISTS pur_trace_batch_code (
   lot_no TEXT NOT NULL DEFAULT '01',
   status TEXT NOT NULL DEFAULT 'available',
   weigh_ticket_id INTEGER,
+  first_weigh_ticket_id INTEGER,
+  farmer_id INTEGER,
+  product_id INTEGER,
+  variety TEXT,
+  ended_at TEXT,
+  ended_by INTEGER,
   created_at TEXT NOT NULL DEFAULT NOW(),
   used_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS pur_trace_lot (
   id BIGSERIAL PRIMARY KEY,
-  trace_code TEXT NOT NULL UNIQUE,
+  trace_code TEXT NOT NULL,
   biz_date TEXT NOT NULL,
   batch_no TEXT NOT NULL,
   farmer_id INTEGER NOT NULL,
@@ -2730,13 +2745,53 @@ CREATE TABLE IF NOT EXISTS wf_ticket_log (
   created_at TEXT NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS pd_station_flow_log (
+  id BIGSERIAL PRIMARY KEY,
+  event_type TEXT NOT NULL,
+  biz_date TEXT NOT NULL DEFAULT '',
+  board_id BIGINT NOT NULL DEFAULT 0,
+  board_code TEXT NOT NULL DEFAULT '',
+  trace_code TEXT NOT NULL DEFAULT '',
+  process_id BIGINT NOT NULL DEFAULT 0,
+  step_id BIGINT NOT NULL DEFAULT 0,
+  process_name TEXT NOT NULL DEFAULT '',
+  worker_id BIGINT NOT NULL DEFAULT 0,
+  worker_name TEXT NOT NULL DEFAULT '',
+  badge_code TEXT NOT NULL DEFAULT '',
+  actor_user_id BIGINT NOT NULL DEFAULT 0,
+  operator_employee_id BIGINT NOT NULL DEFAULT 0,
+  kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+  pay_mode TEXT NOT NULL DEFAULT 'none',
+  emp_type TEXT NOT NULL DEFAULT '',
+  rate DOUBLE PRECISION NOT NULL DEFAULT 0,
+  amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+  ref_type TEXT NOT NULL DEFAULT '',
+  ref_id BIGINT NOT NULL DEFAULT 0,
+  before_json TEXT,
+  after_json TEXT,
+  remark TEXT,
+  payload_json TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 
 -- Columns from Ensure* ALTER ADD COLUMN
 ALTER TABLE hr_offboard ADD COLUMN IF NOT EXISTS offboard_date TEXT;
 ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS destroy_reason TEXT;
 ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS destroyed_at TEXT;
 ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS destroyed_by INTEGER;
+ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS farmer_id INTEGER;
+ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS trace_code TEXT NOT NULL DEFAULT '';
+ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS origin TEXT;
 ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS receive_date TEXT;
+ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS source_type TEXT;
+ALTER TABLE pd_process ADD COLUMN IF NOT EXISTS pay_mode TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE pd_process_issue ADD COLUMN IF NOT EXISTS wage_settled_kg DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE appr_task ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE appr_task ADD COLUMN IF NOT EXISTS doc_no TEXT;
+ALTER TABLE appr_task ADD COLUMN IF NOT EXISTS amount DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE appr_task ADD COLUMN IF NOT EXISTS applicant_id BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE appr_task ADD COLUMN IF NOT EXISTS remark TEXT;
 ALTER TABLE pay_process_wage_rate ADD COLUMN IF NOT EXISTS rate_unit TEXT DEFAULT 'kg';
 ALTER TABLE pd_piecework_summary ADD COLUMN IF NOT EXISTS input_weight DOUBLE PRECISION;
 ALTER TABLE pd_piecework_summary ADD COLUMN IF NOT EXISTS loss DOUBLE PRECISION;
@@ -2762,6 +2817,12 @@ ALTER TABLE pur_inbound_arrival ADD COLUMN IF NOT EXISTS receive_address TEXT;
 ALTER TABLE pur_inbound_arrival ADD COLUMN IF NOT EXISTS reject_weight DOUBLE PRECISION DEFAULT 0;
 ALTER TABLE pur_trace_batch_code ADD COLUMN IF NOT EXISTS reserved_at TEXT;
 ALTER TABLE pur_trace_batch_code ADD COLUMN IF NOT EXISTS reserved_by INTEGER;
+ALTER TABLE pur_trace_batch_code ADD COLUMN IF NOT EXISTS farmer_id INTEGER;
+ALTER TABLE pur_trace_batch_code ADD COLUMN IF NOT EXISTS product_id INTEGER;
+ALTER TABLE pur_trace_batch_code ADD COLUMN IF NOT EXISTS variety TEXT;
+ALTER TABLE pur_trace_batch_code ADD COLUMN IF NOT EXISTS first_weigh_ticket_id INTEGER;
+ALTER TABLE pur_trace_batch_code ADD COLUMN IF NOT EXISTS ended_at TEXT;
+ALTER TABLE pur_trace_batch_code ADD COLUMN IF NOT EXISTS ended_by INTEGER;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS arrival_id INTEGER;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS bag_qty DOUBLE PRECISION DEFAULT 0;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS batch_no TEXT;

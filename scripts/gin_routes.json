@@ -141,6 +141,26 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/production/scraps"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/scraps/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/shifts"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/shifts/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/station-flow-logs"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/production/consignments"
   },
   {
@@ -186,22 +206,6 @@
   {
     "method": "GET",
     "path": "/api/v1/production/drawing-links/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/scraps"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/scraps/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/shifts"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/shifts/:id"
   },
   {
     "method": "GET",
@@ -1581,6 +1585,10 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/production/piecework-summaries/day-settle"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/production/piecework-summaries/:id/pay"
   },
   {
@@ -1817,6 +1825,38 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/purchase/trace-batch-codes/validate"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/trace-batch-codes/void"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/trace-batch-codes/generate"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/trace-batch-codes/end"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/trace-lots/verify"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/tasks"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/tasks/:id/assign"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/tasks/:id/complete"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/purchase/inbounds"
   },
   {
@@ -1870,34 +1910,6 @@
   {
     "method": "POST",
     "path": "/api/v1/purchase/returns/:id/post"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/trace-batch-codes/validate"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/trace-batch-codes/void"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/trace-batch-codes/generate"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/trace-lots/verify"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/tasks"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/tasks/:id/assign"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/tasks/:id/complete"
   },
   {
     "method": "POST",

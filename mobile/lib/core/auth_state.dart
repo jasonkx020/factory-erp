@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import 'api_client.dart';
@@ -19,6 +21,8 @@ class AuthState extends ChangeNotifier {
   WorkbenchRole primaryRole = WorkbenchRole.none;
   String error = '';
   bool loading = false;
+  /// 本地有 token 时，等 /auth/me 校验完成再进主壳，避免过期会话拉通知 401
+  bool sessionReady = true;
 
   bool get isLoggedIn => api.accessToken != null && api.accessToken!.isNotEmpty;
 
@@ -43,13 +47,49 @@ class AuthState extends ChangeNotifier {
         : user['employee_name']?.toString();
     if (displayName != null && displayName.isNotEmpty) name = displayName;
     loginName = user['login_name']?.toString() ?? loginName;
-    userId = (user['id'] as num?)?.toInt() ?? userId;
-    employeeId = (user['employee_id'] as num?)?.toInt() ?? employeeId;
+    final parsedId = _asInt(user['id']) ?? _asInt(user['user_id']);
+    if (parsedId != null && parsedId > 0) userId = parsedId;
+    employeeId = _asInt(user['employee_id']) ?? employeeId;
     if (user.containsKey('emp_no')) {
       empNo = user['emp_no']?.toString().trim() ?? '';
     }
     if (user.containsKey('badge_code')) {
       badgeCode = user['badge_code']?.toString().trim() ?? '';
+    }
+  }
+
+  static int? _asInt(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString().trim());
+  }
+
+  /// 从 access token 解析 user_id（防止 /auth/me 未带回 id 时本地为 0）
+  void syncUserIdFromToken() {
+    final tid = _userIdFromJwt(api.accessToken);
+    if (tid != null && tid > 0) userId = tid;
+  }
+
+  static int? _userIdFromJwt(String? token) {
+    if (token == null || token.isEmpty) return null;
+    final parts = token.split('.');
+    if (parts.length < 2) return null;
+    try {
+      var payload = parts[1].replaceAll('-', '+').replaceAll('_', '/');
+      switch (payload.length % 4) {
+        case 2:
+          payload += '==';
+          break;
+        case 3:
+          payload += '=';
+          break;
+      }
+      final json = utf8.decode(base64.decode(payload));
+      final map = jsonDecode(json);
+      if (map is! Map) return null;
+      return _asInt(map['user_id']) ?? _asInt(map['uid']) ?? _asInt(map['sub']);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -79,6 +119,7 @@ class AuthState extends ChangeNotifier {
     _applyUser(data['user'] as Map<String, dynamic>?);
     // 登录成功后一律以 /auth/me 为准刷新角色权限
     final ok = await fetchMe();
+    syncUserIdFromToken();
     _refreshPrimaryRole();
     notifyListeners();
     return ok;
@@ -139,13 +180,17 @@ class AuthState extends ChangeNotifier {
     final r = await api.get('/auth/me');
     if (!r.ok || r.data is! Map) {
       if (r.msg == 'UNAUTHORIZED') await logout();
+      sessionReady = true;
+      notifyListeners();
       return false;
     }
     final data = r.data as Map<String, dynamic>;
     roles = (data['roles'] as List?)?.map((e) => e.toString()).toList() ?? roles;
     permissions = (data['permissions'] as List?)?.map((e) => e.toString()).toList() ?? permissions;
     _applyUser(data['user'] as Map<String, dynamic>?);
+    syncUserIdFromToken();
     _refreshPrimaryRole(keepSelection: true);
+    sessionReady = true;
     notifyListeners();
     return true;
   }
@@ -161,6 +206,8 @@ class AuthState extends ChangeNotifier {
     roles = [];
     permissions = [];
     primaryRole = WorkbenchRole.none;
+    error = '';
+    sessionReady = true;
     notifyListeners();
   }
 }

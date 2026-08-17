@@ -168,6 +168,10 @@ export const productionApi = {
     api.post(`/production/piecework-summaries/${id}/pay`, body),
   recalcPiecework: (body?: Record<string, unknown>) =>
     api.post('/production/piecework-summaries/recalc', body || {}),
+  daySettlePiecework: (body: { biz_date?: string }) =>
+    api.post('/production/piecework-summaries/day-settle', body),
+  stationFlowLogs: (params?: string) =>
+    api.get(params ? `/production/station-flow-logs?${params}` : '/production/station-flow-logs'),
   flowEvents: () => api.get<PageData>('/production/flow-events'),
   retryFlow: (id: number) => api.post(`/production/flow-events/${id}/retry`, {}),
   flowRules: (routingId?: number) =>
@@ -710,6 +714,8 @@ export const purchaseApi = {
     api.post('/purchase/trace-batch-codes/validate', body),
   voidTraceBatchCode: (body: Record<string, unknown>) =>
     api.post('/purchase/trace-batch-codes/void', body),
+  endTraceBatchCode: (body: Record<string, unknown>) =>
+    api.post('/purchase/trace-batch-codes/end', body),
   farmerSettlements: () => api.get<PageData>('/purchase/farmer-settlements'),
   farmerSettlementSummary: () => api.get('/purchase/farmer-settlements/summary'),
   settleFarmer: (body: Record<string, unknown>) => api.post('/purchase/farmer-settlements', body),

@@ -50,7 +50,7 @@ typedef GateSubmitFn = Future<bool> Function({
   int? nextAssigneeUserId,
 });
 
-/// 过磅入厂四步向导（仅 gate）。
+/// 过磅入厂三步向导（仅 gate）：农户+溯源码 → 过磅照片 → 预览确认。
 class GateInboundWizard extends StatefulWidget {
   const GateInboundWizard({
     super.key,
@@ -69,6 +69,7 @@ class GateInboundWizard extends StatefulWidget {
     required this.partyMobile,
     required this.origin,
     required this.batchOk,
+    this.bindingLocked = false,
     required this.photoUrls,
     required this.varieties,
     required this.varietyId,
@@ -78,6 +79,8 @@ class GateInboundWizard extends StatefulWidget {
     required this.farmerId,
     required this.farmerHits,
     required this.searchingFarmer,
+    required this.farmerCodes,
+    required this.loadingFarmerCodes,
     required this.msg,
     this.msgIsError = false,
     required this.onBatchChanged,
@@ -87,6 +90,9 @@ class GateInboundWizard extends StatefulWidget {
     required this.onApplyFarmer,
     required this.onClearFarmer,
     required this.onShowOnsiteFarmer,
+    required this.onRefreshFarmerCodes,
+    required this.onPickFarmerCode,
+    required this.onGenerateTraceCode,
     required this.onApplyVariety,
     required this.onChannelChanged,
     required this.onColdStoreChanged,
@@ -113,6 +119,8 @@ class GateInboundWizard extends StatefulWidget {
   final TextEditingController origin;
 
   final bool batchOk;
+  /// 溯源码已过站中：农户/品种锁定为首单关联信息
+  final bool bindingLocked;
   final List<String> photoUrls;
   final List<dynamic> varieties;
   final int? varietyId;
@@ -122,6 +130,8 @@ class GateInboundWizard extends StatefulWidget {
   final int? farmerId;
   final List<dynamic> farmerHits;
   final bool searchingFarmer;
+  final List<dynamic> farmerCodes;
+  final bool loadingFarmerCodes;
   final String msg;
   final bool msgIsError;
 
@@ -129,9 +139,12 @@ class GateInboundWizard extends StatefulWidget {
   final Future<void> Function() onValidateBatch;
   final ValueChanged<String> onFarmerSearchChanged;
   final Future<void> Function(String) onSearchFarmers;
-  final ValueChanged<Map<String, dynamic>> onApplyFarmer;
+  final Future<void> Function(Map<String, dynamic>) onApplyFarmer;
   final VoidCallback onClearFarmer;
   final Future<void> Function() onShowOnsiteFarmer;
+  final Future<void> Function() onRefreshFarmerCodes;
+  final Future<void> Function(Map<String, dynamic>) onPickFarmerCode;
+  final Future<void> Function() onGenerateTraceCode;
   final ValueChanged<Map<String, dynamic>> onApplyVariety;
   final ValueChanged<String> onChannelChanged;
   final ValueChanged<String> onColdStoreChanged;
@@ -157,7 +170,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
   int? _nextAssignee;
   bool _loadingOptions = false;
 
-  static const _titles = ['扫码与常用项', '照片与过磅', '关联农户', '预览确认'];
+  static const _titles = ['农户与溯源码', '照片与过磅', '预览确认'];
 
   @override
   void initState() {
@@ -195,6 +208,12 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
     });
   }
 
+  int _myUserId() {
+    final auth = context.read<AuthState>();
+    if (auth.userId <= 0) auth.syncUserIdFromToken();
+    return auth.userId;
+  }
+
   Future<void> _loadNextOptions() async {
     if (_loadingOptions) return;
     setState(() => _loadingOptions = true);
@@ -202,6 +221,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
           '/purchase/weigh-flow/next-options?receive_kind=gate&from_action=submit',
         );
     if (!mounted) return;
+    final myId = _myUserId();
     final data = r.data is Map ? Map<String, dynamic>.from(r.data as Map) : <String, dynamic>{};
     final opts = r.ok ? ApiClient.listOf(data['options']) : <dynamic>[];
     setState(() {
@@ -212,10 +232,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
           final first = Map<String, dynamic>.from(opts.first as Map);
           _nextRole = first['role_code']?.toString();
           _nextNodeId = first['node_id']?.toString();
-          final users = (first['users'] as List?) ?? [];
-          if (users.isNotEmpty) {
-            _nextAssignee = ((users.first as Map)['user_id'] as num?)?.toInt();
-          }
+          _nextAssignee = _firstAssigneeExcluding(first['users'], myId);
         }
       } else {
         _syncAssigneeForRole(_nextRole!);
@@ -224,7 +241,19 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
     });
   }
 
+  int? _firstAssigneeExcluding(dynamic usersRaw, int myId) {
+    final users = (usersRaw as List?) ?? [];
+    for (final u in users) {
+      final uid = ((u as Map)['user_id'] as num?)?.toInt() ?? 0;
+      if (uid <= 0) continue;
+      if (myId > 0 && uid == myId) continue;
+      return uid;
+    }
+    return null;
+  }
+
   void _syncAssigneeForRole(String role) {
+    final myId = _myUserId();
     Map<String, dynamic>? hit;
     for (final e in _options) {
       final m = Map<String, dynamic>.from(e as Map);
@@ -236,20 +265,30 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
     if (hit == null) return;
     _nextNodeId = hit['node_id']?.toString();
     final users = (hit['users'] as List?) ?? [];
-    final stillValid = users.any((u) => ((u as Map)['user_id'] as num?)?.toInt() == _nextAssignee);
+    final stillValid = users.any((u) {
+      final uid = ((u as Map)['user_id'] as num?)?.toInt() ?? 0;
+      if (uid <= 0 || uid != _nextAssignee) return false;
+      if (myId > 0 && uid == myId) return false;
+      return true;
+    });
     if (!stillValid) {
-      _nextAssignee = users.isNotEmpty ? ((users.first as Map)['user_id'] as num?)?.toInt() : null;
+      _nextAssignee = _firstAssigneeExcluding(users, myId);
     }
   }
 
   List<Map<String, dynamic>> get _usersForRole {
-    final myId = context.read<AuthState>().userId;
+    final myId = _myUserId();
     for (final e in _options) {
       final m = Map<String, dynamic>.from(e as Map);
       if (m['role_code']?.toString() == _nextRole) {
         return ((m['users'] as List?) ?? [])
             .map((u) => Map<String, dynamic>.from(u as Map))
-            .where((u) => ((u['user_id'] as num?)?.toInt() ?? 0) != myId)
+            .where((u) {
+              final uid = (u['user_id'] as num?)?.toInt() ?? 0;
+              if (uid <= 0) return false;
+              if (myId > 0 && uid == myId) return false;
+              return true;
+            })
             .toList();
       }
     }
@@ -259,8 +298,11 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
   String? _validateStep(int step) {
     switch (step) {
       case 0:
-        if (widget.batchNo.text.trim().isEmpty) return '请填写溯源批号';
-        if (!widget.batchOk) return '请先校验溯源批号（输入后点完成或扫码）';
+        if ((widget.farmerId == null || widget.farmerId! <= 0) && widget.partyName.text.trim().isEmpty) {
+          return '请先关联农户或填写农户姓名';
+        }
+        if (widget.batchNo.text.trim().isEmpty) return '请选择、生成或扫码绑定溯源批号';
+        if (!widget.batchOk) return '请先校验溯源批号（点选列表码、生成后或扫码后会自动校验）';
         if (widget.varieties.isEmpty) return '暂无过磅品种，请先在后台配置';
         if (widget.varietyId == null) return '请选择品种';
         return null;
@@ -269,13 +311,28 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
         if (widget.photoUrls.isEmpty) return '请拍摄现场照片';
         return null;
       case 2:
-        if ((widget.farmerId == null || widget.farmerId! <= 0) && widget.partyName.text.trim().isEmpty) {
-          return '请关联农户或填写农户姓名';
-        }
-        return null;
-      case 3:
         if (_nextRole == null || _nextRole!.isEmpty) return '请选择下一处理部门';
-        if (_nextAssignee == null || _nextAssignee! <= 0) return '请选择处理人';
+        final myId = _myUserId();
+        if (_nextAssignee != null && myId > 0 && _nextAssignee == myId) {
+          dynamic usersRaw;
+          for (final e in _options) {
+            final m = Map<String, dynamic>.from(e as Map);
+            if (m['role_code']?.toString() == _nextRole) {
+              usersRaw = m['users'];
+              break;
+            }
+          }
+          _nextAssignee = _firstAssigneeExcluding(usersRaw, myId);
+          if (_nextAssignee == null || _nextAssignee == myId) {
+            return '不能指派自己为下一处理人，请选择其他仓管';
+          }
+        }
+        if (_nextAssignee == null || _nextAssignee! <= 0) {
+          if (_usersForRole.isEmpty) {
+            return '该部门没有其他可指派人员（不能指派自己），请先配置仓管账号';
+          }
+          return '请选择处理人';
+        }
         return null;
     }
     return null;
@@ -288,8 +345,8 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
       widget.onMsg(err);
       return;
     }
-    if (_step < 3) {
-      if (_step + 1 == 3) await _loadNextOptions();
+    if (_step < 2) {
+      if (_step + 1 == 2) await _loadNextOptions();
       setState(() => _step++);
       await _pages.animateToPage(_step, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
       return;
@@ -324,7 +381,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
   }
 
   Future<void> _jumpToStep(int step) async {
-    if (step < 0 || step > 3 || step == _step) return;
+    if (step < 0 || step > 2 || step == _step) return;
     setState(() => _step = step);
     await _pages.animateToPage(_step, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
   }
@@ -370,15 +427,15 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('步骤 ${_step + 1}/4 · ${_titles[_step]}', style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text('步骤 ${_step + 1}/3 · ${_titles[_step]}', style: const TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               Row(
-                children: List.generate(4, (i) {
+                children: List.generate(3, (i) {
                   final active = i <= _step;
                   return Expanded(
                     child: Container(
                       height: 4,
-                      margin: EdgeInsets.only(right: i < 3 ? 4 : 0),
+                      margin: EdgeInsets.only(right: i < 2 ? 4 : 0),
                       decoration: BoxDecoration(
                         color: active ? Theme.of(context).colorScheme.primary : Colors.black12,
                         borderRadius: BorderRadius.circular(2),
@@ -397,7 +454,6 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
             children: [
               _stepScanPrefs(),
               _stepWeighPhotos(),
-              _stepFarmer(),
               _stepNextDept(),
             ],
           ),
@@ -428,7 +484,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
                 Expanded(
                   child: FilledButton(
                     onPressed: _busy ? null : _goNext,
-                    child: Text(_busy ? '提交中…' : (_step < 3 ? '下一步' : '确认创建并绑定')),
+                    child: Text(_busy ? '提交中…' : (_step < 2 ? '下一步' : '确认创建并绑定')),
                   ),
                 ),
               ],
@@ -456,24 +512,99 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
   }
 
   Widget _stepScanPrefs() {
+    final hasFarmer = (widget.farmerId != null && widget.farmerId! > 0) || widget.partyName.text.trim().isNotEmpty;
+    final usableCodes = widget.farmerCodes
+        .cast<dynamic>()
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .where((m) => m['can_append'] == true || m['selectable'] == true || m['status'] == 'in_progress' || m['status'] == 'used')
+        .toList();
     return ListView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
       children: [
-        TraceCodeField(
-          controller: widget.batchNo,
-          label: '溯源批号',
-          hint: '输入或扫码',
-          validated: widget.batchOk,
-          scannerTitle: '扫描溯源批号',
-          compact: true,
-          onChanged: widget.onBatchChanged,
-          onEditingComplete: widget.onValidateBatch,
-          onScanned: (_) async {
-            widget.onBatchChanged(widget.batchNo.text);
-            await widget.onValidateBatch();
-          },
+        const Padding(
+          padding: EdgeInsets.fromLTRB(4, 0, 4, 6),
+          child: Text('1. 先选择农户', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
         ),
+        ..._farmerFields(),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(4, 14, 4, 6),
+          child: Text('2. 选择或绑定溯源码', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        ),
+        if (!hasFarmer)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: Text('请先关联农户，再倒查该农户可用的溯源码', style: TextStyle(color: Colors.orange, fontSize: 13)),
+          )
+        else ...[
+          if (widget.loadingFarmerCodes)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))),
+            )
+          else if (widget.farmerCodes.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                '该农户暂无关联溯源码。请生成新码或扫码绑定未启用码。',
+                style: TextStyle(fontSize: 13, color: Colors.orange.shade800),
+              ),
+            )
+          else ...[
+            if (usableCodes.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  '该农户暂无「过站中」可追加的码（可能均已结束）。请生成新码或扫码绑定。',
+                  style: TextStyle(fontSize: 13, color: Colors.orange.shade800),
+                ),
+              ),
+            for (final m in widget.farmerCodes.take(12))
+              _farmerCodeTile(Map<String, dynamic>.from(m as Map)),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: widget.onRefreshFarmerCodes,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('刷新列表'),
+              ),
+            ),
+          ],
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: widget.onGenerateTraceCode,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('生成新溯源码'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TraceCodeField(
+            controller: widget.batchNo,
+            label: '扫码/手输绑定',
+            hint: '扫未启用码或已选中的码',
+            validated: widget.batchOk,
+            scannerTitle: '扫描溯源批号',
+            compact: true,
+            onChanged: widget.onBatchChanged,
+            onEditingComplete: widget.onValidateBatch,
+            onScanned: (_) async {
+              widget.onBatchChanged(widget.batchNo.text);
+              await widget.onValidateBatch();
+            },
+          ),
+          if (widget.bindingLocked)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                '已选过站中码：农户与品种锁定为首单信息，本单可追加重量等',
+                style: TextStyle(fontSize: 12, color: Colors.blue.shade800),
+              ),
+            ),
+        ],
         if (widget.varieties.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
@@ -497,14 +628,16 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
                     child: Text('${m['name'] ?? m['code']}', textAlign: TextAlign.right),
                   );
                 }).toList(),
-                onChanged: (v) {
-                  if (v == null) return;
-                  final hit = widget.varieties
-                      .cast<dynamic>()
-                      .map((e) => Map<String, dynamic>.from(e as Map))
-                      .where((m) => (m['id'] as num?)?.toInt() == v);
-                  if (hit.isNotEmpty) widget.onApplyVariety(hit.first);
-                },
+                onChanged: widget.bindingLocked
+                    ? null
+                    : (v) {
+                        if (v == null) return;
+                        final hit = widget.varieties
+                            .cast<dynamic>()
+                            .map((e) => Map<String, dynamic>.from(e as Map))
+                            .where((m) => (m['id'] as num?)?.toInt() == v);
+                        if (hit.isNotEmpty) widget.onApplyVariety(hit.first);
+                      },
               ),
             ),
           ),
@@ -519,6 +652,149 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
         _textRow('过磅费（元）', widget.weighFee, hint: '0', keyboardType: const TextInputType.numberWithOptions(decimal: true)),
       ],
     );
+  }
+
+  Widget _farmerCodeTile(Map<String, dynamic> m) {
+    final code = (m['code'] ?? '').toString();
+    final st = (m['status'] ?? '').toString();
+    final label = (m['status_label'] ?? st).toString();
+    final selectable = m['can_append'] == true || m['selectable'] == true || st == 'in_progress' || st == 'used';
+    final selected = widget.batchOk && widget.batchNo.text.trim().toUpperCase() == code.toUpperCase();
+    final variety = (m['variety'] ?? m['product_name'] ?? '').toString();
+    Color tagColor;
+    switch (st) {
+      case 'in_progress':
+      case 'used':
+        tagColor = Colors.blue;
+        break;
+      case 'ended':
+        tagColor = Colors.grey;
+        break;
+      case 'available':
+        tagColor = Colors.green;
+        break;
+      default:
+        tagColor = Colors.orange;
+    }
+    return Card(
+      margin: const EdgeInsets.only(bottom: 6),
+      color: selected ? Colors.blue.shade50 : null,
+      child: ListTile(
+        dense: true,
+        enabled: selectable,
+        title: Text(code, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: selectable ? null : Colors.black45)),
+        subtitle: Text(
+          [
+            label,
+            if (variety.isNotEmpty) variety,
+            if (!selectable && st == 'ended') '不可追加',
+          ].join(' · '),
+          style: TextStyle(fontSize: 12, color: selectable ? Colors.black54 : Colors.black38),
+        ),
+        trailing: Chip(
+          label: Text(label, style: const TextStyle(fontSize: 11, color: Colors.white)),
+          backgroundColor: tagColor,
+          visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+        ),
+        onTap: selectable ? () => widget.onPickFarmerCode(m) : null,
+      ),
+    );
+  }
+
+  List<Widget> _farmerFields() {
+    if (widget.bindingLocked) {
+      return [
+        FormRow(
+          label: '已锁定农户',
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: InputChip(
+              avatar: const Icon(Icons.lock_outline, size: 16),
+              label: Text(
+                '${widget.farmerId != null ? '#${widget.farmerId} ' : ''}${widget.partyName.text}'.trim(),
+              ),
+            ),
+          ),
+        ),
+        _previewRow('电话', widget.partyMobile.text.trim().isEmpty ? '-' : widget.partyMobile.text.trim()),
+        _previewRow('产地', widget.origin.text.trim().isEmpty ? '-' : widget.origin.text.trim()),
+      ];
+    }
+    return [
+      FormRow(
+        label: '搜索农户',
+        child: TextField(
+          controller: widget.farmerSearch,
+          textAlign: TextAlign.right,
+          style: const TextStyle(fontSize: 15),
+          decoration: FormRow.fieldDecoration(
+            hint: '手机号/姓名',
+            suffixIcon: widget.searchingFarmer
+                ? const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.search, size: 20),
+                    onPressed: () => widget.onSearchFarmers(widget.farmerSearch.text),
+                  ),
+          ),
+          onTap: () => FormRow.moveCursorToEnd(widget.farmerSearch),
+          onChanged: widget.onFarmerSearchChanged,
+          onSubmitted: widget.onSearchFarmers,
+        ),
+      ),
+      if (widget.farmerHits.isNotEmpty)
+        Card(
+          margin: const EdgeInsets.only(top: 6, bottom: 6),
+          child: Column(
+            children: [
+              for (final e in widget.farmerHits.take(8))
+                ListTile(
+                  dense: true,
+                  title: Text('${(e as Map)['name'] ?? ''}'),
+                  subtitle: Text('${e['mobile'] ?? ''} · ${e['origin'] ?? ''}'),
+                  trailing: const Icon(Icons.check_circle_outline),
+                  onTap: () => widget.onApplyFarmer(Map<String, dynamic>.from(e)),
+                ),
+            ],
+          ),
+        ),
+      if (widget.farmerSearch.text.trim().isNotEmpty && !widget.searchingFarmer && widget.farmerHits.isEmpty && widget.farmerId == null)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              const Expanded(child: Text('未找到匹配农户', style: TextStyle(color: Colors.orange))),
+              FilledButton.tonal(onPressed: widget.onShowOnsiteFarmer, child: const Text('现场录入')),
+            ],
+          ),
+        ),
+      if (widget.farmerId != null)
+        FormRow(
+          label: '已关联',
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: InputChip(
+              avatar: const Icon(Icons.link, size: 16),
+              label: Text('#${widget.farmerId} ${widget.partyName.text}'),
+              onDeleted: widget.onClearFarmer,
+            ),
+          ),
+        ),
+      _textRow('姓名', widget.partyName, hint: '可改快照', requiredMark: true),
+      _textRow('电话', widget.partyMobile, hint: '选填', keyboardType: TextInputType.phone),
+      _textRow('产地', widget.origin, hint: '选填'),
+      Align(
+        alignment: Alignment.centerRight,
+        child: TextButton.icon(
+          onPressed: widget.onShowOnsiteFarmer,
+          icon: const Icon(Icons.person_add_alt),
+          label: const Text('现场新建农户'),
+        ),
+      ),
+    ];
   }
 
   Widget _stepWeighPhotos() {
@@ -661,87 +937,6 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
     );
   }
 
-  Widget _stepFarmer() {
-    return ListView(
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-      children: [
-        FormRow(
-          label: '搜索农户',
-          child: TextField(
-            controller: widget.farmerSearch,
-            textAlign: TextAlign.right,
-            style: const TextStyle(fontSize: 15),
-            decoration: FormRow.fieldDecoration(
-              hint: '手机号/姓名',
-              suffixIcon: widget.searchingFarmer
-                  ? const Padding(
-                      padding: EdgeInsets.all(10),
-                      child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                    )
-                  : IconButton(
-                      icon: const Icon(Icons.search, size: 20),
-                      onPressed: () => widget.onSearchFarmers(widget.farmerSearch.text),
-                    ),
-            ),
-            onTap: () => FormRow.moveCursorToEnd(widget.farmerSearch),
-            onChanged: widget.onFarmerSearchChanged,
-            onSubmitted: widget.onSearchFarmers,
-          ),
-        ),
-        if (widget.farmerHits.isNotEmpty)
-          Card(
-            margin: const EdgeInsets.only(top: 6, bottom: 6),
-            child: Column(
-              children: [
-                for (final e in widget.farmerHits.take(8))
-                  ListTile(
-                    dense: true,
-                    title: Text('${(e as Map)['name'] ?? ''}'),
-                    subtitle: Text('${e['mobile'] ?? ''} · ${e['origin'] ?? ''}'),
-                    trailing: const Icon(Icons.check_circle_outline),
-                    onTap: () => widget.onApplyFarmer(Map<String, dynamic>.from(e)),
-                  ),
-              ],
-            ),
-          ),
-        if (widget.farmerSearch.text.trim().isNotEmpty && !widget.searchingFarmer && widget.farmerHits.isEmpty && widget.farmerId == null)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Row(
-              children: [
-                const Expanded(child: Text('未找到匹配农户', style: TextStyle(color: Colors.orange))),
-                FilledButton.tonal(onPressed: widget.onShowOnsiteFarmer, child: const Text('现场录入')),
-              ],
-            ),
-          ),
-        if (widget.farmerId != null)
-          FormRow(
-            label: '已关联',
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: InputChip(
-                avatar: const Icon(Icons.link, size: 16),
-                label: Text('#${widget.farmerId} ${widget.partyName.text}'),
-                onDeleted: widget.onClearFarmer,
-              ),
-            ),
-          ),
-        _textRow('姓名', widget.partyName, hint: '可改快照', requiredMark: true),
-        _textRow('电话', widget.partyMobile, hint: '选填', keyboardType: TextInputType.phone),
-        _textRow('产地', widget.origin, hint: '选填'),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton.icon(
-            onPressed: widget.onShowOnsiteFarmer,
-            icon: const Icon(Icons.person_add_alt),
-            label: const Text('现场新建农户'),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _previewSection(String title, int editStep, List<Widget> rows) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -796,7 +991,11 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
       children: [
         const Text('请核对单据，有误请点「修改」或底栏「上一步」', style: TextStyle(fontSize: 12, color: Colors.black54)),
         const SizedBox(height: 8),
-        _previewSection('扫码与常用项', 0, [
+        _previewSection('农户与溯源码', 0, [
+          _previewRow('农户ID', widget.farmerId == null ? '-' : '#${widget.farmerId}'),
+          _previewRow('姓名', widget.partyName.text.trim().isEmpty ? '-' : widget.partyName.text.trim()),
+          _previewRow('电话', widget.partyMobile.text.trim().isEmpty ? '-' : widget.partyMobile.text.trim()),
+          _previewRow('产地', widget.origin.text.trim().isEmpty ? '-' : widget.origin.text.trim()),
           _previewRow('溯源批号', widget.batchNo.text.trim().toUpperCase()),
           _previewRow('品种', _varietyLabel()),
           _previewRow('扣损率(%)', widget.deductRate.text),
@@ -814,12 +1013,6 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
           _previewRow('等级', widget.grade),
           _previewRow('现场照片', '${widget.photoUrls.length} 张'),
           _previewRow('备注', widget.remark.text.trim().isEmpty ? '-' : widget.remark.text.trim()),
-        ]),
-        _previewSection('关联农户', 2, [
-          _previewRow('农户ID', widget.farmerId == null ? '-' : '#${widget.farmerId}'),
-          _previewRow('姓名', widget.partyName.text.trim().isEmpty ? '-' : widget.partyName.text.trim()),
-          _previewRow('电话', widget.partyMobile.text.trim().isEmpty ? '-' : widget.partyMobile.text.trim()),
-          _previewRow('产地', widget.origin.text.trim().isEmpty ? '-' : widget.origin.text.trim()),
         ]),
         Text.rich(
           TextSpan(
@@ -867,7 +1060,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
         ),
         const SizedBox(height: 8),
         if (users.isEmpty)
-          const Text('该部门暂无可指派用户', style: TextStyle(color: Colors.orange))
+          const Text('该部门暂无其他可指派用户（不能指派自己）', style: TextStyle(color: Colors.orange))
         else
           ...users.map((u) {
             final uid = (u['user_id'] as num?)?.toInt();
@@ -879,12 +1072,21 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
               title: Text('${u['name'] ?? u['login_name'] ?? uid}'),
               subtitle: Text('${u['login_name'] ?? ''}'),
               selected: selected,
-              onTap: uid == null ? null : () => setState(() => _nextAssignee = uid),
+              onTap: uid == null
+                  ? null
+                  : () {
+                      final myId = _myUserId();
+                      if (myId > 0 && uid == myId) {
+                        widget.onMsg('不能指派自己为下一处理人');
+                        return;
+                      }
+                      setState(() => _nextAssignee = uid);
+                    },
             );
           }),
         const SizedBox(height: 8),
         Text(
-          '确认后溯源码（批号）与农户/本单唯一绑定并推仓管；扣损率按 $rate${rate > 1 ? '%' : ''} 估算净重。',
+          '确认后本张过磅单独立绑定并推仓管（结算按单）；同码追加须同农户同产品。扣损率按 $rate${rate > 1 ? '%' : ''} 估算净重。',
           style: const TextStyle(fontSize: 12, color: Colors.black54),
         ),
       ],
