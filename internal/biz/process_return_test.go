@@ -36,6 +36,7 @@ func openSmokeDB(t *testing.T) *sql.DB {
 		t.Fatal(err)
 	}
 	db := pdb.SQL
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = pdb.Close() })
 	stmts := []string{
 		`CREATE TEMP TABLE IF NOT EXISTS inv_box_code(

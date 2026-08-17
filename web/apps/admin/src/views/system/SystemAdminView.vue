@@ -69,7 +69,7 @@ const SETTINGS: Record<string, { title: string; fields: FieldDef[] }> = {
         type: 'select',
         options: [
           { value: 'gate', label: '入厂确认后（按票净重）' },
-          { value: 'box_stockin', label: '分箱入库后（按箱合计）' },
+          { value: 'box_stockin', label: '分板入库后（按板合计）' },
         ],
       },
     ],

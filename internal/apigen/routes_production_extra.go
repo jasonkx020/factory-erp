@@ -25,4 +25,11 @@ func RegisterProductionExtra(r *gin.RouterGroup, h Handler) {
 	r.POST("/production/process-returns/:id/transfer", h.Dispatch("POST", "/api/v1/production/process-returns/{id}/transfer", "/production/process-returns/:id/transfer", "production/process-returns", "action:transfer"))
 	r.POST("/production/process-returns/:id/warehouse-confirm", h.Dispatch("POST", "/api/v1/production/process-returns/{id}/warehouse-confirm", "/production/process-returns/:id/warehouse-confirm", "production/process-returns", "action:warehouse-confirm"))
 	r.POST("/production/report-works/:id/void", h.Dispatch("POST", "/api/v1/production/report-works/{id}/void", "/production/report-works/:id/void", "production/report-works", "action:void"))
+	r.POST("/production/board-issues", h.Dispatch("POST", "/api/v1/production/board-issues", "/production/board-issues", "production/board-issues", "create"))
+	r.POST("/production/board-issues/return", h.Dispatch("POST", "/api/v1/production/board-issues/return", "/production/board-issues/return", "production/board-issues", "action:return"))
+	r.POST("/production/board-moves", h.Dispatch("POST", "/api/v1/production/board-moves", "/production/board-moves", "production/board-moves", "create"))
+	r.POST("/production/board-close/preview", h.Dispatch("POST", "/api/v1/production/board-close/preview", "/production/board-close/preview", "production/board-close", "action:preview"))
+	r.POST("/production/board-close", h.Dispatch("POST", "/api/v1/production/board-close", "/production/board-close", "production/board-close", "create"))
+	r.GET("/production/process-yields", h.Dispatch("GET", "/api/v1/production/process-yields", "/production/process-yields", "production/process-yields", "list"))
+	r.GET("/production/process-yields/traces", h.Dispatch("GET", "/api/v1/production/process-yields/traces", "/production/process-yields/traces", "production/process-yields", "list"))
 }

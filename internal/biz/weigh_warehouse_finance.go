@@ -265,7 +265,7 @@ func (s *Services) resolveWeighByTraceCode(c *gin.Context) bool {
 	out["box_stockin_ready"] = false
 	out["stockin_ready"] = false
 
-	// 已入厂：仓管扫溯源分箱入库
+	// 已入厂：仓管扫溯源分板入库
 	if st == "gate_accepted" {
 		out["box_stockin_ready"] = true
 		out["reason"] = "AWAIT_BOX_STOCKIN"

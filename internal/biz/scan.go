@@ -156,6 +156,15 @@ func (s *Services) handleScan(c *gin.Context, resolveOnly bool) bool {
 		preview["is_piecework"] = step.IsPiecework
 		preview["is_inbound_checkpoint"] = step.IsInboundCheckpoint
 	}
+	s.enrichScanBoardPreview(preview, boxID, box, processID, stepID, workerID)
+	if strings.TrimSpace(strOr(preview["trace_code"])) == "" {
+		api.FailJSON(c, "TRACE_CODE_REQUIRED")
+		return true
+	}
+	if boxStatus == "finished" {
+		api.FailJSON(c, "BOARD_FINISHED")
+		return true
+	}
 	if resolveOnly {
 		api.OK(c, preview)
 		return true

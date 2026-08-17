@@ -125,6 +125,7 @@ export const ADMIN_SPECIAL_MODULE_PATHS: Record<string, string> = {
   '生产管理/联动式领料': '/production/hub/requisitions',
   '生产管理/车间工作台': '/production/hub/workbench',
   '生产管理/工序在制': '/production/hub/process-wip',
+  '生产管理/工序扣损': '/production/hub/process-yield',
   '生产管理/车间管理': '/production/hub/workshops',
   '生产管理/委外加工': '/production/hub/outsources',
   '生产管理/受托加工生产流程管控': '/production/hub/consignments',

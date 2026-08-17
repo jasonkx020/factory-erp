@@ -283,7 +283,7 @@ class _WorkerPageState extends State<WorkerPage> {
             padding: const EdgeInsets.all(16),
             children: [
               TextField(controller: _badge, decoration: const InputDecoration(labelText: '工牌码')),
-              TextField(controller: _box, decoration: const InputDecoration(labelText: '箱码')),
+              TextField(controller: _box, decoration: const InputDecoration(labelText: '板码')),
               TextField(controller: _in, decoration: const InputDecoration(labelText: '投料重(kg)'), keyboardType: TextInputType.number),
               TextField(controller: _out, decoration: const InputDecoration(labelText: '完工重(kg)'), keyboardType: TextInputType.number),
               TextField(controller: _bag, decoration: const InputDecoration(labelText: '袋数'), keyboardType: TextInputType.number),

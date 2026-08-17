@@ -83,7 +83,7 @@ function triggerLabel(v: unknown) {
     report_work: '报工过站',
     stock_in: '入库',
     stock_out: '出库',
-    split: '分箱',
+    split: '分板',
     merge: '合箱',
   }
   return map[s] || s || '-'

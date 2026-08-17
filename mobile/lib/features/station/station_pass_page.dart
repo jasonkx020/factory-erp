@@ -10,18 +10,11 @@ import '../../widgets/form_sticky_actions.dart';
 import '../../widgets/hub_entry_tile.dart';
 import '../../widgets/trace_code_field.dart';
 
-const _scrapOptions = <MapEntry<String, String>>[
-  MapEntry('', '无次品'),
-  MapEntry('cut_defect', '切断次品'),
-  MapEntry('core_defect', '去芯次品'),
-  MapEntry('dice_defect', '切块次品'),
-  MapEntry('sieve_bag_defect', '过筛装袋次品'),
-];
+enum StationPassMode { home, self, proxy, close }
 
-enum StationPassMode { home, self, proxy }
+enum StationBoardAction { issue, ret, next }
 
-/// 工序过站：入口区分本人/代人；工牌与箱码均可手输或扫码；预览通过后直接提交。
-/// 与收货一致：Hub 选入口后 [Navigator.push] 全屏子页。
+/// 工序过站：扫工牌+板码后按 kg 领取 / 退库 / 领入下道（末道完工入库）。
 class StationPassPage extends StatefulWidget {
   const StationPassPage({
     super.key,
@@ -29,10 +22,7 @@ class StationPassPage extends StatefulWidget {
     this.initialMode = StationPassMode.home,
   });
 
-  /// 作为产线壳 Tab 时隐藏标题栏，仅展示入口首页。
   final bool asTab;
-
-  /// 非 home 时作为独立子页（Navigator.push），返回即销毁。
   final StationPassMode initialMode;
 
   @override
@@ -41,21 +31,31 @@ class StationPassPage extends StatefulWidget {
 
 class _StationPassPageState extends State<StationPassPage> {
   late StationPassMode _mode;
-  /// 0 填表 · 1 预览
+  /// 0 扫码 · 1 操作
   int _step = 0;
   final _badge = TextEditingController();
   final _box = TextEditingController();
-  final _in = TextEditingController();
-  final _out = TextEditingController();
-  final _bag = TextEditingController(text: '0');
-  String _scrapType = '';
+  final _kg = TextEditingController();
+  StationBoardAction _action = StationBoardAction.issue;
   String _msg = '';
   bool _msgIsError = false;
   bool _busy = false;
   Map<String, dynamic>? _preview;
-  bool _isCheckpoint = false;
 
   bool get _isSubPage => widget.initialMode != StationPassMode.home;
+
+  bool get _isClose => _mode == StationPassMode.close;
+
+  bool get _canCloseBoard {
+    final roles = context.read<AuthState>().roles.map((e) => e.toString().toLowerCase()).toList();
+    return roles.contains('foreman') ||
+        roles.contains('车间主任') ||
+        roles.contains('主任') ||
+        roles.contains('生管') ||
+        roles.contains('sys_admin') ||
+        roles.contains('admin') ||
+        roles.contains('系统管理员');
+  }
 
   @override
   void initState() {
@@ -82,9 +82,7 @@ class _StationPassPageState extends State<StationPassPage> {
     } catch (_) {}
     _badge.dispose();
     _box.dispose();
-    _in.dispose();
-    _out.dispose();
-    _bag.dispose();
+    _kg.dispose();
     super.dispose();
   }
 
@@ -95,7 +93,7 @@ class _StationPassPageState extends State<StationPassPage> {
       if (raw is! Map) continue;
       final p = NotifyService.parsePayload(raw['payload'] ?? raw['payload_json']);
       final next = p['next'] is Map ? Map<String, dynamic>.from(p['next'] as Map) : p;
-      final code = next['new_box_code'];
+      final code = next['new_box_code'] ?? next['board_code'];
       if (code != null && _box.text.trim().isEmpty) {
         setState(() => _box.text = code.toString());
         break;
@@ -107,14 +105,28 @@ class _StationPassPageState extends State<StationPassPage> {
     if (_mode != StationPassMode.self) return;
     final auth = context.read<AuthState>();
     final mine = (auth.badgeCode ?? '').trim();
-    // 本人过站：始终回填并锁定为本人工牌
     _badge.text = mine;
   }
 
+  static const _errLabel = {
+    'TRACE_CODE_REQUIRED': '该板缺少溯源码，无法领取',
+    'BOARD_FINISHED': '该板已完工，不能再操作',
+    'QTY_EXCEEDS_AVAILABLE': '领取重量超过板可领',
+    'QTY_EXCEEDS_OCCUPANCY': '退库重量超过本人占用',
+    'QTY_EXCEEDS_WIP': '重量超过本工序在制',
+    'BOX_REQUIRED': '请填写或扫描板码',
+    'BOX_NOT_FOUND': '未找到该板码',
+    'SHIFT_NOT_AUTHORIZED': '当前班次未授权该工序',
+    'ROLE_FORBIDDEN': '仅生管可确认板结束',
+    'REMAIN_NEEDS_DECISION': '该板仍有物料，请确认为耗损或返回补工序',
+    'APP_ONLY': '请在 App 操作',
+  };
+
   void _prompt(String msg, {bool error = true}) {
     if (!mounted) return;
+    final shown = _errLabel[msg] ?? msg;
     setState(() {
-      _msg = msg;
+      _msg = shown;
       _msgIsError = error;
     });
     if (!error) return;
@@ -123,7 +135,7 @@ class _StationPassPageState extends State<StationPassPage> {
     final scheme = Theme.of(context).colorScheme;
     messenger.showSnackBar(
       SnackBar(
-        content: Text(msg, style: TextStyle(color: scheme.onError)),
+        content: Text(shown, style: TextStyle(color: scheme.onError)),
         backgroundColor: scheme.error,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 3),
@@ -141,7 +153,7 @@ class _StationPassPageState extends State<StationPassPage> {
     if (!mounted) return;
     if (ok == true) {
       setState(() {
-        _msg = '过站已提交';
+        _msg = '已提交';
         _msgIsError = false;
       });
     }
@@ -158,39 +170,49 @@ class _StationPassPageState extends State<StationPassPage> {
     }
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
-      return;
     }
   }
 
-  Map<String, dynamic> _scanBody({required bool autoConfirm, String qc = 'pass'}) {
+  Map<String, dynamic> _baseBody() {
     if (_mode == StationPassMode.self) {
       _fillSelfBadgeIfNeeded();
     }
     final badge = _badge.text.trim();
     final body = <String, dynamic>{
+      'board_code': _box.text.trim(),
       'box_code': _box.text.trim(),
-      'input_weight': double.tryParse(_in.text) ?? 0,
-      'output_weight': double.tryParse(_out.text) ?? 0,
-      'net_weight': double.tryParse(_out.text) ?? 0,
-      'bag_qty': double.tryParse(_bag.text) ?? 0,
-      'auto_confirm': autoConfirm,
-      'process_qc_result': qc,
+      'kg': double.tryParse(_kg.text) ?? 0,
     };
-    // 有工牌则按工牌解析过站人；空则后端默认当前登录员工。操作人由后端按登录态自动写入。
     if (badge.isNotEmpty) body['badge_code'] = badge;
-    if (_scrapType.isNotEmpty) body['scrap_type'] = _scrapType;
     return body;
   }
 
-  String? _validateForm() {
-    if (_box.text.trim().isEmpty) return '请填写或扫描箱码';
-    final outW = double.tryParse(_out.text) ?? 0;
-    if (outW <= 0) return '请填写完工重(kg)';
+  String? _validateScan() {
+    if (_box.text.trim().isEmpty) return '请填写或扫描板码';
+    return null;
+  }
+
+  String? _validateAction() {
+    if (_isClose) return null;
+    final kg = double.tryParse(_kg.text) ?? 0;
+    if (kg <= 0) return '请填写重量(kg)';
+    final p = _preview ?? const <String, dynamic>{};
+    final avail = (p['available_kg'] as num?)?.toDouble() ?? 0;
+    final mine = (p['my_open_kg'] as num?)?.toDouble() ?? 0;
+    final wip = (p['wip_kg'] as num?)?.toDouble() ?? (avail + ((p['process_open_kg'] as num?)?.toDouble() ?? 0));
+    switch (_action) {
+      case StationBoardAction.issue:
+        if (kg > avail + 0.0005) return '领取重量不能超过板可领 ${avail.toStringAsFixed(2)} kg';
+      case StationBoardAction.ret:
+        if (kg > mine + 0.0005) return '退库重量不能超过本人占用 ${mine.toStringAsFixed(2)} kg';
+      case StationBoardAction.next:
+        if (kg > wip + 0.0005) return '重量不能超过本工序在制 ${wip.toStringAsFixed(2)} kg';
+    }
     return null;
   }
 
   Future<void> _goPreview() async {
-    final err = _validateForm();
+    final err = _validateScan();
     if (err != null) {
       _prompt(err);
       return;
@@ -207,7 +229,8 @@ class _StationPassPageState extends State<StationPassPage> {
     }
     if (!mounted) return;
     final api = context.read<AuthState>().api;
-    final r = await api.post('/production/scan/resolve', _scanBody(autoConfirm: false));
+    final path = _isClose ? '/production/board-close/preview' : '/production/scan/resolve';
+    final r = await api.post(path, _baseBody());
     if (!mounted) return;
     setState(() => _busy = false);
     if (!r.ok) {
@@ -215,23 +238,85 @@ class _StationPassPageState extends State<StationPassPage> {
       return;
     }
     final data = r.data is Map ? Map<String, dynamic>.from(r.data as Map) : <String, dynamic>{};
-    if (data['input_weight'] != null && (_in.text.trim().isEmpty || (double.tryParse(_in.text) ?? 0) <= 0)) {
-      _in.text = '${data['input_weight']}';
-    }
-    if (data['output_weight'] != null && (_out.text.trim().isEmpty || (double.tryParse(_out.text) ?? 0) <= 0)) {
-      _out.text = '${data['output_weight']}';
+    final avail = (data['available_kg'] as num?)?.toDouble() ?? 0;
+    if (_kg.text.trim().isEmpty && avail > 0) {
+      _kg.text = avail.toString();
     }
     setState(() {
       _preview = data;
-      _isCheckpoint = data['is_inbound_checkpoint'] == true;
+      _action = StationBoardAction.issue;
       _step = 1;
       _msg = '';
       _msgIsError = false;
     });
   }
 
-  Future<void> _submit({required bool qcPass}) async {
-    final err = _validateForm();
+  String get _actionPath {
+    switch (_action) {
+      case StationBoardAction.issue:
+        return '/production/board-issues';
+      case StationBoardAction.ret:
+        return '/production/board-issues/return';
+      case StationBoardAction.next:
+        return '/production/board-moves';
+    }
+  }
+
+  Map<String, dynamic> _submitBody() {
+    if (_isClose) {
+      return {
+        'board_code': _box.text.trim(),
+        'box_code': _box.text.trim(),
+        'confirm_loss': true,
+      };
+    }
+    final body = _baseBody();
+    if (_action == StationBoardAction.next) {
+      final hasNext = _preview?['has_next'] == true;
+      body['move_kind'] = hasNext ? 'next' : 'finish_in';
+    }
+    return body;
+  }
+
+  String _okMessage(Map<String, dynamic> data) {
+    final kg = data['issue_kg'] ?? data['returned_kg'] ?? data['kg'] ?? _kg.text;
+    final board = (data['board_code'] ?? _box.text).toString().trim();
+    final trace = (data['trace_code'] ?? _preview?['trace_code'] ?? '').toString().trim();
+    final loc = [
+      if (board.isNotEmpty) '板 $board',
+      if (trace.isNotEmpty) '溯源 $trace',
+    ].join(' · ');
+    final locText = loc.isEmpty ? '' : '（$loc）';
+    final wage = data['issue_locked_wage_amount'] ?? data['released_locked_wage_amount'] ?? data['settled_wage_amount'];
+    final wageText = wage is num ? ' · 工钱¥${wage.toStringAsFixed(2)}' : '';
+    switch (_action) {
+      case StationBoardAction.issue:
+        return '已领取 $kg kg$locText$wageText（预锁定，完工结算）';
+      case StationBoardAction.ret:
+        return '已退库 $kg kg$locText$wageText（扣减锁定，未结算）';
+      case StationBoardAction.next:
+        if (data['move_kind'] == 'finish_in' || _preview?['has_next'] != true) {
+          return '已完工入库 $kg kg$locText$wageText';
+        }
+        final nextName = '${data['to_step_name'] ?? _preview?['next_step_name'] ?? '下道'}';
+        final settled = data['settled_wage_amount'];
+        final settledText = settled is num ? ' · 本道结算¥${settled.toStringAsFixed(2)}' : '';
+        return '已领入$nextName $kg kg$locText$settledText';
+    }
+  }
+
+  String _closeOkMessage(Map<String, dynamic> data) {
+    final board = (data['board_code'] ?? _box.text).toString().trim();
+    final trace = (data['trace_code'] ?? _preview?['trace_code'] ?? '').toString().trim();
+    final loc = [
+      if (board.isNotEmpty) '板 $board',
+      if (trace.isNotEmpty) '溯源 $trace',
+    ].join(' · ');
+    return loc.isEmpty ? '该板已结束' : '该板已结束（$loc）';
+  }
+
+  Future<void> _submit() async {
+    final err = _validateAction();
     if (err != null) {
       _prompt(err);
       return;
@@ -248,10 +333,8 @@ class _StationPassPageState extends State<StationPassPage> {
     }
     if (!mounted) return;
     final api = context.read<AuthState>().api;
-    final r = await api.post(
-      '/production/scan',
-      _scanBody(autoConfirm: true, qc: qcPass ? 'pass' : 'fail'),
-    );
+    final path = _isClose ? '/production/board-close' : _actionPath;
+    final r = await api.post(path, _submitBody());
     if (!mounted) return;
     setState(() => _busy = false);
     if (!r.ok) {
@@ -259,17 +342,13 @@ class _StationPassPageState extends State<StationPassPage> {
       return;
     }
     final data = r.data is Map ? Map<String, dynamic>.from(r.data as Map) : <String, dynamic>{};
-    final wage = data['wage_amount'] ?? 0;
-    final okMsg = qcPass ? '过站成功 工钱¥$wage' : '已记录 QC 不合格（未过账）';
+    final okMsg = _isClose ? _closeOkMessage(data) : _okMessage(data);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(okMsg)));
     if (_isSubPage && Navigator.of(context).canPop()) {
       Navigator.of(context).pop(true);
       return;
     }
-    _in.clear();
-    _out.clear();
-    _bag.text = '0';
-    _scrapType = '';
+    _kg.clear();
     _box.clear();
     if (_mode == StationPassMode.self) {
       _fillSelfBadgeIfNeeded();
@@ -279,11 +358,10 @@ class _StationPassPageState extends State<StationPassPage> {
       _step = 0;
       _msg = okMsg;
       _msgIsError = false;
-      _isCheckpoint = false;
     });
   }
 
-  Widget _previewRow(String label, String value) {
+  Widget _previewRow(String label, String value, {bool emphasize = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -292,17 +370,26 @@ class _StationPassPageState extends State<StationPassPage> {
             width: 108,
             child: Text(label, style: TextStyle(fontSize: 13, color: Colors.black.withValues(alpha: 0.6))),
           ),
-          Expanded(child: Text(value, textAlign: TextAlign.right, style: const TextStyle(fontSize: 14))),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(fontSize: emphasize ? 16 : 14, fontWeight: emphasize ? FontWeight.w700 : FontWeight.normal),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  String _scrapLabel() {
-    for (final e in _scrapOptions) {
-      if (e.key == _scrapType) return e.value;
-    }
-    return '无次品';
+  String _fmtKg(dynamic v) {
+    if (v is num) return v.toStringAsFixed(2);
+    return '-';
+  }
+
+  String _fmtMoney(dynamic v) {
+    if (v is num) return '¥${v.toStringAsFixed(2)}';
+    return '-';
   }
 
   String get _pageTitle {
@@ -310,9 +397,21 @@ class _StationPassPageState extends State<StationPassPage> {
         ? '本人过站'
         : _mode == StationPassMode.proxy
             ? '代人过站'
-            : '工序过站';
-    if (_mode != StationPassMode.home && _step == 1) return '$base · 预览';
+            : _mode == StationPassMode.close
+                ? '板结束'
+                : '工序过站';
+    if (_mode != StationPassMode.home && _step == 1) {
+      return _isClose ? '$base · 核对余量' : '$base · 领料';
+    }
     return base;
+  }
+
+  String get _nextLabel {
+    if (_preview?['has_next'] == true) {
+      final name = '${_preview?['next_step_name'] ?? '下道'}';
+      return '领入$name';
+    }
+    return '完工入库';
   }
 
   @override
@@ -337,7 +436,7 @@ class _StationPassPageState extends State<StationPassPage> {
       children: [
         const Text('工序过站', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
         const SizedBox(height: 4),
-        const Text('选择本人或代人过站；预览核对后直接提交', style: TextStyle(fontSize: 13, color: Colors.black54)),
+        const Text('扫板码后按 kg 领取、退库或领入下道', style: TextStyle(fontSize: 13, color: Colors.black54)),
         if (_msg.isNotEmpty) ...[
           const SizedBox(height: 12),
           Text(
@@ -355,15 +454,22 @@ class _StationPassPageState extends State<StationPassPage> {
         HubEntryTile(
           icon: Icons.person_outline,
           title: '本人过站',
-          subtitle: '系统锁定本人工牌，扫箱码即可提交',
+          subtitle: '锁定本人工牌，扫板码领取/退库/进下道',
           onTap: () => _openMode(StationPassMode.self),
         ),
         HubEntryTile(
           icon: Icons.group_outlined,
           title: '代人过站',
-          subtitle: '手输或扫描他人工牌后再扫箱码',
+          subtitle: '手输或扫描他人工牌后再扫板码',
           onTap: () => _openMode(StationPassMode.proxy),
         ),
+        if (_canCloseBoard)
+          HubEntryTile(
+            icon: Icons.flag_outlined,
+            title: '板结束',
+            subtitle: '核对工序/仓库余量，确认为耗损后计算扣损',
+            onTap: () => _openMode(StationPassMode.close),
+          ),
       ],
     );
   }
@@ -379,7 +485,7 @@ class _StationPassPageState extends State<StationPassPage> {
                   padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + bottomInset),
                   children: _formFields(),
                 )
-              : _previewBody(),
+              : _actionBody(),
         ),
         if (_msg.isNotEmpty)
           Padding(
@@ -399,49 +505,64 @@ class _StationPassPageState extends State<StationPassPage> {
             onPrimary: _busy ? null : _goPreview,
             primaryBusy: _busy,
           )
+        else if (_isClose)
+          FormStickyActions(
+            secondaryLabel: '补工序',
+            onSecondary: _busy ? null : _leaveOrBack,
+            primaryLabel: _closeSubmitLabel(),
+            onPrimary: _busy ? null : _submit,
+            primaryBusy: _busy,
+            busyLabel: '提交中…',
+          )
         else
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              FormStickyActions(
-                secondaryLabel: '修改',
-                onSecondary: _busy
-                    ? null
-                    : () => setState(() {
-                          _step = 0;
-                          _msg = '';
-                          _msgIsError = false;
-                        }),
-                primaryLabel: _isCheckpoint ? '确认过站（QC合格）' : '确认过站',
-                onPrimary: _busy ? null : () => _submit(qcPass: true),
-                primaryBusy: _busy,
-                busyLabel: '提交中…',
-              ),
-              if (_isCheckpoint)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: OutlinedButton(
-                    onPressed: _busy ? null : () => _submit(qcPass: false),
-                    child: const Text('QC 不合格（阻断过账）'),
-                  ),
-                ),
-            ],
+          FormStickyActions(
+            secondaryLabel: '修改',
+            onSecondary: _busy
+                ? null
+                : () => setState(() {
+                      _step = 0;
+                      _msg = '';
+                      _msgIsError = false;
+                    }),
+            primaryLabel: _submitLabel(),
+            onPrimary: _busy ? null : _submit,
+            primaryBusy: _busy,
+            busyLabel: '提交中…',
           ),
       ],
     );
   }
 
+  String _closeSubmitLabel() {
+    final remain = (_preview?['total_remain_kg'] as num?)?.toDouble() ?? 0;
+    if (remain > 0.0005) return '全部确认为耗损并结束';
+    return '确认结束';
+  }
+
+  String _submitLabel() {
+    switch (_action) {
+      case StationBoardAction.issue:
+        return '确认领取';
+      case StationBoardAction.ret:
+        return '确认退库';
+      case StationBoardAction.next:
+        return _preview?['has_next'] == true ? '确认领入下道' : '确认完工入库';
+    }
+  }
+
   List<Widget> _formFields() {
-    return [
-      if (_isCheckpoint)
-        Card(
-          color: Colors.amber.shade50,
-          child: const ListTile(
-            leading: Icon(Icons.verified_user),
-            title: Text('收货卡点模式'),
-            subtitle: Text('复核重量与外观，QC 不合格将阻断过账'),
-          ),
+    if (_isClose) {
+      return [
+        const FormSectionHeader('板码'),
+        TraceCodeField(
+          controller: _box,
+          label: '板码',
+          hint: '手输或扫板码',
+          scannerTitle: '扫描板码',
         ),
+      ];
+    }
+    return [
       const FormSectionHeader('过站人'),
       if (_mode == StationPassMode.self)
         FormRow.text(
@@ -458,77 +579,23 @@ class _StationPassPageState extends State<StationPassPage> {
           scannerTitle: '扫描工牌',
           textCapitalization: TextCapitalization.none,
         ),
-      const FormSectionHeader('箱码与重量'),
+      const FormSectionHeader('板码'),
       TraceCodeField(
         controller: _box,
-        label: '箱码',
-        hint: '手输或扫码',
-        scannerTitle: '扫描箱码',
-      ),
-      FormRow.text(label: '投料重(kg)', controller: _in, keyboardType: TextInputType.number),
-      FormRow.text(
-        label: '完工重(kg)',
-        controller: _out,
-        keyboardType: TextInputType.number,
-        requiredMark: true,
-      ),
-      FormRow.text(label: '袋数', controller: _bag, keyboardType: TextInputType.number, hint: '装袋工序'),
-      const FormSectionHeader('次品类型'),
-      FormRow(
-        label: '次品',
-        child: Wrap(
-          alignment: WrapAlignment.end,
-          spacing: 6,
-          runSpacing: 8,
-          children: _scrapOptions.map((e) {
-            final selected = _scrapType == e.key;
-            return Stack(
-              clipBehavior: Clip.none,
-              children: [
-                ChoiceChip(
-                  label: Text(e.value, style: const TextStyle(fontSize: 12)),
-                  selected: selected,
-                  showCheckmark: false,
-                  visualDensity: VisualDensity.compact,
-                  onSelected: (_) => setState(() => _scrapType = e.key),
-                ),
-                if (selected)
-                  Positioned(
-                    top: -4,
-                    right: -2,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        '已选',
-                        style: TextStyle(
-                          fontSize: 9,
-                          height: 1.1,
-                          color: Theme.of(context).colorScheme.onPrimary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            );
-          }).toList(),
-        ),
+        label: '板码',
+        hint: '手输或扫板码',
+        scannerTitle: '扫描板码',
       ),
     ];
   }
 
-  Widget _previewBody() {
+  Widget _actionBody() {
+    if (_isClose) return _closeBody();
     final p = _preview ?? const <String, dynamic>{};
     final workerName = (p['worker_name'] ?? '').toString();
     final badge = (p['badge_code'] ?? _badge.text).toString().trim();
     final forOther = p['pass_for_other'] == true || _mode == StationPassMode.proxy;
-    final stepName = (p['step_name'] ?? '-').toString();
-    final util = p['utilization'];
-    final utilText = util is num ? util.toStringAsFixed(3) : '-';
+    final stepName = (p['step_name'] ?? p['process_name'] ?? '-').toString();
     final passerText = [
       if (workerName.isNotEmpty) workerName,
       if (badge.isNotEmpty) badge,
@@ -539,36 +606,127 @@ class _StationPassPageState extends State<StationPassPage> {
       children: [
         Row(
           children: [
-            const Expanded(child: Text('过站预览', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
+            const Expanded(child: Text('板信息', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
             TextButton(
               onPressed: () => setState(() {
                 _step = 0;
                 _msg = '';
                 _msgIsError = false;
               }),
-              child: const Text('修改'),
+              child: const Text('改板码'),
             ),
           ],
         ),
-        const Text('请核对以下信息，有误请返回修改', style: TextStyle(fontSize: 12, color: Colors.black54)),
-        const SizedBox(height: 8),
+        const FormSectionHeader('材料'),
+        _previewRow('板码', _box.text.trim().isEmpty ? '${p['board_code'] ?? '-'}' : _box.text.trim(), emphasize: true),
+        _previewRow('溯源码', '${p['trace_code'] ?? '-'}', emphasize: true),
         _previewRow('模式', forOther ? '代人过站' : '本人过站'),
         _previewRow('工牌', passerText.isEmpty ? '当前用户（未填工牌）' : passerText),
-        _previewRow('工序', stepName),
-        _previewRow('箱码', _box.text.trim().isEmpty ? '-' : _box.text.trim()),
-        _previewRow('投料重(kg)', _in.text.trim().isEmpty ? '${p['input_weight'] ?? '-'}' : _in.text.trim()),
-        _previewRow('完工重(kg)', _out.text.trim().isEmpty ? '${p['output_weight'] ?? '-'}' : _out.text.trim()),
-        _previewRow('损耗(kg)', '${p['loss'] ?? '-'}'),
-        _previewRow('利用率', utilText),
-        _previewRow('袋数', _bag.text.trim().isEmpty ? '0' : _bag.text.trim()),
-        _previewRow('次品', _scrapLabel()),
-        if (_isCheckpoint) ...[
-          const SizedBox(height: 8),
-          Text('本步为收货卡点，提交时将做 QC 判定。', style: TextStyle(fontSize: 12, color: Colors.amber.shade900)),
+        _previewRow('当前工序', stepName),
+        _previewRow('板可领(kg)', _fmtKg(p['available_kg'])),
+        _previewRow('本人占用(kg)', _fmtKg(p['my_open_kg'])),
+        _previewRow('本工序在制(kg)', _fmtKg(p['wip_kg'])),
+        if (p['piecework'] == true) ...[
+          _previewRow('计件工价', '${p['rate'] ?? '-'} 元/kg'),
+          _previewRow('预锁定工钱', _fmtMoney(p['locked_wage_amount'])),
         ],
         const SizedBox(height: 8),
-        const Text('确认后直接过账；操作人由系统按当前登录账号自动记录。', style: TextStyle(fontSize: 12, color: Colors.black54)),
+        const FormSectionHeader('操作'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ChoiceChip(
+              label: const Text('领取'),
+              selected: _action == StationBoardAction.issue,
+              onSelected: (_) => setState(() => _action = StationBoardAction.issue),
+            ),
+            ChoiceChip(
+              label: const Text('退库'),
+              selected: _action == StationBoardAction.ret,
+              onSelected: (_) => setState(() => _action = StationBoardAction.ret),
+            ),
+            ChoiceChip(
+              label: Text(_nextLabel),
+              selected: _action == StationBoardAction.next,
+              onSelected: (_) => setState(() => _action = StationBoardAction.next),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        FormRow.text(
+          label: '重量(kg)',
+          controller: _kg,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          requiredMark: true,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _actionHint(),
+          style: const TextStyle(fontSize: 12, color: Colors.black54),
+        ),
       ],
     );
+  }
+
+  Widget _closeBody() {
+    final p = _preview ?? const <String, dynamic>{};
+    final remain = (p['total_remain_kg'] as num?)?.toDouble() ?? 0;
+    final processes = p['processes'] is List ? List<dynamic>.from(p['processes'] as List) : const [];
+    return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + MediaQuery.viewInsetsOf(context).bottom),
+      children: [
+        Row(
+          children: [
+            const Expanded(child: Text('板结束核对', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
+            TextButton(
+              onPressed: () => setState(() {
+                _step = 0;
+                _msg = '';
+                _msgIsError = false;
+              }),
+              child: const Text('改板码'),
+            ),
+          ],
+        ),
+        const FormSectionHeader('材料'),
+        _previewRow('板码', _box.text.trim().isEmpty ? '${p['board_code'] ?? '-'}' : _box.text.trim(), emphasize: true),
+        _previewRow('溯源码', '${p['trace_code'] ?? '-'}', emphasize: true),
+        _previewRow('工序余量(kg)', _fmtKg(p['process_remain_kg'])),
+        _previewRow('仓库余量(kg)', _fmtKg(p['warehouse_kg'])),
+        _previewRow('合计余量(kg)', _fmtKg(p['total_remain_kg']), emphasize: true),
+        if (processes.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          const FormSectionHeader('各工序余量'),
+          for (final raw in processes)
+            _previewRow(
+              '${(raw is Map ? raw['process_name'] : null) ?? (raw is Map ? raw['process_id'] : '')}',
+              _fmtKg(raw is Map ? raw['remain_kg'] : null),
+            ),
+        ],
+        const SizedBox(height: 8),
+        Text(
+          remain > 0.0005
+              ? '仍有物料在工序或仓库。选「补工序」继续生产；选「全部确认为耗损并结束」后才计算各工序扣损率。'
+              : '该板工序与仓库已无余量，确认结束后计算各工序扣损率。',
+          style: const TextStyle(fontSize: 12, color: Colors.black54),
+        ),
+      ],
+    );
+  }
+
+  String _actionHint() {
+    switch (_action) {
+      case StationBoardAction.issue:
+        return '从本板当前工序可领池按 kg 领取；计件工钱预锁定，进下道或完工入库后结算。';
+      case StationBoardAction.ret:
+        return '从未完成占用退回本板本工序可领池；扣减计件锁定，退库部分不入日汇总。';
+      case StationBoardAction.next:
+        if (_preview?['has_next'] == true) {
+          return '下道领取重量即本道完工重，本道不再称重。整板扣损由生管在「板结束」确认。';
+        }
+        return '末道完工入库。整板扣损由生管在「板结束」确认；未结束前可继续入库。';
+    }
   }
 }

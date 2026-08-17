@@ -250,16 +250,30 @@ func (r *Runner) withLock(ctx context.Context, fn func(tx *sqlx.Tx) error) error
 	return tx.Commit()
 }
 
-func execStatements(ext sqlx.Ext, sqlText string, tolerateExists bool) error {
+func execStatements(tx *sqlx.Tx, sqlText string, tolerateExists bool) error {
+	const sp = "sp_migrate_stmt"
 	for _, stmt := range SplitStatements(sqlText) {
 		if stmt == "" {
 			continue
 		}
-		if _, err := ext.Exec(stmt); err != nil {
+		if tolerateExists {
+			if _, err := tx.Exec("SAVEPOINT " + sp); err != nil {
+				return fmt.Errorf("savepoint: %w", err)
+			}
+		}
+		if _, err := tx.Exec(stmt); err != nil {
 			if tolerateExists && isBenignExistsError(err) {
+				if _, rbErr := tx.Exec("ROLLBACK TO SAVEPOINT " + sp); rbErr != nil {
+					return fmt.Errorf("%s: %w (rollback savepoint: %v)", truncateStmt(stmt, 120), err, rbErr)
+				}
 				continue
 			}
 			return fmt.Errorf("%s: %w", truncateStmt(stmt, 120), err)
+		}
+		if tolerateExists {
+			if _, err := tx.Exec("RELEASE SAVEPOINT " + sp); err != nil {
+				return fmt.Errorf("release savepoint: %w", err)
+			}
 		}
 	}
 	return nil

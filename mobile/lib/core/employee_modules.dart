@@ -24,9 +24,9 @@ class EmployeeModuleInfo {
 }
 
 const employeeModules = [
-  EmployeeModuleInfo(EmployeeModule.station, '工序过站', '扫工牌+箱码，确认投料/完工/损耗', '/station', 'qr_code_scanner'),
+  EmployeeModuleInfo(EmployeeModule.station, '工序过站', '扫工牌+板码，按 kg 领取/退库/进下道', '/station', 'qr_code_scanner'),
   EmployeeModuleInfo(EmployeeModule.receiving, '过磅收货', '农户过磅、质检、出码推仓', '/receiving', 'scale'),
-  EmployeeModuleInfo(EmployeeModule.warehouse, '仓管作业', '待入库、库存、箱码、盘点', '/warehouse', 'warehouse'),
+  EmployeeModuleInfo(EmployeeModule.warehouse, '仓管作业', '待入库、库存、板码、盘点', '/warehouse', 'warehouse'),
   EmployeeModuleInfo(EmployeeModule.workshop, '班组管理', '班次、异常、返工派岗', '/workshop', 'groups'),
   EmployeeModuleInfo(EmployeeModule.mine, '我的', '今日核对、假勤、工具与消息', '/mine', 'person'),
 ];

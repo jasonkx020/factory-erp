@@ -33,7 +33,7 @@ func (s *Services) requireAnyRole(c *gin.Context, roles ...string) bool {
 		"warehouse": {"warehouse", "仓管员", "仓管"},
 		"finance":   {"finance", "财务", "财务员"},
 		"qc":        {"qc", "质检", "质检员"},
-		"foreman":   {"foreman", "车间主任", "主任"},
+		"foreman":   {"foreman", "车间主任", "主任", "生管"},
 		"piece":     {"piece", "计件工"},
 		"fixed":     {"fixed", "固定工"},
 		"sales":     {"sales", "销售员", "销售"},

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -113,38 +114,52 @@ class ApiClient {
     return h;
   }
 
-  Future<ApiEnvelope> post(String path, Map<String, dynamic> body, {bool auth = true}) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl$path'),
-      headers: _headers(auth: auth),
-      body: jsonEncode(body),
+  Future<ApiEnvelope> post(String path, Map<String, dynamic> body, {bool auth = true}) {
+    return _send(
+      'POST',
+      path,
+      () => http.post(
+        Uri.parse('$baseUrl$path'),
+        headers: _headers(auth: auth),
+        body: jsonEncode(body),
+      ),
+      requestBody: body,
     );
-    return _parse(res);
   }
 
-  Future<ApiEnvelope> put(String path, Map<String, dynamic> body, {bool auth = true}) async {
-    final res = await http.put(
-      Uri.parse('$baseUrl$path'),
-      headers: _headers(auth: auth),
-      body: jsonEncode(body),
+  Future<ApiEnvelope> put(String path, Map<String, dynamic> body, {bool auth = true}) {
+    return _send(
+      'PUT',
+      path,
+      () => http.put(
+        Uri.parse('$baseUrl$path'),
+        headers: _headers(auth: auth),
+        body: jsonEncode(body),
+      ),
+      requestBody: body,
     );
-    return _parse(res);
   }
 
-  Future<ApiEnvelope> get(String path, {bool auth = true}) async {
-    final res = await http.get(
-      Uri.parse('$baseUrl$path'),
-      headers: _headers(auth: auth),
+  Future<ApiEnvelope> get(String path, {bool auth = true}) {
+    return _send(
+      'GET',
+      path,
+      () => http.get(
+        Uri.parse('$baseUrl$path'),
+        headers: _headers(auth: auth),
+      ),
     );
-    return _parse(res);
   }
 
-  Future<ApiEnvelope> delete(String path, {bool auth = true}) async {
-    final res = await http.delete(
-      Uri.parse('$baseUrl$path'),
-      headers: _headers(auth: auth),
+  Future<ApiEnvelope> delete(String path, {bool auth = true}) {
+    return _send(
+      'DELETE',
+      path,
+      () => http.delete(
+        Uri.parse('$baseUrl$path'),
+        headers: _headers(auth: auth),
+      ),
     );
-    return _parse(res);
   }
 
   Future<ApiEnvelope> postMultipart(
@@ -153,23 +168,118 @@ class ApiClient {
     String filename = 'upload.bin',
     String fieldName = 'file',
     bool auth = true,
-  }) async {
-    final req = http.MultipartRequest('POST', Uri.parse('$baseUrl$path'));
-    if (auth && accessToken != null && accessToken!.isNotEmpty) {
-      req.headers['Authorization'] = 'Bearer $accessToken';
-    }
-    req.files.add(http.MultipartFile.fromBytes(fieldName, bytes, filename: filename));
-    final streamed = await req.send();
-    final res = await http.Response.fromStream(streamed);
-    return _parse(res);
+  }) {
+    return _send(
+      'POST',
+      path,
+      () async {
+        final req = http.MultipartRequest('POST', Uri.parse('$baseUrl$path'));
+        if (auth && accessToken != null && accessToken!.isNotEmpty) {
+          req.headers['Authorization'] = 'Bearer $accessToken';
+        }
+        req.files.add(http.MultipartFile.fromBytes(fieldName, bytes, filename: filename));
+        final streamed = await req.send();
+        return http.Response.fromStream(streamed);
+      },
+      requestBody: {'field': fieldName, 'filename': filename, 'bytes': bytes.length},
+    );
   }
 
-  ApiEnvelope _parse(http.Response res) {
+  Future<ApiEnvelope> _send(
+    String method,
+    String path,
+    Future<http.Response> Function() send, {
+    Object? requestBody,
+  }) async {
+    final url = '$baseUrl$path';
+    try {
+      final res = await send();
+      return _parse(method, url, res, requestBody: requestBody);
+    } catch (e, st) {
+      _logApiError(method, url, error: e, stack: st, requestBody: requestBody);
+      rethrow;
+    }
+  }
+
+  ApiEnvelope _parse(String method, String url, http.Response res, {Object? requestBody}) {
+    ApiEnvelope env;
     try {
       final j = jsonDecode(res.body);
-      if (j is Map<String, dynamic>) return ApiEnvelope.fromJson(j);
-    } catch (_) {}
-    return ApiEnvelope(code: 0, msg: 'HTTP_${res.statusCode}');
+      env = j is Map<String, dynamic>
+          ? ApiEnvelope.fromJson(j)
+          : ApiEnvelope(code: 0, msg: 'HTTP_${res.statusCode}');
+    } catch (_) {
+      env = ApiEnvelope(code: 0, msg: 'HTTP_${res.statusCode}');
+    }
+    final httpBad = res.statusCode < 200 || res.statusCode >= 300;
+    if (httpBad || !env.ok) {
+      _logApiError(
+        method,
+        url,
+        status: res.statusCode,
+        code: env.code,
+        msg: env.msg,
+        responseBody: res.body,
+        requestBody: requestBody,
+      );
+    }
+    return env;
+  }
+
+  static const int _logBodyLimit = 4000;
+
+  static void _logApiError(
+    String method,
+    String url, {
+    int? status,
+    int? code,
+    String? msg,
+    String? responseBody,
+    Object? requestBody,
+    Object? error,
+    StackTrace? stack,
+  }) {
+    final line = StringBuffer('[API ERROR] $method $url');
+    if (status != null) line.write(' HTTP $status');
+    if (code != null) line.write(' code=$code');
+    if (msg != null && msg.isNotEmpty) line.write(' msg=$msg');
+    if (error != null) line.write(' exception=$error');
+    debugPrint(line.toString());
+    if (requestBody != null) {
+      debugPrint('[API ERROR] request: ${_clipJson(_redact(requestBody))}');
+    }
+    if (responseBody != null && responseBody.isNotEmpty) {
+      debugPrint('[API ERROR] response: ${_clip(responseBody)}');
+    }
+    if (kDebugMode && stack != null) {
+      debugPrint('[API ERROR] $stack');
+    }
+  }
+
+  static Object? _redact(Object? body) {
+    if (body is Map) {
+      return body.map((k, v) {
+        final key = k.toString().toLowerCase();
+        if (key.contains('password') || key.contains('token') || key.contains('secret')) {
+          return MapEntry(k, '***');
+        }
+        return MapEntry(k, v);
+      });
+    }
+    return body;
+  }
+
+  static String _clipJson(Object? value) {
+    try {
+      return _clip(jsonEncode(value));
+    } catch (_) {
+      return _clip(value.toString());
+    }
+  }
+
+  static String _clip(String s) {
+    if (s.length <= _logBodyLimit) return s;
+    return '${s.substring(0, _logBodyLimit)}…(${s.length} chars)';
   }
 
   static List<dynamic> listOf(dynamic data) {

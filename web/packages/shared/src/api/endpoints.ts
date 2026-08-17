@@ -191,6 +191,15 @@ export const productionApi = {
   processWip: (params?: string) =>
     api.get(params ? `/production/process-wip?${params}` : '/production/process-wip'),
   processWipBoxes: (params: string) => api.get<PageData>(`/production/process-wip/boxes?${params}`),
+  processYields: (params?: string) =>
+    api.get<PageData>(params ? `/production/process-yields?${params}` : '/production/process-yields'),
+  processYieldTraces: (params?: string) =>
+    api.get<PageData>(params ? `/production/process-yields/traces?${params}` : '/production/process-yields/traces'),
+  boardIssue: (body: Record<string, unknown>) => api.post('/production/board-issues', body),
+  boardIssueReturn: (body: Record<string, unknown>) => api.post('/production/board-issues/return', body),
+  boardMove: (body: Record<string, unknown>) => api.post('/production/board-moves', body),
+  boardClosePreview: (body: Record<string, unknown>) => api.post('/production/board-close/preview', body),
+  boardClose: (body: Record<string, unknown>) => api.post('/production/board-close', body),
   shifts: () => api.get<PageData>('/production/shifts'),
   getShift: (id: number) => api.get(`/production/shifts/${id}`),
   createShift: (body: Record<string, unknown>) => api.post('/production/shifts', body),

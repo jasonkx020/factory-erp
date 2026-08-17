@@ -50,6 +50,7 @@ var preferredList = map[[2]string]string{
 	{"生产管理", "车间管理"}:       "/production/workshops",
 	{"生产管理", "车间工作台"}:      "/production/workshop-workbench/overview",
 	{"生产管理", "工序在制"}:        "/production/process-wip",
+	{"生产管理", "工序扣损"}:        "/production/process-yields",
 	{"生产管理", "进度跟踪"}:       "/production/progress",
 	{"生产管理", "计件工资"}:       "/production/piecework-summaries",
 	{"生产管理", "灵活派发工单"}:     "/production/flex-dispatches",

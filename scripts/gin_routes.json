@@ -21,6 +21,14 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/production/process-yields"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/process-yields/traces"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/production/processes"
   },
   {
@@ -1621,6 +1629,34 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/production/board-issues"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/board-issues/return"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/board-close"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/board-close/preview"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/board-moves"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/boms"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/boms/generate"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/production/scan"
   },
   {
@@ -1701,14 +1737,6 @@
   },
   {
     "method": "POST",
-    "path": "/api/v1/production/boms"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/boms/generate"
-  },
-  {
-    "method": "POST",
     "path": "/api/v1/production/outsources"
   },
   {
@@ -1757,6 +1785,14 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/box-stock-in"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/box-stock-in/complete"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/purchase/weigh-tickets/:id/warehouse-confirm"
   },
   {
@@ -1774,10 +1810,6 @@
   {
     "method": "POST",
     "path": "/api/v1/purchase/weigh-tickets/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/:id/box-stock-in"
   },
   {
     "method": "POST",
@@ -2778,6 +2810,10 @@
   {
     "method": "POST",
     "path": "/api/v1/workflow/tasks/:id/claim"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/workflow/tasks/:id/assign"
   },
   {
     "method": "POST",

@@ -2,6 +2,7 @@ package biz
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -12,6 +13,118 @@ import (
 	"erp/internal/persistence/sqlutil"
 	"erp/internal/security"
 )
+
+func roundMoney(v float64) float64 {
+	return math.Round(v*100) / 100
+}
+
+func (s *Services) processWageRate(processID int64) float64 {
+	if processID <= 0 {
+		return 0
+	}
+	var rate float64
+	_ = s.DB.QueryRow(`SELECT rate FROM pay_process_wage_rate WHERE process_id=? AND status='active' ORDER BY id DESC LIMIT 1`, processID).Scan(&rate)
+	return rate
+}
+
+func (s *Services) isPieceworkProcess(processID, stepID int64) bool {
+	if stepID > 0 {
+		if step := s.loadStep(stepID); step != nil {
+			return step.IsPiecework
+		}
+	}
+	if processID > 0 {
+		var pPiece int
+		_ = s.DB.QueryRow(`SELECT COALESCE(is_piecework,0) FROM pd_process WHERE id=?`, processID).Scan(&pPiece)
+		return pPiece == 1
+	}
+	return false
+}
+
+// workerLockedPieceworkKg 领料预锁定 kg（issue − 退库 − 已结算），未入日汇总。
+func (s *Services) workerLockedPieceworkKg(workerID, processID int64) float64 {
+	if workerID <= 0 {
+		return 0
+	}
+	q := `SELECT COALESCE(SUM(i.issue_kg - i.returned_kg - i.completed_kg),0)
+		FROM pd_process_issue i
+		LEFT JOIN pd_routing_step rs ON rs.id=i.step_id
+		LEFT JOIN pd_process p ON p.id=i.process_id
+		WHERE i.worker_id=? AND i.status='open'
+		  AND (i.issue_kg - i.returned_kg - i.completed_kg) > 0
+		  AND (COALESCE(rs.is_piecework,0)=1 OR (COALESCE(i.step_id,0)=0 AND COALESCE(p.is_piecework,0)=1))`
+	args := []interface{}{workerID}
+	if processID > 0 {
+		q += ` AND i.process_id=?`
+		args = append(args, processID)
+	}
+	var v float64
+	_ = s.DB.QueryRow(q, args...).Scan(&v)
+	if v < kgEps {
+		return 0
+	}
+	return roundKg(v)
+}
+
+func (s *Services) attachPieceworkLockPreview(dst gin.H, workerID, processID, stepID int64) {
+	piece := s.isPieceworkProcess(processID, stepID)
+	dst["piecework"] = piece
+	if !piece {
+		dst["locked_kg"] = 0.0
+		dst["locked_wage_amount"] = 0.0
+		dst["piecework_status"] = "none"
+		return
+	}
+	rate := s.processWageRate(processID)
+	lockedKg := 0.0
+	if v, ok := dst["my_open_kg"].(float64); ok {
+		lockedKg = v
+	}
+	dst["rate"] = rate
+	dst["locked_kg"] = lockedKg
+	dst["locked_wage_amount"] = roundMoney(lockedKg * rate)
+	dst["piecework_status"] = "locked"
+}
+
+func (s *Services) listWorkerPieceworkLocks(workerID int64) ([]gin.H, float64, float64) {
+	rows, err := s.DB.Query(`SELECT i.process_id, COALESCE(p.name,''),
+		COALESCE(SUM(i.issue_kg - i.returned_kg - i.completed_kg),0),
+		COALESCE((SELECT rate FROM pay_process_wage_rate r WHERE r.process_id=i.process_id AND r.status='active' ORDER BY r.id DESC LIMIT 1),0)
+		FROM pd_process_issue i
+		LEFT JOIN pd_process p ON p.id=i.process_id
+		LEFT JOIN pd_routing_step rs ON rs.id=i.step_id
+		WHERE i.worker_id=? AND i.status='open'
+		  AND (i.issue_kg - i.returned_kg - i.completed_kg) > 0
+		  AND (COALESCE(rs.is_piecework,0)=1 OR (COALESCE(i.step_id,0)=0 AND COALESCE(p.is_piecework,0)=1))
+		GROUP BY i.process_id, p.name`, workerID)
+	if err != nil {
+		return nil, 0, 0
+	}
+	defer rows.Close()
+	list := []gin.H{}
+	var totalKg, totalAmt float64
+	for rows.Next() {
+		var processID int64
+		var processName string
+		var kg, rate float64
+		if err := rows.Scan(&processID, &processName, &kg, &rate); err != nil {
+			continue
+		}
+		if kg <= kgEps {
+			continue
+		}
+		kg = roundKg(kg)
+		amt := roundMoney(kg * rate)
+		list = append(list, gin.H{
+			"process_id": processID, "process_name": processName,
+			"locked_kg": kg, "rate": rate, "locked_wage_amount": amt,
+			"piecework_status": "locked",
+		})
+		totalKg = roundKg(totalKg + kg)
+		totalAmt = roundMoney(totalAmt + amt)
+	}
+	return list, totalKg, totalAmt
+}
 
 func (s *Services) handlePieceworkSummaries(c *gin.Context, method, action, openapiPath string) bool {
 	if strings.Contains(openapiPath, "/mine") || strings.Contains(c.Request.URL.Path, "/mine") {
@@ -124,11 +237,15 @@ func (s *Services) pieceworkMine(c *gin.Context) bool {
 	}
 	var workerName string
 	_ = s.DB.QueryRow(`SELECT name FROM hr_employee WHERE id=?`, workerID).Scan(&workerName)
+	pending, pendingKg, pendingAmt := s.listWorkerPieceworkLocks(workerID)
 	api.OK(c, gin.H{
 		"worker_id": workerID, "worker_name": workerName, "biz_date": bizDate,
 		"summaries": list, "reports": reports,
-		"total_qty": totalQty, "total_amount": totalAmount, "total_loss": totalLoss,
+		"pending_locks": pending,
+		"total_qty":     totalQty, "total_amount": totalAmount, "total_loss": totalLoss,
 		"total_input_weight": totalIn, "total_output_weight": totalOut,
+		"pending_locked_kg": pendingKg, "pending_locked_amount": pendingAmt,
+		"settled_kg": totalQty, "settled_amount": totalAmount,
 	})
 	return true
 }
@@ -203,6 +320,10 @@ func (s *Services) recalcPieceworkSummaries(c *gin.Context) bool {
 }
 
 func (s *Services) upsertPieceworkSummary(workerID, processID, reportID int64, qty, inputWeight, outputWeight, loss, utilization float64) {
+	s.upsertPieceworkSummaryKeyed(workerID, processID, fmt.Sprintf("%d", reportID), qty, inputWeight, outputWeight, loss, utilization)
+}
+
+func (s *Services) upsertPieceworkSummaryKeyed(workerID, processID int64, sourceKey string, qty, inputWeight, outputWeight, loss, utilization float64) {
 	if processID <= 0 || workerID <= 0 {
 		return
 	}
@@ -218,7 +339,10 @@ func (s *Services) upsertPieceworkSummary(workerID, processID, reportID int64, q
 	var src string
 	_ = s.DB.QueryRow(`SELECT id, COALESCE(source_report_ids,'') FROM pd_piecework_summary WHERE worker_id=? AND process_id=? AND biz_date=?`,
 		workerID, processID, bizDate).Scan(&exist, &src)
-	rid := fmt.Sprintf("%d", reportID)
+	rid := strings.TrimSpace(sourceKey)
+	if rid == "" {
+		return
+	}
 	if exist > 0 {
 		if src != "" && !strings.Contains(","+src+",", ","+rid+",") {
 			src = src + "," + rid

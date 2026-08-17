@@ -1199,8 +1199,8 @@ class _ReceivingPageState extends State<ReceivingPage> {
         HubEntryTile(
           enabled: _canWh,
           icon: Icons.qr_code_scanner,
-          title: '扫溯源分箱',
-          subtitle: '入厂后由仓管扫溯源码分箱入库',
+          title: '扫溯源分板',
+          subtitle: '入厂后由仓管扫溯源码分板入库',
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
@@ -1432,7 +1432,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
         kv('结算', _fmtSettleMoney(d['settle_amount'] ?? d['settlement_amount'], unit: currency)),
         if ((d['settlement_doc_no'] ?? '').toString().isNotEmpty)
           kv('结算单', '${d['settlement_doc_no']} · ${d['settlement_status'] ?? ''}'),
-        if ((d['box_code'] ?? '').toString().isNotEmpty) kv('箱码', '${d['box_code']}'),
+        if ((d['box_code'] ?? '').toString().isNotEmpty) kv('板码', '${d['box_code']}'),
         if ((d['applicant_name'] ?? '').toString().isNotEmpty) kv('建单人', '${d['applicant_name']}'),
         if (imgs.isNotEmpty) ...[
           const SizedBox(height: 8),

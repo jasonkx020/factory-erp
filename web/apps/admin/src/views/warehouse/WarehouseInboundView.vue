@@ -98,7 +98,7 @@ function collectPhotos(m: Row): string[] {
     }
     if (v && typeof v === 'object') {
       const row = v as Row
-      // 分箱复磅图单独展示，现场照片区跳过 box_reweigh
+      // 分板复磅图单独展示，现场照片区跳过 box_reweigh
       if (String(row.evidence_type || '') === 'box_reweigh') return
       add(row.file_url ?? row.url)
       return
@@ -153,7 +153,7 @@ const detailKvs = computed(() => {
     kv('毛重', m.gross_weight != null ? `${m.gross_weight} kg` : null),
     kv('扣损', deduct),
     kv('净重', m.net_weight != null ? `${m.net_weight} kg` : null),
-    kv('已分箱', m.boxed_qty != null ? `${m.boxed_qty} 箱 / ${m.boxed_weight ?? '-'} kg` : null),
+    kv('已分板', m.boxed_qty != null ? `${m.boxed_qty} 板 / ${m.boxed_weight ?? '-'} kg` : null),
     kv('运费', m.freight_fee),
     kv('装车费', m.loading_fee),
     kv('过磅费', m.weigh_fee),
@@ -249,7 +249,7 @@ onMounted(async () => {
   <div class="page" v-loading="loading">
     <h2>仓管待办</h2>
     <p class="hint">
-      本页仅查看单据与指定仓管；入厂接收、分箱入库请在 App 由指定仓管处理。
+      本页仅查看单据与指定仓管；入厂接收、分板入库请在 App 由指定仓管处理。
     </p>
     <div class="toolbar">
       <el-button type="primary" @click="refresh">刷新待办</el-button>
@@ -325,7 +325,7 @@ onMounted(async () => {
           </div>
           <p v-else class="muted">暂无现场照片</p>
 
-          <h4 class="sec">已分箱复磅</h4>
+          <h4 class="sec">已分板复磅</h4>
           <div v-if="detailBoxes.length" class="box-list">
             <div v-for="box in detailBoxes" :key="String(box.id || box.code)" class="box-item">
               <div class="box-meta">
@@ -347,7 +347,7 @@ onMounted(async () => {
               <p v-else class="muted">无复磅图</p>
             </div>
           </div>
-          <p v-else class="muted">暂无已分箱记录</p>
+          <p v-else class="muted">暂无已分板记录</p>
 
           <div class="drawer-actions">
             <el-button type="warning" @click="activeTask && openAssign(activeTask)">指定仓管</el-button>

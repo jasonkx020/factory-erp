@@ -166,6 +166,14 @@ func EnsureProductionExtSchema(db *sql.DB) {
 
 func (s *Services) handleProductionExt(c *gin.Context, method, openapiPath, action string) bool {
 	switch {
+	case strings.HasPrefix(openapiPath, "/api/v1/production/process-yields"):
+		return s.handleProcessYields(c, method, openapiPath, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/production/board-close"):
+		return s.handleBoardClose(c, method, openapiPath, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/production/board-issues"):
+		return s.handleBoardIssues(c, method, openapiPath, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/production/board-moves"):
+		return s.handleBoardMoves(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/process-returns"):
 		return s.handleProcessReturns(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/task-merges"):
@@ -914,15 +922,15 @@ func (s *Services) handleWorkshopWorkbench(c *gin.Context, path string) bool {
 	var exceptionDispatches int
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_dispatch WHERE status IN ('dispatched','reassigned')`).Scan(&exceptionDispatches)
 	api.OK(c, gin.H{
-		"open_tasks":             tasksOpen,
-		"today_station_passes":   stationToday,
-		"pending_confirm":        pendingConfirm,
-		"failed_flow_events":     flowFail,
-		"open_shifts":            openShifts,
-		"exception_dispatches":   exceptionDispatches,
-		"today_reports":          stationToday,
-		"open_dispatches":        exceptionDispatches,
-		"hint":                   "车间工作台：今日过站/待确认/流转失败/产线班次（派工数仅作例外参考）",
+		"open_tasks":           tasksOpen,
+		"today_station_passes": stationToday,
+		"pending_confirm":      pendingConfirm,
+		"failed_flow_events":   flowFail,
+		"open_shifts":          openShifts,
+		"exception_dispatches": exceptionDispatches,
+		"today_reports":        stationToday,
+		"open_dispatches":      exceptionDispatches,
+		"hint":                 "车间工作台：今日过站/待确认/流转失败/产线班次（派工数仅作例外参考）",
 	})
 	return true
 }

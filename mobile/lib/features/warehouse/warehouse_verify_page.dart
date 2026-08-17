@@ -20,7 +20,7 @@ class _BoxLine {
   void dispose() => weight.dispose();
 }
 
-/// 仓管核对页：入厂接收（信息页直接拒收/接收）；已入厂则扫溯源分箱入库（可多日分批+草稿）。
+/// 仓管核对页：入厂接收（信息页直接拒收/接收）；已入厂则扫溯源分板入库（可多日分批+草稿）。
 class WarehouseVerifyPage extends StatefulWidget {
   const WarehouseVerifyPage({super.key, required this.ticket});
 
@@ -33,7 +33,7 @@ class WarehouseVerifyPage extends StatefulWidget {
 class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
   late Map<String, dynamic> _ticket;
   bool _busy = false;
-  /// 0 填表 · 1 预览（分箱）
+  /// 0 填表 · 1 预览（分板）
   int _step = 0;
   String _msg = '';
   bool _msgIsError = false;
@@ -45,17 +45,17 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
   List<Map<String, dynamic>> _doneBoxes = [];
 
   static const _errLabel = {
-    'BOXES_REQUIRED': '请至少录入一箱复磅重量',
-    'BOX_WEIGHT_REQUIRED': '每箱复磅重量须大于 0',
-    'BOX_PHOTO_REQUIRED': '每箱须拍摄至少一张复磅照片',
+    'BOXES_REQUIRED': '请至少录入一板复磅重量',
+    'BOX_WEIGHT_REQUIRED': '每板复磅重量须大于 0',
+    'BOX_PHOTO_REQUIRED': '每板须拍摄至少一张复磅照片',
     'PRODUCT_REQUIRED': '请选择入库产品',
     'ROUTING_REQUIRED': '该产品未配置入厂工艺，请先在工艺流程绑定',
-    'WEIGHT_MISMATCH': '分箱合计超过票净重过多（允许超重 ±3% 或 5kg）',
-    'TRACE_CODE_REQUIRED': '缺少溯源码，无法建箱',
+    'WEIGHT_MISMATCH': '分板合计超过票净重过多（允许超重 ±3% 或 5kg）',
+    'TRACE_CODE_REQUIRED': '缺少溯源码，无法建板',
     'VERIFY_REQUIRED': '请确认核对相符',
-    'GATE_ACCEPT_REQUIRED': '请先完成入厂接收后再分箱',
-    'USE_WAREHOUSE_BOX_STOCKIN': '请仓管扫溯源分箱入库',
-    'ALREADY_STOCKED': '本批已完成分箱入库',
+    'GATE_ACCEPT_REQUIRED': '请先完成入厂接收后再分板',
+    'USE_WAREHOUSE_BOX_STOCKIN': '请仓管扫溯源分板入库',
+    'ALREADY_STOCKED': '本批已完成分板入库',
     'APP_ONLY': '请在 App 仓管端操作',
   };
 
@@ -87,7 +87,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
   bool get _isBoxMode =>
       _ticket['box_stockin_ready'] == true || _status == 'gate_accepted';
 
-  String get _kindLabel => _isBoxMode ? '分箱入库' : '入厂接收';
+  String get _kindLabel => _isBoxMode ? '分板入库' : '入厂接收';
 
   bool get _ready => _isBoxMode || _ticket['stockin_ready'] == true;
 
@@ -163,14 +163,14 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
     if (!_ready) return '单据未就绪：${_ticket['reason'] ?? _ticket['status'] ?? ''}';
     if (_productId == null || _productId! <= 0) return '请选择入库产品';
     if (requireLines) {
-      if (_boxes.isEmpty) return '请至少录入一箱复磅重量';
+      if (_boxes.isEmpty) return '请至少录入一板复磅重量';
       for (var i = 0; i < _boxes.length; i++) {
         final w = double.tryParse(_boxes[i].weight.text.trim()) ?? 0;
-        if (w <= 0) return '第 ${i + 1} 箱复磅重量须大于 0';
-        if (_boxes[i].imageUrls.isEmpty) return '第 ${i + 1} 箱须拍摄至少一张复磅照片';
+        if (w <= 0) return '第 ${i + 1} 板复磅重量须大于 0';
+        if (_boxes[i].imageUrls.isEmpty) return '第 ${i + 1} 板须拍摄至少一张复磅照片';
       }
     }
-    if (!_weightOk) return '分箱合计超过票净重过多（允许超重 ±3% 或 5kg）';
+    if (!_weightOk) return '分板合计超过票净重过多（允许超重 ±3% 或 5kg）';
     return null;
   }
 
@@ -291,14 +291,14 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
 
   Future<void> _removeBox(int i) async {
     if (_boxes.length <= 1) {
-      _prompt('至少保留一箱');
+      _prompt('至少保留一板');
       return;
     }
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('确认删除'),
-        content: Text('确认删除第 ${i + 1} 箱？未提交的重量与照片将丢失。'),
+        content: Text('确认删除第 ${i + 1} 板？未提交的重量与照片将丢失。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('删除')),
@@ -315,7 +315,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
 
   Future<void> _takeBoxPhoto(int i) async {
     if (_boxes[i].imageUrls.length >= 3) {
-      _prompt('每箱最多 3 张复磅照片');
+      _prompt('每板最多 3 张复磅照片');
       return;
     }
     try {
@@ -344,7 +344,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
       }
       setState(() {
         _boxes[i].imageUrls.add(url);
-        _msg = '第 ${i + 1} 箱已上传 ${_boxes[i].imageUrls.length} 张';
+        _msg = '第 ${i + 1} 板已上传 ${_boxes[i].imageUrls.length} 张';
         _msgIsError = false;
       });
       _scheduleSaveDraft();
@@ -413,11 +413,11 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
     await BoxStockinDraftStore.clear(_draftKey);
     setState(() {
       _step = 0;
-      _msg = '本批已入库 ${_ticket['batch_box_codes'] is List ? (res.data as Map)['batch_box_codes'] : ''}；可继续加箱或完成本批';
+      _msg = '本批已入库 ${_ticket['batch_box_codes'] is List ? (res.data as Map)['batch_box_codes'] : ''}；可继续加板或完成本批';
       _msgIsError = false;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已提交本批 ${_boxedQty > 0 ? "累计 $_boxedQty 箱" : "入库"}')),
+      SnackBar(content: Text('已提交本批 ${_boxedQty > 0 ? "累计 $_boxedQty 板" : "入库"}')),
     );
   }
 
@@ -429,7 +429,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('还有未提交草稿'),
-          content: const Text('完成本批前请先提交本页箱子，或放弃草稿仅完成已入库部分。'),
+          content: const Text('完成本批前请先提交本页板，或放弃草稿仅完成已入库部分。'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, 'cancel'), child: const Text('取消')),
             TextButton(onPressed: () => Navigator.pop(ctx, 'discard'), child: const Text('放弃草稿并完成')),
@@ -457,7 +457,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
     }
 
     if (_boxedQty <= 0 && !_boxes.any((b) => (double.tryParse(b.weight.text.trim()) ?? 0) > 0)) {
-      _prompt('请先至少入库一箱再完成本批');
+      _prompt('请先至少入库一板再完成本批');
       return;
     }
 
@@ -470,10 +470,10 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('完成本批分箱'),
+        title: const Text('完成本批分板'),
         content: Text(
           '票净重 ${_ticketNet.toStringAsFixed(2)} kg，已入库 ${_boxedWeight.toStringAsFixed(2)} kg'
-          '${_projectedLoss > 0 && !hasDraft ? "，将记仓前损耗 ${_projectedLoss.toStringAsFixed(2)} kg" : ""}。\n确认后不可再继续分箱。',
+          '${_projectedLoss > 0 && !hasDraft ? "，将记仓前损耗 ${_projectedLoss.toStringAsFixed(2)} kg" : ""}。\n确认后不可再继续分板。',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
@@ -501,14 +501,14 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
       return;
     }
     await BoxStockinDraftStore.clear(_draftKey);
-    var okMsg = '分箱入库完成';
+    var okMsg = '分板入库完成';
     if (res.data is Map) {
       final data = res.data as Map;
       final loss = data['inbound_loss_kg'];
       final rate = data['inbound_loss_rate'];
       if (loss is num && loss > 0) {
         final pct = rate is num ? (rate * 100) : (loss / (_ticketNet > 0 ? _ticketNet : 1) * 100);
-        okMsg = '分箱入库完成（仓前损耗 ${loss.toStringAsFixed(2)} kg，扣损率 ${pct.toStringAsFixed(1)}%）';
+        okMsg = '分板入库完成（仓前损耗 ${loss.toStringAsFixed(2)} kg，扣损率 ${pct.toStringAsFixed(1)}%）';
       }
       if (data['settlement_id'] != null) okMsg = '$okMsg；已生成结算';
     }
@@ -682,7 +682,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
           children: [
             Row(
               children: [
-                Text('箱 ${i + 1}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text('板 ${i + 1}', style: const TextStyle(fontWeight: FontWeight.w600)),
                 const Spacer(),
                 if (_boxes.length > 1)
                   IconButton(
@@ -796,16 +796,16 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                     padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + bottomInset),
                     children: [
                       const Text('核对预览', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                      const Text('提交本批仅入库当前箱子；完成本批后才记仓前损耗并结束。', style: TextStyle(fontSize: 12, color: Colors.black54)),
+                      const Text('提交本批仅入库当前板；完成本批后才记仓前损耗并结束。', style: TextStyle(fontSize: 12, color: Colors.black54)),
                       const SizedBox(height: 8),
                       _kv('单号', '${_ticket['doc_no'] ?? '-'}'),
                       _kv('溯源码', '${_ticket['trace_code'] ?? '-'}'),
                       _kv('票净重', '${net.toStringAsFixed(2)} kg'),
-                      _kv('已入库', '${boxed.toStringAsFixed(2)} kg（$_boxedQty 箱）'),
-                      _kv('本批草稿', '${draft.toStringAsFixed(2)} kg（${_boxes.length} 箱）'),
+                      _kv('已入库', '${boxed.toStringAsFixed(2)} kg（$_boxedQty 板）'),
+                      _kv('本批草稿', '${draft.toStringAsFixed(2)} kg（${_boxes.length} 板）'),
                       _kv('入库产品', _productLabel),
                       for (var i = 0; i < _boxes.length; i++) ...[
-                        _kv('箱 ${i + 1}', '${_boxes[i].weight.text.trim()} kg · ${_boxes[i].imageUrls.length} 张图'),
+                        _kv('板 ${i + 1}', '${_boxes[i].weight.text.trim()} kg · ${_boxes[i].imageUrls.length} 张图'),
                         if (_boxes[i].imageUrls.isNotEmpty)
                           SizedBox(
                             height: 64,
@@ -864,11 +864,11 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                           ),
                         ),
                       if (_isBoxMode) ...[
-                        const FormSectionHeader('分箱进度'),
-                        _kv('已入库', '${boxed.toStringAsFixed(2)} kg / $_boxedQty 箱'),
+                        const FormSectionHeader('分板进度'),
+                        _kv('已入库', '${boxed.toStringAsFixed(2)} kg / $_boxedQty 板'),
                         _kv('剩余可分', '${_remaining.toStringAsFixed(2)} kg'),
                         if (_doneBoxes.isNotEmpty) ...[
-                          const Text('已入库箱', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                          const Text('已入库板', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                           for (final b in _doneBoxes)
                             ListTile(
                               dense: true,
@@ -934,7 +934,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                           child: TextButton.icon(
                             onPressed: _addBox,
                             icon: const Icon(Icons.add, size: 18),
-                            label: const Text('加箱'),
+                            label: const Text('加板'),
                           ),
                         ),
                         for (var i = 0; i < _boxes.length; i++) _boxEditor(i),
@@ -953,7 +953,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                             '票净重 ${net.toStringAsFixed(2)} · 已入库 ${boxed.toStringAsFixed(2)} · 本页草稿 ${draft.toStringAsFixed(2)}\n'
                             '合计 ${combined.toStringAsFixed(2)} kg'
                             '${combined > net ? ' · 超重 ${overPct.toStringAsFixed(1)}%' : (loss > 0 ? ' · 完成时预计损耗 ${loss.toStringAsFixed(2)} kg' : '')}\n'
-                            '草稿已本地缓存，可改天继续；删箱需确认。',
+                            '草稿已本地缓存，可改天继续；删板需确认。',
                             style: TextStyle(
                               fontSize: 13,
                               color: _weightOk ? Colors.teal.shade900 : Colors.orange.shade900,
@@ -964,7 +964,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                         const Padding(
                           padding: EdgeInsets.only(top: 8),
                           child: Text(
-                            '请核对以上信息。无误请接收入厂；有误请拒绝接受并退回采购。本环节不分箱。',
+                            '请核对以上信息。无误请接收入厂；有误请拒绝接受并退回采购。本环节不分板。',
                             style: TextStyle(fontSize: 13, color: Colors.black54),
                           ),
                         ),
@@ -1066,7 +1066,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                       width: double.infinity,
                       child: OutlinedButton(
                         onPressed: _busy ? null : _completeBatch,
-                        child: const Text('完成本批分箱'),
+                        child: const Text('完成本批分板'),
                       ),
                     ),
                   ],

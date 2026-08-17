@@ -104,7 +104,7 @@ class _ProcessReturnPageState extends State<ProcessReturnPage> {
               children: [
                 if (!widget.warehouseMode) ...[
                   const FormSectionHeader('申请退未用完料'),
-                  FormRow.text(label: '箱码', controller: _box, requiredMark: true),
+                  FormRow.text(label: '板码', controller: _box, requiredMark: true),
                   FormRow.text(label: '退回kg', controller: _weight, keyboardType: TextInputType.number, requiredMark: true),
                   FormRow.text(label: '原因', controller: _reason),
                   FormStickyButtonBar(

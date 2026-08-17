@@ -612,6 +612,84 @@ CREATE TABLE IF NOT EXISTS inv_box_code (
   FOREIGN KEY(product_id) REFERENCES prd_product(id)
 );
 
+CREATE TABLE IF NOT EXISTS pd_process_issue (
+  id BIGSERIAL PRIMARY KEY,
+  board_id BIGINT NOT NULL,
+  board_code TEXT NOT NULL DEFAULT '',
+  trace_code TEXT NOT NULL DEFAULT '',
+  process_id BIGINT NOT NULL,
+  step_id BIGINT NOT NULL DEFAULT 0,
+  worker_id BIGINT NOT NULL DEFAULT 0,
+  issue_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+  returned_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+  completed_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'open',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT pd_process_issue_kg_chk CHECK (returned_kg + completed_kg <= issue_kg + 0.0001)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pd_process_issue_board ON pd_process_issue (board_id, process_id, status);
+CREATE INDEX IF NOT EXISTS idx_pd_process_issue_worker ON pd_process_issue (worker_id, status);
+
+CREATE TABLE IF NOT EXISTS pd_process_move (
+  id BIGSERIAL PRIMARY KEY,
+  board_id BIGINT NOT NULL,
+  board_code TEXT NOT NULL DEFAULT '',
+  trace_code TEXT NOT NULL DEFAULT '',
+  from_process_id BIGINT NOT NULL DEFAULT 0,
+  from_step_id BIGINT NOT NULL DEFAULT 0,
+  to_process_id BIGINT,
+  to_step_id BIGINT,
+  to_worker_id BIGINT NOT NULL DEFAULT 0,
+  kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+  move_kind TEXT NOT NULL DEFAULT 'next',
+  issue_ids TEXT NOT NULL DEFAULT '',
+  created_by BIGINT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pd_process_move_board ON pd_process_move (board_id, created_at);
+
+CREATE TABLE IF NOT EXISTS pd_process_move_alloc (
+  id BIGSERIAL PRIMARY KEY,
+  move_id BIGINT NOT NULL,
+  issue_id BIGINT NOT NULL,
+  kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pd_process_move_alloc_move ON pd_process_move_alloc (move_id);
+
+CREATE TABLE IF NOT EXISTS pd_board_process_yield (
+  id BIGSERIAL PRIMARY KEY,
+  board_id BIGINT NOT NULL,
+  board_code TEXT NOT NULL DEFAULT '',
+  trace_code TEXT NOT NULL DEFAULT '',
+  process_id BIGINT NOT NULL,
+  input_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+  output_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+  loss_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+  loss_rate DOUBLE PRECISION NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (board_id, process_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pd_board_process_yield_trace ON pd_board_process_yield (trace_code, process_id);
+
+CREATE TABLE IF NOT EXISTS pd_trace_process_yield (
+  id BIGSERIAL PRIMARY KEY,
+  trace_code TEXT NOT NULL,
+  process_id BIGINT NOT NULL,
+  input_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+  output_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+  loss_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+  loss_rate DOUBLE PRECISION NOT NULL DEFAULT 0,
+  board_count INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (trace_code, process_id)
+);
+
 CREATE TABLE IF NOT EXISTS pd_flow_event (
   id BIGSERIAL PRIMARY KEY,
   source_type TEXT NOT NULL,
@@ -759,7 +837,8 @@ CREATE TABLE IF NOT EXISTS appr_task (
   created_at TEXT NOT NULL DEFAULT NOW()
 );
 
-INSERT INTO schema_meta(key, value) VALUES ('version', '2');
+INSERT INTO schema_meta(key, value) VALUES ('version', '2')
+ON CONFLICT (key) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS erp_doc (
   id BIGSERIAL PRIMARY KEY,
@@ -2165,6 +2244,12 @@ CREATE TABLE IF NOT EXISTS pur_weigh_ticket (
   image_url TEXT,
   box_code TEXT,
   warehouse_id INTEGER,
+  plate_no TEXT,
+  freight_fee DOUBLE PRECISION NOT NULL DEFAULT 0,
+  loading_fee DOUBLE PRECISION NOT NULL DEFAULT 0,
+  weigh_fee DOUBLE PRECISION NOT NULL DEFAULT 0,
+  unit_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+  confirmed_at TEXT,
   remark TEXT,
   created_at TEXT NOT NULL DEFAULT NOW(),
   updated_at TEXT NOT NULL DEFAULT NOW(),
@@ -2681,18 +2766,24 @@ ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS arrival_id INTEGER;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS bag_qty DOUBLE PRECISION DEFAULT 0;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS batch_no TEXT;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS cold_store_type TEXT;
+ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS confirmed_at TEXT;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS confirmed_by INTEGER;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS confirmed_snapshot_json TEXT;
+ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS freight_fee DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS grade TEXT;
+ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS loading_fee DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS ocr_draft_json TEXT;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS party_mobile TEXT;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS party_name TEXT;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS pass_rate DOUBLE PRECISION DEFAULT 0;
+ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS plate_no TEXT;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS purchase_completed_at TEXT;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS receive_address TEXT;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS receive_kind TEXT;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS reject_weight DOUBLE PRECISION DEFAULT 0;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS settle_amount DOUBLE PRECISION DEFAULT 0;
+ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS unit_price DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS weigh_fee DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS weighbridge_id INTEGER;
 ALTER TABLE wf_ticket_category ADD COLUMN IF NOT EXISTS biz_hint TEXT;
 ALTER TABLE wf_ticket_category ADD COLUMN IF NOT EXISTS form_schema_json TEXT;

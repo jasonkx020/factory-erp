@@ -618,7 +618,7 @@ watch(
                 :closable="false"
                 show-icon
                 class="mb"
-                title="入厂后由仓管扫溯源分箱入库；农户结算环节可在「系统管理 → 基础设置」配置"
+                title="入厂后由仓管扫溯源分板入库；农户结算环节可在「系统管理 → 基础设置」配置"
                 style="margin-bottom:12px"
               />
               <el-form-item label="溯源批号">
@@ -789,8 +789,8 @@ watch(
             <template #default="{ row }">
               <el-button v-if="row.status==='draft' || row.status==='qc_pass'" link type="primary" @click="openConfirm(row)">对照确认出码</el-button>
               <el-button v-if="row.status==='weighed'" link type="info" disabled>等待仓管入厂接收</el-button>
-              <el-button v-if="row.status==='gate_accepted'" link type="warning" disabled>待仓管分箱</el-button>
-              <el-button v-if="row.status==='stocked'" link type="success" disabled>已分箱入库</el-button>
+              <el-button v-if="row.status==='gate_accepted'" link type="warning" disabled>待仓管分板</el-button>
+              <el-button v-if="row.status==='stocked'" link type="success" disabled>已分板入库</el-button>
               <el-button link type="warning" @click="openCorrect(row, 'weigh_ticket')">纠错</el-button>
             </template>
           </el-table-column>
@@ -798,8 +798,8 @@ watch(
         <template #actions="{ row }">
           <el-button v-if="row.status==='draft' || row.status==='qc_pass'" link type="primary" @click="openConfirm(row)">对照确认出码</el-button>
           <el-button v-if="row.status==='weighed'" link type="info" disabled>等待仓管入厂接收</el-button>
-          <el-button v-if="row.status==='gate_accepted'" link type="warning" disabled>待仓管分箱</el-button>
-          <el-button v-if="row.status==='stocked'" link type="success" disabled>已分箱入库</el-button>
+          <el-button v-if="row.status==='gate_accepted'" link type="warning" disabled>待仓管分板</el-button>
+          <el-button v-if="row.status==='stocked'" link type="success" disabled>已分板入库</el-button>
           <el-button link type="warning" @click="openCorrect(row, 'weigh_ticket')">纠错</el-button>
         </template>
       </TableOrCards>

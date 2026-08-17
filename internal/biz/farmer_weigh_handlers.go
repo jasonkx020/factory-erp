@@ -845,7 +845,7 @@ func (s *Services) qcWeighTicket(c *gin.Context) bool {
 	return true
 }
 
-// applyVerifiedWeighStockIn 仓管核对相符后：入厂仅接收（无箱码）；入库分箱建箱。already=true 表示幂等返回。
+// applyVerifiedWeighStockIn 仓管核对相符后：入厂仅接收（无板码）；入库分板建板。already=true 表示幂等返回。
 func (s *Services) applyVerifiedWeighStockIn(c *gin.Context, id int64, body map[string]interface{}) (out gin.H, errCode string, already bool) {
 	verified := asBool(body["verified"]) || asBool(body["match_confirmed"])
 	if !verified {
@@ -934,7 +934,7 @@ func (s *Services) applyVerifiedWeighStockIn(c *gin.Context, id int64, body map[
 				Key: "purchase.gate_accepted", BizType: "weigh_ticket", BizID: id,
 				DocNo: strOr(m["doc_no"]), TraceCode: strOr(m["trace_code"]),
 				FromRole: "warehouse", ToRoles: []string{"purchase"}, CreateTask: false,
-				Title: "入厂完成", Body: "仓管已确认入厂 " + strOr(m["doc_no"]) + "，可扫溯源分箱入库",
+				Title: "入厂完成", Body: "仓管已确认入厂 " + strOr(m["doc_no"]) + "，可扫溯源分板入库",
 				Payload: gin.H{"trace_code": m["trace_code"], "status": "gate_accepted"},
 			})
 			if settleID > 0 {
@@ -998,7 +998,7 @@ func (s *Services) stockInWeighTicket(c *gin.Context) bool {
 	return true
 }
 
-// boxStockInWeighTicket 仓管扫溯源后对已入厂批次分批分箱入库（不完结）。
+// boxStockInWeighTicket 仓管扫溯源后对已入厂批次分批分板入库（不完结）。
 func (s *Services) boxStockInWeighTicket(c *gin.Context) bool {
 	if !s.requireAnyRole(c, "warehouse") {
 		return true
@@ -1056,7 +1056,7 @@ func (s *Services) boxStockInWeighTicket(c *gin.Context) bool {
 	return true
 }
 
-// completeBoxStockInWeighTicket 完成本批分箱：记仓前损耗、标 stocked、推结算。
+// completeBoxStockInWeighTicket 完成本批分板：记仓前损耗、标 stocked、推结算。
 func (s *Services) completeBoxStockInWeighTicket(c *gin.Context) bool {
 	if !s.requireAnyRole(c, "warehouse") {
 		return true
@@ -1140,7 +1140,7 @@ func (s *Services) completeBoxStockInWeighTicket(c *gin.Context) bool {
 			Key: "purchase.stocked", BizType: "weigh_ticket", BizID: id,
 			DocNo: strOr(m["doc_no"]), TraceCode: strOr(m["trace_code"]),
 			FromRole: "warehouse", ToRoles: []string{"purchase"}, CreateTask: false,
-			Title: "分箱入库完成", Body: fmt.Sprintf("%s 箱合计 %.2f 仓前损耗 %.2f", m["doc_no"], boxSum, inboundLoss),
+			Title: "分板入库完成", Body: fmt.Sprintf("%s 板合计 %.2f 仓前损耗 %.2f", m["doc_no"], boxSum, inboundLoss),
 			Payload: gin.H{
 				"box_code": m["box_code"], "inbound_loss_kg": inboundLoss, "inbound_loss_rate": lossRate,
 				"box_sum_kg": boxSum,
@@ -1151,7 +1151,7 @@ func (s *Services) completeBoxStockInWeighTicket(c *gin.Context) bool {
 				Key: "purchase.stocked", BizType: "weigh_ticket", BizID: id,
 				DocNo: strOr(m["doc_no"]), TraceCode: strOr(m["trace_code"]),
 				FromRole: "warehouse", ToRoles: []string{"finance"}, CreateTask: true,
-				Title: "待财务结算", Body: fmt.Sprintf("%s 分箱净重 %.2f 应付 %v", m["doc_no"], boxSum, breakdown["amount"]),
+				Title: "待财务结算", Body: fmt.Sprintf("%s 分板净重 %.2f 应付 %v", m["doc_no"], boxSum, breakdown["amount"]),
 				Payload: gin.H{"settlement_id": settleID, "settle_breakdown": breakdown, "box_sum_kg": boxSum},
 			})
 		}
@@ -1624,9 +1624,9 @@ func (s *Services) writeInboundLossTxn(weighID, warehouseID, productID int64, lo
 
 func (s *Services) allocInboundBoxCode(trace string, seq int) string {
 	trace = strings.TrimSpace(trace)
-	base := fmt.Sprintf("BX-%s-%02d", trace, seq)
+	base := fmt.Sprintf("BD-%s-%02d", trace, seq)
 	if len(base) > 64 {
-		base = fmt.Sprintf("BX%d-%02d", time.Now().UnixNano()%1e10, seq)
+		base = fmt.Sprintf("BD%d-%02d", time.Now().UnixNano()%1e10, seq)
 	}
 	code := base
 	for i := 0; i < 20; i++ {
@@ -1637,10 +1637,10 @@ func (s *Services) allocInboundBoxCode(trace string, seq int) string {
 		}
 		code = fmt.Sprintf("%s-%d", base, i+1)
 	}
-	return fmt.Sprintf("BX%d", time.Now().UnixNano()%1e12)
+	return fmt.Sprintf("BD%d", time.Now().UnixNano()%1e12)
 }
 
-// doWeighStockIn 一次性分箱并完结（旧 stockin 路径）；requirePhotos=false。
+// doWeighStockIn 一次性分板并完结（旧 stockin 路径）；requirePhotos=false。
 func (s *Services) doWeighStockIn(id int64, body map[string]interface{}) (bool, string, float64) {
 	m := s.loadWeighTicket(id)
 	if m["id"] == nil {
@@ -1661,7 +1661,7 @@ func (s *Services) doWeighStockIn(id int64, body map[string]interface{}) (bool, 
 	return true, "", loss
 }
 
-// doWeighStockInBatch 增量创建箱并入库过账，不标记 stocked、不记仓前损耗。
+// doWeighStockInBatch 增量创建板并入库过账，不标记 stocked、不记仓前损耗。
 func (s *Services) doWeighStockInBatch(c *gin.Context, id int64, body map[string]interface{}, requirePhotos bool) (ok bool, errCode string, batchSum float64, boxCodes []string) {
 	m := s.loadWeighTicket(id)
 	if m["id"] == nil {
@@ -1729,7 +1729,7 @@ func (s *Services) doWeighStockInBatch(c *gin.Context, id int64, body map[string
 			VALUES(?,?,?,?,?,?,?,?,?,?,?,'open',?,?,?)`,
 			code, productID, wh, bizDate, ln.Weight, ln.Weight, farmerID, trace, origin, bizDate, sourceType, procID, stepID, img0)
 		if err != nil {
-			code = fmt.Sprintf("BX%d", time.Now().UnixNano()%1e12)
+			code = fmt.Sprintf("BD%d", time.Now().UnixNano()%1e12)
 			res, err = s.DB.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, farmer_id, trace_code, origin, receive_date, source_type, status, current_process_id, current_step_id, image_url)
 				VALUES(?,?,?,?,?,?,?,?,?,?,?,'open',?,?,?)`,
 				code, productID, wh, bizDate, ln.Weight, ln.Weight, farmerID, trace, origin, bizDate, sourceType, procID, stepID, img0)
@@ -1777,7 +1777,7 @@ func (s *Services) doWeighStockInBatch(c *gin.Context, id int64, body map[string
 	return true, "", batchSum, boxCodes
 }
 
-// finalizeWeighBoxStockIn 完成本批分箱：记仓前损耗并标记 stocked。
+// finalizeWeighBoxStockIn 完成本批分板：记仓前损耗并标记 stocked。
 func (s *Services) finalizeWeighBoxStockIn(id int64) (inboundLoss float64, errCode string) {
 	m := s.loadWeighTicket(id)
 	if m["id"] == nil {
@@ -2234,7 +2234,7 @@ func (s *Services) traceTimeline(c *gin.Context, code string) bool {
 			events = append(events, gin.H{"step": "weigh", "data": weighData, "evidences": s.listEvidence("weigh_ticket", wid)})
 		}
 	}
-	// 该溯源码下已分箱列表（含复磅图）
+	// 该溯源码下已分板列表（含复磅图）
 	boxTrace := strings.TrimSpace(code)
 	if weighData != nil {
 		if t := strOr(weighData["trace_code"]); t != "" {

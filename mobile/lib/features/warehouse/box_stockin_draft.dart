@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 仓管分箱未提交草稿（按溯源码/过磅单缓存）。
+/// 仓管分板未提交草稿（按溯源码/过磅单缓存）。
 class BoxStockinDraftStore {
   BoxStockinDraftStore._();
 

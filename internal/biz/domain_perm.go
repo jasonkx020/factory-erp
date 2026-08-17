@@ -29,23 +29,27 @@ var resourceDomainModule = map[string]domainModule{
 	"purchase/suppliers": {"采购管理", "供应商管理"}, "purchase/farmers": {"采购管理", "农户档案"},
 	"purchase/weigh-tickets": {"采购管理", "过磅收货"}, "purchase/weigh-varieties": {"采购管理", "过磅品种"}, "purchase/trace-batch-codes": {"采购管理", "溯源批号"}, "purchase/farmer-settlements": {"采购管理", "农户结算"},
 	"purchase/role-users": {"采购管理", "过磅收货"},
-	"purchase/trace": {"采购管理", "原料溯源"}, "purchase/requests": {"采购管理", "采购申请"},
+	"purchase/trace":      {"采购管理", "原料溯源"}, "purchase/requests": {"采购管理", "采购申请"},
 	"purchase/plans": {"采购管理", "采购计划单"}, "purchase/inbounds": {"采购管理", "采购入库"},
 	"purchase/qcs": {"采购管理", "来料质检"}, "purchase/returns": {"采购管理", "采购退货"},
 	"purchase/tasks": {"采购管理", "采购任务管理"},
 	// production
 	"production/tasks": {"生产管理", "生产任务单"}, "production/processes": {"生产管理", "工序定义"},
-	"production/shifts": {"生产管理", "产线班次"},
+	"production/shifts":     {"生产管理", "产线班次"},
 	"production/dispatches": {"生产管理", "例外派岗"}, "production/report-works": {"生产管理", "过站记录"},
-	"production/workshop-workbench": {"生产管理", "车间工作台"},
-	"production/process-wip":        {"生产管理", "工序在制"},
-	"production/scan":               {"生产管理", "过站记录"},
-	"production/scan/resolve":       {"生产管理", "过站记录"},
+	"production/workshop-workbench":  {"生产管理", "车间工作台"},
+	"production/process-wip":         {"生产管理", "工序在制"},
+	"production/scan":                {"生产管理", "过站记录"},
+	"production/scan/resolve":        {"生产管理", "过站记录"},
 	"production/piecework-summaries": {"生产管理", "计件工资"}, "production/requisitions": {"生产管理", "联动式领料"},
 	"production/boms": {"生产管理", "自动BOM"}, "production/workshops": {"生产管理", "车间管理"},
 	"production/qc": {"生产管理", "质检管理"}, "production/scraps": {"生产管理", "废料管理"},
 	"production/process-returns": {"生产管理", "退库未用完还仓"},
-	"production/reworks": {"生产管理", "返修单"}, "production/routings": {"生产管理", "工艺流程"},
+	"production/board-issues":    {"生产管理", "过站记录"},
+	"production/board-moves":     {"生产管理", "过站记录"},
+	"production/board-close":     {"生产管理", "过站记录"},
+	"production/process-yields":  {"生产管理", "工序扣损"},
+	"production/reworks":         {"生产管理", "返修单"}, "production/routings": {"生产管理", "工艺流程"},
 	"production/flow-graphs": {"生产管理", "工艺流程"}, "production/flow-rules": {"生产管理", "工艺流程"},
 	// inventory
 	"inventory/balances": {"库存管理", "库存查询"}, "inventory/stock-txns": {"库存管理", "出入库记录汇总"},
@@ -71,14 +75,14 @@ var resourceDomainModule = map[string]domainModule{
 	"hr/departments": {"人事管理", "部门管理"}, "hr/work-teams": {"人事管理", "员工档案"},
 	"hr/tool-issues": {"人事管理", "工具领还"}, "system/personnel-transfers": {"人事管理", "人事调动"},
 	"payroll/wage-rates": {"工资管理", "工序工资"},
-	"payroll/sheets": {"工资管理", "薪酬核算"},
+	"payroll/sheets":     {"工资管理", "薪酬核算"},
 	// crm / product / asset / approval / report
 	"crm/customers": {"客户管理", "CRM客户管理"}, "product/products": {"产品管理", "产品档案"},
 	"asset/fixed-assets": {"固定资产管理", "固定资产项目"}, "approval/tasks": {"审批管理", "任务管理"},
 	"report/dashboards": {"统计报表", "老板驾驶舱"},
 	// IAM used by 人事管理/权限分配
-	"iam/roles": {"人事管理", "权限分配"},
-	"iam/admin-groups": {"人事管理", "权限分配"},
+	"iam/roles":            {"人事管理", "权限分配"},
+	"iam/admin-groups":     {"人事管理", "权限分配"},
 	"iam/hr-perm-overview": {"人事管理", "权限分配"},
 }
 
@@ -176,6 +180,9 @@ func modulePermCodes(domain, module string, write bool) []string {
 
 func isProductionFieldAPI(resourceKey, action string) bool {
 	if strings.HasPrefix(resourceKey, "production/scan") {
+		return true
+	}
+	if strings.HasPrefix(resourceKey, "production/board-issues") || strings.HasPrefix(resourceKey, "production/board-moves") {
 		return true
 	}
 	if strings.Contains(resourceKey, "piecework-summaries/mine") {

@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import {
   productionApi,
   productApi,
   hrApi,
   fieldLedgerApi,
-  inventoryApi,
   PROCESS_TYPE_OPTIONS,
   QC_TYPE_OPTIONS,
   CONSIGNMENT_PROGRESS_OPTIONS,
@@ -123,15 +122,36 @@ const wipCols: MobileCardColumn[] = [
   { prop: 'seq_no', label: '序' },
   { prop: 'step_code', label: '步骤码' },
   { prop: 'process_name', label: '工序' },
-  { prop: 'box_count', label: '箱数' },
+  { prop: 'board_count', label: '板数' },
+  { prop: 'available_kg', label: '可领 kg' },
+  { prop: 'occupied_kg', label: '领取未完 kg' },
   { prop: 'wip_weight', label: '在制重量 kg' },
 ]
 const wipBoxCols: MobileCardColumn[] = [
-  { prop: 'code', label: '箱码', primary: true },
+  { prop: 'code', label: '板码', primary: true },
   { prop: 'product_name', label: '产品' },
-  { prop: 'weight', label: '重量' },
+  { prop: 'available_kg', label: '可领 kg' },
+  { prop: 'occupied_kg', label: '领取未完 kg' },
   { prop: 'trace_code', label: '溯源' },
   { prop: 'status', label: '状态' },
+]
+const yieldCols: MobileCardColumn[] = [
+  { prop: 'process_name', label: '工序', primary: true },
+  { prop: 'board_code', label: '板码' },
+  { prop: 'trace_code', label: '溯源' },
+  { prop: 'input_kg', label: '投料 kg' },
+  { prop: 'output_kg', label: '完工 kg' },
+  { prop: 'loss_kg', label: '扣损 kg' },
+  { prop: 'loss_rate', label: '扣损率' },
+]
+const yieldTraceCols: MobileCardColumn[] = [
+  { prop: 'process_name', label: '工序', primary: true },
+  { prop: 'trace_code', label: '溯源' },
+  { prop: 'board_count', label: '板数' },
+  { prop: 'input_kg', label: '投料 kg' },
+  { prop: 'output_kg', label: '完工 kg' },
+  { prop: 'loss_kg', label: '扣损 kg' },
+  { prop: 'loss_rate', label: '扣损率' },
 ]
 const workshopCols: MobileCardColumn[] = [
   { prop: 'name', label: '名称', primary: true },
@@ -224,6 +244,7 @@ const TITLE_MAP: Record<string, string> = {
   requisitions: '联动式领料',
   workbench: '车间工作台',
   'process-wip': '工序在制',
+  'process-yield': '工序扣损',
   workshops: '车间管理',
   outsources: '委外加工',
   consignments: '受托加工',
@@ -299,6 +320,9 @@ const wipSummary = ref<Row | null>(null)
 const wipDrawer = ref(false)
 const wipBoxes = ref<Row[]>([])
 const wipDrawerTitle = ref('')
+const yieldScope = ref<'board' | 'trace'>('board')
+const yieldTraceCode = ref('')
+const yieldBoardCode = ref('')
 const shiftMembers = computed(() =>
   ((shiftDetail.value?.members as Row[]) || []).map((m) => ({
     ...m,
@@ -425,6 +449,19 @@ async function refresh() {
         wipSummary.value = (res.data as Row) || null
         list.value = ((res.data as { steps?: Row[] })?.steps) || []
         return
+      }
+      case 'process-yield': {
+        const parts = [
+          yieldTraceCode.value.trim() ? `trace_code=${encodeURIComponent(yieldTraceCode.value.trim())}` : '',
+          yieldScope.value === 'board' && yieldBoardCode.value.trim()
+            ? `board_code=${encodeURIComponent(yieldBoardCode.value.trim())}`
+            : '',
+        ].filter(Boolean)
+        const qs = parts.join('&')
+        res = yieldScope.value === 'trace'
+          ? await productionApi.processYieldTraces(qs || undefined)
+          : await productionApi.processYields(qs || undefined)
+        break
       }
       case 'workshops':
         res = await productionApi.workshops()
@@ -651,32 +688,10 @@ async function openWipBoxes(stepId: number, title: string, unassigned: boolean) 
     wipProductId.value ? `product_id=${wipProductId.value}` : '',
   ].filter(Boolean)
   const res = await productionApi.processWipBoxes(parts.join('&'))
-  if (res.code !== 1) return ElMessage.error(res.msg || '加载箱明细失败')
+  if (res.code !== 1) return ElMessage.error(res.msg || '加载板明细失败')
   wipBoxes.value = ((res.data as { list?: Row[] })?.list) || []
-  wipDrawerTitle.value = `${title || '箱明细'}（${wipBoxes.value.length}）`
+  wipDrawerTitle.value = `${title || '板明细'}（${wipBoxes.value.length}）`
   wipDrawer.value = true
-}
-
-async function destroyWipBox(row: Row) {
-  const id = Number(row.id)
-  if (!id) return
-  try {
-    const { value } = await ElMessageBox.prompt('填写销毁原因（损耗等用不了的箱须标注销毁）', `销毁 ${row.code || ''}`, {
-      confirmButtonText: '确认销毁',
-      cancelButtonText: '取消',
-      inputPattern: /\S+/,
-      inputErrorMessage: '原因必填',
-      type: 'warning',
-    })
-    const res = await inventoryApi.destroyBox(id, { reason: String(value || '').trim() })
-    if (res.code !== 1) return ElMessage.error(res.msg)
-    ElMessage.success('已销毁')
-    wipBoxes.value = wipBoxes.value.filter((b) => Number(b.id) !== id)
-    wipDrawerTitle.value = wipDrawerTitle.value.replace(/\（\d+\）/, `（${wipBoxes.value.length}）`)
-    await refresh()
-  } catch {
-    /* cancel */
-  }
 }
 
 async function createBom() {
@@ -880,6 +895,9 @@ watch(active, () => {
 })
 watch(wipProductId, () => {
   if (active.value === 'process-wip') refresh()
+})
+watch(yieldScope, () => {
+  if (active.value === 'process-yield') refresh()
 })
 onMounted(async () => {
   await loadMeta()
@@ -1366,19 +1384,19 @@ onMounted(async () => {
         <div class="row mb">
           <ProductSelect v-model="wipProductId" clearable placeholder="按产品筛选（默认鲜木薯工艺）" style="width:240px" />
           <el-button @click="refresh">刷新</el-button>
-          <span v-if="wipSummary" class="hint">工艺 {{ wipSummary.routing_code || '-' }}</span>
+          <span v-if="wipSummary" class="hint">工艺 {{ wipSummary.routing_code || '-' }} · 只读统计（领取/退库请在 App）</span>
         </div>
         <el-row v-if="wipSummary" :gutter="12" class="mb">
-          <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">在制箱数</div><div class="kpi-n">{{ wipSummary.total_boxes ?? 0 }}</div></el-card></el-col>
+          <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">在制板数</div><div class="kpi-n">{{ wipSummary.total_boards ?? wipSummary.total_boxes ?? 0 }}</div></el-card></el-col>
           <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">在制重量 kg</div><div class="kpi-n">{{ Number(wipSummary.total_weight || 0).toFixed(1) }}</div></el-card></el-col>
           <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">待确认过站</div><div class="kpi-n">{{ wipSummary.pending_confirm_reports ?? 0 }}</div></el-card></el-col>
           <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">待确认重量</div><div class="kpi-n">{{ Number(wipSummary.pending_confirm_weight || 0).toFixed(1) }}</div></el-card></el-col>
         </el-row>
         <p v-if="wipSummary?.unassigned" class="hint mb">
-          未挂工序箱 {{ (wipSummary.unassigned as Row).box_count || 0 }} ·
+          未挂工序板 {{ (wipSummary.unassigned as Row).board_count || (wipSummary.unassigned as Row).box_count || 0 }} ·
           重量 {{ Number((wipSummary.unassigned as Row).wip_weight || 0).toFixed(1) }} kg
           <el-button
-            v-if="Number((wipSummary.unassigned as Row).box_count || 0) > 0"
+            v-if="Number((wipSummary.unassigned as Row).board_count || (wipSummary.unassigned as Row).box_count || 0) > 0"
             link
             type="primary"
             @click="openWipBoxes(0, '未挂工序', true)"
@@ -1390,44 +1408,95 @@ onMounted(async () => {
             <el-table-column prop="step_code" label="步骤码" width="90" />
             <el-table-column prop="step_name" label="步骤" min-width="140" />
             <el-table-column prop="process_name" label="工序" width="120" />
-            <el-table-column prop="box_count" label="箱数" width="80" />
+            <el-table-column prop="board_count" label="板数" width="80">
+              <template #default="{ row }">{{ row.board_count ?? row.box_count ?? 0 }}</template>
+            </el-table-column>
+            <el-table-column label="可领 kg" width="100">
+              <template #default="{ row }">{{ Number(row.available_kg || 0).toFixed(2) }}</template>
+            </el-table-column>
+            <el-table-column label="领取未完 kg" width="120">
+              <template #default="{ row }">{{ Number(row.occupied_kg || 0).toFixed(2) }}</template>
+            </el-table-column>
             <el-table-column label="在制重量 kg" width="120">
               <template #default="{ row }">{{ Number(row.wip_weight || 0).toFixed(2) }}</template>
             </el-table-column>
             <el-table-column label="操作" width="90">
               <template #default="{ row }">
-                <el-button link type="primary" @click.stop="openWipBoxes(Number(row.step_id), String(row.step_name || ''), false)">箱明细</el-button>
+                <el-button link type="primary" @click.stop="openWipBoxes(Number(row.step_id), String(row.step_name || ''), false)">板明细</el-button>
               </template>
             </el-table-column>
           </el-table>
           <template #actions="{ row }">
-            <el-button link type="primary" @click="openWipBoxes(Number(row.step_id), String(row.step_name || ''), false)">箱明细</el-button>
+            <el-button link type="primary" @click="openWipBoxes(Number(row.step_id), String(row.step_name || ''), false)">板明细</el-button>
           </template>
         </TableOrCards>
         <el-drawer v-model="wipDrawer" :title="wipDrawerTitle" size="480px">
           <TableOrCards :data="wipBoxes" :columns="wipBoxCols">
             <el-table :data="wipBoxes" size="small" border>
-              <el-table-column prop="code" label="箱码" min-width="140" />
+              <el-table-column prop="code" label="板码" min-width="140" />
               <el-table-column prop="product_name" label="产品" width="100" />
-              <el-table-column label="重量" width="90">
-                <template #default="{ row }">{{ Number(row.weight || 0).toFixed(2) }}</template>
+              <el-table-column label="可领 kg" width="90">
+                <template #default="{ row }">{{ Number(row.available_kg ?? row.weight || 0).toFixed(2) }}</template>
+              </el-table-column>
+              <el-table-column label="领取未完 kg" width="110">
+                <template #default="{ row }">{{ Number(row.occupied_kg || 0).toFixed(2) }}</template>
               </el-table-column>
               <el-table-column prop="trace_code" label="溯源" width="110" />
               <el-table-column prop="status" label="状态" width="80" />
-              <el-table-column label="操作" width="80" fixed="right">
+              <el-table-column label="工人占用" min-width="160">
                 <template #default="{ row }">
-                  <el-button link type="danger" @click="destroyWipBox(row)">销毁</el-button>
+                  <div v-if="Array.isArray(row.occupancies) && row.occupancies.length">
+                    <div v-for="(o, i) in row.occupancies as Row[]" :key="i">
+                      {{ o.worker_name || o.worker_id }} · {{ Number(o.open_kg || 0).toFixed(2) }} kg
+                    </div>
+                  </div>
+                  <span v-else class="hint">—</span>
                 </template>
               </el-table-column>
             </el-table>
             <template #extra="{ row }">
               <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
             </template>
-            <template #actions="{ row }">
-              <el-button link type="danger" @click="destroyWipBox(row)">销毁</el-button>
-            </template>
           </TableOrCards>
         </el-drawer>
+      </template>
+
+      <!-- 工序扣损：仅已完工快照，不实时计算 -->
+      <template v-else-if="active==='process-yield'">
+        <div class="row mb">
+          <el-radio-group v-model="yieldScope" size="small">
+            <el-radio-button value="board">按板</el-radio-button>
+            <el-radio-button value="trace">按溯源</el-radio-button>
+          </el-radio-group>
+          <el-input v-model="yieldTraceCode" clearable placeholder="溯源码" style="width:180px" @keyup.enter="refresh" />
+          <el-input v-if="yieldScope==='board'" v-model="yieldBoardCode" clearable placeholder="板码" style="width:180px" @keyup.enter="refresh" />
+          <el-button @click="refresh">查询</el-button>
+          <span class="hint">整板走完所有工序后才写入；未完成不展示扣损率</span>
+        </div>
+        <TableOrCards :data="list" :loading="loading" :columns="yieldScope==='trace' ? yieldTraceCols : yieldCols">
+          <el-table :data="list" size="small" border stripe>
+            <el-table-column prop="process_name" label="工序" width="120" />
+            <el-table-column v-if="yieldScope==='board'" prop="board_code" label="板码" min-width="140" />
+            <el-table-column prop="trace_code" label="溯源" min-width="120" />
+            <el-table-column v-if="yieldScope==='trace'" prop="board_count" label="板数" width="80" />
+            <el-table-column label="投料 kg" width="100">
+              <template #default="{ row }">{{ Number(row.input_kg || 0).toFixed(2) }}</template>
+            </el-table-column>
+            <el-table-column label="完工 kg" width="100">
+              <template #default="{ row }">{{ Number(row.output_kg || 0).toFixed(2) }}</template>
+            </el-table-column>
+            <el-table-column label="扣损 kg" width="100">
+              <template #default="{ row }">{{ Number(row.loss_kg || 0).toFixed(2) }}</template>
+            </el-table-column>
+            <el-table-column label="扣损率" width="90">
+              <template #default="{ row }">{{ (Number(row.loss_rate || 0) * 100).toFixed(1) }}%</template>
+            </el-table-column>
+            <el-table-column prop="created_at" label="计算时间" min-width="160" />
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag size="small">{{ ((Number(row.loss_rate || 0) * 100).toFixed(1)) }}%</el-tag>
+          </template>
+        </TableOrCards>
       </template>
 
       <!-- 车间 -->

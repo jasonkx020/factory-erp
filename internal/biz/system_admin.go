@@ -33,7 +33,7 @@ var sysSettingDefaults = map[string]map[string]interface{}{
 	"base": {
 		"company_name": "加工厂ERP", "timezone": "Asia/Shanghai", "currency": "CNY",
 		"date_format": "YYYY-MM-DD", "default_page_size": 20, "enable_mqtt_notify": true,
-		// gate=入厂确认后结算；box_stockin=分箱入库后按箱合计结算
+		// gate=入厂确认后结算；box_stockin=分板入库后按板合计结算
 		"farmer_settle_point": "gate",
 	},
 	"sales": {

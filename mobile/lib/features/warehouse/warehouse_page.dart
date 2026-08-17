@@ -71,11 +71,11 @@ class _WarehousePageState extends State<WarehousePage> {
       case WarehouseSection.home:
         return '仓管作业';
       case WarehouseSection.scan:
-        return '扫溯源接收/分箱';
+        return '扫溯源接收/分板';
       case WarehouseSection.todos:
         return '待办';
       case WarehouseSection.boxes:
-        return '箱码';
+        return '板码';
       case WarehouseSection.stocktake:
         return _formStep == 1 ? '盘点 · 预览' : '盘点';
       case WarehouseSection.txn:
@@ -374,14 +374,14 @@ class _WarehousePageState extends State<WarehousePage> {
     if (id == null || id <= 0) return;
     final st = (m['status'] ?? '').toString().toLowerCase();
     if (st == 'destroyed' || st == 'finished') {
-      _prompt('该箱不可销毁');
+      _prompt('该板不可销毁');
       return;
     }
     final reasonCtrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('销毁箱码 ${m['code'] ?? ''}'),
+        title: Text('销毁板码 ${m['code'] ?? ''}'),
         content: TextField(
           controller: reasonCtrl,
           decoration: const InputDecoration(
@@ -644,8 +644,8 @@ class _WarehousePageState extends State<WarehousePage> {
         const SizedBox(height: 8),
         HubEntryTile(
           icon: Icons.qr_code_scanner,
-          title: '扫溯源接收/分箱',
-          subtitle: '扫或手输溯源码，入厂接收或分箱入库',
+          title: '扫溯源接收/分板',
+          subtitle: '扫或手输溯源码，入厂接收或分板入库',
           onTap: () => _openSection(WarehouseSection.scan),
         ),
         HubEntryTile(
@@ -656,8 +656,8 @@ class _WarehousePageState extends State<WarehousePage> {
         ),
         HubEntryTile(
           icon: Icons.qr_code_2,
-          title: '箱码',
-          subtitle: '查询箱码、销毁未用箱',
+          title: '板码',
+          subtitle: '查询板码、销毁未用板',
           onTap: () => _openSection(WarehouseSection.boxes),
         ),
         HubEntryTile(
@@ -669,7 +669,7 @@ class _WarehousePageState extends State<WarehousePage> {
         HubEntryTile(
           icon: Icons.swap_horiz,
           title: '出入库',
-          subtitle: '扫箱码或手选产品，预览后过账',
+          subtitle: '扫板码或手选产品，预览后过账',
           onTap: () => _openSection(WarehouseSection.txn),
         ),
         HubEntryTile(
@@ -724,7 +724,7 @@ class _WarehousePageState extends State<WarehousePage> {
               ),
               const SizedBox(height: 8),
               const Text(
-                '定位到过磅单后进入核对页：待入厂则接收；已入厂则分箱入库。',
+                '定位到过磅单后进入核对页：待入厂则接收；已入厂则分板入库。',
                 style: TextStyle(fontSize: 12, color: Colors.black54),
               ),
             ],
@@ -795,12 +795,12 @@ class _WarehousePageState extends State<WarehousePage> {
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + bottomInset),
       children: [
-        const FormSectionHeader('箱码查询'),
+        const FormSectionHeader('板码查询'),
         TraceCodeField(
           controller: _boxQuery,
-          label: '箱码',
+          label: '板码',
           hint: '手输或扫码',
-          scannerTitle: '扫描箱码',
+          scannerTitle: '扫描板码',
           textCapitalization: TextCapitalization.none,
           onEditingComplete: _traceBox,
           onScanned: (_) => _traceBox(),
@@ -823,7 +823,7 @@ class _WarehousePageState extends State<WarehousePage> {
           ),
         ],
         const Divider(),
-        const Text('最近箱码', style: TextStyle(fontWeight: FontWeight.bold)),
+        const Text('最近板码', style: TextStyle(fontWeight: FontWeight.bold)),
         ..._boxes.map((e) {
           final m = Map<String, dynamic>.from(e as Map);
           final st = (m['status'] ?? '').toString().toLowerCase();
@@ -1044,9 +1044,9 @@ class _WarehousePageState extends State<WarehousePage> {
                     const FormSectionHeader('新建出入库'),
                     TraceCodeField(
                       controller: _txnScan,
-                      label: '箱码',
+                      label: '板码',
                       hint: '手输或扫码，可带出产品',
-                      scannerTitle: '扫描箱码',
+                      scannerTitle: '扫描板码',
                       textCapitalization: TextCapitalization.none,
                       onEditingComplete: _resolveTxnScan,
                       onScanned: (_) => _resolveTxnScan(),
@@ -1104,7 +1104,7 @@ class _WarehousePageState extends State<WarehousePage> {
                     const Text('请核对以下信息，确认后一次过账', style: TextStyle(fontSize: 12, color: Colors.black54)),
                     const SizedBox(height: 8),
                     _previewRow('方向', _txnDirection == 'in' ? '入库' : '出库'),
-                    _previewRow('箱码', _txnScan.text.trim().isEmpty ? '-' : _txnScan.text.trim()),
+                    _previewRow('板码', _txnScan.text.trim().isEmpty ? '-' : _txnScan.text.trim()),
                     _previewRow('仓库', _warehouseLabel(_txnWarehouseId)),
                     _previewRow('产品', _productName(_txnProductId)),
                     _previewRow('数量', _txnQty.text.trim()),
