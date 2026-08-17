@@ -117,7 +117,7 @@ func (s *Services) handleShiftMembers(c *gin.Context, method, openapiPath string
 			return true
 		}
 		pid := asInt64Or0(body["process_id"])
-		res, err := s.DB.Exec(`INSERT OR IGNORE INTO pd_shift_member(shift_id, employee_id, process_id) VALUES(?,?,?)`,
+		res, err := s.DB.Exec(`INSERT INTO pd_shift_member(shift_id, employee_id, process_id) VALUES(?,?,?)`,
 			shiftID, eid, pid)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())

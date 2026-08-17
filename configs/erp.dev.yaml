@@ -1,11 +1,13 @@
 server:
   addr: ":18080"
-  # 开发可外置：改前端后 npm run build:dist 即可热换，无需重编 Go
   web_root: "web/dist"
 database:
-  driver: sqlite
-  sqlite_path: data/erp_dev.db
-  # mysql_dsn: "user:pass@tcp(127.0.0.1:3306)/erp_factory?parseTime=true&charset=utf8mb4&loc=Local"
+  driver: postgres
+  dsn: "postgres://erp:erp123456@192.168.1.116:5432/erp_factory?sslmode=disable"
+  init_schema: true
+  migrations_dir: migrations
+  schema_path: migrations/erp/schema.sql
+  data_path: migrations/erp/data-dev.sql
 seed:
   demo: true
 jwt:

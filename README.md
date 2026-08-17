@@ -1,6 +1,6 @@
 # 加工厂 ERP
 
-契约先行的多端 ERP：Go/Gin 单二进制 `erp-api` + Vue Web（入口/管理/老板）+ Flutter 员工 App。开发默认 SQLite，生产可切 MySQL。
+契约先行的多端 ERP：Go/Gin 单二进制 `erp-api` + Vue Web（入口/管理/老板）+ Flutter 员工 App。**数据库仅 PostgreSQL**（正式研发基线）。
 
 ## 文档
 
@@ -14,15 +14,55 @@
 | [docs/openapi-使用说明.md](docs/openapi-使用说明.md) | 协议约定与域前缀 |
 | [docs/openapi-路径全表.md](docs/openapi-路径全表.md) | 路径实现清单 |
 | [加工厂ERP系统框架设计文档.md](加工厂ERP系统框架设计文档.md) | 功能边界（13 域） |
+| [migrations/erp/upgrades/README.md](migrations/erp/upgrades/README.md) | DB 增量升级约定 |
+| [docs/PostgreSQL运维手册.md](docs/PostgreSQL运维手册.md) | **运维：安装、初始化、备份升级** |
 
 ## 环境要求
 
 - Go（与 [`go.mod`](go.mod) 一致，当前 `go 1.26.x`）
+- **PostgreSQL 16+**（开发可用 Docker：`docker compose up -d postgres`）
 - Python 3（可选；契约工具已改为 Go：`cmd/erp-tools`）
 - Node.js + npm（Web monorepo：portal / admin / boss）
 - Flutter（员工现场 App Android/iOS，必选现场端）
 
-无需本机预装数据库即可开发：默认使用仓库内 SQLite 文件库。
+## 数据库（PostgreSQL）
+
+| 项 | 说明 |
+|----|------|
+| 基线 | [`migrations/erp/schema.sql`](migrations/erp/schema.sql)（v1.0.0） |
+| 开发种子 | [`migrations/erp/data-dev.sql`](migrations/erp/data-dev.sql) |
+| 增量 | [`migrations/erp/upgrades/`](migrations/erp/upgrades/) |
+| CLI | `cmd/erp-db`（`baseline` / `upgrade` / `status` / `seed-dev` / `validate` / `create`） |
+| 开发 | `configs/erp.dev.yaml` 中 `init_schema: true` 启动时自动齐库 |
+| 生产 | `init_schema: false`；运维显式升级后再重启 API |
+
+### Ubuntu 维护脚本
+
+```bash
+chmod +x scripts/*.sh
+
+./scripts/maint.sh doctor              # 检查 go / psql / docker / DSN
+./scripts/maint.sh up-dev              # docker compose 起 PostgreSQL
+./scripts/db-migrate.sh baseline       # 新库建基线
+./scripts/db-migrate.sh upgrade --all  # 应用 pending 增量
+./scripts/db-migrate.sh status
+./scripts/backup.sh                    # pg_dump
+./scripts/maint.sh upgrade-prod        # 备份 → status → upgrade --all
+```
+
+### Windows 维护脚本
+
+```powershell
+.\scripts\db-migrate.ps1 status
+.\scripts\db-migrate.ps1 upgrade --all
+.\scripts\backup.ps1
+```
+
+生产升级流程（无 down migration，回滚靠备份）：
+
+```text
+备份 → erp-db status → erp-db upgrade --all → 滚动重启 API
+```
 
 ## 国内环境安装（Go / Flutter）
 
@@ -49,10 +89,11 @@ go env -w GOSUMDB=sum.golang.google.cn
 go env GOPROXY GOSUMDB
 ```
 
-4. 拉本仓库依赖并启动 API：
+4. 拉本仓库依赖、起库并启动 API：
 
 ```powershell
-cd D:\workplace\ycwl-erp-master
+cd D:\workplace\source\factory-erp
+docker compose up -d postgres
 go mod download
 go run ./cmd/erp-api
 ```
@@ -64,7 +105,7 @@ $env:HTTP_PROXY=""; $env:HTTPS_PROXY=""; $env:ALL_PROXY=""
 go env -w GOPROXY=https://goproxy.cn,direct
 ```
 
-### Go 安装与代理（Linux）
+### Go 安装与代理（Linux / Ubuntu）
 
 1. 下载并解压（版本号按 [go.dev/dl](https://go.dev/dl/) 调整，示例 `1.26.3`）：
 
@@ -76,6 +117,26 @@ sudo tar -C /usr/local -xzf go.tgz
 echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
 source ~/.bashrc
 go version
+```
+
+2. 模块代理与依赖：
+
+```bash
+go env -w GOPROXY=https://goproxy.cn,direct
+go env -w GOSUMDB=sum.golang.google.cn
+cd /path/to/factory-erp
+go mod download
+```
+
+3. PostgreSQL 客户端与本地库：
+
+```bash
+sudo apt update
+sudo apt install -y postgresql-client docker.io docker-compose-v2
+chmod +x scripts/*.sh
+./scripts/maint.sh up-dev
+./scripts/maint.sh doctor
+go run ./cmd/erp-api
 ```
 
 也可使用发行版包管理器（版本可能偏旧，需满足 `go.mod`）：

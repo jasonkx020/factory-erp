@@ -12,8 +12,10 @@ import (
 	"erp/internal/api"
 )
 
-// EnsurePayrollSchema creates payroll tables on SQLite/MySQL existing DBs.
+// EnsurePayrollSchema is a no-op: schema owned by migrations/erp.
 func EnsurePayrollSchema(db *sql.DB) {
+	_ = db
+	return
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS pay_worker_profile (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,7 +25,7 @@ func EnsurePayrollSchema(db *sql.DB) {
 			bank_account TEXT,
 			tax_no TEXT,
 			status TEXT NOT NULL DEFAULT 'active',
-			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+			created_at TEXT NOT NULL DEFAULT (NOW())
 		)`,
 		`CREATE TABLE IF NOT EXISTS pay_payroll_sheet (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,7 +38,7 @@ func EnsurePayrollSchema(db *sql.DB) {
 			paid_at TEXT,
 			remark TEXT,
 			created_by INTEGER,
-			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			created_at TEXT NOT NULL DEFAULT (NOW()),
 			UNIQUE(period_year, period_month)
 		)`,
 		`CREATE TABLE IF NOT EXISTS pay_payroll_sheet_line (
@@ -58,7 +60,7 @@ func EnsurePayrollSchema(db *sql.DB) {
 			adjust_type TEXT NOT NULL,
 			amount REAL NOT NULL,
 			reason TEXT,
-			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+			created_at TEXT NOT NULL DEFAULT (NOW())
 		)`,
 		`CREATE TABLE IF NOT EXISTS pay_sales_commission_rule (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,7 +69,7 @@ func EnsurePayrollSchema(db *sql.DB) {
 			effective_from TEXT NOT NULL,
 			effective_to TEXT,
 			status TEXT NOT NULL DEFAULT 'active',
-			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+			created_at TEXT NOT NULL DEFAULT (NOW())
 		)`,
 		`CREATE TABLE IF NOT EXISTS pay_commission_calc (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,7 +79,7 @@ func EnsurePayrollSchema(db *sql.DB) {
 			base_amount REAL NOT NULL DEFAULT 0,
 			commission_amount REAL NOT NULL DEFAULT 0,
 			source_doc_refs TEXT,
-			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+			created_at TEXT NOT NULL DEFAULT (NOW())
 		)`,
 		`CREATE TABLE IF NOT EXISTS pay_payroll_calc_log (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,7 +88,7 @@ func EnsurePayrollSchema(db *sql.DB) {
 			sheet_id INTEGER,
 			status TEXT,
 			summary_json TEXT,
-			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+			created_at TEXT NOT NULL DEFAULT (NOW())
 		)`,
 		`ALTER TABLE pay_worker_profile ADD COLUMN monthly_base REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE pay_payroll_sheet ADD COLUMN workshop_id INTEGER`,

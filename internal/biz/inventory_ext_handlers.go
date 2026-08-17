@@ -23,8 +23,8 @@ func EnsureInventoryExtSchema(db *sql.DB) {
   source_doc_type TEXT NOT NULL DEFAULT '',
   source_doc_id INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'open',
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS inv_inbound_qc (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,8 +39,8 @@ func EnsureInventoryExtSchema(db *sql.DB) {
   status TEXT NOT NULL DEFAULT 'draft',
   remark TEXT,
   created_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW()),
   is_deleted INTEGER NOT NULL DEFAULT 0
 )`,
 		`CREATE TABLE IF NOT EXISTS inv_stocktake (
@@ -53,8 +53,8 @@ func EnsureInventoryExtSchema(db *sql.DB) {
   status TEXT NOT NULL DEFAULT 'draft',
   remark TEXT,
   created_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW()),
   is_deleted INTEGER NOT NULL DEFAULT 0,
   version INTEGER NOT NULL DEFAULT 0
 )`,
@@ -77,8 +77,8 @@ func EnsureInventoryExtSchema(db *sql.DB) {
   status TEXT NOT NULL DEFAULT 'draft',
   remark TEXT,
   created_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW()),
   is_deleted INTEGER NOT NULL DEFAULT 0,
   version INTEGER NOT NULL DEFAULT 0
 )`,
@@ -97,8 +97,8 @@ func EnsureInventoryExtSchema(db *sql.DB) {
   biz_date TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'draft',
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW()),
   is_deleted INTEGER NOT NULL DEFAULT 0
 )`,
 		`CREATE TABLE IF NOT EXISTS inv_consume_line (
@@ -115,7 +115,7 @@ func EnsureInventoryExtSchema(db *sql.DB) {
   warehouse_id INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'draft',
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS inv_assemble_split_line (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -133,7 +133,7 @@ func EnsureInventoryExtSchema(db *sql.DB) {
   effective_at TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'draft',
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS inv_stock_alert_rule (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -143,7 +143,7 @@ func EnsureInventoryExtSchema(db *sql.DB) {
   min_qty REAL,
   max_qty REAL,
   is_enabled INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS inv_sales_peel_return (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -155,7 +155,7 @@ func EnsureInventoryExtSchema(db *sql.DB) {
   warehouse_id INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL DEFAULT 'draft',
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS inv_material_to_payable (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -167,7 +167,7 @@ func EnsureInventoryExtSchema(db *sql.DB) {
   amount REAL NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'draft',
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 	}
 	for _, stmt := range stmts {
@@ -254,7 +254,7 @@ func (s *Services) handleStocktakes(c *gin.Context, method, action, stType strin
 		return s.updateStocktake(c)
 	case "action:submit":
 		id := paramID(c)
-		_, _ = s.DB.Exec(`UPDATE inv_stocktake SET status='submitted', updated_at=datetime('now') WHERE id=? AND status='draft'`, id)
+		_, _ = s.DB.Exec(`UPDATE inv_stocktake SET status='submitted', updated_at=NOW() WHERE id=? AND status='draft'`, id)
 		api.OK(c, s.loadStocktake(id))
 		return true
 	case "action:post":
@@ -344,7 +344,7 @@ func (s *Services) updateStocktake(c *gin.Context) bool {
 	id := paramID(c)
 	body := bindBody(c)
 	_, _ = s.DB.Exec(`UPDATE inv_stocktake SET remark=COALESCE(NULLIF(?,''),remark), warehouse_id=COALESCE(NULLIF(?,0),warehouse_id),
-		updated_at=datetime('now') WHERE id=? AND status IN ('draft','submitted')`,
+		updated_at=NOW() WHERE id=? AND status IN ('draft','submitted')`,
 		strOr(body["remark"]), nullInt64Or(body["warehouse_id"]), id)
 	if lines, ok := body["lines"].([]interface{}); ok && len(lines) > 0 {
 		_, _ = s.DB.Exec(`DELETE FROM inv_stocktake_line WHERE stocktake_id=?`, id)
@@ -405,7 +405,7 @@ func (s *Services) postStocktake(c *gin.Context) bool {
 		}
 		_ = txnID
 	}
-	_, _ = s.DB.Exec(`UPDATE inv_stocktake SET status='posted', updated_at=datetime('now') WHERE id=?`, id)
+	_, _ = s.DB.Exec(`UPDATE inv_stocktake SET status='posted', updated_at=NOW() WHERE id=?`, id)
 	api.OK(c, s.loadStocktake(id))
 	return true
 }
@@ -476,7 +476,7 @@ func (s *Services) handleTransfers(c *gin.Context, method, action string) bool {
 	case "update", "replace":
 		id := paramID(c)
 		body := bindBody(c)
-		_, _ = s.DB.Exec(`UPDATE inv_transfer SET remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=? AND status='draft'`,
+		_, _ = s.DB.Exec(`UPDATE inv_transfer SET remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=? AND status='draft'`,
 			strOr(body["remark"]), id)
 		api.OK(c, s.loadTransfer(id))
 		return true
@@ -590,9 +590,9 @@ func (s *Services) postTransfer(c *gin.Context) bool {
 		return true
 	}
 	// close transit if any open for this transfer
-	_, _ = s.DB.Exec(`UPDATE inv_in_transit SET status='closed', updated_at=datetime('now')
+	_, _ = s.DB.Exec(`UPDATE inv_in_transit SET status='closed', updated_at=NOW()
 		WHERE source_doc_type='inv_transfer' AND source_doc_id=?`, id)
-	_, _ = s.DB.Exec(`UPDATE inv_transfer SET status='posted', updated_at=datetime('now') WHERE id=?`, id)
+	_, _ = s.DB.Exec(`UPDATE inv_transfer SET status='posted', updated_at=NOW() WHERE id=?`, id)
 	api.OK(c, s.loadTransfer(id))
 	return true
 }
@@ -612,7 +612,7 @@ func (s *Services) handleConsumes(c *gin.Context, method, action string) bool {
 	case "update", "replace":
 		id := paramID(c)
 		body := bindBody(c)
-		_, _ = s.DB.Exec(`UPDATE inv_consume SET remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=? AND status='draft'`,
+		_, _ = s.DB.Exec(`UPDATE inv_consume SET remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=? AND status='draft'`,
 			strOr(body["remark"]), id)
 		api.OK(c, s.loadConsume(id))
 		return true
@@ -712,7 +712,7 @@ func (s *Services) postConsume(c *gin.Context) bool {
 		api.FailJSON(c, "POST_ERROR:"+err.Error())
 		return true
 	}
-	_, _ = s.DB.Exec(`UPDATE inv_consume SET status='posted', updated_at=datetime('now') WHERE id=?`, id)
+	_, _ = s.DB.Exec(`UPDATE inv_consume SET status='posted', updated_at=NOW() WHERE id=?`, id)
 	out := s.loadConsume(id)
 	out["stock_txn_id"] = txnID
 	api.OK(c, out)
@@ -747,7 +747,7 @@ func (s *Services) handleInboundQCs(c *gin.Context, method, action string) bool 
 	case "update", "replace":
 		id := paramID(c)
 		body := bindBody(c)
-		_, _ = s.DB.Exec(`UPDATE inv_inbound_qc SET qty_check=COALESCE(?,qty_check), remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now')
+		_, _ = s.DB.Exec(`UPDATE inv_inbound_qc SET qty_check=COALESCE(?,qty_check), remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW()
 			WHERE id=? AND status='draft'`, nullFloat(body["qty_check"]), strOr(body["remark"]), id)
 		return s.getSimpleRow(c, `SELECT * FROM inv_inbound_qc WHERE id=?`, id)
 	case "action:pass":
@@ -776,7 +776,7 @@ func (s *Services) finishInboundQC(c *gin.Context, pass bool) bool {
 	} else if qtyPass == 0 {
 		qtyPass = qtyCheck
 	}
-	_, _ = s.DB.Exec(`UPDATE inv_inbound_qc SET qty_pass=?, qty_fail=?, result=?, status=?, updated_at=datetime('now') WHERE id=?`,
+	_, _ = s.DB.Exec(`UPDATE inv_inbound_qc SET qty_pass=?, qty_fail=?, result=?, status=?, updated_at=NOW() WHERE id=?`,
 		qtyPass, qtyFail, result, status, id)
 	return s.getSimpleRow(c, `SELECT * FROM inv_inbound_qc WHERE id=?`, id)
 }
@@ -876,7 +876,7 @@ func (s *Services) handleReservations(c *gin.Context, method, action string) boo
 		return s.listDocTable(c, `SELECT * FROM inv_reservation`)
 	case "action:release":
 		id := paramID(c)
-		_, err := s.DB.Exec(`UPDATE inv_reservation SET status='released', updated_at=datetime('now') WHERE id=?`, id)
+		_, err := s.DB.Exec(`UPDATE inv_reservation SET status='released', updated_at=NOW() WHERE id=?`, id)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true

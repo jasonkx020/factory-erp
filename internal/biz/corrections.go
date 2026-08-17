@@ -93,19 +93,19 @@ func (s *Services) snapshotBiz(bizType string, id int64) gin.H {
 func (s *Services) voidBiz(bizType string, id int64) error {
 	switch bizType {
 	case "weigh_ticket":
-		_, err := s.DB.Exec(`UPDATE pur_weigh_ticket SET status='void', updated_at=datetime('now') WHERE id=?`, id)
+		_, err := s.DB.Exec(`UPDATE pur_weigh_ticket SET status='void', updated_at=NOW() WHERE id=?`, id)
 		return err
 	case "inbound_arrival":
-		_, err := s.DB.Exec(`UPDATE pur_inbound_arrival SET status='void', updated_at=datetime('now') WHERE id=?`, id)
+		_, err := s.DB.Exec(`UPDATE pur_inbound_arrival SET status='void', updated_at=NOW() WHERE id=?`, id)
 		return err
 	case "farmer_settlement":
-		_, err := s.DB.Exec(`UPDATE pur_farmer_settlement SET status='void', updated_at=datetime('now') WHERE id=?`, id)
+		_, err := s.DB.Exec(`UPDATE pur_farmer_settlement SET status='void', updated_at=NOW() WHERE id=?`, id)
 		return err
 	case "report_work":
 		_, err := s.DB.Exec(`UPDATE pd_report_work SET status='void' WHERE id=?`, id)
 		return err
 	case "evidence":
-		_, err := s.DB.Exec(`UPDATE biz_evidence SET voided_at=datetime('now') WHERE id=? AND COALESCE(voided_at,'')=''`, id)
+		_, err := s.DB.Exec(`UPDATE biz_evidence SET voided_at=NOW() WHERE id=? AND COALESCE(voided_at,'')=''`, id)
 		return err
 	default:
 		return fmt.Errorf("BIZ_TYPE_UNSUPPORTED")
@@ -149,12 +149,12 @@ func (s *Services) applyCorrection(bizType string, id int64, fields map[string]i
 				net = gross - deductW
 			}
 			_, err := s.DB.Exec(`UPDATE pur_weigh_ticket SET gross_weight=?, deduct_rate=?, deduct_weight=?, net_weight=?,
-				remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=? AND status NOT IN ('stocked','void')`,
+				remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=? AND status NOT IN ('stocked','void')`,
 				gross, deductRate, deductW, net, remark, id)
 			return err
 		}
 		if remark != "" {
-			_, err := s.DB.Exec(`UPDATE pur_weigh_ticket SET remark=?, updated_at=datetime('now') WHERE id=?`, remark, id)
+			_, err := s.DB.Exec(`UPDATE pur_weigh_ticket SET remark=?, updated_at=NOW() WHERE id=?`, remark, id)
 			return err
 		}
 		return fmt.Errorf("NO_FIELDS")
@@ -169,7 +169,7 @@ func (s *Services) applyCorrection(bizType string, id int64, fields map[string]i
 		if status == "settle_paid" {
 			return fmt.Errorf("ALREADY_PAID")
 		}
-		_, err := s.DB.Exec(`UPDATE pur_farmer_settlement SET unit_price=?, amount=?, updated_at=datetime('now') WHERE id=?`,
+		_, err := s.DB.Exec(`UPDATE pur_farmer_settlement SET unit_price=?, amount=?, updated_at=NOW() WHERE id=?`,
 			price, net*price, id)
 		return err
 	case "report_work":

@@ -72,7 +72,7 @@ func Audit(db *sql.DB) gin.HandlerFunc {
 		refType, refID := extractRef(c, reqBody, blw.body.Bytes())
 		_, _ = db.Exec(
 			`INSERT INTO sys_operation_log(user_id, action, module, ref_type, ref_id, detail_json, ip, trace_id, created_at)
-			 VALUES(?,?,?,?,?,?,?,?,datetime('now'))`,
+			 VALUES(?,?,?,?,?,?,?,?,NOW())`,
 			userID, action, module, refType, refID, string(b), c.ClientIP(), traceID,
 		)
 	}

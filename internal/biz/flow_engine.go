@@ -158,15 +158,15 @@ func (s *Services) AfterReportWork(c *gin.Context, reportID, processID, workerID
 				}
 				nextInfo["next_step"] = next.StepName
 				nextInfo["next_step_id"] = next.ID
-				_, _ = s.DB.Exec(`UPDATE inv_box_code SET current_process_id=?, current_step_id=?, work_order_id=COALESCE(NULLIF(?,0),work_order_id), updated_at=datetime('now') WHERE code=?`,
+				_, _ = s.DB.Exec(`UPDATE inv_box_code SET current_process_id=?, current_step_id=?, work_order_id=COALESCE(NULLIF(?,0),work_order_id), updated_at=NOW() WHERE code=?`,
 					next.ProcessID, next.ID, woID, boxCode)
 			} else {
 				nextInfo["finished"] = true
-				_, _ = s.DB.Exec(`UPDATE inv_box_code SET status='finished', updated_at=datetime('now') WHERE code=?`, boxCode)
+				_, _ = s.DB.Exec(`UPDATE inv_box_code SET status='finished', updated_at=NOW() WHERE code=?`, boxCode)
 			}
 		} else {
 			nextInfo["finished"] = true
-			_, _ = s.DB.Exec(`UPDATE inv_box_code SET status='finished', updated_at=datetime('now') WHERE code=?`, boxCode)
+			_, _ = s.DB.Exec(`UPDATE inv_box_code SET status='finished', updated_at=NOW() WHERE code=?`, boxCode)
 		}
 		b, _ := json.Marshal(payload)
 		evID := s.writeFlowEvent("report_work", reportID, step.ID, toStepID, "after_report", traceID, status, errMsg, string(b))
@@ -228,7 +228,7 @@ func (s *Services) spawnNextWO(taskID int64, step *routingStep, qty float64) (in
 	}
 	woID, _ := res.LastInsertId()
 	dpNo := fmt.Sprintf("DP%d", time.Now().UnixNano()%1e12)
-	dres, _ := s.DB.Exec(`INSERT INTO pd_dispatch(doc_no, work_order_id, plan_qty, status, dispatched_at) VALUES(?,?,?,'dispatched',datetime('now'))`,
+	dres, _ := s.DB.Exec(`INSERT INTO pd_dispatch(doc_no, work_order_id, plan_qty, status, dispatched_at) VALUES(?,?,?,'dispatched',NOW())`,
 		dpNo, woID, qty)
 	dID, _ := dres.LastInsertId()
 	return woID, dID
@@ -289,7 +289,7 @@ func (s *Services) autoStockInNewBox(oldCode string, warehouseID, processID int6
 	if err := s.autoStock(newCode, warehouseID, processID, qty, "produce_in"); err != nil {
 		return newCode, err
 	}
-	_, _ = s.DB.Exec(`UPDATE inv_box_code SET qty=?, weight=?, warehouse_id=?, product_id=?, updated_at=datetime('now') WHERE code=?`,
+	_, _ = s.DB.Exec(`UPDATE inv_box_code SET qty=?, weight=?, warehouse_id=?, product_id=?, updated_at=NOW() WHERE code=?`,
 		qty, qty, warehouseID, productID, newCode)
 	return newCode, nil
 }

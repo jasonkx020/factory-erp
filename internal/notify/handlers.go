@@ -94,7 +94,7 @@ func (s *Service) handleInboxRead(c *gin.Context) bool {
 		return true
 	}
 	id := paramID(c)
-	_, err := s.DB.Exec(`UPDATE notify_inbox SET read_at=datetime('now') WHERE id=? AND user_id=?`, id, cl.UserID)
+	_, err := s.DB.Exec(`UPDATE notify_inbox SET read_at=NOW() WHERE id=? AND user_id=?`, id, cl.UserID)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
 		return true
@@ -277,7 +277,7 @@ func (s *Service) handleTaskAssign(c *gin.Context) bool {
 		var tid int64
 		_ = s.DB.QueryRow(`SELECT id FROM wf_ticket WHERE biz_type='weigh_ticket' AND biz_id=? AND status IN ('open','in_progress') ORDER BY id DESC LIMIT 1`, bizID).Scan(&tid)
 		if tid > 0 {
-			_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=datetime('now') WHERE id=?`, body.ToUserID, tid)
+			_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=NOW() WHERE id=?`, body.ToUserID, tid)
 			_, _ = s.DB.Exec(`INSERT INTO wf_ticket_log(ticket_id, action, from_user_id, to_user_id, comment) VALUES(?,?,?,?,?)`,
 				tid, "assign", nullIf0(cl.UserID), body.ToUserID, strings.TrimSpace(body.Comment))
 		}

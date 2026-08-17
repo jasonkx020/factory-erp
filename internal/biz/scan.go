@@ -326,7 +326,7 @@ func (s *Services) handleBadge(c *gin.Context) bool {
 	if regenerate {
 		code = s.allocBadgeCode(empNo, id)
 	}
-	_, err = s.DB.Exec(`UPDATE hr_employee SET badge_code=?, updated_at=datetime('now') WHERE id=?`, code, id)
+	_, err = s.DB.Exec(`UPDATE hr_employee SET badge_code=?, updated_at=NOW() WHERE id=?`, code, id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR")
 		return true

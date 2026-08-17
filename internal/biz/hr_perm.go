@@ -174,7 +174,7 @@ func (s *Services) putUserDataScope(c *gin.Context) bool {
 		_, err = s.DB.Exec(`INSERT INTO iam_user_data_scope(user_id, data_scope_type, workshop_id, team_id) VALUES(?,?,?,?)`,
 			uid, scopeType, nullIf0(workshopID), nullIf0(teamID))
 	} else {
-		_, err = s.DB.Exec(`UPDATE iam_user_data_scope SET data_scope_type=?, workshop_id=?, team_id=?, updated_at=datetime('now') WHERE user_id=?`,
+		_, err = s.DB.Exec(`UPDATE iam_user_data_scope SET data_scope_type=?, workshop_id=?, team_id=?, updated_at=NOW() WHERE user_id=?`,
 			scopeType, nullIf0(workshopID), nullIf0(teamID), uid)
 	}
 	if err != nil {
@@ -409,7 +409,7 @@ func (s *Services) handleOnboards(c *gin.Context, method, action string) bool {
 				_ = jsonUnmarshal(roleJSON, &arr)
 				for _, x := range arr {
 					if rid, ok := asInt64(x); ok && rid > 0 {
-						_, _ = s.DB.Exec(`INSERT OR IGNORE INTO iam_user_role(user_id, role_id) VALUES(?,?)`, uid, rid)
+						_, _ = s.DB.Exec(`INSERT INTO iam_user_role(user_id, role_id) VALUES(?,?)`, uid, rid)
 					}
 				}
 			}
@@ -634,7 +634,7 @@ func (s *Services) ensureEmployeeBadge(empID int64, empNo, curBadge string) stri
 		return curBadge
 	}
 	code := s.allocBadgeCode(empNo, empID)
-	_, _ = s.DB.Exec(`UPDATE hr_employee SET badge_code=?, updated_at=datetime('now') WHERE id=?`, code, empID)
+	_, _ = s.DB.Exec(`UPDATE hr_employee SET badge_code=?, updated_at=NOW() WHERE id=?`, code, empID)
 	return code
 }
 
@@ -754,7 +754,7 @@ func (s *Services) updateEmployeeFromBody(id int64, body map[string]interface{})
 		teamID, _ = asInt64(cur["team_id"])
 	}
 	_, err := s.DB.Exec(`UPDATE hr_employee SET name=?, emp_type=?, job_title=?, mobile=?, badge_code=?, id_card_no=?,
-		dept_id=?, workshop_id=?, team_id=?, updated_at=datetime('now') WHERE id=?`,
+		dept_id=?, workshop_id=?, team_id=?, updated_at=NOW() WHERE id=?`,
 		name, typ, job, mobile, badge, idCard, nullIf0(deptID), nullIf0(workshopID), nullIf0(teamID), id)
 	return "", err
 }
@@ -779,7 +779,7 @@ func (s *Services) openAccountForEmployeeEx(empID int64, roleJSON, loginHint, pa
 		_ = jsonUnmarshal(roleJSON, &arr)
 		for _, x := range arr {
 			if rid, ok := asInt64(x); ok && rid > 0 {
-				_, _ = s.DB.Exec(`INSERT OR IGNORE INTO iam_user_role(user_id, role_id) VALUES(?,?)`, userID, rid)
+				_, _ = s.DB.Exec(`INSERT INTO iam_user_role(user_id, role_id) VALUES(?,?)`, userID, rid)
 			}
 		}
 		var existingLogin string
@@ -838,14 +838,14 @@ func (s *Services) openAccountForEmployeeEx(empID int64, roleJSON, loginHint, pa
 		}
 	}
 	for _, rid := range roleIDs {
-		_, _ = s.DB.Exec(`INSERT OR IGNORE INTO iam_user_role(user_id, role_id) VALUES(?,?)`, uid, rid)
+		_, _ = s.DB.Exec(`INSERT INTO iam_user_role(user_id, role_id) VALUES(?,?)`, uid, rid)
 	}
 	security.InvalidateUserRBAC(uid)
 	scopeType := "self"
 	if workshopID > 0 {
 		scopeType = "workshop"
 	}
-	_, _ = s.DB.Exec(`INSERT OR IGNORE INTO iam_user_data_scope(user_id, data_scope_type, workshop_id) VALUES(?,?,?)`,
+	_, _ = s.DB.Exec(`INSERT INTO iam_user_data_scope(user_id, data_scope_type, workshop_id) VALUES(?,?,?)`,
 		uid, scopeType, nullIf0(workshopID))
 	return login, pass, nil
 }
@@ -1015,6 +1015,8 @@ func (s *Services) handleOffboards(c *gin.Context, method, action string) bool {
 }
 
 func ensureHRPermTables(db *sql.DB) {
+	_ = db
+	return
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS hr_onboard (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1025,7 +1027,7 @@ func ensureHRPermTables(db *sql.DB) {
   onboard_date TEXT,
   need_account INTEGER NOT NULL DEFAULT 1,
   login_name TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS hr_offboard (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1033,7 +1035,7 @@ func ensureHRPermTables(db *sql.DB) {
   status TEXT NOT NULL DEFAULT 'draft',
   revoke_permission INTEGER NOT NULL DEFAULT 1,
   reason TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS iam_onboard_role_template (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1054,12 +1056,12 @@ func ensureHRPermTables(db *sql.DB) {
 	}
 	// 按员工类型默认角色模板
 	for _, t := range EmpTypes {
-		_, _ = db.Exec(`INSERT OR IGNORE INTO iam_onboard_role_template(emp_type, role_id)
+		_, _ = db.Exec(`INSERT INTO iam_onboard_role_template(emp_type, role_id)
 			SELECT ?, id FROM iam_role WHERE code=? LIMIT 1`, t.Code, t.RoleCode)
 	}
 }
 
-// EnsureHRPermSchema is called at startup.
+// EnsureHRPermSchema is a no-op: schema owned by migrations/erp.
 func EnsureHRPermSchema(db *sql.DB) {
-	ensureHRPermTables(db)
+	_ = db
 }

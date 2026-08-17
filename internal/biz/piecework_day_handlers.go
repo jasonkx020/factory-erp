@@ -165,7 +165,7 @@ func (s *Services) recalcPieceworkSummaries(c *gin.Context) bool {
 		SUM(COALESCE(output_weight, qty_net, qty, 0)),
 		SUM(COALESCE(input_weight, 0)),
 		SUM(COALESCE(loss, 0)),
-		GROUP_CONCAT(id)
+		string_agg((id)::text, ',')
 		FROM pd_report_work
 		WHERE date(reported_at)=? AND worker_id IS NOT NULL AND process_id IS NOT NULL
 		GROUP BY worker_id, process_id`, bizDate)
@@ -190,7 +190,7 @@ func (s *Services) recalcPieceworkSummaries(c *gin.Context) bool {
 		var exist int64
 		_ = s.DB.QueryRow(`SELECT id FROM pd_piecework_summary WHERE worker_id=? AND process_id=? AND biz_date=?`, workerID, processID, bizDate).Scan(&exist)
 		if exist > 0 {
-			_, _ = s.DB.Exec(`UPDATE pd_piecework_summary SET qty=?, weight=?, input_weight=?, output_weight=?, loss=?, utilization=?, amount=?, source_report_ids=?, updated_at=datetime('now') WHERE id=?`,
+			_, _ = s.DB.Exec(`UPDATE pd_piecework_summary SET qty=?, weight=?, input_weight=?, output_weight=?, loss=?, utilization=?, amount=?, source_report_ids=?, updated_at=NOW() WHERE id=?`,
 				outW, outW, inW, outW, loss, util, amount, ids, exist)
 		} else {
 			_, _ = s.DB.Exec(`INSERT INTO pd_piecework_summary(worker_id, process_id, biz_date, qty, weight, input_weight, output_weight, loss, utilization, amount, source_report_ids)
@@ -229,7 +229,7 @@ func (s *Services) upsertPieceworkSummary(workerID, processID, reportID int64, q
 			qty = qty + ?, weight = COALESCE(weight,0) + ?, input_weight = COALESCE(input_weight,0) + ?,
 			output_weight = COALESCE(output_weight,0) + ?, loss = COALESCE(loss,0) + ?,
 			utilization = CASE WHEN (COALESCE(input_weight,0)+?)>0 THEN (COALESCE(output_weight,0)+?)/(COALESCE(input_weight,0)+?) ELSE 0 END,
-			amount = amount + ?, source_report_ids=?, updated_at=datetime('now') WHERE id=?`,
+			amount = amount + ?, source_report_ids=?, updated_at=NOW() WHERE id=?`,
 			qty, outputWeight, inputWeight, outputWeight, loss, inputWeight, outputWeight, inputWeight, amount, src, exist)
 	} else {
 		_, _ = s.DB.Exec(`INSERT INTO pd_piecework_summary(worker_id, process_id, biz_date, qty, weight, input_weight, output_weight, loss, utilization, amount, source_report_ids)

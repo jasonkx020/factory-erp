@@ -228,7 +228,7 @@ func (s *Services) createSalesOrder(c *gin.Context, fromSelf bool) bool {
 			oid, lc.pid, lc.qty, lc.price, lc.amount)
 		_, _ = s.DB.Exec(`INSERT INTO inv_reservation(warehouse_id, product_id, qty, source_doc_type, source_doc_id, status)
 			VALUES(?,?,?,'sales_order',?,'active')`, wh, lc.pid, lc.qty, oid)
-		_, _ = s.DB.Exec(`INSERT INTO sl_quote_history(customer_id, product_id, price, quoted_at, order_id) VALUES(?,?,?,datetime('now'),?)`,
+		_, _ = s.DB.Exec(`INSERT INTO sl_quote_history(customer_id, product_id, price, quoted_at, order_id) VALUES(?,?,?,NOW(),?)`,
 			customerID, lc.pid, lc.price, oid)
 	}
 	api.OK(c, s.loadSalesOrder(oid))
@@ -248,7 +248,7 @@ func (s *Services) updateSalesOrder(c *gin.Context) bool {
 	}
 	before, _ := json.Marshal(s.loadSalesOrder(id))
 	body := bindBody(c)
-	_, _ = s.DB.Exec(`UPDATE sl_sales_order SET remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=?`,
+	_, _ = s.DB.Exec(`UPDATE sl_sales_order SET remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=?`,
 		strOr(body["remark"]), id)
 	if lines := parseLines(body); len(lines) > 0 {
 		var wh int64 = 3
@@ -300,7 +300,7 @@ func (s *Services) orderAction(c *gin.Context, toStatus string) bool {
 		api.FailJSON(c, "INVALID_STATUS")
 		return true
 	}
-	_, _ = s.DB.Exec(`UPDATE sl_sales_order SET status=?, updated_at=datetime('now') WHERE id=?`, toStatus, id)
+	_, _ = s.DB.Exec(`UPDATE sl_sales_order SET status=?, updated_at=NOW() WHERE id=?`, toStatus, id)
 	api.OK(c, s.loadSalesOrder(id))
 	return true
 }

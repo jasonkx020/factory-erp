@@ -326,7 +326,8 @@ func EnsureDomainPermissions(db *sql.DB) {
 		for _, mod := range d.Modules {
 			for _, act := range []string{"查看", "编辑"} {
 				code := d.Domain + ":" + mod + ":" + act
-				_, _ = db.Exec(`INSERT OR IGNORE INTO iam_permission(code, name, domain, module, action) VALUES(?,?,?,?,?)`,
+				_, _ = db.Exec(`INSERT INTO iam_permission(code, name, domain, module, action) VALUES(?,?,?,?,?)
+ON CONFLICT (code) DO NOTHING`,
 					code, act+mod, d.Domain, mod, act)
 			}
 		}
@@ -334,7 +335,8 @@ func EnsureDomainPermissions(db *sql.DB) {
 	// 财务审批动作
 	for _, mod := range []string{"财务审批", "凭证管理", "收款核单"} {
 		code := "财务管理:" + mod + ":审批"
-		_, _ = db.Exec(`INSERT OR IGNORE INTO iam_permission(code, name, domain, module, action) VALUES(?,?,?,?,?)`,
+		_, _ = db.Exec(`INSERT INTO iam_permission(code, name, domain, module, action) VALUES(?,?,?,?,?)
+ON CONFLICT (code) DO NOTHING`,
 			code, "审批"+mod, "财务管理", mod, "审批")
 	}
 	bindAllPermissionsToSysAdmin(db)
@@ -359,6 +361,7 @@ func bindAllPermissionsToSysAdmin(db *sql.DB) {
 	}
 	_ = rows.Close()
 	for _, pid := range ids {
-		_, _ = db.Exec(`INSERT OR IGNORE INTO iam_role_permission(role_id, permission_id) VALUES(?,?)`, roleID, pid)
+		_, _ = db.Exec(`INSERT INTO iam_role_permission(role_id, permission_id) VALUES(?,?)
+ON CONFLICT (role_id, permission_id) DO NOTHING`, roleID, pid)
 	}
 }

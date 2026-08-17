@@ -37,8 +37,9 @@ func EnsureDemoRoleUsers(db *sql.DB) {
 }
 
 func ensureOneDemoRoleUser(db *sql.DB, u demoRoleUser) {
-	_, _ = db.Exec(`INSERT OR IGNORE INTO hr_employee(emp_no, name, org_id, dept_id, workshop_id, emp_type, status)
-		VALUES(?,?,1,1,1,?,'active')`, u.EmpNo, u.Name, u.EmpType)
+	_, _ = db.Exec(`INSERT INTO hr_employee(emp_no, name, org_id, dept_id, workshop_id, emp_type, status)
+		VALUES(?,?,1,1,1,?,'active')
+		ON CONFLICT (emp_no) DO NOTHING`, u.EmpNo, u.Name, u.EmpType)
 
 	var empID int64
 	_ = db.QueryRow(`SELECT id FROM hr_employee WHERE emp_no=? LIMIT 1`, u.EmpNo).Scan(&empID)
@@ -46,8 +47,9 @@ func ensureOneDemoRoleUser(db *sql.DB, u demoRoleUser) {
 		return
 	}
 
-	_, _ = db.Exec(`INSERT OR IGNORE INTO iam_user(login_name, password_hash, employee_id, user_type, status, is_deleted)
-		VALUES(?,?,?,'biz','active',0)`, u.Login, demoPasswordHash, empID)
+	_, _ = db.Exec(`INSERT INTO iam_user(login_name, password_hash, employee_id, user_type, status, is_deleted)
+		VALUES(?,?,?,'biz','active',0)
+		ON CONFLICT (login_name) DO NOTHING`, u.Login, demoPasswordHash, empID)
 	// refresh hash/employee if user already existed with placeholder
 	_, _ = db.Exec(`UPDATE iam_user SET password_hash=?, employee_id=?, status='active', is_deleted=0 WHERE login_name=?`,
 		demoPasswordHash, empID, u.Login)
@@ -66,7 +68,8 @@ func ensureOneDemoRoleUser(db *sql.DB, u demoRoleUser) {
 	case "fixed":
 		_, _ = db.Exec(`UPDATE hr_employee SET badge_code='EMP-FX' WHERE id=?`, empID)
 	}
-	_, _ = db.Exec(`INSERT OR IGNORE INTO iam_user_role(user_id, role_id) VALUES(?,?)`, userID, roleID)
+	_, _ = db.Exec(`INSERT INTO iam_user_role(user_id, role_id) VALUES(?,?)
+ON CONFLICT (user_id, role_id) DO NOTHING`, userID, roleID)
 
 	// bind domain permissions (查看+编辑) so API CheckAPIPerm passes
 	if u.Domain != "" {
@@ -106,6 +109,7 @@ func bindDomainPerms(db *sql.DB, roleID int64, domain string) {
 	}
 	_ = rows.Close()
 	for _, pid := range ids {
-		_, _ = db.Exec(`INSERT OR IGNORE INTO iam_role_permission(role_id, permission_id) VALUES(?,?)`, roleID, pid)
+		_, _ = db.Exec(`INSERT INTO iam_role_permission(role_id, permission_id) VALUES(?,?)
+ON CONFLICT (role_id, permission_id) DO NOTHING`, roleID, pid)
 	}
 }

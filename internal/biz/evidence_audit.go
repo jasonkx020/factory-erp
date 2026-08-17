@@ -16,7 +16,7 @@ func (s *Services) writeAudit(bizType string, bizID int64, action, reason string
 	bb, _ := json.Marshal(before)
 	aa, _ := json.Marshal(after)
 	_, _ = s.DB.Exec(`INSERT INTO biz_audit_log(biz_type, biz_id, action, reason, before_json, after_json, created_at)
-		VALUES(?,?,?,?,?,?,datetime('now'))`, bizType, bizID, action, reason, string(bb), string(aa))
+		VALUES(?,?,?,?,?,?,NOW())`, bizType, bizID, action, reason, string(bb), string(aa))
 }
 
 func (s *Services) writeAuditCtx(c *gin.Context, bizType string, bizID int64, action, reason string, before, after interface{}) {
@@ -27,7 +27,7 @@ func (s *Services) writeAuditCtx(c *gin.Context, bizType string, bizID int64, ac
 	bb, _ := json.Marshal(before)
 	aa, _ := json.Marshal(after)
 	_, _ = s.DB.Exec(`INSERT INTO biz_audit_log(biz_type, biz_id, action, reason, before_json, after_json, actor_user_id, created_at)
-		VALUES(?,?,?,?,?,?,?,datetime('now'))`, bizType, bizID, action, reason, string(bb), string(aa), uid)
+		VALUES(?,?,?,?,?,?,?,NOW())`, bizType, bizID, action, reason, string(bb), string(aa), uid)
 }
 
 func (s *Services) addEvidence(c *gin.Context, bizType string, bizID int64, evidenceType, fileURL string, meta map[string]interface{}) (int64, error) {
@@ -41,7 +41,7 @@ func (s *Services) addEvidence(c *gin.Context, bizType string, bizID int64, evid
 		metaJSON = string(b)
 	}
 	res, err := s.DB.Exec(`INSERT INTO biz_evidence(biz_type, biz_id, evidence_type, file_url, meta_json, uploaded_by, uploaded_at)
-		VALUES(?,?,?,?,?,?,datetime('now'))`, bizType, bizID, evidenceType, fileURL, metaJSON, uid)
+		VALUES(?,?,?,?,?,?,NOW())`, bizType, bizID, evidenceType, fileURL, metaJSON, uid)
 	if err != nil {
 		return 0, err
 	}

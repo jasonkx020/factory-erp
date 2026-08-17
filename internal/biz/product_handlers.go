@@ -22,8 +22,8 @@ func EnsureProductExtSchema(db *sql.DB) {
   process_wage_bind_json TEXT,
   remark TEXT,
   status TEXT NOT NULL DEFAULT 'active',
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW()),
   is_deleted INTEGER NOT NULL DEFAULT 0,
   UNIQUE(product_id, spec_code)
 )`,
@@ -45,7 +45,7 @@ func EnsureProductExtSchema(db *sql.DB) {
 	var n int
 	_ = db.QueryRow(`SELECT COUNT(1) FROM prd_product_app_sort`).Scan(&n)
 	if n == 0 {
-		_, _ = db.Exec(`INSERT OR IGNORE INTO prd_product_app_sort(product_id, channel, sort_no, is_visible)
+		_, _ = db.Exec(`INSERT INTO prd_product_app_sort(product_id, channel, sort_no, is_visible)
 			SELECT id, 'app', id * 10, 1 FROM prd_product WHERE COALESCE(is_deleted,0)=0`)
 	}
 }
@@ -349,7 +349,7 @@ func (s *Services) handleProductSpecs(c *gin.Context, method, action string) boo
 			process_wage_bind_json=COALESCE(NULLIF(?,''),process_wage_bind_json),
 			remark=COALESCE(NULLIF(?,''),remark),
 			status=COALESCE(NULLIF(?,''),status),
-			updated_at=datetime('now')
+			updated_at=NOW()
 			WHERE id=? AND COALESCE(is_deleted,0)=0`,
 			strOr(body["spec_code"]), nullInt64Or(body["routing_id"]), wageJSON, strOr(body["remark"]), strOr(body["status"]), id)
 		if err != nil {
@@ -359,7 +359,7 @@ func (s *Services) handleProductSpecs(c *gin.Context, method, action string) boo
 		return s.getSimpleRow(c, `SELECT * FROM prd_product_spec WHERE id=?`, id)
 	case "delete":
 		id := paramID(c)
-		_, _ = s.DB.Exec(`UPDATE prd_product_spec SET is_deleted=1, updated_at=datetime('now') WHERE id=?`, id)
+		_, _ = s.DB.Exec(`UPDATE prd_product_spec SET is_deleted=1, updated_at=NOW() WHERE id=?`, id)
 		api.OK(c, gin.H{})
 		return true
 	}

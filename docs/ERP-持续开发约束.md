@@ -5,7 +5,7 @@
 | 项目 | 说明 |
 |------|------|
 | 文档版本 | v1.0 |
-| 适用范围 | 本仓库 `erp-api`、OpenAPI、SQLite/MySQL、demo |
+| 适用范围 | 本仓库 `erp-api`、OpenAPI、PostgreSQL、demo |
 | 契约主文件 | [openapi3.0-加工厂ERP.yaml](./openapi3.0-加工厂ERP.yaml) |
 
 ---
@@ -25,7 +25,7 @@
 |------|------|
 | C-CODE-01 | 单二进制 `cmd/erp-api`；业务在 `internal/{domain}`（handler/service/repo） |
 | C-CODE-02 | 中间件：Recovery → Logger → CORS → JWT → 路由级 `RequirePerm` |
-| C-CODE-03 | DB 表/列 `snake_case`；开发 SQLite、生产 MySQL；方言经 `sqlutil` |
+| C-CODE-03 | DB 表/列 `snake_case`；仅 PostgreSQL；升级走 `migrations/erp` + `erp-db`；方言经 `sqlutil` / rebind |
 | C-CODE-04 | 禁止跨域把业务堆在 `system.RegisterSkeleton`；占位须迁回本域 |
 | C-CODE-05 | 业务错误优先 HTTP 200 + `code=0`；鉴权失败用 401/403 |
 
@@ -42,4 +42,4 @@
 
 - MQTT / 设备双平面 / tenant-platform 隔离
 - oapi-codegen 全量生成强制
-- 强制本机安装 MySQL（开发默认 SQLite）
+- 强制本机安装非 PostgreSQL 数据库（开发可用 Docker Postgres）

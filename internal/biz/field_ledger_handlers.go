@@ -121,7 +121,7 @@ func (s *Services) updateOutboundSettle(c *gin.Context) bool {
 		driver_name=COALESCE(NULLIF(?,''),driver_name), trace_code=COALESCE(NULLIF(?,''),trace_code),
 		produce_date=COALESCE(NULLIF(?,''),produce_date), qty=?, weight=?, unit=COALESCE(NULLIF(?,''),unit),
 		freight_fee=?, loading_fee=?, weigh_fee=?, unit_price=?, goods_amount=?, amount=?,
-		remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=?`,
+		remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=?`,
 		strOr(body["product_name"]), plate, strOr(body["driver_name"]), strOr(body["trace_code"]), strOr(body["produce_date"]),
 		asFloatOr0(body["qty"]), weight, strOr(body["unit"]), freight, loading, weighFee, unitPrice, goods, total,
 		strOr(body["remark"]), id)
@@ -135,7 +135,7 @@ func (s *Services) updateOutboundSettle(c *gin.Context) bool {
 
 func (s *Services) closeOutboundSettle(c *gin.Context) bool {
 	id := paramID(c)
-	_, err := s.DB.Exec(`UPDATE sl_outbound_settle SET status='closed', updated_at=datetime('now') WHERE id=? AND status='draft'`, id)
+	_, err := s.DB.Exec(`UPDATE sl_outbound_settle SET status='closed', updated_at=NOW() WHERE id=? AND status='draft'`, id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
 		return true

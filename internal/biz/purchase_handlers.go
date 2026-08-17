@@ -62,14 +62,14 @@ func (s *Services) handlePurchase(c *gin.Context, method, openapiPath, resourceK
 		}
 		if strings.Contains(openapiPath, "/approve") {
 			id := paramID(c)
-			_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET status='approved', updated_at=datetime('now') WHERE id=? AND status='submitted'`, id)
+			_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET status='approved', updated_at=NOW() WHERE id=? AND status='submitted'`, id)
 			api.OK(c, s.loadPurchaseRequest(id))
 			return true
 		}
 		if strings.Contains(openapiPath, "/reject") {
 			body := bindBody(c)
 			id := paramID(c)
-			_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET status='rejected', remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=? AND status='submitted'`,
+			_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET status='rejected', remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=? AND status='submitted'`,
 				strOr(body["reason"]), id)
 			api.OK(c, s.loadPurchaseRequest(id))
 			return true
@@ -81,7 +81,7 @@ func (s *Services) handlePurchase(c *gin.Context, method, openapiPath, resourceK
 		}
 		if strings.Contains(openapiPath, "/approve") {
 			id := paramID(c)
-			_, _ = s.DB.Exec(`UPDATE pur_purchase_plan SET status='approved', updated_at=datetime('now') WHERE id=? AND status='submitted'`, id)
+			_, _ = s.DB.Exec(`UPDATE pur_purchase_plan SET status='approved', updated_at=NOW() WHERE id=? AND status='submitted'`, id)
 			api.OK(c, s.loadPurchasePlan(id))
 			return true
 		}
@@ -250,7 +250,7 @@ func (s *Services) updateSupplier(c *gin.Context) bool {
 		status=COALESCE(NULLIF(?,''),status), rating=?, is_preferred=?, uscc=?, legal_person=?, register_address=?,
 		invoice_title=?, tax_no=?, bank_name=?, bank_account=?, settle_method=?, payment_days=?, credit_limit=?,
 		currency=COALESCE(?,currency), tax_rate=?, lead_time_days=?, moq=?, default_warehouse_id=?,
-		contact_json=?, remark=?, updated_at=datetime('now')
+		contact_json=?, remark=?, updated_at=NOW()
 		WHERE id=?`,
 		strOr(body["name"]), strOr(body["short_name"]), strOr(body["mnemonic"]), strOr(body["supplier_type"]),
 		status, strOr(body["rating"]), pref, strOr(body["uscc"]), strOr(body["legal_person"]), strOr(body["register_address"]),
@@ -269,7 +269,7 @@ func (s *Services) updateSupplier(c *gin.Context) bool {
 
 func (s *Services) deleteSupplier(c *gin.Context) bool {
 	id := paramID(c)
-	_, _ = s.DB.Exec(`UPDATE pur_supplier SET is_deleted=1, status='eliminated', updated_at=datetime('now') WHERE id=?`, id)
+	_, _ = s.DB.Exec(`UPDATE pur_supplier SET is_deleted=1, status='eliminated', updated_at=NOW() WHERE id=?`, id)
 	api.OK(c, gin.H{"id": id, "deleted": true})
 	return true
 }
@@ -294,7 +294,7 @@ func (s *Services) supplierStatusAction(c *gin.Context, act string) bool {
 		api.FailJSON(c, "UNKNOWN_ACTION")
 		return true
 	}
-	_, err := s.DB.Exec(`UPDATE pur_supplier SET status=?, is_preferred=CASE WHEN ? IN ('frozen','blacklist','eliminated') THEN 0 ELSE is_preferred END, updated_at=datetime('now') WHERE id=?`,
+	_, err := s.DB.Exec(`UPDATE pur_supplier SET status=?, is_preferred=CASE WHEN ? IN ('frozen','blacklist','eliminated') THEN 0 ELSE is_preferred END, updated_at=NOW() WHERE id=?`,
 		next, next, id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR")
@@ -728,12 +728,12 @@ func (s *Services) postInbound(c *gin.Context) bool {
 		if price > 0 {
 			_, _ = s.DB.Exec(`INSERT INTO pur_supplier_price_history(supplier_id, product_id, price, biz_date, source_doc_id) VALUES(?,?,?,?,?)`,
 				sid, pid, price, bizDate, id)
-			_, _ = s.DB.Exec(`UPDATE pur_supplier_supply_item SET last_price=?, updated_at=datetime('now') WHERE supplier_id=? AND product_id=?`,
+			_, _ = s.DB.Exec(`UPDATE pur_supplier_supply_item SET last_price=?, updated_at=NOW() WHERE supplier_id=? AND product_id=?`,
 				price, sid, pid)
 		}
 	}
 	_, _ = s.DB.Exec(`UPDATE inv_stock_txn SET status='posted' WHERE id=?`, tid)
-	_, _ = s.DB.Exec(`UPDATE pur_purchase_inbound SET status='posted', updated_at=datetime('now') WHERE id=?`, id)
+	_, _ = s.DB.Exec(`UPDATE pur_purchase_inbound SET status='posted', updated_at=NOW() WHERE id=?`, id)
 	api.OK(c, s.loadInbound(id))
 	return true
 }
@@ -825,7 +825,7 @@ func (s *Services) finishQC(c *gin.Context, result string) bool {
 	} else {
 		fail = qtyCheck
 	}
-	_, _ = s.DB.Exec(`UPDATE pur_incoming_qc SET result=?, status=?, qty_pass=?, qty_fail=?, updated_at=datetime('now') WHERE id=?`,
+	_, _ = s.DB.Exec(`UPDATE pur_incoming_qc SET result=?, status=?, qty_pass=?, qty_fail=?, updated_at=NOW() WHERE id=?`,
 		result, result, pass, fail, id)
 	rows, _ := s.DB.Query(`SELECT * FROM pur_incoming_qc WHERE id=?`, id)
 	list := []map[string]interface{}{}
@@ -963,7 +963,7 @@ func (s *Services) postReturn(c *gin.Context) bool {
 			return true
 		}
 	}
-	_, _ = s.DB.Exec(`UPDATE pur_purchase_return SET status='posted', updated_at=datetime('now') WHERE id=?`, id)
+	_, _ = s.DB.Exec(`UPDATE pur_purchase_return SET status='posted', updated_at=NOW() WHERE id=?`, id)
 	api.OK(c, s.loadReturn(id))
 	return true
 }
@@ -1060,7 +1060,7 @@ func (s *Services) handlePurchaseRequests(c *gin.Context, method, action string)
 		}
 		_, err := s.DB.Exec(`UPDATE pur_purchase_request SET
 			title=COALESCE(NULLIF(?,''),title), qty=COALESCE(?,qty), need_date=COALESCE(NULLIF(?,''),need_date),
-			remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=?`,
+			remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=?`,
 			strOr(body["title"]), nullFloat(body["qty"]), strOr(body["need_date"]), strOr(body["remark"]), id)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -1078,7 +1078,7 @@ func (s *Services) handlePurchaseRequests(c *gin.Context, method, action string)
 		return true
 	case action == "action:submit":
 		id := paramID(c)
-		_, err := s.DB.Exec(`UPDATE pur_purchase_request SET status='submitted', updated_at=datetime('now') WHERE id=? AND status IN ('draft','rejected')`, id)
+		_, err := s.DB.Exec(`UPDATE pur_purchase_request SET status='submitted', updated_at=NOW() WHERE id=? AND status IN ('draft','rejected')`, id)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
@@ -1087,13 +1087,13 @@ func (s *Services) handlePurchaseRequests(c *gin.Context, method, action string)
 		return true
 	case action == "action:approve":
 		id := paramID(c)
-		_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET status='approved', updated_at=datetime('now') WHERE id=? AND status='submitted'`, id)
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET status='approved', updated_at=NOW() WHERE id=? AND status='submitted'`, id)
 		api.OK(c, s.loadPurchaseRequest(id))
 		return true
 	case action == "action:reject":
 		id := paramID(c)
 		body := bindBody(c)
-		_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET status='rejected', remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=? AND status='submitted'`,
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET status='rejected', remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=? AND status='submitted'`,
 			strOr(body["reason"]), id)
 		api.OK(c, s.loadPurchaseRequest(id))
 		return true
@@ -1111,7 +1111,7 @@ func (s *Services) handlePurchaseRequests(c *gin.Context, method, action string)
 		return true
 	case action == "delete":
 		id := paramID(c)
-		_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET is_deleted=1, status='cancelled', updated_at=datetime('now') WHERE id=? AND status='draft'`, id)
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET is_deleted=1, status='cancelled', updated_at=NOW() WHERE id=? AND status='draft'`, id)
 		api.OK(c, gin.H{"id": id})
 		return true
 	}
@@ -1214,7 +1214,7 @@ func (s *Services) convertRequestToPlan(c *gin.Context) bool {
 		_, _ = s.DB.Exec(`INSERT INTO pur_purchase_plan_line(plan_id, product_id, qty, supplier_id, request_line_id) VALUES(?,?,?,?,?)`,
 			pid, productID, qty, nullIf0(sug), nullIf0(lineID))
 	}
-	_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET status='planned', updated_at=datetime('now') WHERE id=?`, id)
+	_, _ = s.DB.Exec(`UPDATE pur_purchase_request SET status='planned', updated_at=NOW() WHERE id=?`, id)
 	out := s.loadPurchasePlan(pid)
 	out["from_request_id"] = id
 	api.OK(c, out)
@@ -1262,7 +1262,7 @@ func (s *Services) handlePurchasePlans(c *gin.Context, method, action string) bo
 			return true
 		}
 		_, err := s.DB.Exec(`UPDATE pur_purchase_plan SET
-			plan_date=COALESCE(NULLIF(?,''),plan_date), remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=?`,
+			plan_date=COALESCE(NULLIF(?,''),plan_date), remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=?`,
 			strOr(body["plan_date"]), strOr(body["remark"]), id)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -1277,12 +1277,12 @@ func (s *Services) handlePurchasePlans(c *gin.Context, method, action string) bo
 		return true
 	case action == "action:submit":
 		id := paramID(c)
-		_, _ = s.DB.Exec(`UPDATE pur_purchase_plan SET status='submitted', updated_at=datetime('now') WHERE id=? AND status IN ('draft','rejected')`, id)
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_plan SET status='submitted', updated_at=NOW() WHERE id=? AND status IN ('draft','rejected')`, id)
 		api.OK(c, s.loadPurchasePlan(id))
 		return true
 	case action == "action:approve":
 		id := paramID(c)
-		_, _ = s.DB.Exec(`UPDATE pur_purchase_plan SET status='approved', updated_at=datetime('now') WHERE id=? AND status='submitted'`, id)
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_plan SET status='approved', updated_at=NOW() WHERE id=? AND status='submitted'`, id)
 		api.OK(c, s.loadPurchasePlan(id))
 		return true
 	case action == "action:to-inbound" || strings.Contains(c.FullPath(), "/to-inbound"):
@@ -1299,7 +1299,7 @@ func (s *Services) handlePurchasePlans(c *gin.Context, method, action string) bo
 		return true
 	case action == "delete":
 		id := paramID(c)
-		_, _ = s.DB.Exec(`UPDATE pur_purchase_plan SET is_deleted=1, status='cancelled', updated_at=datetime('now') WHERE id=? AND status='draft'`, id)
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_plan SET is_deleted=1, status='cancelled', updated_at=NOW() WHERE id=? AND status='draft'`, id)
 		api.OK(c, gin.H{"id": id})
 		return true
 	}
@@ -1416,7 +1416,7 @@ func (s *Services) convertPlanToInbound(c *gin.Context) bool {
 		_, _ = s.DB.Exec(`INSERT INTO pur_purchase_inbound_line(inbound_id, product_id, qty, price, amount, batch_no) VALUES(?,?,?,?,?,?)`,
 			hid, pid, qty, nullFloat(price), qty*price, strOr(body["batch_no"]))
 	}
-	_, _ = s.DB.Exec(`UPDATE pur_purchase_plan SET status='ordered', updated_at=datetime('now') WHERE id=?`, id)
+	_, _ = s.DB.Exec(`UPDATE pur_purchase_plan SET status='ordered', updated_at=NOW() WHERE id=?`, id)
 	api.OK(c, s.loadInbound(hid))
 	return true
 }
@@ -1459,7 +1459,7 @@ func (s *Services) handlePurchaseTasks(c *gin.Context, method, action string) bo
 		_, err := s.DB.Exec(`UPDATE pur_purchase_task SET
 			assignee_id=COALESCE(?,assignee_id), product_id=COALESCE(?,product_id), qty=COALESCE(?,qty),
 			due_date=COALESCE(NULLIF(?,''),due_date), status=COALESCE(NULLIF(?,''),status),
-			updated_at=datetime('now') WHERE id=?`,
+			updated_at=NOW() WHERE id=?`,
 			nullInt(body["assignee_id"]), nullInt(body["product_id"]), nullFloat(body["qty"]),
 			strOr(body["due_date"]), strOr(body["status"]), id)
 		if err != nil {
@@ -1479,16 +1479,16 @@ func (s *Services) handlePurchaseTasks(c *gin.Context, method, action string) bo
 		if aid == 0 {
 			aid = claimsUserID(c)
 		}
-		_, _ = s.DB.Exec(`UPDATE pur_purchase_task SET assignee_id=?, status='assigned', updated_at=datetime('now') WHERE id=?`, aid, id)
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_task SET assignee_id=?, status='assigned', updated_at=NOW() WHERE id=?`, aid, id)
 		api.OK(c, s.loadPurchaseTask(id))
 		return true
 	case action == "action:complete":
 		id := paramID(c)
-		_, _ = s.DB.Exec(`UPDATE pur_purchase_task SET status='done', updated_at=datetime('now') WHERE id=?`, id)
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_task SET status='done', updated_at=NOW() WHERE id=?`, id)
 		api.OK(c, s.loadPurchaseTask(id))
 		return true
 	case action == "delete":
-		_, _ = s.DB.Exec(`UPDATE pur_purchase_task SET is_deleted=1, updated_at=datetime('now') WHERE id=?`, paramID(c))
+		_, _ = s.DB.Exec(`UPDATE pur_purchase_task SET is_deleted=1, updated_at=NOW() WHERE id=?`, paramID(c))
 		api.OK(c, gin.H{})
 		return true
 	}

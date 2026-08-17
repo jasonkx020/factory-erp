@@ -1,15 +1,15 @@
 # 生产可部署示例（复制为 configs/erp.prod.yaml 并改密钥）
 # 必须通过环境变量覆盖 JWT：ERP_JWT_SECRET（长度≥16，非占位符）
+# 数据库：先 erp-db baseline/upgrade，再启动 API（init_schema 必须为 false）
 seed:
   demo: false
 server:
   addr: ":18080"
 database:
-  driver: sqlite
-  sqlite_path: data/erp.db
-  # 生产 MySQL 示例：
-  # driver: mysql
-  # mysql_dsn: "erp:erp@tcp(127.0.0.1:3306)/erp_factory?parseTime=true&charset=utf8mb4&loc=Local"
+  driver: postgres
+  dsn: "postgres://erp:CHANGE_ME@127.0.0.1:5432/erp_factory?sslmode=disable"
+  init_schema: false
+  migrations_dir: migrations
 jwt:
   secret: "REPLACE_WITH_ENV_ERP_JWT_SECRET_32CHARS"
   access_ttl_min: 120

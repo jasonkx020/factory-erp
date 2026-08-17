@@ -12,12 +12,14 @@ import (
 	"erp/internal/middleware"
 )
 
-// EnsureHROpsSchema creates attendance / leave / performance / visit / memo tables.
+// EnsureHROpsSchema is a no-op: schema owned by migrations/erp.
 func EnsureHROpsSchema(db *sql.DB) {
-	ensureHROpsTables(db)
+	_ = db
 }
 
 func ensureHROpsTables(db *sql.DB) {
+	_ = db
+	return
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS hr_shift (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,7 +29,7 @@ func ensureHROpsTables(db *sql.DB) {
   end_time TEXT NOT NULL,
   workshop_id INTEGER,
   status TEXT NOT NULL DEFAULT 'active',
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS hr_attendance_rule (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,7 +39,7 @@ func ensureHROpsTables(db *sql.DB) {
   early_minutes INTEGER NOT NULL DEFAULT 0,
   rule_json TEXT,
   status TEXT NOT NULL DEFAULT 'active',
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS hr_attendance_record (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,7 +49,7 @@ func ensureHROpsTables(db *sql.DB) {
   check_out_at TEXT,
   shift_id INTEGER,
   source TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (NOW()),
   UNIQUE(employee_id, biz_date)
 )`,
 		`CREATE TABLE IF NOT EXISTS hr_leave_request (
@@ -59,7 +61,7 @@ func ensureHROpsTables(db *sql.DB) {
   end_at TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'draft',
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS hr_overtime_patch (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -70,7 +72,7 @@ func ensureHROpsTables(db *sql.DB) {
   minutes INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'draft',
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS hr_attendance_month_stat (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,7 +90,7 @@ func ensureHROpsTables(db *sql.DB) {
   name TEXT NOT NULL,
   scheme_json TEXT NOT NULL DEFAULT '{}',
   status TEXT NOT NULL DEFAULT 'active',
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS hr_performance_result (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,7 +99,7 @@ func ensureHROpsTables(db *sql.DB) {
   period TEXT NOT NULL,
   score REAL,
   amount REAL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS hr_attendance_perf_summary (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -115,7 +117,7 @@ func ensureHROpsTables(db *sql.DB) {
   visit_at TEXT NOT NULL,
   content TEXT,
   location TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS hr_memo (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -124,14 +126,14 @@ func ensureHROpsTables(db *sql.DB) {
   content TEXT,
   biz_date TEXT,
   scope_type TEXT NOT NULL DEFAULT 'hr',
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS hr_employee_journal (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   employee_id INTEGER NOT NULL,
   biz_date TEXT NOT NULL,
   content TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`ALTER TABLE hr_offboard ADD COLUMN offboard_date TEXT`,
 	}

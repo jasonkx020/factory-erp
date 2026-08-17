@@ -24,7 +24,7 @@ func EnsureApprovalSchema(db *sql.DB) {
   status TEXT NOT NULL DEFAULT 'pending',
   acted_at TEXT,
   comment TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`ALTER TABLE appr_task ADD COLUMN title TEXT`,
 		`ALTER TABLE appr_task ADD COLUMN doc_no TEXT`,
@@ -46,8 +46,8 @@ func EnsureApprovalSchema(db *sql.DB) {
   comment TEXT,
   payload_json TEXT,
   acted_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE INDEX IF NOT EXISTS idx_appr_queue_cat ON appr_queue(category, status)`,
 		`CREATE TABLE IF NOT EXISTS appr_expense_request (
@@ -59,8 +59,8 @@ func EnsureApprovalSchema(db *sql.DB) {
   status TEXT NOT NULL DEFAULT 'draft',
   remark TEXT,
   queue_id INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS appr_affair_request (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,8 +71,8 @@ func EnsureApprovalSchema(db *sql.DB) {
   status TEXT NOT NULL DEFAULT 'draft',
   remark TEXT,
   queue_id INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 	}
 	for _, s := range stmts {
@@ -504,7 +504,7 @@ func (s *Services) handleApprExpenseRequests(c *gin.Context, method, action, pat
 		}
 		_, err := s.DB.Exec(`UPDATE appr_expense_request SET
 			amount=?, category=COALESCE(NULLIF(?,''),category), remark=COALESCE(NULLIF(?,''),remark),
-			updated_at=datetime('now') WHERE id=?`,
+			updated_at=NOW() WHERE id=?`,
 			amount, strOr(body["category"]), strOr(body["remark"]), id)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR")

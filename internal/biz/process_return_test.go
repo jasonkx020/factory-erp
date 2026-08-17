@@ -7,76 +7,91 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	_ "modernc.org/sqlite"
 
+	"erp/internal/config"
 	"erp/internal/middleware"
+	"erp/internal/persistence"
 	"erp/internal/security"
 )
 
 func openSmokeDB(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file:process_return_smoke?mode=memory&cache=shared")
+	dsn := os.Getenv("ERP_TEST_DATABASE_DSN")
+	if dsn == "" {
+		dsn = os.Getenv("ERP_DATABASE_DSN")
+	}
+	if dsn == "" {
+		t.Skip("set ERP_TEST_DATABASE_DSN for PostgreSQL smoke tests")
+	}
+	cfg := &config.Config{}
+	cfg.Database.Driver = "postgres"
+	cfg.Database.DSN = dsn
+	cfg.Database.InitSchema = false
+	pdb, err := persistence.Open(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
+	db := pdb.SQL
+	t.Cleanup(func() { _ = pdb.Close() })
 	stmts := []string{
-		`CREATE TABLE inv_box_code(
-			id INTEGER PRIMARY KEY, code TEXT UNIQUE, product_id INTEGER, warehouse_id INTEGER,
-			qty REAL, weight REAL, current_process_id INTEGER, current_step_id INTEGER,
+		`CREATE TEMP TABLE IF NOT EXISTS inv_box_code(
+			id BIGSERIAL PRIMARY KEY, code TEXT UNIQUE, product_id INTEGER, warehouse_id INTEGER,
+			qty DOUBLE PRECISION, weight DOUBLE PRECISION, current_process_id INTEGER, current_step_id INTEGER,
 			task_id INTEGER, work_order_id INTEGER, farmer_id INTEGER, trace_code TEXT,
 			origin TEXT, receive_date TEXT, source_type TEXT, status TEXT, parent_box_id INTEGER,
 			batch_no TEXT, updated_at TEXT)`,
-		`CREATE TABLE inv_stock_txn(
-			id INTEGER PRIMARY KEY AUTOINCREMENT, doc_no TEXT, doc_type TEXT, biz_date TEXT,
+		`CREATE TEMP TABLE IF NOT EXISTS inv_stock_txn(
+			id BIGSERIAL PRIMARY KEY, doc_no TEXT, doc_type TEXT, biz_date TEXT,
 			status TEXT, warehouse_id INTEGER, remark TEXT, posted_at TEXT, is_deleted INTEGER DEFAULT 0)`,
-		`CREATE TABLE inv_stock_txn_line(
-			id INTEGER PRIMARY KEY AUTOINCREMENT, txn_id INTEGER, line_no INTEGER, product_id INTEGER,
-			qty REAL, base_qty REAL, direction TEXT)`,
-		`CREATE TABLE inv_balance(
-			id INTEGER PRIMARY KEY AUTOINCREMENT, warehouse_id INTEGER, location_id INTEGER,
-			product_id INTEGER, batch_no TEXT, box_code_id INTEGER, qty REAL)`,
-		`CREATE TABLE pd_routing_step(
-			id INTEGER PRIMARY KEY, routing_id INTEGER, seq_no INTEGER, process_id INTEGER,
+		`CREATE TEMP TABLE IF NOT EXISTS inv_stock_txn_line(
+			id BIGSERIAL PRIMARY KEY, txn_id INTEGER, line_no INTEGER, product_id INTEGER,
+			qty DOUBLE PRECISION, base_qty DOUBLE PRECISION, direction TEXT)`,
+		`CREATE TEMP TABLE IF NOT EXISTS inv_balance(
+			id BIGSERIAL PRIMARY KEY, warehouse_id INTEGER, location_id INTEGER,
+			product_id INTEGER, batch_no TEXT, box_code_id INTEGER, qty DOUBLE PRECISION)`,
+		`CREATE TEMP TABLE IF NOT EXISTS pd_routing_step(
+			id BIGSERIAL PRIMARY KEY, routing_id INTEGER, seq_no INTEGER, process_id INTEGER,
 			step_code TEXT, step_name TEXT, is_piecework INTEGER, is_inbound_checkpoint INTEGER,
 			checkpoint_bind_warehouse INTEGER, auto_next INTEGER, auto_stock_in INTEGER,
 			auto_stock_out INTEGER, warehouse_id INTEGER)`,
-		`CREATE TABLE pd_flow_event(
-			id INTEGER PRIMARY KEY AUTOINCREMENT, source_type TEXT, source_id INTEGER,
+		`CREATE TEMP TABLE IF NOT EXISTS pd_flow_event(
+			id BIGSERIAL PRIMARY KEY, source_type TEXT, source_id INTEGER,
 			from_step_id INTEGER, to_step_id INTEGER, trigger_action TEXT, trace_id TEXT,
 			status TEXT, error TEXT, payload_json TEXT)`,
-		`CREATE TABLE pd_piecework_summary(
-			id INTEGER PRIMARY KEY AUTOINCREMENT, worker_id INTEGER, process_id INTEGER, biz_date TEXT,
-			qty REAL, weight REAL, input_weight REAL, output_weight REAL, loss REAL, utilization REAL,
-			amount REAL, source_report_ids TEXT, status TEXT, updated_at TEXT)`,
-		`CREATE TABLE pay_process_wage_rate(id INTEGER PRIMARY KEY, process_id INTEGER, rate REAL, status TEXT)`,
-		`CREATE TABLE pd_process(id INTEGER PRIMARY KEY, is_piecework INTEGER)`,
-		`CREATE TABLE pd_process_return(
-			id INTEGER PRIMARY KEY AUTOINCREMENT, doc_no TEXT UNIQUE, box_code TEXT, process_id INTEGER,
-			step_id INTEGER, warehouse_id INTEGER, return_weight REAL, reason TEXT, status TEXT,
+		`CREATE TEMP TABLE IF NOT EXISTS pd_piecework_summary(
+			id BIGSERIAL PRIMARY KEY, worker_id INTEGER, process_id INTEGER, biz_date TEXT,
+			qty DOUBLE PRECISION, weight DOUBLE PRECISION, input_weight DOUBLE PRECISION, output_weight DOUBLE PRECISION, loss DOUBLE PRECISION, utilization DOUBLE PRECISION,
+			amount DOUBLE PRECISION, source_report_ids TEXT, status TEXT, updated_at TEXT)`,
+		`CREATE TEMP TABLE IF NOT EXISTS pay_process_wage_rate(id BIGSERIAL PRIMARY KEY, process_id INTEGER, rate DOUBLE PRECISION, status TEXT)`,
+		`CREATE TEMP TABLE IF NOT EXISTS pd_process(id BIGSERIAL PRIMARY KEY, is_piecework INTEGER)`,
+		`CREATE TEMP TABLE IF NOT EXISTS pd_process_return(
+			id BIGSERIAL PRIMARY KEY, doc_no TEXT UNIQUE, box_code TEXT, process_id INTEGER,
+			step_id INTEGER, warehouse_id INTEGER, return_weight DOUBLE PRECISION, reason TEXT, status TEXT,
 			applicant_user_id INTEGER, foreman_user_id INTEGER, warehouse_user_id INTEGER,
 			current_assignee_user_id INTEGER, report_work_id INTEGER, stock_txn_id INTEGER,
-			remark TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')),
+			remark TEXT, created_at TEXT DEFAULT NOW(), updated_at TEXT DEFAULT NOW(),
 			posted_at TEXT, is_deleted INTEGER DEFAULT 0)`,
-		`CREATE TABLE pd_process_return_log(
-			id INTEGER PRIMARY KEY AUTOINCREMENT, return_id INTEGER, action TEXT,
-			from_user_id INTEGER, to_user_id INTEGER, remark TEXT, created_at TEXT DEFAULT (datetime('now')))`,
-		`CREATE TABLE pd_report_work(
-			id INTEGER PRIMARY KEY, doc_no TEXT, dispatch_id INTEGER, work_order_id INTEGER,
-			process_id INTEGER, worker_id INTEGER, qty REAL, weight REAL, input_weight REAL,
-			output_weight REAL, loss REAL, utilization REAL, status TEXT, reported_at TEXT,
+		`CREATE TEMP TABLE IF NOT EXISTS pd_process_return_log(
+			id BIGSERIAL PRIMARY KEY, return_id INTEGER, action TEXT,
+			from_user_id INTEGER, to_user_id INTEGER, remark TEXT, created_at TEXT DEFAULT NOW())`,
+		`CREATE TEMP TABLE IF NOT EXISTS pd_report_work(
+			id BIGSERIAL PRIMARY KEY, doc_no TEXT, dispatch_id INTEGER, work_order_id INTEGER,
+			process_id INTEGER, worker_id INTEGER, qty DOUBLE PRECISION, weight DOUBLE PRECISION, input_weight DOUBLE PRECISION,
+			output_weight DOUBLE PRECISION, loss DOUBLE PRECISION, utilization DOUBLE PRECISION, status TEXT, reported_at TEXT,
 			scan_code TEXT, confirmed_by INTEGER, confirmed_at TEXT, confirmed_snapshot_json TEXT,
-			process_qc_result TEXT, bag_qty REAL, operator_user_id INTEGER, operator_employee_id INTEGER, created_by INTEGER)`,
-		`CREATE TABLE hr_employee(id INTEGER PRIMARY KEY, name TEXT, badge_code TEXT, emp_no TEXT, status TEXT DEFAULT 'active', is_deleted INTEGER DEFAULT 0)`,
-		`CREATE TABLE biz_audit_log(
-			id INTEGER PRIMARY KEY AUTOINCREMENT, biz_type TEXT, biz_id INTEGER, action TEXT,
+			process_qc_result TEXT, bag_qty DOUBLE PRECISION, operator_user_id INTEGER, operator_employee_id INTEGER, created_by INTEGER)`,
+		`CREATE TEMP TABLE IF NOT EXISTS hr_employee(id BIGSERIAL PRIMARY KEY, name TEXT, badge_code TEXT, emp_no TEXT, status TEXT DEFAULT 'active', is_deleted INTEGER DEFAULT 0)`,
+		`CREATE TEMP TABLE IF NOT EXISTS biz_audit_log(
+			id BIGSERIAL PRIMARY KEY, biz_type TEXT, biz_id INTEGER, action TEXT,
 			reason TEXT, before_json TEXT, after_json TEXT, actor_user_id INTEGER, created_at TEXT)`,
-		`CREATE TABLE biz_evidence(id INTEGER PRIMARY KEY, biz_type TEXT, biz_id INTEGER, voided_at TEXT)`,
-		`CREATE TABLE iam_user(id INTEGER PRIMARY KEY, is_deleted INTEGER DEFAULT 0, status TEXT DEFAULT 'active')`,
-		`CREATE TABLE iam_user_role(user_id INTEGER, role_id INTEGER)`,
-		`CREATE TABLE iam_role(id INTEGER PRIMARY KEY, code TEXT)`,
+		`CREATE TEMP TABLE IF NOT EXISTS biz_evidence(id BIGSERIAL PRIMARY KEY, biz_type TEXT, biz_id INTEGER, voided_at TEXT)`,
+		`CREATE TEMP TABLE IF NOT EXISTS iam_user(id BIGSERIAL PRIMARY KEY, is_deleted INTEGER DEFAULT 0, status TEXT DEFAULT 'active')`,
+		`CREATE TEMP TABLE IF NOT EXISTS iam_user_role(user_id INTEGER, role_id INTEGER)`,
+		`CREATE TEMP TABLE IF NOT EXISTS iam_role(id BIGSERIAL PRIMARY KEY, code TEXT)`,
 		`INSERT INTO inv_box_code(id,code,product_id,warehouse_id,qty,weight,status) VALUES(1,'BX-SMOKE',1,1,100,100,'open')`,
 		`INSERT INTO inv_balance(warehouse_id,location_id,product_id,batch_no,box_code_id,qty) VALUES(1,0,1,'',0,500)`,
 		`INSERT INTO inv_balance(warehouse_id,location_id,product_id,batch_no,box_code_id,qty) VALUES(2,0,1,'',0,0)`,
@@ -91,8 +106,8 @@ func openSmokeDB(t *testing.T) *sql.DB {
 		`INSERT INTO iam_user(id,status) VALUES(8,'active'),(9,'active')`,
 		`INSERT INTO iam_role(id,code) VALUES(1,'foreman'),(2,'warehouse')`,
 		`INSERT INTO iam_user_role(user_id,role_id) VALUES(9,1),(8,2)`,
-		`INSERT INTO pd_report_work(id,doc_no,status,confirmed_at,scan_code,input_weight,qty) VALUES(1,'RW1','posted',datetime('now'),'BX-SMOKE',70,70)`,
-		`INSERT INTO inv_stock_txn(doc_no,doc_type,biz_date,status,warehouse_id,remark) VALUES('C1','consume',date('now'),'posted',1,'auto:BX-SMOKE')`,
+		`INSERT INTO pd_report_work(id,doc_no,status,confirmed_at,scan_code,input_weight,qty) VALUES(1,'RW1','posted',NOW(),'BX-SMOKE',70,70)`,
+		`INSERT INTO inv_stock_txn(doc_no,doc_type,biz_date,status,warehouse_id,remark) VALUES('C1','consume',CURRENT_DATE::text,'posted',1,'auto:BX-SMOKE')`,
 		`INSERT INTO inv_stock_txn_line(txn_id,line_no,product_id,qty,base_qty,direction) VALUES(1,1,1,100,100,'out')`,
 	}
 	for _, s := range stmts {

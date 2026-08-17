@@ -72,10 +72,10 @@ func (s *Services) handleProducts(c *gin.Context, method, action string) bool {
 		id, _ := res.LastInsertId()
 		// default base unit kg
 		unitName := strOrDef(body["base_unit"], "kg")
-		_, _ = s.DB.Exec(`INSERT OR IGNORE INTO prd_product_unit(product_id, unit_name, is_base, factor_to_base, is_purchase, is_sale, is_stock)
+		_, _ = s.DB.Exec(`INSERT INTO prd_product_unit(product_id, unit_name, is_base, factor_to_base, is_purchase, is_sale, is_stock)
 			VALUES(?,?,1,1,1,1,1)`, id, unitName)
 		// app sort entry
-		_, _ = s.DB.Exec(`INSERT OR IGNORE INTO prd_product_app_sort(product_id, channel, sort_no, is_visible) VALUES(?,?,?,1)`,
+		_, _ = s.DB.Exec(`INSERT INTO prd_product_app_sort(product_id, channel, sort_no, is_visible) VALUES(?,?,?,1)`,
 			id, "app", id*10)
 		api.OK(c, gin.H{"id": id, "code": code, "name": name, "product_type": typ, "status": "active"})
 		return true
@@ -120,7 +120,7 @@ func (s *Services) handleProducts(c *gin.Context, method, action string) bool {
 			is_batch_managed=COALESCE(?,is_batch_managed),
 			is_box_managed=COALESCE(?,is_box_managed),
 			status=COALESCE(NULLIF(?,''),status),
-			updated_at=datetime('now')
+			updated_at=NOW()
 			WHERE id=? AND is_deleted=0`,
 			strOr(body["name"]), strOr(body["category"]), strOr(body["product_type"]),
 			firstNonEmpty(strOr(body["spec"]), strOr(body["spec_text"])),
@@ -136,15 +136,15 @@ func (s *Services) handleProducts(c *gin.Context, method, action string) bool {
 		return true
 	case "delete":
 		id := paramID(c)
-		_, _ = s.DB.Exec(`UPDATE prd_product SET is_deleted=1, updated_at=datetime('now') WHERE id=?`, id)
+		_, _ = s.DB.Exec(`UPDATE prd_product SET is_deleted=1, updated_at=NOW() WHERE id=?`, id)
 		api.OK(c, gin.H{})
 		return true
 	case "action:activate":
-		_, _ = s.DB.Exec(`UPDATE prd_product SET status='active', updated_at=datetime('now') WHERE id=?`, paramID(c))
+		_, _ = s.DB.Exec(`UPDATE prd_product SET status='active', updated_at=NOW() WHERE id=?`, paramID(c))
 		api.OK(c, gin.H{"id": paramID(c), "status": "active"})
 		return true
 	case "action:deactivate":
-		_, _ = s.DB.Exec(`UPDATE prd_product SET status='inactive', updated_at=datetime('now') WHERE id=?`, paramID(c))
+		_, _ = s.DB.Exec(`UPDATE prd_product SET status='inactive', updated_at=NOW() WHERE id=?`, paramID(c))
 		api.OK(c, gin.H{"id": paramID(c), "status": "inactive"})
 		return true
 	}
@@ -626,7 +626,7 @@ func (s *Services) handleRequisitions(c *gin.Context, method, action, path strin
 		if len(txnLines) > 0 {
 			_, _ = s.insertPostedStockTxn("consume", whID, time.Now().Format("2006-01-02"), "", txnLines, fmt.Sprintf("requisition:%d", id))
 		}
-		_, _ = s.DB.Exec(`UPDATE pd_material_requisition SET status='posted', updated_at=datetime('now') WHERE id=?`, id)
+		_, _ = s.DB.Exec(`UPDATE pd_material_requisition SET status='posted', updated_at=NOW() WHERE id=?`, id)
 		api.OK(c, gin.H{"id": id, "status": "posted"})
 		return true
 	}
@@ -997,7 +997,7 @@ func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
 		if roleIDs, ok := body["role_ids"].([]interface{}); ok {
 			for _, r := range roleIDs {
 				rid, _ := asInt64(r)
-				_, _ = s.DB.Exec(`INSERT OR IGNORE INTO iam_user_role(user_id, role_id) VALUES(?,?)`, id, rid)
+				_, _ = s.DB.Exec(`INSERT INTO iam_user_role(user_id, role_id) VALUES(?,?)`, id, rid)
 			}
 		}
 		security.InvalidateUserRBAC(id)
@@ -1065,14 +1065,14 @@ func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
 		_, _ = s.DB.Exec(`DELETE FROM iam_role_permission WHERE role_id=?`, rid)
 		for _, x := range codes {
 			if id, ok := asInt64(x); ok {
-				_, _ = s.DB.Exec(`INSERT OR IGNORE INTO iam_role_permission(role_id, permission_id) VALUES(?,?)`, rid, id)
+				_, _ = s.DB.Exec(`INSERT INTO iam_role_permission(role_id, permission_id) VALUES(?,?)`, rid, id)
 				continue
 			}
 			if code, ok := x.(string); ok {
 				var pid int64
 				_ = s.DB.QueryRow(`SELECT id FROM iam_permission WHERE code=?`, code).Scan(&pid)
 				if pid > 0 {
-					_, _ = s.DB.Exec(`INSERT OR IGNORE INTO iam_role_permission(role_id, permission_id) VALUES(?,?)`, rid, pid)
+					_, _ = s.DB.Exec(`INSERT INTO iam_role_permission(role_id, permission_id) VALUES(?,?)`, rid, pid)
 				}
 			}
 		}
@@ -1307,7 +1307,7 @@ func (s *Services) updateRoleIAM(c *gin.Context) bool {
 	if v, ok := body["status"].(string); ok && v != "" {
 		status = v
 	}
-	_, err = s.DB.Exec(`UPDATE iam_role SET code=?, name=?, data_scope_type=?, remark=?, status=?, updated_at=datetime('now') WHERE id=?`,
+	_, err = s.DB.Exec(`UPDATE iam_role SET code=?, name=?, data_scope_type=?, remark=?, status=?, updated_at=NOW() WHERE id=?`,
 		code, name, scope, remark, status, rid)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())

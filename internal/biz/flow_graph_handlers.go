@@ -194,7 +194,7 @@ func (s *Services) updateFlowGraph(c *gin.Context) bool {
 		routingID = rid
 	}
 
-	_, err := s.DB.Exec(`UPDATE pd_flow_graph SET code=?, name=?, kind=?, status=?, routing_id=?, graph_json=?, version_no=?, updated_at=datetime('now') WHERE id=?`,
+	_, err := s.DB.Exec(`UPDATE pd_flow_graph SET code=?, name=?, kind=?, status=?, routing_id=?, graph_json=?, version_no=?, updated_at=NOW() WHERE id=?`,
 		code, name, kind, status, nullIf0(routingID), gjson, ver, id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -209,16 +209,16 @@ func (s *Services) updateFlowGraph(c *gin.Context) bool {
 
 func (s *Services) deleteFlowGraph(c *gin.Context) bool {
 	id := paramID(c)
-	_, _ = s.DB.Exec(`UPDATE pd_flow_graph SET is_deleted=1, updated_at=datetime('now') WHERE id=?`, id)
+	_, _ = s.DB.Exec(`UPDATE pd_flow_graph SET is_deleted=1, updated_at=NOW() WHERE id=?`, id)
 	api.OK(c, gin.H{"id": id})
 	return true
 }
 
 func (s *Services) deactivateOtherFlowGraphs(kind string, exceptID int64) {
 	if exceptID > 0 {
-		_, _ = s.DB.Exec(`UPDATE pd_flow_graph SET status='draft', updated_at=datetime('now') WHERE kind=? AND status='active' AND id<>? AND COALESCE(is_deleted,0)=0`, kind, exceptID)
+		_, _ = s.DB.Exec(`UPDATE pd_flow_graph SET status='draft', updated_at=NOW() WHERE kind=? AND status='active' AND id<>? AND COALESCE(is_deleted,0)=0`, kind, exceptID)
 	} else {
-		_, _ = s.DB.Exec(`UPDATE pd_flow_graph SET status='draft', updated_at=datetime('now') WHERE kind=? AND status='active' AND COALESCE(is_deleted,0)=0`, kind)
+		_, _ = s.DB.Exec(`UPDATE pd_flow_graph SET status='draft', updated_at=NOW() WHERE kind=? AND status='active' AND COALESCE(is_deleted,0)=0`, kind)
 	}
 }
 
@@ -893,7 +893,7 @@ func (s *Services) advanceWeighTicketAssignee(c *gin.Context, weighID int64, fro
 	if tid <= 0 {
 		return
 	}
-	_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=datetime('now') WHERE id=?`, uid, tid)
+	_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=NOW() WHERE id=?`, uid, tid)
 	cl := middleware.Claims(c)
 	from := int64(0)
 	if cl != nil {

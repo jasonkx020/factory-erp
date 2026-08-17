@@ -56,9 +56,9 @@ docker compose --profile mqtt up -d --build
 powershell -File scripts/backup.ps1
 ```
 
-- **SQLite**：停服后拷贝 `data/erp.db`；回滚即还原文件并重启。
-- **MySQL**：`mysqldump erp_factory > backup.sql`；回滚 `mysql erp_factory < backup.sql` 后重启 API。
+- **PostgreSQL**：`pg_dump` / `pg_restore`（见 `scripts/backup.ps1`、`scripts/backup.sh`）；回滚靠备份恢复后重启 API。
 - 发布回滚：保留上一镜像 tag，`docker compose up -d` 切回旧 tag。
+- 结构升级：`erp-db status` → `erp-db upgrade --all`（无 down migration）。
 
 ### 发布门禁（执行）
 

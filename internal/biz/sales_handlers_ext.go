@@ -102,7 +102,7 @@ func (s *Services) createInquiry(c *gin.Context) bool {
 		}
 		_, _ = s.DB.Exec(`INSERT INTO sl_inquiry_line(inquiry_id, product_id, qty, quote_price, remark) VALUES(?,?,?,?,?)`,
 			id, pid, qty, price, strOr(ln["remark"]))
-		_, _ = s.DB.Exec(`INSERT INTO sl_quote_history(customer_id, product_id, price, quoted_at, inquiry_id) VALUES(?,?,?,datetime('now'),?)`,
+		_, _ = s.DB.Exec(`INSERT INTO sl_quote_history(customer_id, product_id, price, quoted_at, inquiry_id) VALUES(?,?,?,NOW(),?)`,
 			customerID, pid, price, id)
 	}
 	api.OK(c, s.loadInquiry(id))
@@ -112,7 +112,7 @@ func (s *Services) createInquiry(c *gin.Context) bool {
 func (s *Services) updateInquiry(c *gin.Context) bool {
 	id := paramID(c)
 	body := bindBody(c)
-	_, _ = s.DB.Exec(`UPDATE sl_inquiry SET remark=COALESCE(NULLIF(?,''),remark), status=COALESCE(NULLIF(?,''),status), updated_at=datetime('now') WHERE id=?`,
+	_, _ = s.DB.Exec(`UPDATE sl_inquiry SET remark=COALESCE(NULLIF(?,''),remark), status=COALESCE(NULLIF(?,''),status), updated_at=NOW() WHERE id=?`,
 		strOr(body["remark"]), strOr(body["status"]), id)
 	api.OK(c, s.loadInquiry(id))
 	return true
@@ -120,7 +120,7 @@ func (s *Services) updateInquiry(c *gin.Context) bool {
 
 func (s *Services) inquiryApprove(c *gin.Context) bool {
 	id := paramID(c)
-	_, err := s.DB.Exec(`UPDATE sl_inquiry SET status='approved', updated_at=datetime('now') WHERE id=? AND status IN ('draft','pending')`, id)
+	_, err := s.DB.Exec(`UPDATE sl_inquiry SET status='approved', updated_at=NOW() WHERE id=? AND status IN ('draft','pending')`, id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR")
 		return true
@@ -169,7 +169,7 @@ func (s *Services) inquiryToOrder(c *gin.Context) bool {
 			VALUES(3,?,?, 'sales_order',?,'active')`, pid, qty, oid)
 	}
 	_, _ = s.DB.Exec(`UPDATE sl_sales_order SET total_amount=? WHERE id=?`, total, oid)
-	_, _ = s.DB.Exec(`UPDATE sl_inquiry SET status='ordered', updated_at=datetime('now') WHERE id=?`, id)
+	_, _ = s.DB.Exec(`UPDATE sl_inquiry SET status='ordered', updated_at=NOW() WHERE id=?`, id)
 	api.OK(c, gin.H{"inquiry_id": id, "order": s.loadSalesOrder(oid)})
 	return true
 }
@@ -228,7 +228,7 @@ func (s *Services) handlePreShipments(c *gin.Context, method, action, path strin
 	case action == "update" || action == "replace":
 		id := paramID(c)
 		body := bindBody(c)
-		_, _ = s.DB.Exec(`UPDATE sl_pre_shipment SET plan_ship_date=COALESCE(NULLIF(?,''),plan_ship_date), remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=?`,
+		_, _ = s.DB.Exec(`UPDATE sl_pre_shipment SET plan_ship_date=COALESCE(NULLIF(?,''),plan_ship_date), remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=?`,
 			strOr(body["plan_ship_date"]), strOr(body["remark"]), id)
 		api.OK(c, s.loadPreShip(id))
 		return true
@@ -328,10 +328,10 @@ func (s *Services) preShipReserve(c *gin.Context, reserve bool) bool {
 			_, _ = s.DB.Exec(`INSERT INTO inv_reservation(warehouse_id, product_id, qty, source_doc_type, source_doc_id, status)
 				VALUES(?,?,?,'pre_shipment',?,'active')`, wh, prid, qty, id)
 		}
-		_, _ = s.DB.Exec(`UPDATE sl_pre_shipment SET reserved=1, status='reserved', updated_at=datetime('now') WHERE id=?`, id)
+		_, _ = s.DB.Exec(`UPDATE sl_pre_shipment SET reserved=1, status='reserved', updated_at=NOW() WHERE id=?`, id)
 	} else {
 		_, _ = s.DB.Exec(`UPDATE inv_reservation SET status='cancelled' WHERE source_doc_type='pre_shipment' AND source_doc_id=? AND status='active'`, id)
-		_, _ = s.DB.Exec(`UPDATE sl_pre_shipment SET reserved=0, status='draft', updated_at=datetime('now') WHERE id=?`, id)
+		_, _ = s.DB.Exec(`UPDATE sl_pre_shipment SET reserved=0, status='draft', updated_at=NOW() WHERE id=?`, id)
 	}
 	_ = orderID
 	api.OK(c, s.loadPreShip(id))
@@ -365,7 +365,7 @@ func (s *Services) preShipConfirmReal(c *gin.Context) bool {
 		qty, _ := asFloat(ln["qty"])
 		_, _ = s.DB.Exec(`INSERT INTO sl_delivery_line(delivery_id, product_id, qty) VALUES(?,?,?)`, did, prid, qty)
 	}
-	_, _ = s.DB.Exec(`UPDATE sl_pre_shipment SET status='confirmed', updated_at=datetime('now') WHERE id=?`, id)
+	_, _ = s.DB.Exec(`UPDATE sl_pre_shipment SET status='confirmed', updated_at=NOW() WHERE id=?`, id)
 	api.OK(c, gin.H{"pre_shipment": s.loadPreShip(id), "delivery": s.loadDelivery(did)})
 	return true
 }
@@ -423,7 +423,7 @@ func (s *Services) handleDeliveries(c *gin.Context, method, action, path string)
 	case action == "update" || action == "replace":
 		id := paramID(c)
 		body := bindBody(c)
-		_, _ = s.DB.Exec(`UPDATE sl_delivery_approval SET logistics_no=COALESCE(NULLIF(?,''),logistics_no), remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=?`,
+		_, _ = s.DB.Exec(`UPDATE sl_delivery_approval SET logistics_no=COALESCE(NULLIF(?,''),logistics_no), remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=?`,
 			strOr(body["logistics_no"]), strOr(body["remark"]), id)
 		api.OK(c, s.loadDelivery(id))
 		return true
@@ -505,7 +505,7 @@ func (s *Services) createDelivery(c *gin.Context) bool {
 
 func (s *Services) deliverySetStatus(c *gin.Context, st string) bool {
 	id := paramID(c)
-	_, err := s.DB.Exec(`UPDATE sl_delivery_approval SET status=?, updated_at=datetime('now') WHERE id=?`, st, id)
+	_, err := s.DB.Exec(`UPDATE sl_delivery_approval SET status=?, updated_at=NOW() WHERE id=?`, st, id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR")
 		return true
@@ -560,9 +560,9 @@ func (s *Services) deliveryShip(c *gin.Context) bool {
 	}
 	now := time.Now().Format("2006-01-02 15:04:05")
 	body := bindBody(c)
-	_, _ = s.DB.Exec(`UPDATE sl_delivery_approval SET status='shipped', shipped_at=?, logistics_no=COALESCE(NULLIF(?,''),logistics_no), updated_at=datetime('now') WHERE id=?`,
+	_, _ = s.DB.Exec(`UPDATE sl_delivery_approval SET status='shipped', shipped_at=?, logistics_no=COALESCE(NULLIF(?,''),logistics_no), updated_at=NOW() WHERE id=?`,
 		now, strOr(body["logistics_no"]), id)
-	_, _ = s.DB.Exec(`UPDATE sl_sales_order SET status='shipped', updated_at=datetime('now') WHERE id=?`, orderID)
+	_, _ = s.DB.Exec(`UPDATE sl_sales_order SET status='shipped', updated_at=NOW() WHERE id=?`, orderID)
 	api.OK(c, s.loadDelivery(id))
 	return true
 }
@@ -726,7 +726,7 @@ func (s *Services) handleContracts(c *gin.Context, method, action string) bool {
 		if action == "update" || action == "replace" {
 			body := bindBody(c)
 			_, _ = s.DB.Exec(`UPDATE sl_contract SET title=COALESCE(NULLIF(?,''),title), amount=COALESCE(NULLIF(?,0),amount),
-				status=COALESCE(NULLIF(?,''),status), remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=?`,
+				status=COALESCE(NULLIF(?,''),status), remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=?`,
 				strOr(body["title"]), func() float64 { f, _ := asFloat(body["amount"]); return f }(), strOr(body["status"]), strOr(body["remark"]), id)
 		}
 		var cid int64
@@ -790,7 +790,7 @@ func (s *Services) handleSalesRankings(c *gin.Context, method, path string) bool
 			if topN <= 0 {
 				topN = 10
 			}
-			_, _ = s.DB.Exec(`UPDATE sl_sales_rank_config SET metric=?, top_n=?, updated_at=datetime('now') WHERE id=1`, metric, topN)
+			_, _ = s.DB.Exec(`UPDATE sl_sales_rank_config SET metric=?, top_n=?, updated_at=NOW() WHERE id=1`, metric, topN)
 			api.OK(c, gin.H{"metric": metric, "top_n": topN})
 			return true
 		}
@@ -1033,7 +1033,7 @@ func (s *Services) handleQuoteCalculator(c *gin.Context, method, path string) bo
 		}
 		id, _ := res.LastInsertId()
 		if cid > 0 && quote > 0 {
-			_, _ = s.DB.Exec(`INSERT INTO sl_quote_history(customer_id, product_id, price, quoted_at) VALUES(?,?,?,datetime('now'))`, cid, pid, quote)
+			_, _ = s.DB.Exec(`INSERT INTO sl_quote_history(customer_id, product_id, price, quoted_at) VALUES(?,?,?,NOW())`, cid, pid, quote)
 		}
 		api.OK(c, gin.H{"id": id, "saved": true, "quote_price": quote})
 		return true

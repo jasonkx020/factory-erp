@@ -52,8 +52,8 @@ func (s *Services) destroyBoxCode(c *gin.Context) bool {
 	}
 	before := gin.H{"id": id, "code": code, "status": status, "weight": weight, "trace_code": trace}
 
-	_, err = s.DB.Exec(`UPDATE inv_box_code SET status='destroyed', destroyed_at=datetime('now'), destroyed_by=?,
-		destroy_reason=?, current_process_id=NULL, current_step_id=NULL, updated_at=datetime('now') WHERE id=?`,
+	_, err = s.DB.Exec(`UPDATE inv_box_code SET status='destroyed', destroyed_at=NOW(), destroyed_by=?,
+		destroy_reason=?, current_process_id=NULL, current_step_id=NULL, updated_at=NOW() WHERE id=?`,
 		uid, reason, id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())

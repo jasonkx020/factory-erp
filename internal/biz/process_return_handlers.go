@@ -224,7 +224,7 @@ func (s *Services) submitProcessReturn(c *gin.Context) bool {
 	if foreman <= 0 {
 		foreman = uid
 	}
-	_, err := s.DB.Exec(`UPDATE pd_process_return SET status='pending_foreman', foreman_user_id=?, current_assignee_user_id=?, updated_at=datetime('now') WHERE id=?`,
+	_, err := s.DB.Exec(`UPDATE pd_process_return SET status='pending_foreman', foreman_user_id=?, current_assignee_user_id=?, updated_at=NOW() WHERE id=?`,
 		nullIf0(foreman), nullIf0(foreman), id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -265,7 +265,7 @@ func (s *Services) approveProcessReturn(c *gin.Context) bool {
 	if whUser <= 0 {
 		whUser = uid
 	}
-	_, err := s.DB.Exec(`UPDATE pd_process_return SET status='pending_warehouse', foreman_user_id=?, warehouse_user_id=?, current_assignee_user_id=?, updated_at=datetime('now') WHERE id=?`,
+	_, err := s.DB.Exec(`UPDATE pd_process_return SET status='pending_warehouse', foreman_user_id=?, warehouse_user_id=?, current_assignee_user_id=?, updated_at=NOW() WHERE id=?`,
 		nullIf0(uid), nullIf0(whUser), nullIf0(whUser), id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -304,7 +304,7 @@ func (s *Services) rejectProcessReturn(c *gin.Context) bool {
 	if cl := middleware.Claims(c); cl != nil {
 		uid = cl.UserID
 	}
-	_, err := s.DB.Exec(`UPDATE pd_process_return SET status='rejected', remark=COALESCE(NULLIF(?,''),remark), current_assignee_user_id=NULL, updated_at=datetime('now') WHERE id=?`,
+	_, err := s.DB.Exec(`UPDATE pd_process_return SET status='rejected', remark=COALESCE(NULLIF(?,''),remark), current_assignee_user_id=NULL, updated_at=NOW() WHERE id=?`,
 		strOr(body["remark"]), id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -339,10 +339,10 @@ func (s *Services) transferProcessReturn(c *gin.Context) bool {
 	}
 	// 转交不跳过阶段：仅换当前处理人
 	if st == "pending_foreman" {
-		_, _ = s.DB.Exec(`UPDATE pd_process_return SET foreman_user_id=?, current_assignee_user_id=?, updated_at=datetime('now') WHERE id=?`,
+		_, _ = s.DB.Exec(`UPDATE pd_process_return SET foreman_user_id=?, current_assignee_user_id=?, updated_at=NOW() WHERE id=?`,
 			toUID, toUID, id)
 	} else {
-		_, _ = s.DB.Exec(`UPDATE pd_process_return SET warehouse_user_id=?, current_assignee_user_id=?, updated_at=datetime('now') WHERE id=?`,
+		_, _ = s.DB.Exec(`UPDATE pd_process_return SET warehouse_user_id=?, current_assignee_user_id=?, updated_at=NOW() WHERE id=?`,
 			toUID, toUID, id)
 	}
 	s.logProcessReturn(id, "transfer", uid, toUID, strOr(body["remark"]))
@@ -391,14 +391,14 @@ func (s *Services) warehouseConfirmProcessReturn(c *gin.Context) bool {
 		return true
 	}
 	// 箱码挂回仓库，次日可再出库；不回冲已确认计件
-	_, _ = s.DB.Exec(`UPDATE inv_box_code SET warehouse_id=?, qty=?, weight=?, status='open', updated_at=datetime('now') WHERE code=?`,
+	_, _ = s.DB.Exec(`UPDATE inv_box_code SET warehouse_id=?, qty=?, weight=?, status='open', updated_at=NOW() WHERE code=?`,
 		whID, retW, retW, box)
 	var uid int64
 	if cl := middleware.Claims(c); cl != nil {
 		uid = cl.UserID
 	}
 	_, err = s.DB.Exec(`UPDATE pd_process_return SET status='posted', stock_txn_id=?, warehouse_user_id=?, current_assignee_user_id=NULL,
-		posted_at=datetime('now'), updated_at=datetime('now') WHERE id=?`, tid, nullIf0(uid), id)
+		posted_at=NOW(), updated_at=NOW() WHERE id=?`, tid, nullIf0(uid), id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
 		return true

@@ -36,7 +36,7 @@ func EnsureReportSchema(db *sql.DB) {
   report_code TEXT NOT NULL,
   biz_date TEXT NOT NULL,
   payload_json TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (NOW()),
   UNIQUE(report_code, biz_date)
 )`,
 		`CREATE TABLE IF NOT EXISTS sys_logistics_carrier (
@@ -53,8 +53,8 @@ func EnsureReportSchema(db *sql.DB) {
   order_id INTEGER,
   status TEXT NOT NULL DEFAULT 'in_transit',
   location TEXT,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (NOW()),
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 	}
 	for _, s := range stmts {
@@ -73,7 +73,7 @@ func EnsureReportSchema(db *sql.DB) {
 			{"cost_profit", "成本利润表", "finance"},
 		}
 		for _, d := range defs {
-			_, _ = db.Exec(`INSERT OR IGNORE INTO rpt_report_definition(code, name, report_type) VALUES(?,?,?)`, d[0], d[1], d[2])
+			_, _ = db.Exec(`INSERT INTO rpt_report_definition(code, name, report_type) VALUES(?,?,?)`, d[0], d[1], d[2])
 		}
 	}
 	_ = db.QueryRow(`SELECT COUNT(1) FROM rpt_dashboard_widget`).Scan(&n)

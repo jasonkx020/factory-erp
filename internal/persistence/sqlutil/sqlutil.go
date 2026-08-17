@@ -3,17 +3,14 @@ package sqlutil
 import (
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
-// NowExpr returns SQL expression for current timestamp.
+// NowExpr returns SQL expression for current timestamp (PostgreSQL).
 func NowExpr(driver string) string {
-	if strings.EqualFold(driver, "mysql") {
-		return "NOW()"
-	}
-	return "datetime('now')"
+	_ = driver
+	return "NOW()"
 }
 
 func Page(c *gin.Context) (pageNum, pageSize int) {
@@ -36,8 +33,6 @@ func Offset(pageNum, pageSize int) int {
 }
 
 func LimitSQL(driver string, limit, offset int) string {
-	if strings.EqualFold(driver, "mysql") {
-		return fmt.Sprintf("LIMIT %d OFFSET %d", limit, offset)
-	}
+	_ = driver
 	return fmt.Sprintf("LIMIT %d OFFSET %d", limit, offset)
 }

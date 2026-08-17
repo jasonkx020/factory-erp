@@ -160,7 +160,7 @@ func (s *Services) reserveTraceBatchCodeForGate(code string, userID int64) (gin.
 		return nil, "BATCH_CODE_USED"
 	case "reserved":
 		if userID > 0 && reservedBy == userID {
-			_, _ = s.DB.Exec(`UPDATE pur_trace_batch_code SET reserved_at=datetime('now') WHERE code=? AND status='reserved'`, code)
+			_, _ = s.DB.Exec(`UPDATE pur_trace_batch_code SET reserved_at=NOW() WHERE code=? AND status='reserved'`, code)
 			return gin.H{
 				"code": code, "valid": true, "status": "reserved", "receive_kind": "gate",
 				"expires_in_sec": int(traceBatchReserveTTL.Seconds()),
@@ -172,7 +172,7 @@ func (s *Services) reserveTraceBatchCodeForGate(code string, userID int64) (gin.
 			// no auth context: read-only ok (admin tools); App always authenticated
 			return gin.H{"code": code, "valid": true, "status": "available", "receive_kind": "gate"}, ""
 		}
-		res, err := s.DB.Exec(`UPDATE pur_trace_batch_code SET status='reserved', reserved_by=?, reserved_at=datetime('now')
+		res, err := s.DB.Exec(`UPDATE pur_trace_batch_code SET status='reserved', reserved_by=?, reserved_at=NOW()
 			WHERE code=? AND status='available'`, userID, code)
 		if err != nil {
 			return nil, "DB_ERROR:" + err.Error()
@@ -331,7 +331,7 @@ func (s *Services) occupyTraceBatchCode(code string, ticketID, userID int64) err
 	s.expireStaleTraceBatchReservations()
 	// CAS: available, or reserved by current user, or expired reserved already cleared above
 	res, err := s.DB.Exec(`UPDATE pur_trace_batch_code
-		SET status='used', weigh_ticket_id=?, used_at=datetime('now'), reserved_by=NULL, reserved_at=NULL
+		SET status='used', weigh_ticket_id=?, used_at=NOW(), reserved_by=NULL, reserved_at=NULL
 		WHERE code=? AND (
 			status='available'
 			OR (status='reserved' AND (reserved_by=? OR COALESCE(reserved_by,0)=0))

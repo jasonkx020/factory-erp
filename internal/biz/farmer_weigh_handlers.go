@@ -159,7 +159,7 @@ func (s *Services) updateFarmer(c *gin.Context) bool {
 	_, err := s.DB.Exec(`UPDATE pur_farmer SET name=COALESCE(NULLIF(?,''),name), mobile=COALESCE(NULLIF(?,''),mobile),
 		origin=COALESCE(NULLIF(?,''),origin), trace_code=COALESCE(NULLIF(?,''),trace_code),
 		trace_code_prefix=COALESCE(NULLIF(?,''),trace_code_prefix), status=COALESCE(NULLIF(?,''),status),
-		remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=? AND COALESCE(is_deleted,0)=0`,
+		remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=? AND COALESCE(is_deleted,0)=0`,
 		strOr(body["name"]), strOr(body["mobile"]), strOr(body["origin"]), strOr(body["trace_code"]),
 		strOr(body["trace_code_prefix"]), strOr(body["status"]), strOr(body["remark"]), id)
 	if err != nil {
@@ -675,7 +675,7 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 		if code := s.ensureWeighIssued(c, id, body); code != "" {
 			s.releaseTraceBatchCode(id)
 			if ticketID > 0 {
-				_, _ = s.DB.Exec(`UPDATE wf_ticket SET status='cancelled', updated_at=datetime('now') WHERE id=?`, ticketID)
+				_, _ = s.DB.Exec(`UPDATE wf_ticket SET status='cancelled', updated_at=NOW() WHERE id=?`, ticketID)
 			}
 			_, _ = s.DB.Exec(`DELETE FROM pur_weigh_ticket WHERE id=?`, id)
 			api.FailJSON(c, code)
@@ -776,7 +776,7 @@ func (s *Services) updateWeighTicket(c *gin.Context) bool {
 		bag_qty=COALESCE(NULLIF(?,0),bag_qty), cold_store_type=COALESCE(NULLIF(?,''),cold_store_type),
 		party_name=COALESCE(NULLIF(?,''),party_name), party_mobile=COALESCE(NULLIF(?,''),party_mobile),
 		origin=COALESCE(NULLIF(?,''),origin),
-		updated_at=datetime('now') WHERE id=?`,
+		updated_at=NOW() WHERE id=?`,
 		gross, deductRate, deductWeight, net, strOr(body["variety"]), imageURL, strOr(body["remark"]),
 		plate, recvAddr, passRate, reject, freight, loading, weighFee,
 		unitPrice, settle, bagQty, cold, strOr(body["party_name"]), strOr(body["party_mobile"]),
@@ -786,7 +786,7 @@ func (s *Services) updateWeighTicket(c *gin.Context) bool {
 		return true
 	}
 	if len(imgs) > 0 {
-		_, _ = s.DB.Exec(`UPDATE biz_evidence SET voided_at=datetime('now') WHERE biz_type='weigh_ticket' AND biz_id=? AND evidence_type='site_photo' AND COALESCE(voided_at,'')=''`, id)
+		_, _ = s.DB.Exec(`UPDATE biz_evidence SET voided_at=NOW() WHERE biz_type='weigh_ticket' AND biz_id=? AND evidence_type='site_photo' AND COALESCE(voided_at,'')=''`, id)
 		for _, u := range imgs {
 			_, _ = s.addEvidence(c, "weigh_ticket", id, "site_photo", u, nil)
 		}
@@ -828,7 +828,7 @@ func (s *Services) qcWeighTicket(c *gin.Context) bool {
 		}
 		_, _ = s.DB.Exec(`UPDATE pur_weigh_ticket SET grade=? WHERE id=?`, grade, id)
 	}
-	_, err := s.DB.Exec(`UPDATE pur_weigh_ticket SET qc_result=?, status=?, remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=?`,
+	_, err := s.DB.Exec(`UPDATE pur_weigh_ticket SET qc_result=?, status=?, remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=?`,
 		result, newStatus, strOr(body["remark"]), id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -891,16 +891,16 @@ func (s *Services) applyVerifiedWeighStockIn(c *gin.Context, id int64, body map[
 	auditAction := "stock_in"
 	if kind == "gate" {
 		auditAction = "gate_accept"
-		_, _ = s.DB.Exec(`UPDATE pur_weigh_ticket SET status='gate_accepted', purchase_completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`, id)
-		_, _ = s.DB.Exec(`UPDATE pur_inbound_arrival SET status='gate_accepted', updated_at=datetime('now') WHERE id=(SELECT arrival_id FROM pur_weigh_ticket WHERE id=?)`, id)
+		_, _ = s.DB.Exec(`UPDATE pur_weigh_ticket SET status='gate_accepted', purchase_completed_at=NOW(), updated_at=NOW() WHERE id=?`, id)
+		_, _ = s.DB.Exec(`UPDATE pur_inbound_arrival SET status='gate_accepted', updated_at=NOW() WHERE id=(SELECT arrival_id FROM pur_weigh_ticket WHERE id=?)`, id)
 	} else {
 		ok, msg, loss := s.doWeighStockIn(id, body)
 		if !ok {
 			return nil, msg, false
 		}
 		inboundLoss = loss
-		_, _ = s.DB.Exec(`UPDATE pur_weigh_ticket SET purchase_completed_at=datetime('now') WHERE id=?`, id)
-		_, _ = s.DB.Exec(`UPDATE pur_inbound_arrival SET status='stocked', updated_at=datetime('now') WHERE id=(SELECT arrival_id FROM pur_weigh_ticket WHERE id=?)`, id)
+		_, _ = s.DB.Exec(`UPDATE pur_weigh_ticket SET purchase_completed_at=NOW() WHERE id=?`, id)
+		_, _ = s.DB.Exec(`UPDATE pur_inbound_arrival SET status='stocked', updated_at=NOW() WHERE id=(SELECT arrival_id FROM pur_weigh_ticket WHERE id=?)`, id)
 	}
 
 	m := s.loadWeighTicket(id)
@@ -1184,7 +1184,7 @@ func (s *Services) takeOverWeighTicketForWarehouse(c *gin.Context, weighID int64
 	if tid <= 0 || assignee == cl.UserID {
 		return
 	}
-	_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=datetime('now') WHERE id=?`, cl.UserID, tid)
+	_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=NOW() WHERE id=?`, cl.UserID, tid)
 	s.appendTicketLog(tid, "assign", assignee, cl.UserID, "warehouse_takeover")
 }
 
@@ -1233,7 +1233,7 @@ func (s *Services) warehouseReturnWeighTicket(c *gin.Context) bool {
 		return true
 	}
 	before := m
-	_, err := s.DB.Exec(`UPDATE pur_weigh_ticket SET status='returned', remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=?`,
+	_, err := s.DB.Exec(`UPDATE pur_weigh_ticket SET status='returned', remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=?`,
 		reason, id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -1246,7 +1246,7 @@ func (s *Services) warehouseReturnWeighTicket(c *gin.Context) bool {
 		fromUID = cl.UserID
 	}
 	if tid > 0 {
-		_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=datetime('now') WHERE id=?`, toUID, tid)
+		_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=NOW() WHERE id=?`, toUID, tid)
 		s.appendTicketLog(tid, "warehouse_return", fromUID, toUID, reason)
 		s.notifyTicketAssignee(c, tid, "workflow.ticket.assigned", strOr(m["doc_no"])+" 仓管退回", toUID, fromUID)
 	}
@@ -1287,7 +1287,7 @@ func (s *Services) ensureWeighIssued(c *gin.Context, id int64, body map[string]i
 	}
 	// 仓管退回后采购修正再推：已有溯源绑定则直接恢复 weighed
 	if status == "returned" && strOr(m["trace_code"]) != "" {
-		_, err := s.DB.Exec(`UPDATE pur_weigh_ticket SET status='weighed', updated_at=datetime('now') WHERE id=?`, id)
+		_, err := s.DB.Exec(`UPDATE pur_weigh_ticket SET status='weighed', updated_at=NOW() WHERE id=?`, id)
 		if err != nil {
 			return "DB_ERROR:" + err.Error()
 		}
@@ -1356,8 +1356,8 @@ func (s *Services) ensureWeighIssued(c *gin.Context, id int64, body map[string]i
 		"grade": grade, "trace_code": trace, "batch_no": batch, "farmer_id": farmerID, "bind": "batch_as_trace",
 	})
 	_, err := s.DB.Exec(`UPDATE pur_weigh_ticket SET gross_weight=?, deduct_rate=?, deduct_weight=?, net_weight=?, grade=?,
-		trace_code=?, batch_no=?, status='weighed', confirmed_by=?, confirmed_at=datetime('now'), confirmed_snapshot_json=?,
-		updated_at=datetime('now') WHERE id=?`,
+		trace_code=?, batch_no=?, status='weighed', confirmed_by=?, confirmed_at=NOW(), confirmed_snapshot_json=?,
+		updated_at=NOW() WHERE id=?`,
 		gross, deductRate, deductWeight, net, grade, trace, batch, uid, snap, id)
 	if err != nil {
 		return "DB_ERROR:" + err.Error()
@@ -1374,7 +1374,7 @@ func (s *Services) ensureWeighIssued(c *gin.Context, id int64, body map[string]i
 		}
 	}
 	if arrivalID > 0 {
-		_, _ = s.DB.Exec(`UPDATE pur_inbound_arrival SET status='weighed', updated_at=datetime('now') WHERE id=?`, arrivalID)
+		_, _ = s.DB.Exec(`UPDATE pur_inbound_arrival SET status='weighed', updated_at=NOW() WHERE id=?`, arrivalID)
 	}
 	s.writeAuditCtx(c, "weigh_ticket", id, "bind_batch_trace", "batch_as_trace", m, s.loadWeighTicket(id))
 	return ""
@@ -1771,8 +1771,8 @@ func (s *Services) doWeighStockInBatch(c *gin.Context, id int64, body map[string
 	if err := s.adjustBalanceBatch(wh, productID, bizDate, batchSum); err != nil {
 		return false, "BALANCE_ERROR:" + err.Error(), 0, nil
 	}
-	_, _ = s.DB.Exec(`UPDATE inv_stock_txn SET status='posted', posted_at=datetime('now') WHERE id=?`, tid)
-	_, _ = s.DB.Exec(`UPDATE pur_weigh_ticket SET product_id=?, box_code=COALESCE(NULLIF(box_code,''),?), warehouse_id=?, updated_at=datetime('now') WHERE id=?`,
+	_, _ = s.DB.Exec(`UPDATE inv_stock_txn SET status='posted', posted_at=NOW() WHERE id=?`, tid)
+	_, _ = s.DB.Exec(`UPDATE pur_weigh_ticket SET product_id=?, box_code=COALESCE(NULLIF(box_code,''),?), warehouse_id=?, updated_at=NOW() WHERE id=?`,
 		productID, firstBox, wh, id)
 	return true, "", batchSum, boxCodes
 }
@@ -1813,10 +1813,10 @@ func (s *Services) finalizeWeighBoxStockIn(id int64) (inboundLoss float64, errCo
 	if firstBox == "" {
 		_ = s.DB.QueryRow(`SELECT code FROM inv_box_code WHERE COALESCE(is_deleted,0)=0 AND UPPER(COALESCE(trace_code,''))=UPPER(?) ORDER BY id LIMIT 1`, trace).Scan(&firstBox)
 	}
-	_, _ = s.DB.Exec(`UPDATE pur_weigh_ticket SET status='stocked', box_code=COALESCE(NULLIF(?,''),box_code), updated_at=datetime('now') WHERE id=?`,
+	_, _ = s.DB.Exec(`UPDATE pur_weigh_ticket SET status='stocked', box_code=COALESCE(NULLIF(?,''),box_code), updated_at=NOW() WHERE id=?`,
 		firstBox, id)
 	_, _ = s.DB.Exec(`UPDATE pur_trace_lot SET status='stocked' WHERE weigh_ticket_id=?`, id)
-	_, _ = s.DB.Exec(`UPDATE pur_inbound_arrival SET status='stocked', updated_at=datetime('now') WHERE id=(SELECT arrival_id FROM pur_weigh_ticket WHERE id=?)`, id)
+	_, _ = s.DB.Exec(`UPDATE pur_inbound_arrival SET status='stocked', updated_at=NOW() WHERE id=(SELECT arrival_id FROM pur_weigh_ticket WHERE id=?)`, id)
 	return inboundLoss, ""
 }
 
@@ -2099,7 +2099,7 @@ func (s *Services) payFarmerSettlement(c *gin.Context) bool {
 		return true
 	}
 	_, _ = s.addEvidence(c, "farmer_settlement", id, "pay_receipt", payURL, gin.H{"transfer_no": transferNo})
-	_, err := s.DB.Exec(`UPDATE pur_farmer_settlement SET status='settle_paid', transfer_no=?, paid_at=datetime('now'), pay_evidence_url=?,
+	_, err := s.DB.Exec(`UPDATE pur_farmer_settlement SET status='settle_paid', transfer_no=?, paid_at=NOW(), pay_evidence_url=?,
 		unit_price=COALESCE(NULLIF(?,0),unit_price), amount=COALESCE(NULLIF(?,0),amount), remark=COALESCE(NULLIF(?,''),remark)
 		WHERE id=?`, transferNo, payURL, asFloatOr0(body["unit_price"]), asFloatOr0(body["amount"]), strOr(body["remark"]), id)
 	if err != nil {

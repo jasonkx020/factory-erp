@@ -4,8 +4,10 @@ seed:
 server:
   addr: ":18080"
 database:
-  driver: sqlite
-  sqlite_path: data/erp_gate.db
+  driver: postgres
+  dsn: "postgres://erp:erp@127.0.0.1:5432/erp_factory?sslmode=disable"
+  init_schema: true
+  migrations_dir: migrations
 jwt:
   secret: "gate-smoke-strong-secret-32b"
   access_ttl_min: 120

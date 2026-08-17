@@ -104,7 +104,7 @@ func (s *Services) applyReportWorkConfirm(c *gin.Context, id int64, body map[str
 	})
 	bagQty := asFloatOr0(body["bag_qty"])
 	_, err := s.DB.Exec(`UPDATE pd_report_work SET input_weight=?, output_weight=?, qty=?, weight=?, qty_net=?, loss=?, utilization=?,
-		process_qc_result=?, confirmed_by=?, confirmed_at=datetime('now'), confirmed_snapshot_json=?, status='posted', bag_qty=? WHERE id=?`,
+		process_qc_result=?, confirmed_by=?, confirmed_at=NOW(), confirmed_snapshot_json=?, status='posted', bag_qty=? WHERE id=?`,
 		inW, outW, outW, outW, outW, loss, util, qc, uid, snap, bagQty, id)
 	if err != nil {
 		return nil, "DB_ERROR:" + err.Error()
@@ -243,7 +243,7 @@ func (s *Services) payLaborSummary(c *gin.Context) bool {
 		return true
 	}
 	_, _ = s.addEvidence(c, "piecework_summary", id, "pay_receipt", payURL, gin.H{"transfer_no": transferNo})
-	_, err = s.DB.Exec(`UPDATE pd_piecework_summary SET status='labor_paid', transfer_no=?, paid_at=datetime('now'), pay_evidence_url=? WHERE id=?`,
+	_, err = s.DB.Exec(`UPDATE pd_piecework_summary SET status='labor_paid', transfer_no=?, paid_at=NOW(), pay_evidence_url=? WHERE id=?`,
 		transferNo, payURL, id)
 	if err != nil {
 		// columns may need ensure

@@ -54,6 +54,6 @@ func (s *Services) advanceBoxToStep(boxID int64, step *routingStep) {
 	if boxID <= 0 || step == nil {
 		return
 	}
-	_, _ = s.DB.Exec(`UPDATE inv_box_code SET current_process_id=?, current_step_id=?, updated_at=datetime('now') WHERE id=?`,
+	_, _ = s.DB.Exec(`UPDATE inv_box_code SET current_process_id=?, current_step_id=?, updated_at=NOW() WHERE id=?`,
 		step.ProcessID, step.ID, boxID)
 }

@@ -1,16 +1,13 @@
 package persistence
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
-	_ "github.com/go-sql-driver/mysql"
-	_ "modernc.org/sqlite"
-
 	"erp/internal/config"
+	"erp/internal/dbmigrate"
 )
 
 type DB struct {
@@ -19,118 +16,40 @@ type DB struct {
 }
 
 func Open(cfg *config.Config) (*DB, error) {
-	switch strings.ToLower(cfg.Database.Driver) {
-	case "sqlite", "sqlite3":
-		return openSQLite(cfg.Database.SQLitePath)
-	case "mysql":
-		if cfg.Database.MySQLDSN == "" {
-			return nil, fmt.Errorf("mysql_dsn required")
-		}
-		db, err := sql.Open("mysql", cfg.Database.MySQLDSN)
-		if err != nil {
-			return nil, err
-		}
-		if err := db.Ping(); err != nil {
-			_ = db.Close()
-			return nil, err
-		}
-		return &DB{SQL: db, Driver: "mysql"}, nil
-	default:
-		return nil, fmt.Errorf("unsupported database driver: %s", cfg.Database.Driver)
+	registerRebindDriver()
+	driver := strings.ToLower(strings.TrimSpace(cfg.Database.Driver))
+	if driver == "" || driver == "postgres" || driver == "postgresql" || driver == "pgx" {
+		driver = "postgres"
+	} else {
+		return nil, fmt.Errorf("unsupported database driver %q (postgres only)", cfg.Database.Driver)
 	}
-}
-
-func openSQLite(path string) (*DB, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, err
+	dsn := strings.TrimSpace(cfg.Database.DSN)
+	if dsn == "" {
+		return nil, fmt.Errorf("database.dsn required")
 	}
-	needInit := false
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		needInit = true
-	}
-	db, err := sql.Open("sqlite", path)
+	sqlDB, err := sql.Open(driverName, dsn)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
-		_ = db.Close()
-		return nil, err
+	sqlDB.SetMaxOpenConns(25)
+	sqlDB.SetMaxIdleConns(5)
+	if err := sqlDB.Ping(); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("database ping: %w", err)
 	}
-	out := &DB{SQL: db, Driver: "sqlite"}
-	if !needInit {
-		var n int
-		_ = db.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='schema_meta'`).Scan(&n)
-		if n == 0 {
-			needInit = true
+	out := &DB{SQL: sqlDB, Driver: "postgres"}
+	if cfg.Database.InitSchema {
+		migrationsRoot := strings.TrimSpace(cfg.Database.MigrationsDir)
+		if migrationsRoot == "" {
+			migrationsRoot = "migrations"
 		}
-	}
-	if needInit {
-		if err := out.MigrateSQLite(); err != nil {
-			_ = db.Close()
-			return nil, err
+		seedPath := strings.TrimSpace(cfg.Database.DataPath)
+		if err := dbmigrate.InitDevDatabase(context.Background(), dsn, migrationsRoot, seedPath); err != nil {
+			_ = sqlDB.Close()
+			return nil, fmt.Errorf("init_schema: %w", err)
 		}
 	}
 	return out, nil
-}
-
-func (d *DB) MigrateSQLite() error {
-	schemaPath := filepath.Join("db", "sqlite", "schema.sql")
-	seedPath := filepath.Join("db", "sqlite", "seed.sql")
-	if err := execSQLFile(d.SQL, schemaPath); err != nil {
-		return fmt.Errorf("schema: %w", err)
-	}
-	if err := execSQLFile(d.SQL, seedPath); err != nil {
-		return fmt.Errorf("seed: %w", err)
-	}
-	return nil
-}
-
-func execSQLFile(db *sql.DB, path string) error {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	stmts := splitSQL(string(b))
-	for _, s := range stmts {
-		if _, err := db.Exec(s); err != nil {
-			return fmt.Errorf("%s: %w\n--- sql ---\n%s", path, err, truncate(s, 200))
-		}
-	}
-	return nil
-}
-
-func splitSQL(script string) []string {
-	var out []string
-	var b strings.Builder
-	lines := strings.Split(script, "\n")
-	for _, line := range lines {
-		trim := strings.TrimSpace(line)
-		if strings.HasPrefix(trim, "--") {
-			continue
-		}
-		b.WriteString(line)
-		b.WriteByte('\n')
-		if strings.HasSuffix(strings.TrimSpace(b.String()), ";") {
-			stmt := strings.TrimSpace(b.String())
-			stmt = strings.TrimSuffix(stmt, ";")
-			stmt = strings.TrimSpace(stmt)
-			if stmt != "" {
-				out = append(out, stmt)
-			}
-			b.Reset()
-		}
-	}
-	if rest := strings.TrimSpace(b.String()); rest != "" {
-		out = append(out, rest)
-	}
-	return out
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
 }
 
 func (d *DB) Close() error {
@@ -138,4 +57,35 @@ func (d *DB) Close() error {
 		return nil
 	}
 	return d.SQL.Close()
+}
+
+// ExecInsertID runs an INSERT and returns the generated id via RETURNING.
+// If query has no RETURNING clause, appends " RETURNING id".
+func ExecInsertID(db *sql.DB, query string, args ...any) (int64, error) {
+	q := strings.TrimSpace(query)
+	q = strings.TrimRight(q, ";")
+	upper := strings.ToUpper(q)
+	if !strings.Contains(upper, "RETURNING") {
+		q = q + " RETURNING id"
+	}
+	var id int64
+	if err := db.QueryRow(q, args...).Scan(&id); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+// ExecInsertIDTx is ExecInsertID for a transaction.
+func ExecInsertIDTx(tx *sql.Tx, query string, args ...any) (int64, error) {
+	q := strings.TrimSpace(query)
+	q = strings.TrimRight(q, ";")
+	upper := strings.ToUpper(q)
+	if !strings.Contains(upper, "RETURNING") {
+		q = q + " RETURNING id"
+	}
+	var id int64
+	if err := tx.QueryRow(q, args...).Scan(&id); err != nil {
+		return 0, err
+	}
+	return id, nil
 }

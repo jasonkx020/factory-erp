@@ -65,17 +65,9 @@ func New(cfgPath string) (*App, error) {
 	_ = os.MkdirAll(filepath.Join("data", "uploads"), 0o755)
 	eng.Static("/files", "data")
 
-	biz.EnsureAutomationSchema(db.SQL)
-	biz.EnsureSystemAdminSchema(db.SQL)
-	auth.EnsureAuthSchema(db.SQL)
+	// Schema is owned by migrations/erp (erp-db / init_schema). Do not Ensure DDL at startup.
 	biz.EnsureDomainPermissions(db.SQL)
-	biz.EnsureHRPermSchema(db.SQL)
-	biz.EnsureHROpsSchema(db.SQL)
-	biz.EnsurePayrollSchema(db.SQL)
-	notify.EnsureSchema(db.SQL)
-	biz.EnsureTicketSchema(db.SQL)
 	biz.EnsureDemoRoleUsers(db.SQL)
-	// SeedOpenShiftForToday also runs inside EnsureDemoRoleUsers after badges are set
 	if cfg.Seed.DemoEnabled() {
 		biz.EnsureDemoData(db.SQL)
 	}

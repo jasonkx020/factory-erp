@@ -20,7 +20,7 @@ func EnsureAssetSchema(db *sql.DB) {
   name TEXT NOT NULL,
   parent_id INTEGER,
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS ast_fixed_asset (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,8 +37,8 @@ func EnsureAssetSchema(db *sql.DB) {
   useful_life_months INTEGER,
   residual_rate REAL DEFAULT 0.05,
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW()),
   is_deleted INTEGER NOT NULL DEFAULT 0
 )`,
 		`CREATE TABLE IF NOT EXISTS ast_asset_transfer (
@@ -54,7 +54,7 @@ func EnsureAssetSchema(db *sql.DB) {
   status TEXT NOT NULL DEFAULT 'draft',
   remark TEXT,
   transferred_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`ALTER TABLE ast_fixed_asset ADD COLUMN dept_name TEXT`,
 		`ALTER TABLE ast_fixed_asset ADD COLUMN useful_life_months INTEGER`,
@@ -81,7 +81,7 @@ func EnsureAssetSchema(db *sql.DB) {
 			{"FAC-OTHER", "其他固定资产"},
 		}
 		for _, s := range seeds {
-			_, _ = db.Exec(`INSERT OR IGNORE INTO ast_fixed_asset_category(code, name) VALUES(?,?)`, s[0], s[1])
+			_, _ = db.Exec(`INSERT INTO ast_fixed_asset_category(code, name) VALUES(?,?)`, s[0], s[1])
 		}
 	}
 }
@@ -308,7 +308,7 @@ func (s *Services) handleFixedAssets(c *gin.Context, method, action string) bool
 			useful_life_months=COALESCE(NULLIF(?,0),useful_life_months),
 			residual_rate=COALESCE(?,residual_rate),
 			remark=COALESCE(NULLIF(?,''),remark),
-			updated_at=datetime('now')
+			updated_at=NOW()
 			WHERE id=? AND COALESCE(is_deleted,0)=0`,
 			strOr(body["name"]), nullInt64Or(body["category_id"]), nullInt64Or(body["dept_id"]),
 			strOr(body["dept_name"]), strOr(body["location_text"]),
@@ -324,7 +324,7 @@ func (s *Services) handleFixedAssets(c *gin.Context, method, action string) bool
 		return true
 	case "delete":
 		id := paramID(c)
-		_, _ = s.DB.Exec(`UPDATE ast_fixed_asset SET is_deleted=1, status='scrapped', updated_at=datetime('now') WHERE id=?`, id)
+		_, _ = s.DB.Exec(`UPDATE ast_fixed_asset SET is_deleted=1, status='scrapped', updated_at=NOW() WHERE id=?`, id)
 		api.OK(c, gin.H{})
 		return true
 	}

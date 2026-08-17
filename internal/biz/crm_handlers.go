@@ -45,7 +45,7 @@ func (s *Services) handleCRMCustomers(c *gin.Context, method, path, action strin
 		if method == "DELETE" {
 			hidden = 0
 		}
-		_, err := s.DB.Exec(`UPDATE crm_customer SET is_hidden=?, updated_at=datetime('now') WHERE id=? AND COALESCE(is_deleted,0)=0`, hidden, id)
+		_, err := s.DB.Exec(`UPDATE crm_customer SET is_hidden=?, updated_at=NOW() WHERE id=? AND COALESCE(is_deleted,0)=0`, hidden, id)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
@@ -58,7 +58,7 @@ func (s *Services) handleCRMCustomers(c *gin.Context, method, path, action strin
 		if method == "DELETE" {
 			locked = 0
 		}
-		_, err := s.DB.Exec(`UPDATE crm_customer SET is_locked=?, updated_at=datetime('now') WHERE id=? AND COALESCE(is_deleted,0)=0`, locked, id)
+		_, err := s.DB.Exec(`UPDATE crm_customer SET is_locked=?, updated_at=NOW() WHERE id=? AND COALESCE(is_deleted,0)=0`, locked, id)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
@@ -89,7 +89,7 @@ func (s *Services) handleCRMCustomers(c *gin.Context, method, path, action strin
 			level=COALESCE(NULLIF(?,''),level),
 			source=COALESCE(NULLIF(?,''),source),
 			remark=COALESCE(NULLIF(?,''),remark),
-			updated_at=datetime('now') WHERE id=?`,
+			updated_at=NOW() WHERE id=?`,
 			strOr(body["contact_name"]), strOr(body["mobile"]), strOr(body["address"]),
 			contactJSONOr(body), strOr(body["settle_method"]),
 			nullInt(body["payment_days"]), nullFloat(body["credit_limit"]),
@@ -116,7 +116,7 @@ func (s *Services) handleCRMCustomers(c *gin.Context, method, path, action strin
 	case action == "update" || action == "replace":
 		return s.updateCRMCustomer(c)
 	case action == "delete":
-		_, _ = s.DB.Exec(`UPDATE crm_customer SET is_deleted=1, status='inactive', updated_at=datetime('now') WHERE id=?`, paramID(c))
+		_, _ = s.DB.Exec(`UPDATE crm_customer SET is_deleted=1, status='inactive', updated_at=NOW() WHERE id=?`, paramID(c))
 		api.OK(c, gin.H{})
 		return true
 	}
@@ -246,7 +246,7 @@ func (s *Services) updateCRMCustomer(c *gin.Context) bool {
 		payment_days=COALESCE(?,payment_days), credit_limit=COALESCE(?,credit_limit),
 		logistics_remark=COALESCE(NULLIF(?,''),logistics_remark),
 		contact_json=COALESCE(NULLIF(?,''),contact_json),
-		updated_at=datetime('now') WHERE id=?`,
+		updated_at=NOW() WHERE id=?`,
 		strOr(body["name"]), strOr(body["short_name"]), strOr(body["contact_name"]), strOr(body["mobile"]),
 		strOr(body["address"]), levelOr(body), strOr(body["source"]), strOr(body["status"]),
 		strOr(body["remark"]), strOr(body["settle_method"]), nullInt(body["payment_days"]),
@@ -482,7 +482,7 @@ func (s *Services) handleCRMOpportunities(c *gin.Context, method, path, action s
 			title=COALESCE(NULLIF(?,''),title), stage=COALESCE(NULLIF(?,''),stage),
 			amount=COALESCE(?,amount), expected_date=COALESCE(NULLIF(?,''),expected_date),
 			status=COALESCE(NULLIF(?,''),status), remark=COALESCE(NULLIF(?,''),remark),
-			updated_at=datetime('now') WHERE id=?`,
+			updated_at=NOW() WHERE id=?`,
 			strOr(body["title"]), strOr(body["stage"]), nullFloat(body["amount"]),
 			strOr(body["expected_date"]), strOr(body["status"]), strOr(body["remark"]), id)
 		if err != nil {
@@ -556,7 +556,7 @@ func (s *Services) convertOpportunity(c *gin.Context) bool {
 	orderID, _ := res.LastInsertId()
 	_, _ = s.DB.Exec(`INSERT INTO sl_sales_order_line(order_id, product_id, qty, price, amount) VALUES(?,?,?,?,?)`,
 		orderID, productID, qty, price, amount)
-	_, _ = s.DB.Exec(`UPDATE crm_opportunity SET status='won', stage='won', converted_order_id=?, updated_at=datetime('now') WHERE id=?`,
+	_, _ = s.DB.Exec(`UPDATE crm_opportunity SET status='won', stage='won', converted_order_id=?, updated_at=NOW() WHERE id=?`,
 		orderID, id)
 	out := s.loadOpportunity(id)
 	out["order"] = gin.H{"id": orderID, "doc_no": docNo, "total_amount": amount}
@@ -625,7 +625,7 @@ func (s *Services) handleCRMFollowUps(c *gin.Context, method, action string) boo
 		// extend protect when followed
 		if days := s.activeProtectDays(); days > 0 {
 			until := time.Now().AddDate(0, 0, days).Format("2006-01-02")
-			_, _ = s.DB.Exec(`UPDATE crm_customer SET protect_until=?, is_public_sea=0, updated_at=datetime('now')
+			_, _ = s.DB.Exec(`UPDATE crm_customer SET protect_until=?, is_public_sea=0, updated_at=NOW()
 				WHERE id=? AND COALESCE(is_deleted,0)=0`, until, cid)
 		}
 		if next != "" {
@@ -740,7 +740,7 @@ func (s *Services) handleCRMLeadAssigns(c *gin.Context, method, action string) b
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
 		}
-		_, _ = s.DB.Exec(`UPDATE crm_customer SET owner_user_id=?, is_public_sea=0, protect_until=?, is_locked=?, updated_at=datetime('now') WHERE id=?`,
+		_, _ = s.DB.Exec(`UPDATE crm_customer SET owner_user_id=?, is_public_sea=0, protect_until=?, is_locked=?, updated_at=NOW() WHERE id=?`,
 			toUID, protectUntil, lockFlag, cid)
 		api.OK(c, gin.H{
 			"customer_id": cid, "from_user_id": fromUID, "to_user_id": toUID,
@@ -811,7 +811,7 @@ func (s *Services) handleCRMProtectRules(c *gin.Context, method, action string) 
 		_, err := s.DB.Exec(`UPDATE crm_lead_protect_rule SET
 			name=COALESCE(NULLIF(?,''),name), protect_days=COALESCE(?,protect_days),
 			release_rule_json=COALESCE(NULLIF(?,''),release_rule_json),
-			status=COALESCE(NULLIF(?,''),status), updated_at=datetime('now') WHERE id=?`,
+			status=COALESCE(NULLIF(?,''),status), updated_at=NOW() WHERE id=?`,
 			strOr(body["name"]), nullInt(body["protect_days"]), strOr(body["release_rule_json"]), strOr(body["status"]), id)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -902,7 +902,7 @@ func (s *Services) handleCRMReleases(c *gin.Context, method, action string) bool
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
 		}
-		_, _ = s.DB.Exec(`UPDATE crm_customer SET owner_user_id=NULL, is_public_sea=1, protect_until=NULL, is_locked=0, updated_at=datetime('now') WHERE id=?`, cid)
+		_, _ = s.DB.Exec(`UPDATE crm_customer SET owner_user_id=NULL, is_public_sea=1, protect_until=NULL, is_locked=0, updated_at=NOW() WHERE id=?`, cid)
 		api.OK(c, gin.H{"customer_id": cid, "released_at": now, "to_public_sea": true})
 		return true
 	}
@@ -932,7 +932,7 @@ func (s *Services) autoReleaseExpired(c *gin.Context) bool {
 	for _, it := range items {
 		_, _ = s.DB.Exec(`INSERT INTO crm_lead_release_log(customer_id, released_at, reason, to_public_sea, from_user_id, operator_user_id)
 			VALUES(?,?,?,1,?,?)`, it.id, now, "保护期到期自动释放", it.owner, claimsUserID(c))
-		_, _ = s.DB.Exec(`UPDATE crm_customer SET owner_user_id=NULL, is_public_sea=1, protect_until=NULL, is_locked=0, updated_at=datetime('now') WHERE id=?`, it.id)
+		_, _ = s.DB.Exec(`UPDATE crm_customer SET owner_user_id=NULL, is_public_sea=1, protect_until=NULL, is_locked=0, updated_at=NOW() WHERE id=?`, it.id)
 		n++
 	}
 	api.OK(c, gin.H{"released_count": n, "released_at": now})
@@ -1122,7 +1122,7 @@ func (s *Services) handleCRMTaskReminders(c *gin.Context, method, action string)
 		body := bindBody(c)
 		_, err := s.DB.Exec(`UPDATE crm_task_reminder SET
 			remind_at=COALESCE(NULLIF(?,''),remind_at), content=COALESCE(NULLIF(?,''),content),
-			status=COALESCE(NULLIF(?,''),status), updated_at=datetime('now') WHERE id=?`,
+			status=COALESCE(NULLIF(?,''),status), updated_at=NOW() WHERE id=?`,
 			strOr(body["remind_at"]), strOr(body["content"]), strOr(body["status"]), id)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())

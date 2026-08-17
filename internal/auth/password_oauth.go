@@ -13,21 +13,9 @@ import (
 	"erp/internal/security"
 )
 
-// EnsureAuthSchema creates oauth binding table.
+// EnsureAuthSchema is a no-op: schema owned by migrations/erp.
 func EnsureAuthSchema(db *sql.DB) {
-	if db == nil {
-		return
-	}
-	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS iam_user_oauth (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL,
-  provider TEXT NOT NULL,
-  open_id TEXT NOT NULL,
-  union_id TEXT,
-  bound_at TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE(provider, open_id),
-  UNIQUE(user_id, provider)
-)`)
+	_ = db
 }
 
 func (h *Handler) ChangePassword(c *gin.Context) {
@@ -67,7 +55,7 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		api.FailJSON(c, "HASH_ERROR")
 		return
 	}
-	_, err = h.DB.Exec(`UPDATE iam_user SET password_hash=?, pwd_changed_at=datetime('now') WHERE id=?`, nh, claims.UserID)
+	_, err = h.DB.Exec(`UPDATE iam_user SET password_hash=?, pwd_changed_at=NOW() WHERE id=?`, nh, claims.UserID)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR")
 		return

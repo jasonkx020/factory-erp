@@ -1,18 +1,27 @@
-seed:
-  # 生产环境建议关闭展示假数据
-  demo: false
 server:
   addr: ":18080"
-  # 空=使用二进制内嵌的前端；需要热换时设为 web/dist 或绝对路径
   web_root: ""
 database:
-  driver: mysql
-  mysql_dsn: "erp:erp@tcp(127.0.0.1:3306)/erp_factory?parseTime=true&charset=utf8mb4&loc=Local"
+  driver: postgres
+  dsn: "postgres://erp:CHANGE_ME@127.0.0.1:5432/erp_factory?sslmode=disable"
+  init_schema: false
+  migrations_dir: migrations
+  schema_path: migrations/erp/schema.sql
+  data_path: migrations/erp/data-dev.sql
+seed:
+  demo: false
 jwt:
-  # 部署时务必通过环境变量 ERP_JWT_SECRET 覆盖为长度≥16的随机串
   secret: "REPLACE_WITH_ENV_ERP_JWT_SECRET_32CHARS"
   access_ttl_min: 120
   refresh_ttl_min: 10080
 cors:
   allow_origins:
     - "https://erp.example.com"
+trace:
+  hmac_secret: "REPLACE_TRACE_HMAC"
+mqtt:
+  enabled: false
+oauth:
+  enabled: false
+ocr:
+  enabled: false

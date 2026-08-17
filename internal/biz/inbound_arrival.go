@@ -160,8 +160,8 @@ func (s *Services) qcArrival(c *gin.Context) bool {
 		uid = cl.UserID
 	}
 	snap := nowSnap(map[string]interface{}{"qc_result": result, "grade": grade})
-	_, err := s.DB.Exec(`UPDATE pur_inbound_arrival SET qc_result=?, grade=?, status=?, confirmed_by=?, confirmed_at=datetime('now'),
-		confirmed_snapshot_json=?, remark=COALESCE(NULLIF(?,''),remark), updated_at=datetime('now') WHERE id=?`,
+	_, err := s.DB.Exec(`UPDATE pur_inbound_arrival SET qc_result=?, grade=?, status=?, confirmed_by=?, confirmed_at=NOW(),
+		confirmed_snapshot_json=?, remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=?`,
 		result, grade, newStatus, uid, snap, strOr(body["remark"]), id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())

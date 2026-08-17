@@ -25,7 +25,7 @@ func EnsureProductionExtSchema(db *sql.DB) {
   is_auto_generated INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'active',
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (NOW()),
   UNIQUE(code, version_no)
 )`,
 		`CREATE TABLE IF NOT EXISTS pd_bom_line (
@@ -43,7 +43,7 @@ func EnsureProductionExtSchema(db *sql.DB) {
   status TEXT NOT NULL DEFAULT 'draft',
   result_task_id INTEGER,
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS pd_task_merge_line (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,7 +64,7 @@ func EnsureProductionExtSchema(db *sql.DB) {
   result TEXT,
   status TEXT NOT NULL DEFAULT 'draft',
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS pd_rework_order (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,7 +75,7 @@ func EnsureProductionExtSchema(db *sql.DB) {
   qty REAL NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'draft',
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS pd_drawing_link (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,7 +87,7 @@ func EnsureProductionExtSchema(db *sql.DB) {
   process_id INTEGER,
   file_url TEXT,
   status TEXT NOT NULL DEFAULT 'active',
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS pd_cost_hide_policy (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,8 +95,8 @@ func EnsureProductionExtSchema(db *sql.DB) {
   name TEXT,
   field_scope TEXT NOT NULL DEFAULT '[]',
   is_enabled INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW()),
   UNIQUE(role_id)
 )`,
 		`CREATE TABLE IF NOT EXISTS pd_outsource_order (
@@ -109,7 +109,7 @@ func EnsureProductionExtSchema(db *sql.DB) {
   status TEXT NOT NULL DEFAULT 'draft',
   remark TEXT,
   received_qty REAL NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS pd_consignment_order (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -120,7 +120,7 @@ func EnsureProductionExtSchema(db *sql.DB) {
   status TEXT NOT NULL DEFAULT 'draft',
   progress TEXT,
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS pd_mrp_run (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -145,7 +145,7 @@ func EnsureProductionExtSchema(db *sql.DB) {
   name TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'active',
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (NOW()),
   is_deleted INTEGER NOT NULL DEFAULT 0
 )`,
 		`ALTER TABLE pd_scrap_record ADD COLUMN scrap_type TEXT`,
@@ -153,9 +153,9 @@ func EnsureProductionExtSchema(db *sql.DB) {
 		`ALTER TABLE pd_dispatch ADD COLUMN dispatch_type TEXT DEFAULT 'normal'`,
 	}
 	execSchemaRuns(db, "production-ext", stmts)
-	_, _ = db.Exec(`INSERT OR IGNORE INTO pd_workshop(id, code, name, status, remark) VALUES
+	_, _ = db.Exec(`INSERT INTO pd_workshop(id, code, name, status, remark) VALUES
  (1, 'WS-MAIN', '主车间', 'active', '木薯粗加工主车间')`)
-	_, _ = db.Exec(`INSERT OR IGNORE INTO pd_bom(id, code, product_id, version_no, name, status) VALUES
+	_, _ = db.Exec(`INSERT INTO pd_bom(id, code, product_id, version_no, name, status) VALUES
  (1, 'BOM-CASSAVA-DICE', 3, 'V1', '袋装木薯丁BOM', 'active')`)
 	var bn int
 	_ = db.QueryRow(`SELECT COUNT(1) FROM pd_bom_line WHERE bom_id=1`).Scan(&bn)
@@ -757,7 +757,7 @@ func (s *Services) handleCostHidePolicies(c *gin.Context, method, action string)
 		id := paramID(c)
 		body := bindBody(c)
 		_, _ = s.DB.Exec(`UPDATE pd_cost_hide_policy SET name=COALESCE(NULLIF(?,''),name), field_scope=COALESCE(NULLIF(?,''),field_scope),
-			is_enabled=COALESCE(?,is_enabled), updated_at=datetime('now') WHERE id=?`,
+			is_enabled=COALESCE(?,is_enabled), updated_at=NOW() WHERE id=?`,
 			strOr(body["name"]), strOr(body["field_scope"]), nullInt(body["is_enabled"]), id)
 		api.OK(c, gin.H{"id": id})
 		return true
@@ -858,7 +858,7 @@ func (s *Services) handleFlexDispatches(c *gin.Context, method, action string) b
 		}
 		woID, _ := woRes.LastInsertId()
 		_, err = s.DB.Exec(`INSERT INTO pd_dispatch(doc_no, work_order_id, dispatch_type, worker_id, plan_qty, status, dispatched_at)
-			VALUES(?,?,?,?,?,'dispatched',datetime('now'))`, docNo, woID, "flex", workerID, qty)
+			VALUES(?,?,?,?,?,'dispatched',NOW())`, docNo, woID, "flex", workerID, qty)
 		if err != nil {
 			_, err = s.DB.Exec(`INSERT INTO pd_dispatch(doc_no, work_order_id, worker_id, plan_qty, status) VALUES(?,?,?,?,'dispatched')`,
 				docNo, woID, workerID, qty)

@@ -24,86 +24,86 @@ func EnsureFinanceSchema(db *sql.DB) {
 		`CREATE TABLE IF NOT EXISTS fin_fund_transfer (
   id INTEGER PRIMARY KEY AUTOINCREMENT, doc_no TEXT NOT NULL UNIQUE,
   from_account_id INTEGER NOT NULL, to_account_id INTEGER NOT NULL, amount REAL NOT NULL,
-  status TEXT NOT NULL DEFAULT 'draft', remark TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  status TEXT NOT NULL DEFAULT 'draft', remark TEXT, created_at TEXT NOT NULL DEFAULT (NOW()))`,
 		`CREATE TABLE IF NOT EXISTS fin_ledger_entry (
   id INTEGER PRIMARY KEY AUTOINCREMENT, doc_no TEXT NOT NULL UNIQUE, account_id INTEGER, subject_id INTEGER,
   direction TEXT NOT NULL, amount REAL NOT NULL, biz_date TEXT NOT NULL, counterparty TEXT,
-  source_doc_type TEXT, source_doc_id INTEGER, remark TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  source_doc_type TEXT, source_doc_id INTEGER, remark TEXT, created_at TEXT NOT NULL DEFAULT (NOW()))`,
 		`CREATE TABLE IF NOT EXISTS fin_income_expense_detail (
   id INTEGER PRIMARY KEY AUTOINCREMENT, entry_id INTEGER NOT NULL, category TEXT, amount REAL NOT NULL, remark TEXT)`,
 		`CREATE TABLE IF NOT EXISTS fin_voucher (
   id INTEGER PRIMARY KEY AUTOINCREMENT, doc_no TEXT NOT NULL UNIQUE, period TEXT, biz_date TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'draft', summary TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  status TEXT NOT NULL DEFAULT 'draft', summary TEXT, created_at TEXT NOT NULL DEFAULT (NOW()))`,
 		`CREATE TABLE IF NOT EXISTS fin_voucher_line (
   id INTEGER PRIMARY KEY AUTOINCREMENT, voucher_id INTEGER NOT NULL, subject_id INTEGER NOT NULL,
   debit REAL NOT NULL DEFAULT 0, credit REAL NOT NULL DEFAULT 0, remark TEXT)`,
 		`CREATE TABLE IF NOT EXISTS fin_invoice (
   id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_no TEXT NOT NULL UNIQUE, direction TEXT NOT NULL,
   counterparty_id INTEGER, counterparty_name TEXT, amount REAL NOT NULL, tax REAL,
-  status TEXT NOT NULL DEFAULT 'draft', biz_date TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  status TEXT NOT NULL DEFAULT 'draft', biz_date TEXT, created_at TEXT NOT NULL DEFAULT (NOW()))`,
 		`CREATE TABLE IF NOT EXISTS fin_receipt_writeoff (
   id INTEGER PRIMARY KEY AUTOINCREMENT, doc_no TEXT NOT NULL UNIQUE, customer_id INTEGER NOT NULL,
   amount REAL NOT NULL, fund_account_id INTEGER, status TEXT NOT NULL DEFAULT 'draft',
-  received_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  received_at TEXT, created_at TEXT NOT NULL DEFAULT (NOW()))`,
 		`CREATE TABLE IF NOT EXISTS fin_receipt_writeoff_line (
   id INTEGER PRIMARY KEY AUTOINCREMENT, writeoff_id INTEGER NOT NULL, sales_order_id INTEGER NOT NULL, amount REAL NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS fin_payment_recognition (
   id INTEGER PRIMARY KEY AUTOINCREMENT, doc_no TEXT NOT NULL UNIQUE, customer_id INTEGER NOT NULL,
   amount REAL NOT NULL, fund_account_id INTEGER, status TEXT NOT NULL DEFAULT 'draft',
-  remark TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  remark TEXT, created_at TEXT NOT NULL DEFAULT (NOW()))`,
 		`CREATE TABLE IF NOT EXISTS fin_prepay_prepaid (
   id INTEGER PRIMARY KEY AUTOINCREMENT, doc_no TEXT NOT NULL UNIQUE, party_type TEXT NOT NULL,
   party_id INTEGER NOT NULL, direction TEXT NOT NULL, amount REAL NOT NULL, balance REAL NOT NULL,
-  status TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  status TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL DEFAULT (NOW()))`,
 		`CREATE TABLE IF NOT EXISTS fin_fx_settlement (
   id INTEGER PRIMARY KEY AUTOINCREMENT, doc_no TEXT NOT NULL UNIQUE, currency TEXT NOT NULL,
   amount_fx REAL NOT NULL, rate REAL NOT NULL, amount_local REAL NOT NULL,
-  fund_account_id INTEGER, status TEXT NOT NULL DEFAULT 'draft', created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  fund_account_id INTEGER, status TEXT NOT NULL DEFAULT 'draft', created_at TEXT NOT NULL DEFAULT (NOW()))`,
 		`CREATE TABLE IF NOT EXISTS fin_cost_allocation (
   id INTEGER PRIMARY KEY AUTOINCREMENT, doc_no TEXT NOT NULL UNIQUE, source_amount REAL NOT NULL,
   alloc_json TEXT, status TEXT NOT NULL DEFAULT 'draft', revoked_from_id INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  created_at TEXT NOT NULL DEFAULT (NOW()))`,
 		`CREATE TABLE IF NOT EXISTS fin_receipt_alert (
   id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER NOT NULL, order_id INTEGER,
   due_date TEXT, overdue_days INTEGER, amount REAL, status TEXT NOT NULL DEFAULT 'open',
-  handled_remark TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  handled_remark TEXT, created_at TEXT NOT NULL DEFAULT (NOW()))`,
 		`CREATE TABLE IF NOT EXISTS fin_cashier_reconcile (
   id INTEGER PRIMARY KEY AUTOINCREMENT, doc_no TEXT NOT NULL UNIQUE, fund_account_id INTEGER NOT NULL,
   biz_date TEXT NOT NULL, book_balance REAL NOT NULL, actual_balance REAL NOT NULL,
-  status TEXT NOT NULL DEFAULT 'draft', remark TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  status TEXT NOT NULL DEFAULT 'draft', remark TEXT, created_at TEXT NOT NULL DEFAULT (NOW()))`,
 		`CREATE TABLE IF NOT EXISTS fin_cost_accounting (
   id INTEGER PRIMARY KEY AUTOINCREMENT, doc_no TEXT NOT NULL UNIQUE, period TEXT NOT NULL,
   task_id INTEGER, product_id INTEGER, material_cost REAL NOT NULL DEFAULT 0,
   labor_cost REAL NOT NULL DEFAULT 0, overhead REAL NOT NULL DEFAULT 0, total_cost REAL NOT NULL DEFAULT 0,
-  status TEXT NOT NULL DEFAULT 'draft', created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  status TEXT NOT NULL DEFAULT 'draft', created_at TEXT NOT NULL DEFAULT (NOW()))`,
 		`CREATE TABLE IF NOT EXISTS fin_cost_trace_line (
   id INTEGER PRIMARY KEY AUTOINCREMENT, cost_id INTEGER NOT NULL, source_type TEXT NOT NULL,
   source_id INTEGER NOT NULL, amount REAL NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS fin_contract_profit (
   id INTEGER PRIMARY KEY AUTOINCREMENT, contract_id INTEGER NOT NULL, revenue REAL NOT NULL DEFAULT 0,
   cost REAL NOT NULL DEFAULT 0, profit REAL NOT NULL DEFAULT 0, period TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  created_at TEXT NOT NULL DEFAULT (NOW()))`,
 		`CREATE TABLE IF NOT EXISTS fin_sales_return_finance (
   id INTEGER PRIMARY KEY AUTOINCREMENT, doc_no TEXT NOT NULL UNIQUE, order_id INTEGER,
-  amount REAL NOT NULL, status TEXT NOT NULL DEFAULT 'draft', created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  amount REAL NOT NULL, status TEXT NOT NULL DEFAULT 'draft', created_at TEXT NOT NULL DEFAULT (NOW()))`,
 		`CREATE TABLE IF NOT EXISTS fin_arap_adjust (
   id INTEGER PRIMARY KEY AUTOINCREMENT, doc_no TEXT NOT NULL UNIQUE, party_type TEXT NOT NULL,
   party_id INTEGER NOT NULL, amount REAL NOT NULL, direction TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'draft', remark TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  status TEXT NOT NULL DEFAULT 'draft', remark TEXT, created_at TEXT NOT NULL DEFAULT (NOW()))`,
 		`CREATE TABLE IF NOT EXISTS fin_month_close (
   id INTEGER PRIMARY KEY AUTOINCREMENT, year INTEGER NOT NULL, month INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'open', closed_at TEXT, closed_by INTEGER, UNIQUE(year, month))`,
 		`CREATE TABLE IF NOT EXISTS fin_miniprogram_bill (
   id INTEGER PRIMARY KEY AUTOINCREMENT, bill_no TEXT NOT NULL UNIQUE, channel TEXT,
   amount REAL NOT NULL, status TEXT NOT NULL DEFAULT 'unpaid', order_id INTEGER,
-  paid_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  paid_at TEXT, created_at TEXT NOT NULL DEFAULT (NOW()))`,
 		`CREATE TABLE IF NOT EXISTS fin_approval_item (
   id INTEGER PRIMARY KEY AUTOINCREMENT, biz_type TEXT NOT NULL, biz_id INTEGER NOT NULL,
   doc_no TEXT, title TEXT, amount REAL, status TEXT NOT NULL DEFAULT 'pending',
-  created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  created_at TEXT NOT NULL DEFAULT (NOW()))`,
 		`CREATE TABLE IF NOT EXISTS fin_statement_cache (
   id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL, period TEXT, title TEXT,
-  content_json TEXT, generated_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  content_json TEXT, generated_at TEXT NOT NULL DEFAULT (NOW()))`,
 	}
 	for _, stmt := range stmts {
 		_, _ = db.Exec(stmt)
@@ -117,13 +117,13 @@ func EnsureFinanceSchema(db *sql.DB) {
 			{"5001", "主营业务收入", "income"}, {"5401", "主营业务成本", "expense"},
 			{"5601", "管理费用", "expense"}, {"5602", "销售费用", "expense"},
 		} {
-			_, _ = db.Exec(`INSERT OR IGNORE INTO fin_account_subject(code, name, subject_type) VALUES(?,?,?)`, s[0], s[1], s[2])
+			_, _ = db.Exec(`INSERT INTO fin_account_subject(code, name, subject_type) VALUES(?,?,?)`, s[0], s[1], s[2])
 		}
 	}
 	_ = db.QueryRow(`SELECT COUNT(1) FROM fin_fund_account`).Scan(&n)
 	if n == 0 {
-		_, _ = db.Exec(`INSERT OR IGNORE INTO fin_fund_account(code, name, currency, balance) VALUES('CASH','现金','CNY',0)`)
-		_, _ = db.Exec(`INSERT OR IGNORE INTO fin_fund_account(code, name, currency, balance) VALUES('BANK','基本户','CNY',0)`)
+		_, _ = db.Exec(`INSERT INTO fin_fund_account(code, name, currency, balance) VALUES('CASH','现金','CNY',0)`)
+		_, _ = db.Exec(`INSERT INTO fin_fund_account(code, name, currency, balance) VALUES('BANK','基本户','CNY',0)`)
 	}
 }
 

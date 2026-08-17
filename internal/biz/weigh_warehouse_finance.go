@@ -217,7 +217,7 @@ func (s *Services) patchWeighTicketPayload(weighID int64, patch map[string]inter
 		m[k] = v
 	}
 	b, _ := json.Marshal(m)
-	_, _ = s.DB.Exec(`UPDATE wf_ticket SET payload_json=?, updated_at=datetime('now') WHERE id=?`, string(b), tid)
+	_, _ = s.DB.Exec(`UPDATE wf_ticket SET payload_json=?, updated_at=NOW() WHERE id=?`, string(b), tid)
 }
 
 func (s *Services) closeWeighTicketByBiz(weighID int64, fromUID int64, comment string) int64 {
@@ -226,7 +226,7 @@ func (s *Services) closeWeighTicketByBiz(weighID int64, fromUID int64, comment s
 	if tid <= 0 {
 		return 0
 	}
-	_, _ = s.DB.Exec(`UPDATE wf_ticket SET status='done', closed_at=datetime('now'), updated_at=datetime('now'), current_assignee_user_id=NULL WHERE id=?`, tid)
+	_, _ = s.DB.Exec(`UPDATE wf_ticket SET status='done', closed_at=NOW(), updated_at=NOW(), current_assignee_user_id=NULL WHERE id=?`, tid)
 	s.appendTicketLog(tid, "settle_paid", fromUID, 0, comment)
 	if s.Notify != nil {
 		s.Notify.CompleteTask("wf_ticket", tid)

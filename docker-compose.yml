@@ -1,28 +1,46 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: erp
+      POSTGRES_PASSWORD: erp
+      POSTGRES_DB: erp_factory
+    ports:
+      - "5432:5432"
+    volumes:
+      - erp-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erp -d erp_factory"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   api:
     build: .
     image: factory-erp-api:local
     ports:
       - "18080:18080"
     environment:
-      # 生产必须覆盖为随机强密钥（≥16）
       ERP_JWT_SECRET: "${ERP_JWT_SECRET:-please-change-this-long-secret}"
-      ERP_DATABASE_DRIVER: "${ERP_DATABASE_DRIVER:-sqlite}"
-      ERP_DATABASE_SQLITE_PATH: /app/data/erp.db
-      ERP_DATABASE_MYSQL_DSN: "${ERP_DATABASE_MYSQL_DSN:-}"
+      ERP_DATABASE_DRIVER: postgres
+      ERP_DATABASE_DSN: "${ERP_DATABASE_DSN:-postgres://erp:erp@postgres:5432/erp_factory?sslmode=disable}"
+      ERP_DATABASE_INIT_SCHEMA: "${ERP_DATABASE_INIT_SCHEMA:-true}"
       ERP_CORS_ALLOW_ORIGINS: "${ERP_CORS_ALLOW_ORIGINS:-http://localhost:5173}"
     volumes:
-      - erp-data:/app/data
-      - ./configs/erp.prod.yaml.example:/app/configs/erp.yaml:ro
+      - erp-uploads:/app/data
+      - ./configs/erp.dev.yaml:/app/configs/erp.yaml:ro
+      - ./migrations:/app/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:18080/api/v1/live"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 25s
+      start_period: 40s
 
-  # 可选：docker compose --profile mqtt up -d
   nanomq:
     image: emqx/nanomq:0.21.10
     profiles: ["mqtt"]
@@ -32,4 +50,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  erp-data:
+  erp-pgdata:
+  erp-uploads:

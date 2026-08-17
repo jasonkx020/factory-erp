@@ -107,7 +107,7 @@ func (s *Services) handleWeighVarieties(c *gin.Context, method, action string) b
 		if _, ok := body["default_product_id"]; ok {
 			curProduct, _ = asInt64(body["default_product_id"])
 		}
-		_, err = s.DB.Exec(`UPDATE pur_weigh_variety SET code=?, name=?, sort_no=?, status=?, default_product_id=?, remark=?, updated_at=datetime('now')
+		_, err = s.DB.Exec(`UPDATE pur_weigh_variety SET code=?, name=?, sort_no=?, status=?, default_product_id=?, remark=?, updated_at=NOW()
 			WHERE id=? AND COALESCE(is_deleted,0)=0`,
 			curCode, curName, curSort, curStatus, nullIf0(curProduct), curRemark, id)
 		if err != nil {
@@ -117,7 +117,7 @@ func (s *Services) handleWeighVarieties(c *gin.Context, method, action string) b
 		return s.getWeighVariety(c, id)
 	case "delete":
 		id := paramID(c)
-		_, err := s.DB.Exec(`UPDATE pur_weigh_variety SET is_deleted=1, status='inactive', updated_at=datetime('now') WHERE id=?`, id)
+		_, err := s.DB.Exec(`UPDATE pur_weigh_variety SET is_deleted=1, status='inactive', updated_at=NOW() WHERE id=?`, id)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true

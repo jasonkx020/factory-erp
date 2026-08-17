@@ -71,8 +71,10 @@ var sysSettingDefaults = map[string]map[string]interface{}{
 	},
 }
 
-// EnsureSystemAdminSchema creates system-management tables used by tablespec + settings KV.
+// EnsureSystemAdminSchema is a no-op: schema owned by migrations/erp.
 func EnsureSystemAdminSchema(db *sql.DB) {
+	_ = db
+	return
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS sys_setting (
 			setting_key TEXT PRIMARY KEY,
@@ -166,7 +168,7 @@ func EnsureSystemAdminSchema(db *sql.DB) {
 	}
 	for k, def := range sysSettingDefaults {
 		b, _ := json.Marshal(def)
-		_, _ = db.Exec(`INSERT OR IGNORE INTO sys_setting(setting_key, value_json, updated_at) VALUES(?,?,?)`,
+		_, _ = db.Exec(`INSERT INTO sys_setting(setting_key, value_json, updated_at) VALUES(?,?,?)`,
 			k, string(b), time.Now().Format("2006-01-02 15:04:05"))
 	}
 	EnsureSystemAdminPermissions(db)

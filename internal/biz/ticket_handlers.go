@@ -16,11 +16,14 @@ import (
 	"erp/internal/persistence/sqlutil"
 )
 
-// EnsureTicketSchema creates workflow ticket tables and seeds tool categories.
+// EnsureTicketSchema is a no-op: schema owned by migrations/erp (seed categories remain below if needed).
 func EnsureTicketSchema(db *sql.DB) {
 	if db == nil {
 		return
 	}
+	// Keep lightweight category seed only (no DDL).
+	_, _ = db.Exec(`INSERT INTO wf_ticket_category(code, name, status) VALUES('tool','工具','active') ON CONFLICT DO NOTHING`)
+	return
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS wf_ticket_category (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,7 +31,7 @@ func EnsureTicketSchema(db *sql.DB) {
   name TEXT NOT NULL,
   enabled INTEGER NOT NULL DEFAULT 1,
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS wf_ticket_category_handler (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,8 +51,8 @@ func EnsureTicketSchema(db *sql.DB) {
   biz_type TEXT,
   biz_id INTEGER,
   payload_json TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW()),
   closed_at TEXT
 )`,
 		`CREATE TABLE IF NOT EXISTS wf_ticket_log (
@@ -59,7 +62,7 @@ func EnsureTicketSchema(db *sql.DB) {
   from_user_id INTEGER,
   to_user_id INTEGER,
   comment TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`ALTER TABLE hr_tool_issue ADD COLUMN pending_return_qty REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE hr_tool_issue ADD COLUMN ticket_id INTEGER`,
@@ -75,7 +78,7 @@ func EnsureTicketSchema(db *sql.DB) {
 func seedTicketCategories(db *sql.DB) {
 	for _, seed := range defaultTicketCategorySeeds() {
 		schema := marshalFormSchema(seed.Fields)
-		_, _ = db.Exec(`INSERT OR IGNORE INTO wf_ticket_category(code, name, remark, form_schema_json, biz_hint) VALUES(?,?,?,?,?)`,
+		_, _ = db.Exec(`INSERT INTO wf_ticket_category(code, name, remark, form_schema_json, biz_hint) VALUES(?,?,?,?,?)`,
 			seed.Code, seed.Name, seed.Remark, schema, seed.BizHint)
 		// backfill schema if empty on existing row
 		_, _ = db.Exec(`UPDATE wf_ticket_category SET form_schema_json=?, biz_hint=COALESCE(NULLIF(biz_hint,''), ?), name=?, remark=?
@@ -95,7 +98,7 @@ func seedTicketCategories(db *sql.DB) {
 			var roleID int64
 			_ = db.QueryRow(`SELECT id FROM iam_role WHERE code=? LIMIT 1`, roleCode).Scan(&roleID)
 			if roleID > 0 {
-				_, _ = db.Exec(`INSERT OR IGNORE INTO wf_ticket_category_handler(category_id, handler_type, handler_ref) VALUES(?,'role',?)`, catID, roleID)
+				_, _ = db.Exec(`INSERT INTO wf_ticket_category_handler(category_id, handler_type, handler_ref) VALUES(?,'role',?)`, catID, roleID)
 			}
 		}
 		// 过磅入厂 → 采购/仓管可处理；过磅入库 → 仓管
@@ -110,7 +113,7 @@ func seedTicketCategories(db *sql.DB) {
 			var roleID int64
 			_ = db.QueryRow(`SELECT id FROM iam_role WHERE code=? LIMIT 1`, roleCode).Scan(&roleID)
 			if roleID > 0 {
-				_, _ = db.Exec(`INSERT OR IGNORE INTO wf_ticket_category_handler(category_id, handler_type, handler_ref) VALUES(?,'role',?)`, catID, roleID)
+				_, _ = db.Exec(`INSERT INTO wf_ticket_category_handler(category_id, handler_type, handler_ref) VALUES(?,'role',?)`, catID, roleID)
 			}
 		}
 	}
@@ -288,7 +291,7 @@ func (s *Services) handleTicketCategoryHandlers(c *gin.Context, method string) b
 		if (ht != "user" && ht != "role") || ref <= 0 {
 			continue
 		}
-		_, _ = s.DB.Exec(`INSERT OR IGNORE INTO wf_ticket_category_handler(category_id, handler_type, handler_ref) VALUES(?,?,?)`, id, ht, ref)
+		_, _ = s.DB.Exec(`INSERT INTO wf_ticket_category_handler(category_id, handler_type, handler_ref) VALUES(?,?,?)`, id, ht, ref)
 	}
 	api.OK(c, gin.H{"category_id": id, "handlers": s.listCategoryHandlers(id), "pool": s.resolveHandlerPool(id)})
 	return true
@@ -768,7 +771,7 @@ func (s *Services) assignTicket(c *gin.Context) bool {
 		api.FailJSON(c, "PERM_DENIED")
 		return true
 	}
-	_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=datetime('now') WHERE id=?`, next, id)
+	_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=NOW() WHERE id=?`, next, id)
 	s.appendTicketLog(id, "assign", cl.UserID, next, strOr(body["comment"]))
 	if s.Notify != nil {
 		s.Notify.CompleteTask("wf_ticket", id)
@@ -860,7 +863,7 @@ func (s *Services) actionTicketBody(c *gin.Context, id int64, body map[string]in
 				return false
 			}
 			_, _ = s.addEvidence(c, "farmer_settlement", sid, "pay_receipt", payURL, gin.H{"transfer_no": transferNo})
-			_, err := s.DB.Exec(`UPDATE pur_farmer_settlement SET status='settle_paid', transfer_no=?, paid_at=datetime('now'), pay_evidence_url=? WHERE id=?`,
+			_, err := s.DB.Exec(`UPDATE pur_farmer_settlement SET status='settle_paid', transfer_no=?, paid_at=NOW(), pay_evidence_url=? WHERE id=?`,
 				transferNo, payURL, sid)
 			if err != nil {
 				api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -896,14 +899,14 @@ func (s *Services) actionTicketBody(c *gin.Context, id int64, body map[string]in
 				api.FailJSON(c, "ASSIGNEE_NOT_IN_POOL")
 				return false
 			}
-			_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=datetime('now') WHERE id=?`, next, id)
+			_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=NOW() WHERE id=?`, next, id)
 			s.appendTicketLog(id, action, cl.UserID, next, comment)
 			if s.Notify != nil {
 				s.Notify.CompleteTask("wf_ticket", id)
 			}
 			s.notifyTicketAssignee(c, id, "workflow.ticket.assigned", strOr(t["title"]), next, cl.UserID)
 		} else {
-			_, _ = s.DB.Exec(`UPDATE wf_ticket SET status='done', closed_at=datetime('now'), updated_at=datetime('now'), current_assignee_user_id=NULL WHERE id=?`, id)
+			_, _ = s.DB.Exec(`UPDATE wf_ticket SET status='done', closed_at=NOW(), updated_at=NOW(), current_assignee_user_id=NULL WHERE id=?`, id)
 			s.appendTicketLog(id, action, cl.UserID, 0, comment)
 			if s.Notify != nil {
 				s.Notify.CompleteTask("wf_ticket", id)
@@ -914,7 +917,7 @@ func (s *Services) actionTicketBody(c *gin.Context, id int64, body map[string]in
 			s.applyToolBizFromTicketAction(c, action, bizID, body)
 		}
 	case "reject":
-		_, _ = s.DB.Exec(`UPDATE wf_ticket SET status='rejected', closed_at=datetime('now'), updated_at=datetime('now'), current_assignee_user_id=NULL WHERE id=?`, id)
+		_, _ = s.DB.Exec(`UPDATE wf_ticket SET status='rejected', closed_at=NOW(), updated_at=NOW(), current_assignee_user_id=NULL WHERE id=?`, id)
 		s.appendTicketLog(id, "reject", cl.UserID, 0, comment)
 		if s.Notify != nil {
 			s.Notify.CompleteTask("wf_ticket", id)

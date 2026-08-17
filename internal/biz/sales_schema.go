@@ -5,8 +5,10 @@ import (
 	"log"
 )
 
-// EnsureSalesSchema creates CRM + sales tables for factory delivery (SQLite/dev).
+// EnsureSalesSchema is a no-op: schema owned by migrations/erp.
 func EnsureSalesSchema(db *sql.DB) {
+	_ = db
+	return
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS crm_customer (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,8 +33,8 @@ func EnsureSalesSchema(db *sql.DB) {
   logistics_remark TEXT,
   remark TEXT,
   created_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW()),
   is_deleted INTEGER NOT NULL DEFAULT 0
 )`,
 		`CREATE TABLE IF NOT EXISTS crm_opportunity (
@@ -46,8 +48,8 @@ func EnsureSalesSchema(db *sql.DB) {
   status TEXT NOT NULL DEFAULT 'open',
   remark TEXT,
   converted_order_id INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS crm_follow_up (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,7 +60,7 @@ func EnsureSalesSchema(db *sql.DB) {
   follow_at TEXT NOT NULL,
   content TEXT,
   next_remind_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS crm_lead_assign (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,8 +77,8 @@ func EnsureSalesSchema(db *sql.DB) {
   protect_days INTEGER NOT NULL DEFAULT 30,
   release_rule_json TEXT,
   status TEXT NOT NULL DEFAULT 'active',
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS crm_lead_release_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,8 +97,8 @@ func EnsureSalesSchema(db *sql.DB) {
   remind_at TEXT NOT NULL,
   content TEXT,
   status TEXT NOT NULL DEFAULT 'pending',
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS crm_customer_import_batch (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,8 +119,8 @@ func EnsureSalesSchema(db *sql.DB) {
   signed_at TEXT,
   expire_at TEXT,
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW()),
   is_deleted INTEGER NOT NULL DEFAULT 0
 )`,
 		`CREATE TABLE IF NOT EXISTS sl_price_lock (
@@ -130,7 +132,7 @@ func EnsureSalesSchema(db *sql.DB) {
   effective_to TEXT,
   status TEXT NOT NULL DEFAULT 'active',
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS sl_inquiry (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -141,8 +143,8 @@ func EnsureSalesSchema(db *sql.DB) {
   source TEXT NOT NULL DEFAULT 'sales',
   expire_at TEXT,
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW()),
   is_deleted INTEGER NOT NULL DEFAULT 0
 )`,
 		`CREATE TABLE IF NOT EXISTS sl_inquiry_line (
@@ -179,8 +181,8 @@ func EnsureSalesSchema(db *sql.DB) {
   total_amount REAL NOT NULL DEFAULT 0,
   remark TEXT,
   created_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW()),
   is_deleted INTEGER NOT NULL DEFAULT 0
 )`,
 		`CREATE TABLE IF NOT EXISTS sl_sales_order_line (
@@ -201,7 +203,7 @@ func EnsureSalesSchema(db *sql.DB) {
   after_json TEXT,
   reason TEXT,
   created_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS sl_pre_shipment (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -212,8 +214,8 @@ func EnsureSalesSchema(db *sql.DB) {
   reserved INTEGER NOT NULL DEFAULT 0,
   warehouse_id INTEGER NOT NULL DEFAULT 3,
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS sl_pre_shipment_line (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -232,8 +234,8 @@ func EnsureSalesSchema(db *sql.DB) {
   shipped_at TEXT,
   logistics_no TEXT,
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW()),
+  updated_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS sl_delivery_line (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -249,7 +251,7 @@ func EnsureSalesSchema(db *sql.DB) {
   product_id INTEGER NOT NULL,
   name TEXT,
   status TEXT NOT NULL DEFAULT 'active',
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS sl_sales_bom_line (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -269,7 +271,7 @@ func EnsureSalesSchema(db *sql.DB) {
   sale_amount REAL NOT NULL DEFAULT 0,
   margin REAL NOT NULL DEFAULT 0,
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS sl_quote_calculator_result (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -280,14 +282,14 @@ func EnsureSalesSchema(db *sql.DB) {
   margin_rate REAL NOT NULL DEFAULT 0.2,
   quote_price REAL NOT NULL DEFAULT 0,
   payload_json TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS sl_sales_rank_config (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   metric TEXT NOT NULL,
   period TEXT NOT NULL DEFAULT 'month',
   top_n INTEGER NOT NULL DEFAULT 10,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 		`CREATE TABLE IF NOT EXISTS sl_print_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -296,7 +298,7 @@ func EnsureSalesSchema(db *sql.DB) {
   doc_no TEXT,
   template_code TEXT,
   printed_by INTEGER,
-  printed_at TEXT NOT NULL DEFAULT (datetime('now')),
+  printed_at TEXT NOT NULL DEFAULT (NOW()),
   payload_json TEXT
 )`,
 		`CREATE TABLE IF NOT EXISTS sl_self_order_rule (
@@ -306,7 +308,7 @@ func EnsureSalesSchema(db *sql.DB) {
   min_qty REAL NOT NULL DEFAULT 0,
   allow_products_json TEXT,
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
 	}
 	for _, s := range stmts {
@@ -335,27 +337,27 @@ func EnsureSalesSchema(db *sql.DB) {
 }
 
 func seedSales(db *sql.DB) {
-	_, _ = db.Exec(`INSERT OR IGNORE INTO crm_customer(id, code, name, short_name, contact_name, mobile, address, level, source, status, owner_user_id, is_public_sea, remark) VALUES
+	_, _ = db.Exec(`INSERT INTO crm_customer(id, code, name, short_name, contact_name, mobile, address, level, source, status, owner_user_id, is_public_sea, remark) VALUES
  (1, 'CU-001', '南宁食品批发部', '南宁批发', '韦经理', '13800010001', '广西南宁市江南区', 'A', '展会', 'active', 1, 0, '演示客户'),
  (2, 'CU-002', '柳州餐饮连锁', '柳州餐饮', '周采购', '13800010002', '广西柳州市城中区', 'B', '转介绍', 'active', 1, 0, '演示客户'),
  (3, 'CU-003', '公海待分配客户', '公海样例', '待分配', '13800010003', '广西桂林市', 'C', '电话开发', 'active', NULL, 1, '公海演示')`)
-	_, _ = db.Exec(`INSERT OR IGNORE INTO crm_lead_protect_rule(id, name, protect_days, release_rule_json, status) VALUES
+	_, _ = db.Exec(`INSERT INTO crm_lead_protect_rule(id, name, protect_days, release_rule_json, status) VALUES
  (1, '默认保护30天', 30, '{"auto_release":true,"idle_days":30}', 'active')`)
-	_, _ = db.Exec(`INSERT OR IGNORE INTO crm_opportunity(id, customer_id, title, stage, amount, expected_date, owner_user_id, status, remark) VALUES
+	_, _ = db.Exec(`INSERT INTO crm_opportunity(id, customer_id, title, stage, amount, expected_date, owner_user_id, status, remark) VALUES
  (1, 1, '南宁批发袋装木薯丁年供', 'negotiation', 120000, '2026-09-30', 1, 'open', '演示商机')`)
-	_, _ = db.Exec(`INSERT OR IGNORE INTO crm_follow_up(id, customer_id, opportunity_id, user_id, follow_type, follow_at, content, next_remind_at) VALUES
- (1, 1, 1, 1, 'visit', datetime('now'), '到访确认锁价与冷链配送', datetime('now','+3 day'))`)
-	_, _ = db.Exec(`INSERT OR IGNORE INTO crm_task_reminder(id, user_id, ref_type, ref_id, remind_at, content, status) VALUES
+	_, _ = db.Exec(`INSERT INTO crm_follow_up(id, customer_id, opportunity_id, user_id, follow_type, follow_at, content, next_remind_at) VALUES
+ (1, 1, 1, 1, 'visit', NOW(), '到访确认锁价与冷链配送', datetime('now','+3 day'))`)
+	_, _ = db.Exec(`INSERT INTO crm_task_reminder(id, user_id, ref_type, ref_id, remind_at, content, status) VALUES
  (1, 1, 'customer', 1, datetime('now','+1 day'), '跟进南宁批发部复购意向', 'pending')`)
-	_, _ = db.Exec(`INSERT OR IGNORE INTO sl_price_lock(id, customer_id, product_id, lock_price, effective_from, effective_to, status) VALUES
+	_, _ = db.Exec(`INSERT INTO sl_price_lock(id, customer_id, product_id, lock_price, effective_from, effective_to, status) VALUES
  (1, 1, 3, 6.80, '2026-01-01', '2026-12-31', 'active'),
  (2, 2, 3, 7.20, '2026-01-01', '2026-12-31', 'active')`)
-	_, _ = db.Exec(`INSERT OR IGNORE INTO sl_sales_rank_config(id, metric, period, top_n) VALUES
+	_, _ = db.Exec(`INSERT INTO sl_sales_rank_config(id, metric, period, top_n) VALUES
  (1, 'amount', 'month', 10),
  (2, 'qty', 'month', 10)`)
-	_, _ = db.Exec(`INSERT OR IGNORE INTO sl_self_order_rule(id, name, enabled, min_qty, allow_products_json, remark) VALUES
+	_, _ = db.Exec(`INSERT INTO sl_self_order_rule(id, name, enabled, min_qty, allow_products_json, remark) VALUES
  (1, '默认自助下单规则', 1, 50, '[3]', '袋装木薯丁最小 50')`)
 	// ensure finished goods stock for demo shipping
-	_, _ = db.Exec(`INSERT OR IGNORE INTO inv_balance(warehouse_id, location_id, product_id, batch_no, box_code_id, qty)
+	_, _ = db.Exec(`INSERT INTO inv_balance(warehouse_id, location_id, product_id, batch_no, box_code_id, qty)
 		VALUES(3, 0, 3, 'FG-SEED', 0, 5000)`)
 }

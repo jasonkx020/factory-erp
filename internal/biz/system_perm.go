@@ -166,7 +166,8 @@ func EnsureSystemAdminPermissions(db *sql.DB) {
 		for _, act := range []string{"查看", "编辑"} {
 			code := "系统管理:" + mod + ":" + act
 			name := act + mod
-			_, _ = db.Exec(`INSERT OR IGNORE INTO iam_permission(code, name, domain, module, action) VALUES(?,?,?,?,?)`,
+			_, _ = db.Exec(`INSERT INTO iam_permission(code, name, domain, module, action) VALUES(?,?,?,?,?)
+ON CONFLICT (code) DO NOTHING`,
 				code, name, "系统管理", mod, act)
 		}
 	}
@@ -187,6 +188,7 @@ func EnsureSystemAdminPermissions(db *sql.DB) {
 	}
 	_ = rows.Close()
 	for _, pid := range ids {
-		_, _ = db.Exec(`INSERT OR IGNORE INTO iam_role_permission(role_id, permission_id) VALUES(?,?)`, roleID, pid)
+		_, _ = db.Exec(`INSERT INTO iam_role_permission(role_id, permission_id) VALUES(?,?)
+ON CONFLICT (role_id, permission_id) DO NOTHING`, roleID, pid)
 	}
 }

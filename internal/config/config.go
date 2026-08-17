@@ -69,9 +69,12 @@ type ServerConfig struct {
 }
 
 type DatabaseConfig struct {
-	Driver     string `yaml:"driver"` // sqlite | mysql
-	SQLitePath string `yaml:"sqlite_path"`
-	MySQLDSN   string `yaml:"mysql_dsn"`
+	Driver        string `yaml:"driver"` // postgres only
+	DSN           string `yaml:"dsn"`
+	InitSchema    bool   `yaml:"init_schema"`
+	SchemaPath    string `yaml:"schema_path"`
+	DataPath      string `yaml:"data_path"`
+	MigrationsDir string `yaml:"migrations_dir"`
 }
 
 type JWTConfig struct {
@@ -98,10 +101,19 @@ func Load(path string) (*Config, error) {
 		c.Server.Addr = ":18080"
 	}
 	if c.Database.Driver == "" {
-		c.Database.Driver = "sqlite"
+		c.Database.Driver = "postgres"
 	}
-	if c.Database.SQLitePath == "" {
-		c.Database.SQLitePath = "data/erp_dev.db"
+	if c.Database.DSN == "" {
+		c.Database.DSN = "postgres://erp:erp@127.0.0.1:5432/erp_factory?sslmode=disable"
+	}
+	if c.Database.MigrationsDir == "" {
+		c.Database.MigrationsDir = "migrations"
+	}
+	if c.Database.SchemaPath == "" {
+		c.Database.SchemaPath = "migrations/erp/schema.sql"
+	}
+	if c.Database.DataPath == "" {
+		c.Database.DataPath = "migrations/erp/data-dev.sql"
 	}
 	if c.JWT.AccessTTLMin <= 0 {
 		c.JWT.AccessTTLMin = 120
@@ -185,11 +197,17 @@ func applyEnv(c *Config) {
 	if v := os.Getenv("ERP_DATABASE_DRIVER"); v != "" {
 		c.Database.Driver = v
 	}
-	if v := os.Getenv("ERP_DATABASE_SQLITE_PATH"); v != "" {
-		c.Database.SQLitePath = v
+	if v := os.Getenv("ERP_DATABASE_DSN"); v != "" {
+		c.Database.DSN = v
 	}
-	if v := os.Getenv("ERP_DATABASE_MYSQL_DSN"); v != "" {
-		c.Database.MySQLDSN = v
+	if v := os.Getenv("DATABASE_URL"); v != "" && c.Database.DSN == "" {
+		c.Database.DSN = v
+	}
+	if v := os.Getenv("ERP_DATABASE_INIT_SCHEMA"); v != "" {
+		c.Database.InitSchema = v == "1" || strings.EqualFold(v, "true")
+	}
+	if v := os.Getenv("ERP_MIGRATIONS_DIR"); v != "" {
+		c.Database.MigrationsDir = v
 	}
 	if v := os.Getenv("ERP_JWT_SECRET"); v != "" {
 		c.JWT.Secret = v
