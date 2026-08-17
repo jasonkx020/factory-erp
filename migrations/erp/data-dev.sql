@@ -178,12 +178,17 @@ INSERT INTO inv_balance(warehouse_id, product_id, batch_no, qty) VALUES
  (3, 3, 'B0802', 3200)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO pay_process_wage_rate(process_id, rate, effective_from, status) VALUES
- (1, 0.18, '2026-07-01', 'active'),
- (4, 0.25, '2026-07-01', 'active'),
- (5, 0.22, '2026-07-01', 'active'),
- (10, 0.22, '2026-07-01', 'active')
-ON CONFLICT DO NOTHING;
+INSERT INTO pay_process_wage_rate(process_id, rate, effective_from, status)
+SELECT v.process_id, v.rate, v.effective_from, 'active'
+FROM (VALUES
+  (1::bigint, 0.18::double precision, '2026-07-01'::text),
+  (4, 0.25, '2026-07-01'),
+  (5, 0.22, '2026-07-01'),
+  (10, 0.22, '2026-07-01')
+) AS v(process_id, rate, effective_from)
+WHERE NOT EXISTS (
+  SELECT 1 FROM pay_process_wage_rate r WHERE r.process_id = v.process_id AND r.status = 'active'
+);
 
 -- 木薯产线 12 步工艺路线（对齐 pic）
 INSERT INTO pd_routing(id, code, name, product_id, version_no, status) VALUES

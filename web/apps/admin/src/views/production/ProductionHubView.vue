@@ -8,6 +8,10 @@ import {
   hrApi,
   fieldLedgerApi,
   PROCESS_TYPE_OPTIONS,
+  PROCESS_PAY_MODE_OPTIONS,
+  STATUS_ACTIVE_OPTIONS,
+  STATION_FLOW_EVENT_OPTIONS,
+  formOptionLabel,
   QC_TYPE_OPTIONS,
   CONSIGNMENT_PROGRESS_OPTIONS,
 } from '@erp/shared'
@@ -24,19 +28,21 @@ import {
   WarehouseSelect,
   EnumSelect,
 } from '../../components/select'
-import RoutingView from '../automation/RoutingView.vue'
 import PieceIssueView from './PieceIssueView.vue'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
+import { useCarrierCodeLabel } from '../../composables/useCarrierCodeLabel'
 
 type Row = Record<string, unknown>
+
+const { codeLabel, ensureLoaded: ensureCarrierLabel } = useCarrierCodeLabel()
 
 const processCols: MobileCardColumn[] = [
   { prop: 'name', label: '名称', primary: true },
   { prop: 'code', label: '编码' },
-  { prop: 'process_type', label: '类型' },
-  { prop: 'is_piecework', label: '计件' },
-  { prop: 'status', label: '状态' },
+  { prop: 'process_type_label', label: '类型' },
+  { prop: 'pay_mode_label', label: '计费' },
+  { prop: 'status_label', label: '状态' },
 ]
 const shiftCols: MobileCardColumn[] = [
   { prop: 'doc_no', label: '班次号', primary: true },
@@ -89,12 +95,22 @@ const processReportCols: MobileCardColumn[] = [
 ]
 const pieceworkCols: MobileCardColumn[] = [
   { prop: 'id', label: 'ID', primary: true },
-  { prop: 'worker_id', label: '工人' },
-  { prop: 'process_id', label: '工序' },
+  { prop: 'worker_name', label: '工人' },
+  { prop: 'process_name', label: '工序' },
   { prop: 'biz_date', label: '日期' },
   { prop: 'qty', label: '产量' },
   { prop: 'amount', label: '金额' },
   { prop: 'status', label: '状态' },
+]
+const stationFlowCols: MobileCardColumn[] = [
+  { prop: 'created_at', label: '时间', primary: true },
+  { prop: 'event_type', label: '类型' },
+  { prop: 'board_code', label: '板码' },
+  { prop: 'process_name', label: '工序' },
+  { prop: 'worker_name', label: '工人' },
+  { prop: 'emp_type', label: '工种' },
+  { prop: 'kg', label: 'kg' },
+  { prop: 'amount', label: '金额' },
 ]
 const bomCols: MobileCardColumn[] = [
   { prop: 'code', label: '编码', primary: true },
@@ -126,6 +142,8 @@ const wipCols: MobileCardColumn[] = [
   { prop: 'available_kg', label: '可领 kg' },
   { prop: 'occupied_kg', label: '领取未完 kg' },
   { prop: 'wip_weight', label: '在制重量 kg' },
+  { prop: 'stock_kg', label: '在仓 kg' },
+  { prop: 'stock_box_count', label: '在仓板数' },
 ]
 const wipBoxCols: MobileCardColumn[] = [
   { prop: 'code', label: '板码', primary: true },
@@ -197,13 +215,13 @@ const scrapCols: MobileCardColumn[] = [
   { prop: 'scrap_type', label: '类型' },
   { prop: 'status', label: '状态' },
 ]
-const processReturnCols: MobileCardColumn[] = [
+const processReturnCols = computed<MobileCardColumn[]>(() => [
   { prop: 'doc_no', label: '单号', primary: true },
-  { prop: 'box_code', label: '箱码' },
+  { prop: 'box_code', label: codeLabel.value },
   { prop: 'return_weight', label: '退回kg' },
   { prop: 'reason', label: '原因' },
   { prop: 'status', label: '状态' },
-]
+])
 const outsourceCols: MobileCardColumn[] = [
   { prop: 'doc_no', label: '单号', primary: true },
   { prop: 'supplier_id', label: '供应商' },
@@ -335,11 +353,12 @@ const shiftMemberForm = reactive({ employee_id: 2, process_id: 0 })
 const taskForm = reactive({ product_id: 3, qty: 1000, routing_id: 1, workshop_id: 1, remark: '' })
 const multiLines = ref<{ product_id: number; qty: number }[]>([{ product_id: 3, qty: 100 }])
 const processEditDlg = ref(false)
-const processEditForm = reactive({ id: 0, name: '', process_type: 'other', is_piecework: false, status: 'active' })
+const processEditForm = reactive({ id: 0, code: '', name: '', process_type: 'other', pay_mode: 'none', status: 'active' })
 const dispatchForm = reactive({ task_id: null as number | null, process_id: 1, worker_id: 2, qty: 100 })
 const reportForm = reactive({ process_id: 1, worker_id: 2, qty: 100, dispatch_id: null as number | null })
 const reqForm = reactive({ product_id: 1, qty: 100, warehouse_id: 1 })
-const processForm = reactive({ code: '', name: '', process_type: 'other', is_piecework: false })
+const processForm = reactive({ code: '', name: '', process_type: 'other', pay_mode: 'none', status: 'active' })
+const processDlg = ref(false)
 const workshopForm = reactive({ code: '', name: '' })
 const bomForm = reactive({ product_id: 3, name: '生产BOM', component_product_id: 1, qty: 1.2, scrap_rate: 0.05 })
 const scrapForm = reactive({ product_id: 1, qty: 10, scrap_type: 'cut_defect', process_id: 1, remark: '' })
@@ -354,6 +373,14 @@ const outForm = reactive({ supplier_id: 1, process_id: 1, product_id: 3, qty: 10
 const consForm = reactive({ customer_id: 1, product_id: 3, qty: 100, progress: '待投产' })
 const hideForm = reactive({ role_id: 1, name: '隐藏成本字段' })
 const payForm = reactive({ transfer_no: '', pay_evidence_url: '' })
+const pieceBizDate = ref(new Date().toISOString().slice(0, 10))
+const stationFlowList = ref<Row[]>([])
+const stationFlowFilter = reactive({
+  biz_date: new Date().toISOString().slice(0, 10),
+  board_code: '',
+  event_type: '',
+  has_amount: false,
+})
 
 async function loadMeta() {
   const [p, proc, emp] = await Promise.all([
@@ -421,9 +448,12 @@ async function refresh() {
         if (pr.code !== 1) return ElMessage.error(pr.msg)
         processReports.value = ((pr.data as { list?: Row[] })?.list) || []
         return
-      case 'piecework':
-        res = await productionApi.pieceworkSummaries()
+      case 'piecework': {
+        const q = pieceBizDate.value ? `biz_date=${encodeURIComponent(pieceBizDate.value)}` : undefined
+        res = await productionApi.pieceworkSummaries(q)
+        await loadStationFlow()
         break
+      }
       case 'boms':
         res = await productionApi.boms()
         break
@@ -597,6 +627,28 @@ async function recalcPiece() {
   await refresh()
 }
 
+async function daySettlePiece() {
+  const res = await productionApi.daySettlePiecework({ biz_date: pieceBizDate.value })
+  if (res.code !== 1) return ElMessage.error(res.msg)
+  const d = (res.data || {}) as Row
+  ElMessage.success(`日结完成：${d.settled_rows || 0} 笔 / ${d.settled_kg || 0} kg / ¥${d.settled_amount || 0}`)
+  await refresh()
+}
+
+async function loadStationFlow() {
+  const qs = new URLSearchParams()
+  if (stationFlowFilter.biz_date) qs.set('biz_date', stationFlowFilter.biz_date)
+  if (stationFlowFilter.board_code) qs.set('board_code', stationFlowFilter.board_code)
+  if (stationFlowFilter.event_type) qs.set('event_type', stationFlowFilter.event_type)
+  if (stationFlowFilter.has_amount) qs.set('has_amount', '1')
+  const res = await productionApi.stationFlowLogs(qs.toString())
+  if (res.code !== 1) {
+    stationFlowList.value = []
+    return
+  }
+  stationFlowList.value = ((res.data as { list?: Row[] })?.list) || []
+}
+
 async function payPiece(id: number) {
   if (!payForm.transfer_no) return ElMessage.warning('请填转账单号')
   const res = await productionApi.payPiecework(id, { ...payForm })
@@ -605,31 +657,74 @@ async function payPiece(id: number) {
   await refresh()
 }
 
+function processTypeLabel(v: unknown) {
+  return formOptionLabel(PROCESS_TYPE_OPTIONS, v)
+}
+function processPayModeLabel(v: unknown) {
+  return formOptionLabel(PROCESS_PAY_MODE_OPTIONS, v)
+}
+function processStatusLabel(v: unknown) {
+  return formOptionLabel(STATUS_ACTIVE_OPTIONS, v)
+}
+
+const processDisplayList = computed(() =>
+  list.value.map((row) => ({
+    ...row,
+    process_type_label: processTypeLabel(row.process_type),
+    pay_mode_label: processPayModeLabel(row.pay_mode || (row.is_piecework ? 'weight' : 'none')),
+    status_label: processStatusLabel(row.status || 'active'),
+  })),
+)
+
+function resetProcessForm() {
+  processForm.code = ''
+  processForm.name = ''
+  processForm.process_type = 'other'
+  processForm.pay_mode = 'none'
+  processForm.status = 'active'
+}
+
+function openCreateProcess() {
+  resetProcessForm()
+  processDlg.value = true
+}
+
 async function createProcess() {
-  if (!processForm.name) return ElMessage.warning('请填工序名')
-  const code = processForm.code || `P${Date.now().toString().slice(-6)}`
-  const res = await productionApi.createProcess({ ...processForm, code })
+  if (!processForm.name.trim()) return ElMessage.warning('请填工序名称')
+  const code = processForm.code.trim() || `P${Date.now().toString().slice(-6)}`
+  const res = await productionApi.createProcess({
+    code,
+    name: processForm.name.trim(),
+    process_type: processForm.process_type,
+    pay_mode: processForm.pay_mode,
+    status: processForm.status,
+  })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success('工序已创建')
+  processDlg.value = false
+  resetProcessForm()
   await loadMeta()
   await refresh()
 }
 
 function openEditProcess(row: Row) {
   processEditForm.id = Number(row.id)
+  processEditForm.code = String(row.code || '')
   processEditForm.name = String(row.name || '')
   processEditForm.process_type = String(row.process_type || 'other')
-  processEditForm.is_piecework = Boolean(row.is_piecework)
+  processEditForm.pay_mode = String(row.pay_mode || (row.is_piecework ? 'weight' : 'none'))
   processEditForm.status = String(row.status || 'active')
   processEditDlg.value = true
 }
 
 async function saveEditProcess() {
   if (!processEditForm.id) return
+  if (!processEditForm.name.trim()) return ElMessage.warning('请填工序名称')
   const res = await productionApi.updateProcess(processEditForm.id, {
-    name: processEditForm.name,
+    code: processEditForm.code.trim(),
+    name: processEditForm.name.trim(),
     process_type: processEditForm.process_type,
-    is_piecework: processEditForm.is_piecework,
+    pay_mode: processEditForm.pay_mode,
     status: processEditForm.status,
   })
   if (res.code !== 1) return ElMessage.error(res.msg)
@@ -744,7 +839,7 @@ async function createScrap() {
 }
 
 async function createProcessReturn() {
-  if (!returnForm.box_code.trim()) return ElMessage.warning('请填写箱码')
+  if (!returnForm.box_code.trim()) return ElMessage.warning(`请填写${codeLabel.value}`)
   const res = await productionApi.createProcessReturn({ ...returnForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success(`退库单 ${(res.data as Row)?.doc_no}`)
@@ -900,6 +995,7 @@ watch(yieldScope, () => {
   if (active.value === 'process-yield') refresh()
 })
 onMounted(async () => {
+  await ensureCarrierLabel()
   await loadMeta()
   await refresh()
 })
@@ -907,7 +1003,14 @@ onMounted(async () => {
 
 <template>
   <div>
-    <RoutingView v-if="embedRoutings" />
+    <div v-if="embedRoutings" class="page">
+      <div class="head">
+        <h2>工艺流程</h2>
+        <p class="hint">已取消工艺流程编排。App 过站须手动指定工序；请在「工序定义」维护工序主数据。</p>
+      </div>
+      <el-alert type="warning" show-icon :closable="false"
+        title="工艺流程编辑已停用：过站不再按工艺图自动流通，请工人在 App 选择本站工序后领取/入库。" />
+    </div>
     <PieceIssueView v-else-if="embedPieceIssue" />
 
     <div v-else class="page" v-loading="loading">
@@ -918,36 +1021,46 @@ onMounted(async () => {
 
       <!-- 工序定义：新建 + 维护 -->
       <template v-if="active==='processes' || active==='process-mgmt'">
-        <p class="mode-hint">工序主数据：编码、类型、是否计件。App 过站按工艺流程推进，此处为根配置。</p>
-        <el-card header="新建工序" class="mb">
-          <el-form inline size="small">
-            <el-form-item label="编码"><el-input v-model="processForm.code" placeholder="可空自动" /></el-form-item>
-            <el-form-item label="名称"><el-input v-model="processForm.name" /></el-form-item>
-            <el-form-item label="类型"><EnumSelect v-model="processForm.process_type" :options="PROCESS_TYPE_OPTIONS" style="width:140px" /></el-form-item>
-            <el-form-item label="计件"><el-switch v-model="processForm.is_piecework" /></el-form-item>
-            <el-button type="primary" @click="createProcess">新建</el-button>
-          </el-form>
+        <p class="mode-hint">
+          计费：不计费 / 按重量 / 按件。仅「按重量|按件 × 计件工」才预估与日结金额（当前均按 kg×工价）。App 过站须手动指定工序。
+        </p>
+        <el-card class="mb">
+          <div class="row" style="justify-content:space-between;margin-bottom:8px">
+            <strong>工序列表</strong>
+            <el-button type="primary" size="small" @click="openCreateProcess">新增工序</el-button>
+          </div>
+          <TableOrCards :data="processDisplayList" :loading="loading" :columns="processCols">
+            <el-table :data="processDisplayList" size="small" stripe>
+              <el-table-column prop="code" label="编码" width="120" />
+              <el-table-column prop="name" label="名称" min-width="140" />
+              <el-table-column prop="process_type_label" label="类型" width="100" />
+              <el-table-column prop="pay_mode_label" label="计费" width="100">
+                <template #default="{ row }">
+                  <el-tag
+                    size="small"
+                    :type="row.pay_mode === 'weight' ? 'warning' : row.pay_mode === 'piece' ? 'success' : 'info'"
+                  >{{ row.pay_mode_label }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="status_label" label="状态" width="90">
+                <template #default="{ row }">
+                  <el-tag size="small" :type="row.status === 'inactive' ? 'danger' : 'success'">{{ row.status_label }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="100" fixed="right">
+                <template #default="{ row }">
+                  <el-button link type="primary" @click="openEditProcess(row)">配置</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <template #extra="{ row }">
+              <el-tag size="small" :type="row.status === 'inactive' ? 'danger' : 'success'">{{ row.status_label }}</el-tag>
+            </template>
+            <template #actions="{ row }">
+              <el-button link type="primary" @click="openEditProcess(row)">配置</el-button>
+            </template>
+          </TableOrCards>
         </el-card>
-        <TableOrCards :data="list" :loading="loading" :columns="processCols">
-          <el-table :data="list" size="small">
-            <el-table-column prop="code" label="编码" width="120" />
-            <el-table-column prop="name" label="名称" />
-            <el-table-column prop="process_type" label="类型" width="100" />
-            <el-table-column prop="is_piecework" label="计件" width="80" />
-            <el-table-column prop="status" label="状态" width="90" />
-            <el-table-column label="操作" width="120" fixed="right">
-              <template #default="{ row }">
-                <el-button link type="primary" @click="openEditProcess(row)">编辑</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-          <template #extra="{ row }">
-            <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
-          </template>
-          <template #actions="{ row }">
-            <el-button link type="primary" @click="openEditProcess(row)">编辑</el-button>
-          </template>
-        </TableOrCards>
       </template>
 
       <!-- 产线班次：替代日常派工授权 -->
@@ -1127,7 +1240,7 @@ onMounted(async () => {
 
       <!-- 派工 / 灵活 -->
       <template v-else-if="active==='dispatches' || active==='flex'">
-        <el-alert type="info" show-icon :closable="false" class="mb" title="正常流转无需派工，App 扫工牌+箱码即可过站。此处仅用于例外派岗/灵活派发。" />
+        <el-alert type="info" show-icon :closable="false" class="mb" :title="`正常流转无需派工，App 扫工牌+${codeLabel}即可过站。此处仅用于例外派岗/灵活派发。`" />
         <el-card v-if="fieldInputOnAdmin || active==='flex'" :header="active==='flex' ? '灵活派发（例外）' : '例外派岗'" class="mb">
           <el-form inline size="small">
             <el-form-item label="任务"><ProdTaskSelect v-model="dispatchForm.task_id" /></el-form-item>
@@ -1221,7 +1334,7 @@ onMounted(async () => {
                 <el-table-column prop="process_name" label="工序" width="120" />
                 <el-table-column prop="worker_name" label="过站人" width="100" />
                 <el-table-column prop="operator_name" label="操作人" width="100" />
-                <el-table-column prop="scan_code" label="箱码" width="120" show-overflow-tooltip />
+                <el-table-column prop="scan_code" :label="codeLabel" width="120" show-overflow-tooltip />
                 <el-table-column prop="input_weight" label="投料" width="80" />
                 <el-table-column prop="output_weight" label="完工" width="80" />
                 <el-table-column prop="loss" label="损耗" width="80" />
@@ -1238,20 +1351,24 @@ onMounted(async () => {
         </el-tabs>
       </template>
 
-      <!-- 计件 -->
+      <!-- 计件 + 过站流水 -->
       <template v-else-if="active==='piecework'">
         <el-card class="mb">
-          <el-button type="primary" size="small" @click="recalcPiece">重算计件</el-button>
-          <el-form inline size="small" style="margin-left:12px;display:inline">
+          <el-form inline size="small">
+            <el-form-item label="业务日"><el-date-picker v-model="pieceBizDate" type="date" value-format="YYYY-MM-DD" /></el-form-item>
+            <el-button type="warning" size="small" @click="daySettlePiece">日结</el-button>
+            <el-button type="primary" size="small" @click="recalcPiece">重算计件</el-button>
+            <el-button size="small" @click="refresh">刷新</el-button>
             <el-form-item label="转账单号"><el-input v-model="payForm.transfer_no" /></el-form-item>
             <el-form-item label="回单"><el-input v-model="payForm.pay_evidence_url" /></el-form-item>
           </el-form>
+          <p class="mode-hint">日结：将「计件工 × 计重/计件工序」的净占用（领取−退库−已日结）写入产量汇总；入库换码不即时结工资。</p>
         </el-card>
         <TableOrCards :data="list" :loading="loading" :columns="pieceworkCols">
           <el-table :data="list" size="small">
             <el-table-column prop="id" label="ID" width="70" />
-            <el-table-column prop="worker_id" label="工人" width="80" />
-            <el-table-column prop="process_id" label="工序" width="80" />
+            <el-table-column prop="worker_name" label="工人" width="100" />
+            <el-table-column prop="process_name" label="工序" width="120" />
             <el-table-column prop="biz_date" label="日期" width="110" />
             <el-table-column prop="qty" label="产量" width="90" />
             <el-table-column prop="amount" label="金额" width="100" />
@@ -1269,6 +1386,31 @@ onMounted(async () => {
             <el-button v-if="row.status!=='paid'" link type="primary" @click="payPiece(Number(row.id))">支付</el-button>
           </template>
         </TableOrCards>
+
+        <el-card header="过站流水" class="mb" style="margin-top:16px">
+          <el-form inline size="small" class="mb">
+            <el-form-item label="日期"><el-date-picker v-model="stationFlowFilter.biz_date" type="date" value-format="YYYY-MM-DD" /></el-form-item>
+            <el-form-item :label="codeLabel"><el-input v-model="stationFlowFilter.board_code" clearable style="width:140px" /></el-form-item>
+            <el-form-item label="类型"><EnumSelect v-model="stationFlowFilter.event_type" :options="STATION_FLOW_EVENT_OPTIONS" clearable style="width:140px" /></el-form-item>
+            <el-form-item label="仅有金额"><el-switch v-model="stationFlowFilter.has_amount" /></el-form-item>
+            <el-button type="primary" @click="loadStationFlow">查询</el-button>
+          </el-form>
+          <TableOrCards :data="stationFlowList" :columns="stationFlowCols">
+            <el-table :data="stationFlowList" size="small">
+              <el-table-column prop="created_at" label="时间" min-width="160" />
+              <el-table-column prop="event_type" label="类型" width="100" />
+              <el-table-column prop="board_code" :label="codeLabel" width="120" />
+              <el-table-column prop="process_name" label="工序" width="100" />
+              <el-table-column prop="worker_name" label="工人" width="90" />
+              <el-table-column prop="emp_type" label="工种" width="70" />
+              <el-table-column prop="kg" label="kg" width="80" />
+              <el-table-column prop="pay_mode" label="计费" width="70" />
+              <el-table-column prop="rate" label="单价" width="70" />
+              <el-table-column prop="amount" label="金额" width="90" />
+              <el-table-column prop="remark" label="备注" min-width="120" />
+            </el-table>
+          </TableOrCards>
+        </el-card>
       </template>
 
       <!-- BOM -->
@@ -1389,6 +1531,7 @@ onMounted(async () => {
         <el-row v-if="wipSummary" :gutter="12" class="mb">
           <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">在制板数</div><div class="kpi-n">{{ wipSummary.total_boards ?? wipSummary.total_boxes ?? 0 }}</div></el-card></el-col>
           <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">在制重量 kg</div><div class="kpi-n">{{ Number(wipSummary.total_weight || 0).toFixed(1) }}</div></el-card></el-col>
+          <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">在仓重量 kg</div><div class="kpi-n">{{ Number(wipSummary.total_stock_kg || 0).toFixed(1) }}</div></el-card></el-col>
           <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">待确认过站</div><div class="kpi-n">{{ wipSummary.pending_confirm_reports ?? 0 }}</div></el-card></el-col>
           <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">待确认重量</div><div class="kpi-n">{{ Number(wipSummary.pending_confirm_weight || 0).toFixed(1) }}</div></el-card></el-col>
         </el-row>
@@ -1420,6 +1563,12 @@ onMounted(async () => {
             <el-table-column label="在制重量 kg" width="120">
               <template #default="{ row }">{{ Number(row.wip_weight || 0).toFixed(2) }}</template>
             </el-table-column>
+            <el-table-column label="在仓 kg" width="100">
+              <template #default="{ row }">{{ Number(row.stock_kg || 0).toFixed(2) }}</template>
+            </el-table-column>
+            <el-table-column label="在仓板数" width="90">
+              <template #default="{ row }">{{ row.stock_box_count ?? 0 }}</template>
+            </el-table-column>
             <el-table-column label="操作" width="90">
               <template #default="{ row }">
                 <el-button link type="primary" @click.stop="openWipBoxes(Number(row.step_id), String(row.step_name || ''), false)">板明细</el-button>
@@ -1436,7 +1585,7 @@ onMounted(async () => {
               <el-table-column prop="code" label="板码" min-width="140" />
               <el-table-column prop="product_name" label="产品" width="100" />
               <el-table-column label="可领 kg" width="90">
-                <template #default="{ row }">{{ Number(row.available_kg ?? row.weight || 0).toFixed(2) }}</template>
+                <template #default="{ row }">{{ Number(row.available_kg ?? row.weight ?? 0).toFixed(2) }}</template>
               </el-table-column>
               <el-table-column label="领取未完 kg" width="110">
                 <template #default="{ row }">{{ Number(row.occupied_kg || 0).toFixed(2) }}</template>
@@ -1700,7 +1849,7 @@ onMounted(async () => {
         />
         <el-card header="申请退未用完料" class="mb">
           <el-form inline size="small">
-            <el-form-item label="箱码"><el-input v-model="returnForm.box_code" style="width:160px" /></el-form-item>
+            <el-form-item :label="codeLabel"><el-input v-model="returnForm.box_code" style="width:160px" /></el-form-item>
             <el-form-item label="退回kg"><el-input-number v-model="returnForm.return_weight" :min="0.01" :step="1" /></el-form-item>
             <el-form-item label="仓库"><WarehouseSelect v-model="returnForm.warehouse_id" /></el-form-item>
             <el-form-item label="原因"><el-input v-model="returnForm.reason" style="width:120px" /></el-form-item>
@@ -1721,7 +1870,7 @@ onMounted(async () => {
         <TableOrCards :data="list" :loading="loading" :columns="processReturnCols">
           <el-table :data="list" size="small">
             <el-table-column prop="doc_no" label="单号" width="150" />
-            <el-table-column prop="box_code" label="箱码" width="130" />
+            <el-table-column prop="box_code" :label="codeLabel" width="130" />
             <el-table-column prop="return_weight" label="退回kg" width="90" />
             <el-table-column prop="warehouse_id" label="仓" width="60" />
             <el-table-column prop="reason" label="原因" min-width="100" />
@@ -1914,17 +2063,33 @@ onMounted(async () => {
         <pre class="detail">{{ JSON.stringify(detail, null, 2) }}</pre>
       </el-card>
 
-      <el-dialog v-model="processEditDlg" title="编辑工序" width="480px" destroy-on-close>
+      <el-dialog v-model="processDlg" title="新增工序" width="520px" destroy-on-close>
         <el-form label-width="90px">
-          <el-form-item label="名称"><el-input v-model="processEditForm.name" /></el-form-item>
-          <el-form-item label="类型"><EnumSelect v-model="processEditForm.process_type" :options="PROCESS_TYPE_OPTIONS" style="width:100%" /></el-form-item>
-          <el-form-item label="计件"><el-switch v-model="processEditForm.is_piecework" /></el-form-item>
-          <el-form-item label="状态">
-            <el-select v-model="processEditForm.status" style="width:100%">
-              <el-option label="启用" value="active" />
-              <el-option label="停用" value="inactive" />
-            </el-select>
+          <el-form-item label="编码"><el-input v-model="processForm.code" placeholder="可空，自动生成" /></el-form-item>
+          <el-form-item label="名称" required><el-input v-model="processForm.name" placeholder="如：去皮、切断" /></el-form-item>
+          <el-form-item label="类型"><EnumSelect v-model="processForm.process_type" :options="PROCESS_TYPE_OPTIONS" style="width:100%" /></el-form-item>
+          <el-form-item label="计费">
+            <EnumSelect v-model="processForm.pay_mode" :options="PROCESS_PAY_MODE_OPTIONS" style="width:100%" />
+            <p class="hint" style="margin:6px 0 0">不计费 / 按重量 / 按件；按件与按重量目前均按 kg×工价核算</p>
           </el-form-item>
+          <el-form-item label="状态"><EnumSelect v-model="processForm.status" :options="STATUS_ACTIVE_OPTIONS" style="width:100%" /></el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="processDlg = false">取消</el-button>
+          <el-button type="primary" @click="createProcess">保存</el-button>
+        </template>
+      </el-dialog>
+
+      <el-dialog v-model="processEditDlg" title="配置工序" width="520px" destroy-on-close>
+        <el-form label-width="90px">
+          <el-form-item label="编码"><el-input v-model="processEditForm.code" /></el-form-item>
+          <el-form-item label="名称" required><el-input v-model="processEditForm.name" /></el-form-item>
+          <el-form-item label="类型"><EnumSelect v-model="processEditForm.process_type" :options="PROCESS_TYPE_OPTIONS" style="width:100%" /></el-form-item>
+          <el-form-item label="计费">
+            <EnumSelect v-model="processEditForm.pay_mode" :options="PROCESS_PAY_MODE_OPTIONS" style="width:100%" />
+            <p class="hint" style="margin:6px 0 0">不计费 / 按重量 / 按件</p>
+          </el-form-item>
+          <el-form-item label="状态"><EnumSelect v-model="processEditForm.status" :options="STATUS_ACTIVE_OPTIONS" style="width:100%" /></el-form-item>
         </el-form>
         <template #footer>
           <el-button @click="processEditDlg = false">取消</el-button>

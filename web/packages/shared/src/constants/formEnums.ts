@@ -37,6 +37,30 @@ export const PROCESS_TYPE_OPTIONS: FormOption[] = [
   { value: 'other', label: '其他' },
 ]
 
+/** 工序产量计费：仅 weight|piece 且工人为计件工时才预计算/日结金额 */
+export const PROCESS_PAY_MODE_OPTIONS: FormOption[] = [
+  { value: 'none', label: '不计费' },
+  { value: 'weight', label: '按重量' },
+  { value: 'piece', label: '按件' },
+]
+
+/** 从枚举选项取中文标签；未知值原样返回 */
+export function formOptionLabel(options: FormOption[], value: unknown, fallback = '—'): string {
+  const v = String(value ?? '').trim()
+  if (!v) return fallback
+  const hit = options.find((o) => o.value === v)
+  return hit?.label ?? v
+}
+
+export const STATION_FLOW_EVENT_OPTIONS: FormOption[] = [
+  { value: 'issue', label: '领取' },
+  { value: 'return', label: '退库' },
+  { value: 'stock_in', label: '入库换码' },
+  { value: 'board_close', label: '板结束' },
+  { value: 'day_settle', label: '日结' },
+  { value: 'process_master', label: '工序主数据' },
+]
+
 export const QC_TYPE_OPTIONS: FormOption[] = [
   { value: 'process', label: '工序检' },
   { value: 'final', label: '成品检' },
@@ -56,10 +80,45 @@ export const PAY_ADJUST_TYPE_OPTIONS: FormOption[] = [
   { value: 'manual', label: '手工调整' },
 ]
 
+/** 月结工资单状态 */
+export const PAY_SHEET_STATUS_OPTIONS: FormOption[] = [
+  { value: 'draft', label: '草稿' },
+  { value: 'confirmed', label: '已确认' },
+  { value: 'paid', label: '已发放' },
+]
+
+export function paySheetStatusLabel(value: unknown): string {
+  return formOptionLabel(PAY_SHEET_STATUS_OPTIONS, value)
+}
+
 export const STATUS_ACTIVE_OPTIONS: FormOption[] = [
   { value: 'active', label: '启用' },
   { value: 'inactive', label: '停用' },
 ]
+
+/** 员工档案人事状态（与启用/停用字典区分） */
+export const EMP_STATUS_OPTIONS: FormOption[] = [
+  { value: 'active', label: '在职' },
+  { value: 'inactive', label: '停用' },
+  { value: 'left', label: '离职' },
+]
+
+export function empStatusLabel(value: unknown): string {
+  return formOptionLabel(EMP_STATUS_OPTIONS, value)
+}
+
+/** 工人薪资档案计薪方式 */
+export const PAY_TYPE_OPTIONS: FormOption[] = [
+  { value: 'piece', label: '计件' },
+  { value: 'fixed', label: '固定月薪' },
+  { value: 'mixed', label: '混合' },
+  { value: 'commission', label: '提成' },
+]
+
+export function payTypeLabel(value: unknown): string {
+  const v = String(value ?? '').trim().toLowerCase()
+  return formOptionLabel(PAY_TYPE_OPTIONS, v || value)
+}
 
 export const SUPPLIER_RATING_OPTIONS: FormOption[] = [
   { value: 'A', label: 'A' },
@@ -137,9 +196,43 @@ export const OVERTIME_BIZ_OPTIONS: FormOption[] = [
   { value: 'patch', label: '补卡' },
 ]
 
+/** 工序工价单位（表单存 canonical；库里历史可能是 kg/hour 等别名） */
 export const RATE_UNIT_OPTIONS: FormOption[] = [
   { value: 'yuan/kg', label: '元/千克' },
   { value: 'yuan/pcs', label: '元/件' },
   { value: 'yuan/hour', label: '元/小时' },
   { value: 'yuan/day', label: '元/天' },
 ]
+
+const RATE_UNIT_ALIASES: Record<string, string> = {
+  kg: 'yuan/kg',
+  'yuan/kg': 'yuan/kg',
+  '元/kg': 'yuan/kg',
+  '元/千克': 'yuan/kg',
+  pcs: 'yuan/pcs',
+  piece: 'yuan/pcs',
+  'yuan/pcs': 'yuan/pcs',
+  '元/件': 'yuan/pcs',
+  hour: 'yuan/hour',
+  'yuan/hour': 'yuan/hour',
+  '元/小时': 'yuan/hour',
+  day: 'yuan/day',
+  'yuan/day': 'yuan/day',
+  '元/天': 'yuan/day',
+}
+
+/** 归一化工价单位为表单/接口 canonical 值 */
+export function normalizeRateUnit(value: unknown): string {
+  const raw = String(value ?? '').trim()
+  if (!raw) return 'yuan/kg'
+  const lower = raw.toLowerCase()
+  return RATE_UNIT_ALIASES[lower] || RATE_UNIT_ALIASES[raw] || 'yuan/kg'
+}
+
+export function rateUnitLabel(value: unknown): string {
+  return formOptionLabel(RATE_UNIT_OPTIONS, normalizeRateUnit(value))
+}
+
+export function statusActiveLabel(value: unknown): string {
+  return formOptionLabel(STATUS_ACTIVE_OPTIONS, value)
+}

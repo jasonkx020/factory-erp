@@ -35,6 +35,8 @@ var sysSettingDefaults = map[string]map[string]interface{}{
 		"date_format": "YYYY-MM-DD", "default_page_size": 20, "enable_mqtt_notify": true,
 		// gate=入厂确认后结算；box_stockin=分板入库后按板合计结算
 		"farmer_settle_point": "gate",
+		// board=板码；box=箱码（仅展示文案，表/API 仍用 inv_box_code）
+		"carrier_code_unit": "board",
 	},
 	"sales": {
 		"default_tax_rate": 0.13, "allow_negative_stock": false, "require_pre_ship": true,
@@ -247,6 +249,9 @@ func (s *Services) loadSysSetting(key string) map[string]interface{} {
 			}
 		}
 	}
+	if key == "base" {
+		enrichCarrierCodeLabels(out)
+	}
 	out["setting_key"] = key
 	out["id"] = 1
 	return out
@@ -262,13 +267,51 @@ func (s *Services) farmerSettlePoint() string {
 	return "gate"
 }
 
+// carrierCodeUnit returns board | box from system base settings.
+func (s *Services) carrierCodeUnit() string {
+	m := s.loadSysSetting("base")
+	return normalizeCarrierCodeUnitValue(strOr(m["carrier_code_unit"]))
+}
+
+func normalizeCarrierCodeUnitValue(v string) string {
+	if strings.ToLower(strings.TrimSpace(v)) == "box" {
+		return "box"
+	}
+	return "board"
+}
+
+// CarrierCodeLabels returns display strings for board|box unit.
+func CarrierCodeLabels(unit string) (label, short, manage, split string) {
+	if normalizeCarrierCodeUnitValue(unit) == "box" {
+		return "箱码", "箱", "箱码管理", "分箱"
+	}
+	return "板码", "板", "板码管理", "分板"
+}
+
+func enrichCarrierCodeLabels(out map[string]interface{}) {
+	unit := normalizeCarrierCodeUnitValue(strOr(out["carrier_code_unit"]))
+	out["carrier_code_unit"] = unit
+	label, short, manage, split := CarrierCodeLabels(unit)
+	out["carrier_code_label"] = label
+	out["carrier_code_short"] = short
+	out["carrier_code_manage_title"] = manage
+	out["carrier_code_split_verb"] = split
+}
+
 func (s *Services) saveSysSetting(key string, body map[string]interface{}, userID int64) {
 	clean := map[string]interface{}{}
 	for k, v := range body {
 		if k == "id" || k == "setting_key" {
 			continue
 		}
+		// derived display fields — never persist
+		if strings.HasPrefix(k, "carrier_code_") && k != "carrier_code_unit" {
+			continue
+		}
 		clean[k] = v
+	}
+	if key == "base" {
+		clean["carrier_code_unit"] = normalizeCarrierCodeUnitValue(strOr(clean["carrier_code_unit"]))
 	}
 	b, _ := json.Marshal(clean)
 	now := time.Now().Format("2006-01-02 15:04:05")

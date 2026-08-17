@@ -135,14 +135,25 @@ func (s *Services) handlePayroll(c *gin.Context, method, action, path string) bo
 func (s *Services) handleWageRates(c *gin.Context, action string) bool {
 	switch action {
 	case "list":
+		showAll := c.Query("all") == "1" || strings.EqualFold(c.Query("all"), "true")
+		where := `WHERE r.status='active'`
+		if showAll {
+			where = ``
+		}
 		rows, err := s.DB.Query(`SELECT r.id, r.process_id, COALESCE(p.code,''), COALESCE(p.name,''), r.rate,
 			COALESCE(r.rate_unit,'kg'), r.effective_from, COALESCE(r.effective_to,''), r.status
 			FROM pay_process_wage_rate r
 			LEFT JOIN pd_process p ON p.id=r.process_id
-			ORDER BY r.id DESC`)
+			`+where+`
+			ORDER BY r.process_id, r.id DESC`)
 		if err != nil {
 			// fallback without rate_unit / join
-			rows, err = s.DB.Query(`SELECT id, process_id, rate, effective_from, COALESCE(effective_to,''), status FROM pay_process_wage_rate ORDER BY id DESC`)
+			q2 := `SELECT id, process_id, rate, effective_from, COALESCE(effective_to,''), status FROM pay_process_wage_rate`
+			if !showAll {
+				q2 += ` WHERE status='active'`
+			}
+			q2 += ` ORDER BY process_id, id DESC`
+			rows, err = s.DB.Query(q2)
 			if err != nil {
 				api.FailJSON(c, "DB_ERROR")
 				return true
@@ -182,7 +193,9 @@ func (s *Services) handleWageRates(c *gin.Context, action string) bool {
 			return true
 		}
 		from := strOrDef(body["effective_from"], time.Now().Format("2006-01-02"))
-		unit := strOrDef(body["rate_unit"], "kg")
+		unit := strOrDef(body["rate_unit"], "yuan/kg")
+		// 同工序仅保留一条 active：新建前先停用旧费率
+		_, _ = s.DB.Exec(`UPDATE pay_process_wage_rate SET status='inactive' WHERE process_id=? AND status='active'`, pid)
 		res, err := s.DB.Exec(`INSERT INTO pay_process_wage_rate(process_id, rate, effective_from, status, rate_unit) VALUES(?,?,?,'active',?)`, pid, rate, from, unit)
 		if err != nil {
 			res, err = s.DB.Exec(`INSERT INTO pay_process_wage_rate(process_id, rate, effective_from, status) VALUES(?,?,?,'active')`, pid, rate, from)
@@ -192,7 +205,7 @@ func (s *Services) handleWageRates(c *gin.Context, action string) bool {
 			return true
 		}
 		id, _ := res.LastInsertId()
-		api.OK(c, gin.H{"id": id, "process_id": pid, "rate": rate, "rate_unit": unit})
+		api.OK(c, gin.H{"id": id, "process_id": pid, "rate": rate, "rate_unit": unit, "status": "active"})
 		return true
 	case "get", "update", "delete":
 		id := paramID(c)
@@ -239,6 +252,48 @@ func payrollNullFloat(v interface{}) interface{} {
 		return nil
 	}
 	return f
+}
+
+// payTypeFromEmpType 人事工种 → 工资档案计薪方式（与工人信息管理列表默认规则一致）。
+func payTypeFromEmpType(empType string) string {
+	switch strings.ToLower(strings.TrimSpace(empType)) {
+	case "fixed", "office", "func":
+		return "fixed"
+	default:
+		return "piece"
+	}
+}
+
+// syncEmployeePayProfile 将人事侧银行卡/税号写入 pay_worker_profile，与财务「工人信息管理」同源。
+func (s *Services) syncEmployeePayProfile(empID int64, body map[string]interface{}, empType string) {
+	if empID <= 0 {
+		return
+	}
+	payType := payTypeFromEmpType(empType)
+	bank := strings.TrimSpace(strOr(body["bank_account"]))
+	tax := strings.TrimSpace(strOr(body["tax_no"]))
+	var exist int64
+	_ = s.DB.QueryRow(`SELECT id FROM pay_worker_profile WHERE employee_id=?`, empID).Scan(&exist)
+	if exist == 0 {
+		_, _ = s.DB.Exec(`INSERT INTO pay_worker_profile(employee_id, pay_type, monthly_base, bank_account, tax_no, status)
+			VALUES(?,?,0,?,?,'active')`, empID, payType, bank, tax)
+		return
+	}
+	// 有传字段则覆盖（允许清空）；未传则只同步 pay_type
+	_, hasBank := body["bank_account"]
+	_, hasTax := body["tax_no"]
+	if hasBank || hasTax {
+		if hasBank && hasTax {
+			_, _ = s.DB.Exec(`UPDATE pay_worker_profile SET pay_type=?, bank_account=?, tax_no=? WHERE employee_id=?`,
+				payType, bank, tax, empID)
+		} else if hasBank {
+			_, _ = s.DB.Exec(`UPDATE pay_worker_profile SET pay_type=?, bank_account=? WHERE employee_id=?`, payType, bank, empID)
+		} else {
+			_, _ = s.DB.Exec(`UPDATE pay_worker_profile SET pay_type=?, tax_no=? WHERE employee_id=?`, payType, tax, empID)
+		}
+		return
+	}
+	_, _ = s.DB.Exec(`UPDATE pay_worker_profile SET pay_type=? WHERE employee_id=?`, payType, empID)
 }
 
 func (s *Services) handleWorkerProfiles(c *gin.Context, action string) bool {
@@ -391,24 +446,39 @@ func (s *Services) getPayrollSheet(c *gin.Context) bool {
 		api.FailJSON(c, "NOT_FOUND")
 		return true
 	}
-	rows, _ := s.DB.Query(`SELECT l.id, l.employee_id, COALESCE(e.emp_no,''), COALESCE(e.name,''), COALESCE(l.emp_type,''),
-		l.piece_amount, l.attendance_amount, l.commission_amount, l.adjust_amount, l.total_amount
-		FROM pay_payroll_sheet_line l LEFT JOIN hr_employee e ON e.id=l.employee_id
+	rows, qerr := s.DB.Query(`SELECT l.id, l.employee_id, COALESCE(e.emp_no,''), COALESCE(e.name,''), COALESCE(l.emp_type,''),
+		l.piece_amount, l.attendance_amount, l.commission_amount, l.adjust_amount, l.total_amount,
+		COALESCE(p.bank_account,''), COALESCE(p.tax_no,''), COALESCE(p.pay_type,'')
+		FROM pay_payroll_sheet_line l
+		LEFT JOIN hr_employee e ON e.id=l.employee_id
+		LEFT JOIN pay_worker_profile p ON p.employee_id=l.employee_id
 		WHERE l.sheet_id=? ORDER BY l.id`, id)
+	withProfile := qerr == nil
+	if !withProfile {
+		rows, _ = s.DB.Query(`SELECT l.id, l.employee_id, COALESCE(e.emp_no,''), COALESCE(e.name,''), COALESCE(l.emp_type,''),
+			l.piece_amount, l.attendance_amount, l.commission_amount, l.adjust_amount, l.total_amount
+			FROM pay_payroll_sheet_line l LEFT JOIN hr_employee e ON e.id=l.employee_id
+			WHERE l.sheet_id=? ORDER BY l.id`, id)
+	}
 	lines := []gin.H{}
 	var sum float64
 	if rows != nil {
 		defer rows.Close()
 		for rows.Next() {
 			var lid, eid int64
-			var empNo, name, et string
+			var empNo, name, et, bank, tax, payType string
 			var piece, att, comm, adj, total float64
-			_ = rows.Scan(&lid, &eid, &empNo, &name, &et, &piece, &att, &comm, &adj, &total)
+			if withProfile {
+				_ = rows.Scan(&lid, &eid, &empNo, &name, &et, &piece, &att, &comm, &adj, &total, &bank, &tax, &payType)
+			} else {
+				_ = rows.Scan(&lid, &eid, &empNo, &name, &et, &piece, &att, &comm, &adj, &total)
+			}
 			sum += total
 			lines = append(lines, gin.H{
 				"id": lid, "employee_id": eid, "emp_no": empNo, "name": name, "emp_type": et,
 				"piece_amount": piece, "attendance_amount": att, "commission_amount": comm,
 				"adjust_amount": adj, "total_amount": total,
+				"bank_account": bank, "tax_no": tax, "pay_type": payType,
 			})
 		}
 	}

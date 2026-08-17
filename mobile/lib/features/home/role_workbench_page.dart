@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/auth_state.dart';
+import '../../core/carrier_code_labels.dart';
 import '../../core/role_codes.dart';
 import '../../core/role_workbench.dart';
 
@@ -12,8 +13,9 @@ class RoleWorkbenchBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
+    final codeLabel = context.watch<CarrierCodeLabels>().code;
     final role = auth.primaryRole;
-    final steps = stepsForWorkbenchRole(role);
+    final steps = stepsForWorkbenchRole(role, codeLabel: codeLabel);
     final switchable = auth.switchableRoles;
 
     if (role == WorkbenchRole.none) {

@@ -103,6 +103,12 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		return s.payLaborSummary(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/piecework-summaries"):
 		return s.handlePieceworkSummaries(c, method, action, openapiPath)
+	case strings.HasPrefix(openapiPath, "/api/v1/production/station-flow-logs"):
+		if method == "GET" {
+			return s.handleStationFlowLogs(c)
+		}
+		api.FailJSON(c, "METHOD_NOT_ALLOWED")
+		return true
 	case strings.HasPrefix(openapiPath, "/api/v1/production/requisitions"):
 		return s.handleRequisitions(c, method, action, openapiPath)
 	case openapiPath == "/api/v1/production/scan" && method == "POST":

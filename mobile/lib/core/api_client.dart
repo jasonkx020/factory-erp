@@ -1,14 +1,18 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Compiled-in API base from `--dart-define=API_BASE=...` (empty if unset).
+const String kApiBaseDefine = String.fromEnvironment('API_BASE');
+
 /// Default: Android emulator → host machine. Override with --dart-define=API_BASE=...
-const String kDefaultApiBase = String.fromEnvironment(
-  'API_BASE',
-  defaultValue: 'http://10.0.2.2:18080/api/v1',
-);
+const String kFallbackApiBase = 'http://10.0.2.2:18080/api/v1';
+
+String get kDefaultApiBase =>
+    kApiBaseDefine.trim().isEmpty ? kFallbackApiBase : normalizeApiBase(kApiBaseDefine);
 
 const String _kApiBasePref = 'api_base_url';
 
@@ -78,6 +82,11 @@ class ApiClient {
     final p = await SharedPreferences.getInstance();
     accessToken = p.getString('access_token');
     refreshToken = p.getString('refresh_token');
+    // --dart-define=API_BASE 优先于本地缓存，避免旧地址导致启动卡死白屏
+    if (kApiBaseDefine.trim().isNotEmpty) {
+      baseUrl = normalizeApiBase(kApiBaseDefine);
+      return;
+    }
     final saved = p.getString(_kApiBasePref);
     if (saved != null && saved.trim().isNotEmpty) {
       baseUrl = normalizeApiBase(saved);
@@ -193,11 +202,11 @@ class ApiClient {
   }) async {
     final url = '$baseUrl$path';
     try {
-      final res = await send();
+      final res = await send().timeout(const Duration(seconds: 12));
       return _parse(method, url, res, requestBody: requestBody);
     } catch (e, st) {
       _logApiError(method, url, error: e, stack: st, requestBody: requestBody);
-      rethrow;
+      return ApiEnvelope(code: 0, msg: e.toString());
     }
   }
 

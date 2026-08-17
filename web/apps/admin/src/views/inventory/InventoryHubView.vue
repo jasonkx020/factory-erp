@@ -15,6 +15,7 @@ import StockLedgerView from './StockLedgerView.vue'
 import BoxCodesView from './BoxCodesView.vue'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
+import { useCarrierCodeLabel } from '../../composables/useCarrierCodeLabel'
 
 type Row = Record<string, unknown>
 
@@ -118,7 +119,7 @@ const purchaseReturnCols: MobileCardColumn[] = [
 const route = useRoute()
 const router = useRouter()
 
-const TITLE_MAP: Record<string, string> = {
+const TITLE_MAP_BASE: Record<string, string> = {
   balances: '库存查询',
   inbound: '仓管待入库',
   ledger: '地磅台账',
@@ -138,11 +139,15 @@ const TITLE_MAP: Record<string, string> = {
   openings: '期初入库',
   'stock-txns': '出入库记录汇总',
   'purchase-returns': '采购退货',
-  boxes: '箱码管理',
 }
 
+const { manageTitle, ensureLoaded: ensureCarrierLabel } = useCarrierCodeLabel()
+
 const active = computed(() => String(route.params.section || 'balances'))
-const title = computed(() => TITLE_MAP[active.value] || '库存管理')
+const title = computed(() => {
+  if (active.value === 'boxes') return manageTitle.value
+  return TITLE_MAP_BASE[active.value] || '库存管理'
+})
 const embedInbound = computed(() => active.value === 'inbound')
 const embedLedger = computed(() => active.value === 'ledger')
 const embedBoxes = computed(() => active.value === 'boxes')
@@ -548,6 +553,7 @@ async function submitPayable(id: number) {
 }
 
 onMounted(async () => {
+  await ensureCarrierLabel()
   await loadMeta()
   await refresh()
 })

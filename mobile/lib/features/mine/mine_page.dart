@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
+import '../../core/carrier_code_labels.dart';
 import '../../core/employee_modules.dart';
 import '../../core/notify_service.dart';
 import '../hr/hr_onboard_page.dart';
@@ -663,7 +664,8 @@ class _ModulesPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
-    final mods = visibleEmployeeModules(auth.permissions, auth.roles)
+    final codeLabel = context.watch<CarrierCodeLabels>().code;
+    final mods = visibleEmployeeModules(auth.permissions, auth.roles, codeLabel: codeLabel)
         .where((m) => m.key != EmployeeModule.mine)
         .toList();
     return Scaffold(

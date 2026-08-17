@@ -6,8 +6,11 @@ import { productApi, BASE_UNIT_OPTIONS } from '@erp/shared'
 import { ProductSelect, ProcessSelect, RoutingSelect, EnumSelect } from '../../components/select'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
+import { useCarrierCodeLabel } from '../../composables/useCarrierCodeLabel'
 
 type Row = Record<string, unknown>
+
+const { codeLabel, ensureLoaded: ensureCarrierLabel } = useCarrierCodeLabel()
 
 const productCols: MobileCardColumn[] = [
   { prop: 'code', label: '编码', primary: true },
@@ -281,6 +284,7 @@ async function removeSpec(id: number) {
 }
 
 onMounted(async () => {
+  await ensureCarrierLabel()
   await loadMeta()
   await refresh()
 })
@@ -321,7 +325,7 @@ watch(selectedProductId, () => {
             <EnumSelect v-model="productForm.base_unit" :options="BASE_UNIT_OPTIONS" :clearable="false" style="width:110px" />
           </el-form-item>
           <el-form-item label="批次"><el-switch v-model="productForm.is_batch_managed" /></el-form-item>
-          <el-form-item label="箱码"><el-switch v-model="productForm.is_box_managed" /></el-form-item>
+          <el-form-item :label="codeLabel"><el-switch v-model="productForm.is_box_managed" /></el-form-item>
           <el-button type="primary" @click="createProduct">新建</el-button>
         </el-form>
       </el-card>

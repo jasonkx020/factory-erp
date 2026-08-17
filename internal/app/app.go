@@ -69,6 +69,7 @@ func New(cfgPath string) (*App, error) {
 	biz.EnsureDomainPermissions(db.SQL)
 	biz.EnsureDemoRoleUsers(db.SQL)
 	if cfg.Seed.DemoEnabled() {
+		biz.EnsureCleanDevWageRates(db.SQL)
 		biz.EnsureDemoData(db.SQL)
 	}
 

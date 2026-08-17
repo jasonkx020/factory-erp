@@ -19,9 +19,19 @@ export const EMP_TYPE_LABEL: Record<string, string> = {
   fixed: '固定工',
   office: '职能/内勤',
   admin: '系统管理',
+  // 演示/角色编码写入 emp_type 时的兼容显示
+  warehouse: '仓管',
+  sales: '销售',
+  purchase: '采购',
+  qc: '质检',
+  foreman: '车间主任',
+  finance: '财务',
+  sys_admin: '系统管理员',
+  hr: '人事',
 }
 
 export function empTypeLabel(value: unknown): string {
-  const key = String(value ?? '')
-  return EMP_TYPE_LABEL[key] || key
+  const key = String(value ?? '').trim()
+  if (!key) return '—'
+  return EMP_TYPE_LABEL[key] || EMP_TYPE_LABEL[key.toLowerCase()] || key
 }

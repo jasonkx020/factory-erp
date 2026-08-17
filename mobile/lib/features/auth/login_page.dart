@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
+import '../../core/carrier_code_labels.dart';
 import '../../core/debug_demo_accounts.dart';
 import '../../core/notify_service.dart';
 
@@ -80,6 +81,7 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
     if (ok && mounted) {
+      await context.read<CarrierCodeLabels>().load(force: true);
       await context.read<NotifyService>().start();
     }
   }
@@ -102,6 +104,7 @@ class _LoginPageState extends State<LoginPage> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
       return;
     }
+    await context.read<CarrierCodeLabels>().load(force: true);
     await context.read<NotifyService>().start();
   }
 

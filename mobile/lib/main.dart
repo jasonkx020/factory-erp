@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'core/api_client.dart';
 import 'core/auth_state.dart';
+import 'core/carrier_code_labels.dart';
 import 'core/notify_service.dart';
 import 'features/assets/assets_page.dart';
 import 'features/auth/login_page.dart';
@@ -29,24 +32,57 @@ Future<void> main() async {
   final api = ApiClient();
   await api.loadToken();
   final auth = AuthState(api);
+  final carrier = CarrierCodeLabels(api);
   final notify = NotifyService(api);
   final ticketRefresh = TicketRefreshBus();
-  if (api.accessToken != null) {
-    await auth.fetchMe();
-    await notify.start();
+  // 本地有旧 token：先挡在校验页，等 /auth/me 成功再进主壳
+  if (api.accessToken != null && api.accessToken!.isNotEmpty) {
+    auth.sessionReady = false;
   }
-  runApp(ErpEmployeeApp(auth: auth, notify: notify, ticketRefresh: ticketRefresh));
+  // 先画 UI，再后台拉会话；避免网络超时导致启动白屏
+  runApp(ErpEmployeeApp(
+    auth: auth,
+    carrier: carrier,
+    notify: notify,
+    ticketRefresh: ticketRefresh,
+  ));
+  if (api.accessToken != null && api.accessToken!.isNotEmpty) {
+    // ignore: unawaited_futures
+    _bootstrapSession(auth, carrier, notify);
+  }
+}
+
+Future<void> _bootstrapSession(
+  AuthState auth,
+  CarrierCodeLabels carrier,
+  NotifyService notify,
+) async {
+  try {
+    final ok = await auth.fetchMe().timeout(const Duration(seconds: 12), onTimeout: () => false);
+    if (!ok) {
+      // 过期 token：fetchMe 已 logout，勿再拉通知
+      await notify.stop();
+      return;
+    }
+    await carrier.load().timeout(const Duration(seconds: 8));
+    await notify.start().timeout(const Duration(seconds: 8));
+  } catch (_) {
+    /* 离线/超时仍可进入登录态壳或登录页 */
+    await notify.stop();
+  }
 }
 
 class ErpEmployeeApp extends StatelessWidget {
   const ErpEmployeeApp({
     super.key,
     required this.auth,
+    required this.carrier,
     required this.notify,
     required this.ticketRefresh,
   });
 
   final AuthState auth;
+  final CarrierCodeLabels carrier;
   final NotifyService notify;
   final TicketRefreshBus ticketRefresh;
 
@@ -55,6 +91,7 @@ class ErpEmployeeApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: auth),
+        ChangeNotifierProvider.value(value: carrier),
         ChangeNotifierProvider.value(value: notify),
         ChangeNotifierProvider.value(value: ticketRefresh),
       ],
@@ -68,6 +105,11 @@ class ErpEmployeeApp extends StatelessWidget {
         home: Consumer<AuthState>(
           builder: (context, a, _) {
             if (!a.isLoggedIn) return const LoginPage();
+            if (!a.sessionReady) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
             return const _ShellWithLaunchLink();
           },
         ),

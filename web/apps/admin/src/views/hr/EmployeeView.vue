@@ -3,10 +3,20 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
-import { DEFAULT_EMP_TYPE, EMP_TYPE_OPTIONS, empTypeLabel, hrApi, iamApi } from '@erp/shared'
-import { DeptSelect, TeamSelect, WorkshopSelect } from '../../components/select'
+import {
+  DEFAULT_EMP_TYPE,
+  EMP_STATUS_OPTIONS,
+  EMP_TYPE_OPTIONS,
+  empStatusLabel,
+  empTypeLabel,
+  hrApi,
+  iamApi,
+  productionApi,
+} from '@erp/shared'
+import { DeptSelect, EnumSelect, TeamSelect, WorkshopSelect } from '../../components/select'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
+import { downloadExcel } from '../../utils/exportExcel'
 
 type Row = Record<string, unknown>
 
@@ -14,18 +24,21 @@ const empCols: MobileCardColumn[] = [
   { prop: 'name', label: '姓名', primary: true },
   { prop: 'emp_no', label: '工号' },
   { prop: 'login_name', label: '登录账号' },
-  { prop: 'emp_type', label: '类型' },
+  { prop: 'emp_type_label', label: '用工类型' },
   { prop: 'job_title', label: '岗位' },
   { prop: 'mobile', label: '手机' },
-  { prop: 'workshop_id', label: '车间' },
-  { prop: 'dept_id', label: '部门' },
-  { prop: 'status', label: '状态' },
+  { prop: 'workshop_name', label: '车间' },
+  { prop: 'dept_name', label: '部门' },
+  { prop: 'status_label', label: '状态' },
+  { prop: 'account_label', label: '账号' },
 ]
 
 const loading = ref(false)
 const exporting = ref(false)
 const list = ref<Row[]>([])
 const roles = ref<Row[]>([])
+const deptMap = ref<Record<number, string>>({})
+const workshopMap = ref<Record<number, string>>({})
 const statusFilter = ref('')
 const typeFilter = ref('')
 const keyword = ref('')
@@ -52,6 +65,8 @@ const form = reactive({
   team_id: 0,
   badge_code: '',
   status: 'active',
+  bank_account: '',
+  tax_no: '',
 })
 const showOrgAdvanced = ref(false)
 
@@ -68,6 +83,46 @@ const errLabel: Record<string, string> = {
   INVALID_EMP_TYPE: '员工类型无效',
 }
 
+function hasAccount(row: Row) {
+  return Number(row.user_id) > 0 || !!row.has_account || !!row.login_name
+}
+
+function empTypeTagType(v: unknown): 'warning' | 'success' | 'info' | '' {
+  const s = String(v || '').toLowerCase()
+  if (s === 'piece' || s === 'temp') return 'warning'
+  if (s === 'fixed') return 'success'
+  if (s === 'office' || s === 'admin') return 'info'
+  return 'info'
+}
+
+function empStatusTagType(v: unknown): 'success' | 'info' | 'danger' {
+  const s = String(v || '')
+  if (s === 'active') return 'success'
+  if (s === 'left') return 'danger'
+  return 'info'
+}
+
+function lookupName(map: Record<number, string>, id: unknown, apiName?: unknown) {
+  const fromApi = String(apiName || '').trim()
+  if (fromApi && !fromApi.startsWith('#')) return fromApi
+  const n = Number(id) || 0
+  if (n > 0 && map[n]) return map[n]
+  return ''
+}
+
+function mapEmployee(r: Row): Row {
+  const deptName = lookupName(deptMap.value, r.dept_id, r.dept_name)
+  const workshopName = lookupName(workshopMap.value, r.workshop_id, r.workshop_name)
+  return {
+    ...r,
+    emp_type_label: empTypeLabel(r.emp_type),
+    status_label: empStatusLabel(r.status),
+    account_label: hasAccount(r) ? '已开户' : '未开户',
+    dept_name: deptName,
+    workshop_name: workshopName,
+  }
+}
+
 const filtered = computed(() => {
   let rows = list.value
   if (statusFilter.value) rows = rows.filter((r) => String(r.status) === statusFilter.value)
@@ -81,7 +136,8 @@ const filtered = computed(() => {
         String(r.mobile || '').includes(k) ||
         String(r.id_card_no || '').toLowerCase().includes(k) ||
         String(r.badge_code || '').toLowerCase().includes(k) ||
-        String(r.login_name || '').toLowerCase().includes(k),
+        String(r.login_name || '').toLowerCase().includes(k) ||
+        String(r.bank_account || '').includes(k),
     )
   }
   return rows
@@ -97,8 +153,9 @@ const summary = computed(() => {
   return {
     total: all.length,
     active: all.filter((r) => r.status === 'active').length,
+    inactive: all.filter((r) => r.status === 'inactive').length,
     left: all.filter((r) => r.status === 'left').length,
-    withAccount: all.filter((r) => Number(r.user_id) > 0 || r.has_account).length,
+    withAccount: all.filter((r) => hasAccount(r)).length,
   }
 })
 
@@ -129,8 +186,28 @@ async function refreshBadgePreview(code: string) {
 async function load() {
   loading.value = true
   try {
-    const [e, r] = await Promise.all([hrApi.employees(), iamApi.roles()])
-    list.value = ((e.data as { list?: Row[] })?.list) || []
+    const [e, r, d, w] = await Promise.all([
+      hrApi.employees(),
+      iamApi.roles(),
+      hrApi.departments(),
+      productionApi.workshops(),
+    ])
+    const depts = ((d.data as { list?: Row[] })?.list) || []
+    const shops = ((w.data as { list?: Row[] })?.list) || []
+    const dm: Record<number, string> = {}
+    const wm: Record<number, string> = {}
+    for (const x of depts) {
+      const id = Number(x.id) || 0
+      if (id > 0) dm[id] = String(x.name || x.code || id)
+    }
+    for (const x of shops) {
+      const id = Number(x.id) || 0
+      if (id > 0) wm[id] = String(x.name || x.code || id)
+    }
+    deptMap.value = dm
+    workshopMap.value = wm
+    const rows = ((e.data as { list?: Row[] })?.list) || []
+    list.value = rows.map(mapEmployee)
     roles.value = ((r.data as { list?: Row[] })?.list) || []
   } finally {
     loading.value = false
@@ -153,6 +230,8 @@ function openCreate() {
     team_id: 0,
     badge_code: '',
     status: 'active',
+    bank_account: '',
+    tax_no: '',
   })
   dlg.value = true
 }
@@ -173,6 +252,8 @@ function openEdit(row: Row) {
     team_id: Number(row.team_id) || 0,
     badge_code: row.badge_code || '',
     status: row.status || 'active',
+    bank_account: row.bank_account || '',
+    tax_no: row.tax_no || '',
   })
   dlg.value = true
 }
@@ -230,16 +311,22 @@ async function save() {
       workshop_id: form.workshop_id,
       team_id: form.team_id,
       org_id: form.org_id,
+      bank_account: form.bank_account.trim(),
+      tax_no: form.tax_no.trim(),
     }
   } else {
-    // 新建只提交元数据；工号/工牌/组织/App 账号由后端生成
     body = {
       name: form.name.trim(),
       id_card_no: form.id_card_no.trim(),
       mobile: form.mobile.trim(),
       emp_type: form.emp_type,
       job_title: form.job_title,
+      dept_id: form.dept_id,
+      workshop_id: form.workshop_id,
+      team_id: form.team_id,
       open_account: true,
+      bank_account: form.bank_account.trim(),
+      tax_no: form.tax_no.trim(),
     }
   }
   let res
@@ -311,6 +398,36 @@ async function deactivate(row: Row) {
   await load()
 }
 
+function exportEmployeesExcel() {
+  const rows = filtered.value
+  if (!rows.length) return ElMessage.warning('当前筛选无员工可导出')
+  const aoa: (string | number)[][] = [
+    ['员工档案'],
+    ['工号', '姓名', '登录账号', '用工类型', '岗位', '手机', '身份证', '部门', '车间', '银行卡', '税号', '工牌码', '状态', '账号'],
+  ]
+  for (const r of rows) {
+    aoa.push([
+      String(r.emp_no || ''),
+      String(r.name || ''),
+      String(r.login_name || ''),
+      empTypeLabel(r.emp_type),
+      String(r.job_title || ''),
+      String(r.mobile || ''),
+      String(r.id_card_no || ''),
+      String(r.dept_name || ''),
+      String(r.workshop_name || ''),
+      String(r.bank_account || ''),
+      String(r.tax_no || ''),
+      String(r.badge_code || ''),
+      empStatusLabel(r.status),
+      hasAccount(r) ? '已开户' : '未开户',
+    ])
+  }
+  const today = new Date().toISOString().slice(0, 10)
+  downloadExcel([{ name: '员工档案', rows: aoa }], `员工档案_${today}_${rows.length}`)
+  ElMessage.success(`已导出 Excel（${rows.length} 人）`)
+}
+
 /** A4 批量 PDF：4 列 × 5 行 / 页，姓名 + 二维码 + 工牌码 + 工号 */
 async function exportBadgePdf() {
   const rows = exportable.value
@@ -338,7 +455,7 @@ async function exportBadgePdf() {
     const qrSize = Math.min(cellW - 6, cellH - 18)
     const perPage = cols * rowCount
     const today = new Date().toISOString().slice(0, 10)
-    const title = `Employee Badge  ${today}  Total ${rows.length}`
+    const title = `员工工牌  ${today}  共 ${rows.length} 人`
     const fname = `employee-badges_${today}_${rows.length}.pdf`
 
     rows.forEach((emp, i) => {
@@ -353,7 +470,7 @@ async function exportBadgePdf() {
         doc.setTextColor(60)
         doc.text(title, marginX, 8)
         doc.setFontSize(8)
-        doc.text(`Page ${pageIdx + 1}`, pageW - marginX, 8, { align: 'right' })
+        doc.text(`第 ${pageIdx + 1} 页`, pageW - marginX, 8, { align: 'right' })
       }
       const col = onPage % cols
       const row = Math.floor(onPage / cols)
@@ -399,66 +516,118 @@ onMounted(load)
 
 <template>
   <div v-loading="loading || exporting" class="emp" :element-loading-text="exporting ? '正在生成 PDF…' : ''">
-    <h2 class="title">员工档案</h2>
-    <p class="desc">快速建档只需姓名、身份证、手机；工号与工牌自动生成。工牌可在操作列查看或批量导出 PDF。</p>
+    <header class="page-head">
+      <div>
+        <h2 class="title">员工档案</h2>
+        <p class="desc">
+          快速建档只需姓名、身份证、手机；工号与工牌自动生成。部门在「人事管理 → 部门管理」维护，车间在「生产管理 → 车间管理」维护；档案列表直接显示名称。
+        </p>
+      </div>
+      <div class="head-meta">
+        <span class="meta-pill">筛选 {{ filtered.length }} / 在册 {{ summary.total }}</span>
+      </div>
+    </header>
 
     <div class="stats">
       <div class="stat"><div class="label">在册</div><div class="value">{{ summary.total }}</div></div>
       <div class="stat ok"><div class="label">在职</div><div class="value">{{ summary.active }}</div></div>
-      <div class="stat"><div class="label">已离职</div><div class="value">{{ summary.left }}</div></div>
+      <div class="stat"><div class="label">停用</div><div class="value">{{ summary.inactive }}</div></div>
+      <div class="stat warn"><div class="label">已离职</div><div class="value">{{ summary.left }}</div></div>
       <div class="stat ok"><div class="label">已开户</div><div class="value">{{ summary.withAccount }}</div></div>
     </div>
 
     <div class="row">
       <el-button type="primary" @click="openCreate">新建员工</el-button>
+      <el-button type="success" plain :disabled="!filtered.length" @click="exportEmployeesExcel">导出 Excel</el-button>
       <el-button type="success" :disabled="!exportable.length" @click="exportBadgePdf">批量导出工牌 PDF</el-button>
       <el-button @click="load">刷新</el-button>
-      <el-input v-model="keyword" clearable placeholder="工号/姓名/手机/身份证/工牌" style="width:260px" />
-      <el-select v-model="statusFilter" clearable placeholder="状态" style="width:120px">
-        <el-option label="在职" value="active" />
-        <el-option label="离职" value="left" />
-        <el-option label="停用" value="inactive" />
-      </el-select>
-      <el-select v-model="typeFilter" clearable placeholder="类型" style="width:130px">
+      <el-input v-model="keyword" clearable placeholder="工号/姓名/手机/身份证/工牌/银行卡" style="width:280px" />
+      <EnumSelect v-model="statusFilter" :options="EMP_STATUS_OPTIONS" clearable placeholder="状态" style="width:120px" />
+      <el-select v-model="typeFilter" clearable placeholder="用工类型" style="width:130px">
         <el-option v-for="t in EMP_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
       </el-select>
-      <span class="hint">可导出 {{ exportable.length }} / 筛选 {{ filtered.length }}</span>
+      <span class="hint">工牌可导出 {{ exportable.length }} / 筛选 {{ filtered.length }}</span>
     </div>
 
-    <TableOrCards :data="filtered" :loading="loading" :columns="empCols">
-      <el-table :data="filtered" border stripe>
+    <TableOrCards :data="filtered" :loading="loading" :columns="empCols" empty-text="暂无员工，请点击「新建员工」">
+      <el-table :data="filtered" border stripe class="emp-table" empty-text="暂无员工">
         <el-table-column prop="emp_no" label="工号" width="110" />
-        <el-table-column prop="name" label="姓名" width="100" />
-        <el-table-column prop="login_name" label="登录账号" width="120" />
-        <el-table-column label="类型" width="100">
-          <template #default="{ row }">{{ empTypeLabel(row.emp_type) }}</template>
+        <el-table-column prop="name" label="姓名" min-width="110">
+          <template #default="{ row }">
+            <div class="name-cell">
+              <span class="name">{{ row.name || '—' }}</span>
+              <span v-if="row.id" class="id-hint">#{{ row.id }}</span>
+            </div>
+          </template>
         </el-table-column>
-        <el-table-column prop="job_title" label="岗位" width="110" />
+        <el-table-column prop="login_name" label="登录账号" width="120">
+          <template #default="{ row }">
+            <span :class="{ muted: !row.login_name }">{{ row.login_name || '—' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="用工类型" width="110" align="center">
+          <template #default="{ row }">
+            <el-tag size="small" effect="plain" :type="empTypeTagType(row.emp_type)">{{ row.emp_type_label || empTypeLabel(row.emp_type) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="job_title" label="岗位" width="110">
+          <template #default="{ row }">
+            <span :class="{ muted: !row.job_title }">{{ row.job_title || '—' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="mobile" label="手机" width="120" />
-        <el-table-column prop="workshop_id" label="车间" width="70" />
-        <el-table-column prop="dept_id" label="部门" width="70" />
-        <el-table-column prop="status" label="状态" width="80" />
-        <el-table-column label="账号" width="70">
-          <template #default="{ row }">{{ Number(row.user_id) > 0 || row.has_account || row.login_name ? '有' : '无' }}</template>
+        <el-table-column label="部门" width="110">
+          <template #default="{ row }">
+            <span :class="{ muted: !row.dept_name }">{{ row.dept_name || '—' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="车间" width="110">
+          <template #default="{ row }">
+            <span :class="{ muted: !row.workshop_name }">{{ row.workshop_name || '—' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="bank_account" label="银行卡" min-width="140" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span :class="{ muted: !row.bank_account }">{{ row.bank_account || '未填写' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag size="small" :type="empStatusTagType(row.status)">{{ row.status_label || empStatusLabel(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="账号" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag size="small" effect="plain" :type="hasAccount(row) ? 'success' : 'info'">{{ row.account_label }}</el-tag>
+          </template>
         </el-table-column>
         <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
             <el-button link @click="openBadge(row)">工牌</el-button>
-            <el-button v-if="!(Number(row.user_id) > 0 || row.has_account)" link type="success" @click="openAccount(row)">开户</el-button>
+            <el-button v-if="!hasAccount(row)" link type="success" @click="openAccount(row)">开户</el-button>
             <el-button v-if="row.status === 'active'" link type="danger" @click="deactivate(row)">停用</el-button>
           </template>
         </el-table-column>
       </el-table>
+      <template #field-emp_type_label="{ row }">
+        <el-tag size="small" effect="plain" :type="empTypeTagType(row.emp_type)">{{ row.emp_type_label }}</el-tag>
+      </template>
+      <template #field-status_label="{ row }">
+        <el-tag size="small" :type="empStatusTagType(row.status)">{{ row.status_label }}</el-tag>
+      </template>
+      <template #field-account_label="{ row }">
+        <el-tag size="small" effect="plain" :type="hasAccount(row) ? 'success' : 'info'">{{ row.account_label }}</el-tag>
+      </template>
       <template #actions="{ row }">
         <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
         <el-button link @click="openBadge(row)">工牌</el-button>
-        <el-button v-if="!(Number(row.user_id) > 0 || row.has_account)" link type="success" @click="openAccount(row)">开户</el-button>
+        <el-button v-if="!hasAccount(row)" link type="success" @click="openAccount(row)">开户</el-button>
         <el-button v-if="row.status === 'active'" link type="danger" @click="deactivate(row)">停用</el-button>
       </template>
     </TableOrCards>
 
-    <el-dialog v-model="dlg" :title="editingId ? '编辑员工' : '新建员工'" width="520px">
+    <el-dialog v-model="dlg" :title="editingId ? '编辑员工' : '新建员工'" width="540px" destroy-on-close>
       <p v-if="!editingId" class="form-tip">
         只需填写姓名、身份证、手机。系统将自动生成工号、工牌，并开通 App 账号（登录名=手机号，初始密码=身份证后 6 位）。
       </p>
@@ -475,38 +644,39 @@ onMounted(load)
         <el-form-item label="手机" required>
           <el-input v-model="form.mobile" placeholder="11 位手机号" maxlength="11" />
         </el-form-item>
-        <el-form-item label="类型">
-          <el-select v-model="form.emp_type" style="width:100%">
-            <el-option v-for="t in EMP_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
-          </el-select>
+        <el-form-item label="用工类型">
+          <EnumSelect v-model="form.emp_type" :options="EMP_TYPE_OPTIONS" :clearable="false" style="width:100%" />
         </el-form-item>
         <el-form-item label="岗位">
           <el-input v-model="form.job_title" placeholder="可选" />
+        </el-form-item>
+        <el-form-item label="部门">
+          <DeptSelect v-model="form.dept_id" allow-zero zero-label="未设置" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="车间">
+          <WorkshopSelect v-model="form.workshop_id" allow-zero zero-label="未设置" style="width:100%" />
+        </el-form-item>
+        <el-divider content-position="left">工资发放（与财务工人信息同源）</el-divider>
+        <el-form-item label="银行卡">
+          <el-input v-model="form.bank_account" placeholder="工资卡号，可选" maxlength="64" show-word-limit />
+        </el-form-item>
+        <el-form-item label="税号">
+          <el-input v-model="form.tax_no" placeholder="可选" maxlength="64" />
         </el-form-item>
         <el-form-item v-if="editingId && form.badge_code" label="工牌">
           <span class="badge-readonly">{{ form.badge_code }}</span>
           <el-button link type="primary" style="margin-left:8px" @click="openBadge({ id: editingId, ...form })">预览</el-button>
         </el-form-item>
         <el-form-item v-if="editingId" label="状态">
-          <el-select v-model="form.status" style="width:100%">
-            <el-option label="在职" value="active" />
-            <el-option label="停用" value="inactive" />
-            <el-option label="离职" value="left" />
-          </el-select>
+          <EnumSelect v-model="form.status" :options="EMP_STATUS_OPTIONS" :clearable="false" style="width:100%" />
         </el-form-item>
         <template v-if="editingId">
           <el-divider content-position="left">
             <el-button link type="primary" @click="showOrgAdvanced = !showOrgAdvanced">
-              {{ showOrgAdvanced ? '收起归属设置' : '高级：部门 / 车间 / 班组' }}
+              {{ showOrgAdvanced ? '收起班组设置' : '高级：班组' }}
             </el-button>
           </el-divider>
           <template v-if="showOrgAdvanced">
-            <el-form-item label="部门">
-              <DeptSelect v-model="form.dept_id" allow-zero zero-label="未设置" style="width:100%" />
-            </el-form-item>
-            <el-form-item label="车间">
-              <WorkshopSelect v-model="form.workshop_id" allow-zero zero-label="未设置" style="width:100%" />
-            </el-form-item>
             <el-form-item label="班组">
               <TeamSelect
                 v-model="form.team_id"
@@ -518,6 +688,17 @@ onMounted(load)
             </el-form-item>
           </template>
         </template>
+        <template v-else>
+          <el-form-item label="班组">
+            <TeamSelect
+              v-model="form.team_id"
+              :workshop-id="form.workshop_id"
+              allow-zero
+              zero-label="未设置"
+              style="width:100%"
+            />
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="dlg = false">取消</el-button>
@@ -525,7 +706,7 @@ onMounted(load)
       </template>
     </el-dialog>
 
-    <el-dialog v-model="badgeDlg" title="工牌二维码" width="420px">
+    <el-dialog v-model="badgeDlg" title="工牌二维码" width="420px" destroy-on-close>
       <div v-if="badgePreviewQr || current?.badge_code" class="preview-box">
         <img v-if="badgePreviewQr" :src="badgePreviewQr" alt="badge qr" class="qr-lg" />
         <div class="preview-meta">{{ current?.badge_code }}</div>
@@ -539,7 +720,7 @@ onMounted(load)
       </template>
     </el-dialog>
 
-    <el-dialog v-model="accountDlg" title="开通登录账号" width="480px">
+    <el-dialog v-model="accountDlg" title="开通登录账号" width="480px" destroy-on-close>
       <el-form label-width="100px">
         <el-form-item label="登录名"><el-input v-model="accountForm.login_name" /></el-form-item>
         <el-form-item label="初始密码">
@@ -547,7 +728,7 @@ onMounted(load)
         </el-form-item>
         <el-form-item label="角色">
           <el-select v-model="accountForm.role_ids" multiple filterable style="width:100%">
-            <el-option v-for="r in roles" :key="String(r.id)" :label="`${r.code || ''} ${r.name || ''}`" :value="Number(r.id)" />
+            <el-option v-for="r in roles" :key="String(r.id)" :label="`${r.name || r.code || r.id}`" :value="Number(r.id)" />
           </el-select>
         </el-form-item>
       </el-form>
@@ -560,22 +741,41 @@ onMounted(load)
 </template>
 
 <style scoped>
-.emp { background: #fff; padding: 16px; border-radius: 8px; border: 1px solid #d5dde3; }
-.title { margin: 0 0 4px; }
-.desc { color: #5c6b75; font-size: 13px; margin: 0 0 12px; }
-.row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+.emp { background: #fff; padding: 16px 18px; border-radius: 10px; border: 1px solid #e2e8ee; }
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+.title { margin: 0 0 4px; font-size: 18px; font-weight: 600; color: #1f2a33; }
+.desc { color: #5c6b75; font-size: 13px; margin: 0 0 12px; line-height: 1.5; max-width: 640px; }
+.head-meta { flex-shrink: 0; padding-top: 2px; }
+.meta-pill {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #eef6f1;
+  color: #2f6b4f;
+  font-size: 12px;
+  font-weight: 500;
+}
+.row { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
 .hint { font-size: 12px; color: #5c6b75; }
-.stats { display: grid; grid-template-columns: repeat(4, minmax(100px, 140px)); gap: 10px; margin-bottom: 12px; }
-.stat { background: #f4f7f9; border: 1px solid #e2e8ec; border-radius: 8px; padding: 10px; }
-.stat.ok { background: #eef8f4; }
-.stat .label { font-size: 12px; color: #5c6b75; }
-.stat .value { font-size: 20px; font-weight: 600; }
-.muted { color: #9aa7b0; font-size: 12px; }
+.stats { display: grid; grid-template-columns: repeat(5, minmax(96px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.stat { background: #f6f8fa; border: 1px solid #e8eef2; border-radius: 8px; padding: 10px 12px; }
+.stat.ok { background: #eef6f1; border-color: #d5eade; }
+.stat.warn { background: #fff7f0; border-color: #f0e0d0; }
+.stat .label { font-size: 12px; color: #6b7a85; }
+.stat .value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; color: #1f2a33; }
+.muted { color: #98a2a8; }
 .center { text-align: center; }
+.name-cell { display: flex; align-items: baseline; gap: 8px; }
+.name { font-weight: 500; color: #1f2a33; }
+.id-hint { font-size: 12px; color: #98a2a8; }
+.emp-table :deep(.el-table__header th) { background: #f6f8fa; color: #4a5a66; font-weight: 600; }
 .preview-box { text-align: center; padding: 8px 0 4px; }
 .qr-lg { width: 220px; height: 220px; display: block; margin: 0 auto 10px; border: 1px solid #e2e8ec; border-radius: 8px; }
 .preview-meta { font-size: 14px; font-weight: 600; letter-spacing: 0.02em; margin-top: 4px; word-break: break-all; }
 .preview-sub { font-size: 12px; color: #5c6b75; margin-top: 4px; }
 .badge-readonly { font-size: 13px; font-weight: 600; }
-.form-tip { margin: 0 0 12px; font-size: 13px; color: #5c6b75; background: #f4f7f9; padding: 8px 10px; border-radius: 6px; }
+.form-tip { margin: 0 0 12px; font-size: 13px; color: #5c6b75; background: #f6f8fa; padding: 8px 10px; border-radius: 6px; }
+@media (max-width: 720px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 </style>

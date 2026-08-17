@@ -28,6 +28,7 @@ import {
 } from '../../components/select'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
+import { setCarrierCodeUnit, useCarrierCodeLabel } from '../../composables/useCarrierCodeLabel'
 
 type Row = Record<string, unknown>
 type RefKind = 'warehouse' | 'workshop' | 'employee' | 'user' | 'product' | 'customer' | 'role' | 'dept'
@@ -72,6 +73,15 @@ const SETTINGS: Record<string, { title: string; fields: FieldDef[] }> = {
           { value: 'box_stockin', label: '分板入库后（按板合计）' },
         ],
       },
+      {
+        key: 'carrier_code_unit',
+        label: '载体码单位',
+        type: 'select',
+        options: [
+          { value: 'board', label: '板码' },
+          { value: 'box', label: '箱码' },
+        ],
+      },
     ],
   },
   销售设置: {
@@ -88,7 +98,7 @@ const SETTINGS: Record<string, { title: string; fields: FieldDef[] }> = {
     title: '生产设置',
     fields: [
       { key: 'auto_inbound_on_qc', label: '质检后自动入库', type: 'switch' },
-      { key: 'require_box_code', label: '强制箱码', type: 'switch' },
+      { key: 'require_box_code', label: '强制载体码', type: 'switch' },
       { key: 'default_workshop_id', label: '默认车间', type: 'ref', ref: 'workshop' },
       { key: 'piecework_confirm_required', label: '计件需确认', type: 'switch' },
     ],
@@ -237,6 +247,18 @@ const CRUD_FIELDS: Record<string, FieldDef[]> = {
 }
 
 const isSetting = computed(() => !!SETTINGS[props.module])
+const { codeLabel, ensureLoaded: ensureCarrierLabel } = useCarrierCodeLabel()
+
+const settingFields = computed(() => {
+  const fields = SETTINGS[props.module]?.fields || []
+  return fields.map((f) => {
+    if (f.key === 'require_box_code') {
+      return { ...f, label: `强制${codeLabel.value}` }
+    }
+    return f
+  })
+})
+
 const formFields = computed(() => CRUD_FIELDS[props.module] || [
   { key: 'name', label: '名称' }, { key: 'code', label: '编码' }, { key: 'remark', label: '备注' },
   { key: 'status', label: '状态', type: 'select', options: STATUS_ACTIVE_OPTIONS },
@@ -270,10 +292,13 @@ async function load() {
       const row = rows[0] || {}
       Object.keys(settingForm).forEach((k) => delete settingForm[k])
       Object.assign(settingForm, row)
-      for (const f of SETTINGS[props.module].fields) {
+      for (const f of settingFields.value) {
         if (settingForm[f.key] === undefined) {
           settingForm[f.key] = f.type === 'switch' ? false : (f.type === 'number' || f.type === 'ref') ? 0 : ''
         }
+      }
+      if (props.module === '基础设置') {
+        setCarrierCodeUnit(String(settingForm.carrier_code_unit || 'board'))
       }
     }
   } finally {
@@ -285,8 +310,15 @@ async function saveSetting() {
   const body = { ...settingForm }
   delete body.id
   delete body.setting_key
+  delete body.carrier_code_label
+  delete body.carrier_code_short
+  delete body.carrier_code_manage_title
+  delete body.carrier_code_split_verb
   const r = await moduleReplace(props.listPath, body)
   if (r.code !== 1) return ElMessage.error(r.msg || '保存失败')
+  if (props.module === '基础设置') {
+    setCarrierCodeUnit(String(body.carrier_code_unit || 'board'))
+  }
   ElMessage.success('已保存')
   await load()
 }
@@ -377,7 +409,10 @@ const cardColumns = computed<MobileCardColumn[]>(() => {
 })
 
 watch(() => props.module, () => load())
-onMounted(load)
+onMounted(async () => {
+  await ensureCarrierLabel()
+  await load()
+})
 </script>
 
 <template>
@@ -387,7 +422,7 @@ onMounted(load)
 
     <template v-if="isSetting">
       <el-form label-width="140px" style="max-width:560px">
-        <el-form-item v-for="f in SETTINGS[module].fields" :key="f.key" :label="f.label">
+        <el-form-item v-for="f in settingFields" :key="f.key" :label="f.label">
           <el-switch v-if="f.type === 'switch'" v-model="settingForm[f.key]" />
           <el-input-number v-else-if="f.type === 'number'" v-model="settingForm[f.key]" :controls="true" style="width:100%" />
           <el-input v-else-if="f.type === 'textarea'" v-model="settingForm[f.key]" type="textarea" :rows="3" />

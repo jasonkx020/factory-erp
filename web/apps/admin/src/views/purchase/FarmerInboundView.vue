@@ -7,10 +7,13 @@ import ConfirmSnapshotCompare from '../../components/closed-loop/ConfirmSnapshot
 import TraceLotPanel from '../../components/trace/TraceLotPanel.vue'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
+import { useCarrierCodeLabel } from '../../composables/useCarrierCodeLabel'
 
 const route = useRoute()
 
 type Row = Record<string, unknown>
+
+const { codeLabel, ensureLoaded: ensureCarrierLabel } = useCarrierCodeLabel()
 
 const farmerCols: MobileCardColumn[] = [
   { prop: 'name', label: '姓名', primary: true },
@@ -28,7 +31,7 @@ const arrivalCols: MobileCardColumn[] = [
   { prop: 'grade', label: '等级' },
   { prop: 'status', label: '状态' },
 ]
-const ticketCols: MobileCardColumn[] = [
+const ticketCols = computed<MobileCardColumn[]>(() => [
   { prop: 'doc_no', label: '单号', primary: true },
   { prop: 'receive_kind', label: '模式' },
   { prop: 'batch_no', label: '溯源批号' },
@@ -40,8 +43,8 @@ const ticketCols: MobileCardColumn[] = [
   { prop: 'cold_store_type', label: '冷库' },
   { prop: 'status', label: '状态' },
   { prop: 'trace_code', label: '溯源码' },
-  { prop: 'box_code', label: '箱码' },
-]
+  { prop: 'box_code', label: codeLabel.value },
+])
 const settlementCols: MobileCardColumn[] = [
   { prop: 'doc_no', label: '结算单', primary: true },
   { prop: 'farmer_name', label: '农户' },
@@ -555,6 +558,7 @@ async function applyTraceQueryCode() {
 }
 
 onMounted(async () => {
+  await ensureCarrierLabel()
   await refresh()
   await applyTraceQueryCode()
 })
@@ -784,7 +788,7 @@ watch(
           </el-table-column>
           <el-table-column prop="status" label="状态" width="90" />
           <el-table-column prop="trace_code" label="溯源码" min-width="160" />
-          <el-table-column prop="box_code" label="箱码" min-width="120" />
+          <el-table-column prop="box_code" :label="codeLabel" min-width="120" />
           <el-table-column label="操作" width="280" fixed="right">
             <template #default="{ row }">
               <el-button v-if="row.status==='draft' || row.status==='qc_pass'" link type="primary" @click="openConfirm(row)">对照确认出码</el-button>

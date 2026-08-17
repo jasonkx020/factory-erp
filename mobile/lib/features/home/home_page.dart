@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/auth_state.dart';
+import '../../core/carrier_code_labels.dart';
 import '../../core/employee_modules.dart';
 import '../../core/notify_service.dart';
 import '../../core/role_codes.dart';
@@ -21,7 +22,11 @@ class _HomePageState extends State<HomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final auth = context.read<AuthState>();
       final notify = context.read<NotifyService>();
-      await auth.fetchMe();
+      final carrier = context.read<CarrierCodeLabels>();
+      final ok = await auth.fetchMe();
+      if (!ok || !mounted) return;
+      await carrier.load();
+      if (!mounted) return;
       await notify.start();
     });
   }
@@ -60,7 +65,8 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
     final notify = context.watch<NotifyService>();
-    final mods = visibleEmployeeModules(auth.permissions, auth.roles);
+    final codeLabel = context.watch<CarrierCodeLabels>().code;
+    final mods = visibleEmployeeModules(auth.permissions, auth.roles, codeLabel: codeLabel);
     final useSteps = _useStepWorkbench(auth);
 
     return Scaffold(

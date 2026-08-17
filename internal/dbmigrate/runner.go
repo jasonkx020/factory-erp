@@ -75,6 +75,15 @@ func (r *Runner) Baseline(ctx context.Context) error {
 
 // SeedDev applies data-dev.sql when present.
 func (r *Runner) SeedDev(ctx context.Context) error {
+	return r.seedDev(ctx, false)
+}
+
+// SeedDevReset clears noisy seed tables then applies data-dev.sql (dev re-init).
+func (r *Runner) SeedDevReset(ctx context.Context) error {
+	return r.seedDev(ctx, true)
+}
+
+func (r *Runner) seedDev(ctx context.Context, reset bool) error {
 	if _, err := os.Stat(r.paths.SeedDevFile); err != nil {
 		return fmt.Errorf("seed file not found: %s", r.paths.SeedDevFile)
 	}
@@ -83,12 +92,46 @@ func (r *Runner) SeedDev(ctx context.Context) error {
 		return err
 	}
 	if r.opts.DryRun {
-		fmt.Printf("dry-run: would apply seed %s\n", r.paths.SeedDevFile)
+		if reset {
+			fmt.Printf("dry-run: would RESET seed tables then apply %s\n", r.paths.SeedDevFile)
+		} else {
+			fmt.Printf("dry-run: would apply seed %s\n", r.paths.SeedDevFile)
+		}
 		return nil
 	}
 	return r.withLock(ctx, func(tx *sqlx.Tx) error {
+		if reset {
+			if err := resetDevSeedTables(tx); err != nil {
+				return fmt.Errorf("reset seed tables: %w", err)
+			}
+			fmt.Println("seed-dev: cleared wage rates / demo noise tables")
+		}
 		return execStatements(tx, string(raw), true)
 	})
+}
+
+// resetDevSeedTables removes data that accumulates duplicates on repeated seed-dev.
+func resetDevSeedTables(tx *sqlx.Tx) error {
+	stmts := []string{
+		`DELETE FROM pay_process_wage_rate`,
+		`DELETE FROM pd_routing_step WHERE routing_id IN (1,2,3)`,
+		`DELETE FROM pd_routing WHERE id IN (1,2,3)`,
+	}
+	for _, q := range stmts {
+		if _, err := tx.Exec(q); err != nil {
+			// tolerate missing tables during partial installs
+			if isBenignExistsError(err) {
+				continue
+			}
+			// also tolerate undefined_table
+			msg := strings.ToLower(err.Error())
+			if strings.Contains(msg, "does not exist") || strings.Contains(msg, "undefined_table") {
+				continue
+			}
+			return fmt.Errorf("%s: %w", truncateStmt(q, 80), err)
+		}
+	}
+	return nil
 }
 
 // UpgradeAll applies pending upgrade scripts in version order.

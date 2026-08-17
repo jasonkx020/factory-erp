@@ -92,7 +92,7 @@ const router = createRouter({
         { path: 'production/process-reports', redirect: '/production/hub/reports' },
         { path: 'production/process-mgmt', redirect: '/production/hub/processes' },
         { path: 'production/piece-issue', redirect: '/production/hub/piece-issue' },
-        { path: 'automation/routing', redirect: '/production/hub/routings' },
+        { path: 'automation/routing', redirect: '/production/hub/processes' },
         { path: 'hr/tool-issues', name: 'tool-issues', component: () => import('./views/hr/ToolIssueView.vue') },
         { path: 'workflow/tickets', name: 'workflow-tickets', component: () => import('./views/workflow/TicketCenterView.vue') },
         { path: 'system/personnel-transfers', redirect: '/hr/personnel-transfers' },

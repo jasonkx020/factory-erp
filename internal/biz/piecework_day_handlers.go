@@ -28,31 +28,29 @@ func (s *Services) processWageRate(processID int64) float64 {
 }
 
 func (s *Services) isPieceworkProcess(processID, stepID int64) bool {
+	// Yield-pay process: pay_mode weight|piece (legacy is_piecework / step flag still honored via processPayMode).
+	if processID > 0 {
+		return s.processPaysYield(processID)
+	}
 	if stepID > 0 {
 		if step := s.loadStep(stepID); step != nil {
 			return step.IsPiecework
 		}
 	}
-	if processID > 0 {
-		var pPiece int
-		_ = s.DB.QueryRow(`SELECT COALESCE(is_piecework,0) FROM pd_process WHERE id=?`, processID).Scan(&pPiece)
-		return pPiece == 1
-	}
 	return false
 }
 
-// workerLockedPieceworkKg 领料预锁定 kg（issue − 退库 − 已结算），未入日汇总。
+// workerLockedPieceworkKg 领料预锁定 kg（issue − 退库 − 已日结），未入日汇总；仅计件工。
 func (s *Services) workerLockedPieceworkKg(workerID, processID int64) float64 {
-	if workerID <= 0 {
+	if workerID <= 0 || !s.workerYieldEligible(workerID) {
 		return 0
 	}
-	q := `SELECT COALESCE(SUM(i.issue_kg - i.returned_kg - i.completed_kg),0)
+	q := `SELECT COALESCE(SUM(i.issue_kg - i.returned_kg - COALESCE(i.wage_settled_kg,0)),0)
 		FROM pd_process_issue i
-		LEFT JOIN pd_routing_step rs ON rs.id=i.step_id
 		LEFT JOIN pd_process p ON p.id=i.process_id
-		WHERE i.worker_id=? AND i.status='open'
-		  AND (i.issue_kg - i.returned_kg - i.completed_kg) > 0
-		  AND (COALESCE(rs.is_piecework,0)=1 OR (COALESCE(i.step_id,0)=0 AND COALESCE(p.is_piecework,0)=1))`
+		WHERE i.worker_id=?
+		  AND (i.issue_kg - i.returned_kg - COALESCE(i.wage_settled_kg,0)) > 0
+		  AND (COALESCE(NULLIF(p.pay_mode,''),'') IN ('weight','piece') OR (COALESCE(NULLIF(p.pay_mode,''),'')='' AND COALESCE(p.is_piecework,0)=1))`
 	args := []interface{}{workerID}
 	if processID > 0 {
 		q += ` AND i.process_id=?`
@@ -67,35 +65,38 @@ func (s *Services) workerLockedPieceworkKg(workerID, processID int64) float64 {
 }
 
 func (s *Services) attachPieceworkLockPreview(dst gin.H, workerID, processID, stepID int64) {
-	piece := s.isPieceworkProcess(processID, stepID)
-	dst["piecework"] = piece
-	if !piece {
+	_ = stepID
+	eligible := s.shouldLockYieldWage(processID, workerID)
+	dst["piecework"] = eligible
+	dst["pay_mode"] = s.processPayMode(processID)
+	dst["emp_type"] = s.workerEmpType(workerID)
+	if !eligible {
 		dst["locked_kg"] = 0.0
 		dst["locked_wage_amount"] = 0.0
 		dst["piecework_status"] = "none"
 		return
 	}
 	rate := s.processWageRate(processID)
-	lockedKg := 0.0
-	if v, ok := dst["my_open_kg"].(float64); ok {
-		lockedKg = v
-	}
+	lockedKg := s.workerLockedPieceworkKg(workerID, processID)
 	dst["rate"] = rate
 	dst["locked_kg"] = lockedKg
 	dst["locked_wage_amount"] = roundMoney(lockedKg * rate)
 	dst["piecework_status"] = "locked"
+	dst["piecework_hint"] = "预估工钱，当日日结入账"
 }
 
 func (s *Services) listWorkerPieceworkLocks(workerID int64) ([]gin.H, float64, float64) {
+	if !s.workerYieldEligible(workerID) {
+		return []gin.H{}, 0, 0
+	}
 	rows, err := s.DB.Query(`SELECT i.process_id, COALESCE(p.name,''),
-		COALESCE(SUM(i.issue_kg - i.returned_kg - i.completed_kg),0),
+		COALESCE(SUM(i.issue_kg - i.returned_kg - COALESCE(i.wage_settled_kg,0)),0),
 		COALESCE((SELECT rate FROM pay_process_wage_rate r WHERE r.process_id=i.process_id AND r.status='active' ORDER BY r.id DESC LIMIT 1),0)
 		FROM pd_process_issue i
 		LEFT JOIN pd_process p ON p.id=i.process_id
-		LEFT JOIN pd_routing_step rs ON rs.id=i.step_id
-		WHERE i.worker_id=? AND i.status='open'
-		  AND (i.issue_kg - i.returned_kg - i.completed_kg) > 0
-		  AND (COALESCE(rs.is_piecework,0)=1 OR (COALESCE(i.step_id,0)=0 AND COALESCE(p.is_piecework,0)=1))
+		WHERE i.worker_id=?
+		  AND (i.issue_kg - i.returned_kg - COALESCE(i.wage_settled_kg,0)) > 0
+		  AND (COALESCE(NULLIF(p.pay_mode,''),'') IN ('weight','piece') OR (COALESCE(NULLIF(p.pay_mode,''),'')='' AND COALESCE(p.is_piecework,0)=1))
 		GROUP BY i.process_id, p.name`, workerID)
 	if err != nil {
 		return nil, 0, 0
@@ -132,6 +133,13 @@ func (s *Services) handlePieceworkSummaries(c *gin.Context, method, action, open
 	}
 	if strings.Contains(openapiPath, "/recalc") || strings.Contains(c.Request.URL.Path, "/recalc") {
 		return s.recalcPieceworkSummaries(c)
+	}
+	if strings.Contains(openapiPath, "/day-settle") || strings.Contains(c.Request.URL.Path, "/day-settle") {
+		if method != "POST" {
+			api.FailJSON(c, "METHOD_NOT_ALLOWED")
+			return true
+		}
+		return s.handlePieceworkDaySettle(c)
 	}
 	if method == "GET" && action == "list" {
 		return s.listPieceworkSummaries(c)
@@ -324,10 +332,16 @@ func (s *Services) upsertPieceworkSummary(workerID, processID, reportID int64, q
 }
 
 func (s *Services) upsertPieceworkSummaryKeyed(workerID, processID int64, sourceKey string, qty, inputWeight, outputWeight, loss, utilization float64) {
+	s.upsertPieceworkSummaryKeyedOnDate(workerID, processID, time.Now().Format("2006-01-02"), sourceKey, qty, inputWeight, outputWeight, loss, utilization)
+}
+
+func (s *Services) upsertPieceworkSummaryKeyedOnDate(workerID, processID int64, bizDate, sourceKey string, qty, inputWeight, outputWeight, loss, utilization float64) {
 	if processID <= 0 || workerID <= 0 {
 		return
 	}
-	bizDate := time.Now().Format("2006-01-02")
+	if strings.TrimSpace(bizDate) == "" {
+		bizDate = time.Now().Format("2006-01-02")
+	}
 	var rate float64
 	_ = s.DB.QueryRow(`SELECT rate FROM pay_process_wage_rate WHERE process_id=? AND status='active' ORDER BY id DESC LIMIT 1`, processID).Scan(&rate)
 	amount := outputWeight * rate
@@ -359,6 +373,76 @@ func (s *Services) upsertPieceworkSummaryKeyed(workerID, processID int64, source
 		_, _ = s.DB.Exec(`INSERT INTO pd_piecework_summary(worker_id, process_id, biz_date, qty, weight, input_weight, output_weight, loss, utilization, amount, source_report_ids)
 			VALUES(?,?,?,?,?,?,?,?,?,?,?)`, workerID, processID, bizDate, qty, outputWeight, inputWeight, outputWeight, loss, utilization, amount, rid)
 	}
+}
+
+func (s *Services) handlePieceworkDaySettle(c *gin.Context) bool {
+	body := bindBody(c)
+	bizDate := strings.TrimSpace(strOrDef(body["biz_date"], time.Now().Format("2006-01-02")))
+	batchNo := fmt.Sprintf("DS%s-%d", strings.ReplaceAll(bizDate, "-", ""), time.Now().Unix()%1e6)
+	rows, err := s.DB.Query(`SELECT i.id, i.board_id, COALESCE(i.board_code,''), COALESCE(i.trace_code,''),
+		i.process_id, COALESCE(i.step_id,0), i.worker_id,
+		(i.issue_kg - i.returned_kg - COALESCE(i.wage_settled_kg,0)) AS rem
+		FROM pd_process_issue i
+		INNER JOIN hr_employee e ON e.id=i.worker_id AND COALESCE(e.emp_type,'')='piece'
+		INNER JOIN pd_process p ON p.id=i.process_id
+		WHERE COALESCE(i.worker_id,0)>0
+		  AND (i.issue_kg - i.returned_kg - COALESCE(i.wage_settled_kg,0)) > 0
+		  AND (COALESCE(NULLIF(p.pay_mode,''),'') IN ('weight','piece') OR (COALESCE(NULLIF(p.pay_mode,''),'')='' AND COALESCE(p.is_piecework,0)=1))
+		ORDER BY i.worker_id, i.process_id, i.id`)
+	if err != nil {
+		api.FailJSON(c, "DB_ERROR:"+err.Error())
+		return true
+	}
+	defer rows.Close()
+	type row struct {
+		id, boardID, processID, stepID, workerID int64
+		boardCode, trace                         string
+		rem                                      float64
+	}
+	list := []row{}
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.boardID, &r.boardCode, &r.trace, &r.processID, &r.stepID, &r.workerID, &r.rem); err != nil {
+			continue
+		}
+		r.rem = roundKg(r.rem)
+		if r.rem > kgEps {
+			list = append(list, r)
+		}
+	}
+	settledN, settledKg, settledAmt := 0, 0.0, 0.0
+	actor := claimsUserID(c)
+	for _, r := range list {
+		rate := s.processWageRate(r.processID)
+		amt := roundMoney(r.rem * rate)
+		src := fmt.Sprintf("DAY:%s:I%d", bizDate, r.id)
+		s.upsertPieceworkSummaryKeyedOnDate(r.workerID, r.processID, bizDate, src, r.rem, r.rem, r.rem, 0, 1)
+		var settled float64
+		_ = s.DB.QueryRow(`SELECT COALESCE(wage_settled_kg,0) FROM pd_process_issue WHERE id=?`, r.id).Scan(&settled)
+		newSettled := roundKg(settled + r.rem)
+		_, _ = s.DB.Exec(`UPDATE pd_process_issue SET wage_settled_kg=?, updated_at=NOW() WHERE id=?`, newSettled, r.id)
+		var summaryID int64
+		_ = s.DB.QueryRow(`SELECT id FROM pd_piecework_summary WHERE worker_id=? AND process_id=? AND biz_date=?`,
+			r.workerID, r.processID, bizDate).Scan(&summaryID)
+		s.appendStationFlowLog(stationFlowEvent{
+			EventType: "day_settle", BizDate: bizDate, BoardID: r.boardID, BoardCode: r.boardCode, TraceCode: r.trace,
+			ProcessID: r.processID, StepID: r.stepID, WorkerID: r.workerID, ActorUserID: actor,
+			Kg: r.rem, PayMode: s.processPayMode(r.processID), EmpType: "piece",
+			Rate: rate, Amount: amt, RefType: "pd_piecework_summary", RefID: summaryID,
+			Payload: gin.H{"batch_no": batchNo, "issue_id": r.id, "biz_date": bizDate},
+		})
+		settledN++
+		settledKg = roundKg(settledKg + r.rem)
+		settledAmt = roundMoney(settledAmt + amt)
+	}
+	s.writeAuditCtx(c, "piecework_day_settle", 0, "day_settle", bizDate, nil, gin.H{
+		"biz_date": bizDate, "batch_no": batchNo, "rows": settledN, "kg": settledKg, "amount": settledAmt,
+	})
+	api.OK(c, gin.H{
+		"biz_date": bizDate, "batch_no": batchNo, "settled_rows": settledN,
+		"settled_kg": settledKg, "settled_amount": settledAmt,
+	})
+	return true
 }
 
 func (s *Services) batchImportEmployees(c *gin.Context) bool {

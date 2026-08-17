@@ -9,6 +9,12 @@ import (
 
 var migrationFooterPattern = regexp.MustCompile(`(?is)\n\s*INSERT\s+INTO\s+erp_schema_migration\b`)
 
+// normalizeNewlines maps CRLF/CR to LF so Windows checkouts match LF-based footers.
+func normalizeNewlines(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	return strings.ReplaceAll(s, "\r", "\n")
+}
+
 // BodyChecksum returns SHA256 hex of SQL content excluding the migration ledger footer.
 func BodyChecksum(content string) string {
 	body := StripMigrationFooter(content)
@@ -18,6 +24,7 @@ func BodyChecksum(content string) string {
 
 // StripMigrationFooter removes trailing INSERT INTO erp_schema_migration statement.
 func StripMigrationFooter(content string) string {
+	content = normalizeNewlines(content)
 	loc := migrationFooterPattern.FindStringIndex(content)
 	if loc == nil {
 		return strings.TrimSpace(content)
@@ -27,6 +34,7 @@ func StripMigrationFooter(content string) string {
 
 // ParseMigrationFooter extracts version, description, checksum from file content.
 func ParseMigrationFooter(content string) (version, description, checksum string, ok bool) {
+	content = normalizeNewlines(content)
 	loc := migrationFooterPattern.FindStringIndex(content)
 	if loc == nil {
 		return "", "", "", false

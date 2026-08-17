@@ -48,6 +48,8 @@ const form = reactive({
   login_name: '',
   remark: '',
   role_ids: [] as number[],
+  bank_account: '',
+  tax_no: '',
 })
 
 const statusLabel: Record<string, string> = {
@@ -85,6 +87,8 @@ function resetForm() {
     login_name: '',
     remark: '',
     role_ids: [] as number[],
+    bank_account: '',
+    tax_no: '',
   })
 }
 
@@ -136,6 +140,8 @@ async function openEdit(row: Row) {
     login_name: String(d.login_name || ''),
     remark: String(d.remark || ''),
     role_ids: ((d.role_ids as number[]) || []).map(Number),
+    bank_account: String(emp.bank_account || d.bank_account || ''),
+    tax_no: String(emp.tax_no || d.tax_no || ''),
   })
   dialog.value = true
 }
@@ -315,6 +321,16 @@ onMounted(load)
           <el-col :span="12" :xs="24">
             <el-form-item label="身份证号">
               <el-input v-model="form.id_card_no" placeholder="可手填；App 支持 OCR" maxlength="18" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12" :xs="24">
+            <el-form-item label="银行卡">
+              <el-input v-model="form.bank_account" placeholder="工资卡号，与财务同源" maxlength="64" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12" :xs="24">
+            <el-form-item label="税号">
+              <el-input v-model="form.tax_no" placeholder="可选" maxlength="64" />
             </el-form-item>
           </el-col>
           <el-col :span="8" :xs="24">

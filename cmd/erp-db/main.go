@@ -29,9 +29,7 @@ func main() {
 	case "status":
 		os.Exit(runStatus(args))
 	case "seed-dev":
-		os.Exit(runWithRunner(args, func(r *dbmigrate.Runner) error {
-			return r.SeedDev(context.Background())
-		}))
+		os.Exit(runSeedDev(args))
 	case "validate":
 		os.Exit(runValidate(args))
 	case "create":
@@ -52,13 +50,16 @@ Usage:
   erp-db baseline   [--dsn URL] [--migrations-dir PATH] [--dry-run]
   erp-db upgrade    [--all|--to VERSION|--file PATH] [--dry-run]
   erp-db status
-  erp-db seed-dev
+  erp-db seed-dev [--reset]
   erp-db validate   [--migrations-dir PATH]
   erp-db create     VERSION "description"
 
 Environment:
   ERP_DATABASE_DSN, ERP_MIGRATIONS_DIR, DATABASE_URL
   PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE
+
+Notes:
+  seed-dev --reset  先清理工价等易重复种子表，再重新写入 data-dev.sql（开发环境用）
 `)
 }
 
@@ -101,6 +102,34 @@ func runWithRunner(args []string, fn func(*dbmigrate.Runner) error) int {
 	defer runner.Close()
 	if err := fn(runner); err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return 0
+}
+
+func runSeedDev(args []string) int {
+	fs := flag.NewFlagSet("seed-dev", flag.ExitOnError)
+	var cf commonFlags
+	var reset bool
+	fs.StringVar(&cf.dsn, "dsn", "", "PostgreSQL DSN")
+	fs.StringVar(&cf.migrationsRoot, "migrations-dir", "", "migrations root directory")
+	fs.BoolVar(&cf.dryRun, "dry-run", false, "print actions without applying")
+	fs.BoolVar(&reset, "reset", false, "clear wage-rate and related seed tables before seeding")
+	_ = fs.Parse(args)
+	runner, err := newRunnerFromFlags(cf)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer runner.Close()
+	var runErr error
+	if reset {
+		runErr = runner.SeedDevReset(context.Background())
+	} else {
+		runErr = runner.SeedDev(context.Background())
+	}
+	if runErr != nil {
+		fmt.Fprintln(os.Stderr, runErr)
 		return 1
 	}
 	return 0

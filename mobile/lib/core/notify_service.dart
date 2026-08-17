@@ -40,7 +40,17 @@ class NotifyService extends ChangeNotifier {
   bool _launchHandled = false;
   Map<String, dynamic>? _pendingLaunchArgs;
 
+  bool get _hasAuth {
+    final t = api.accessToken;
+    return t != null && t.isNotEmpty;
+  }
+
   Future<void> start() async {
+    // 未登录 / token 已清：绝不打 inbox / mqtt-connect，避免启动期 401 刷屏
+    if (!_hasAuth) {
+      if (_started) await stop();
+      return;
+    }
     if (_started) {
       await refresh();
       await consumePendingLaunch();
@@ -48,10 +58,17 @@ class NotifyService extends ChangeNotifier {
     }
     _started = true;
     await _initLocalNotifications();
+    if (!_hasAuth) {
+      await stop();
+      return;
+    }
     await refresh();
     await _connectMqtt();
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 15), (_) => refresh());
+    _timer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!_hasAuth) return;
+      refresh();
+    });
     await consumePendingLaunch();
   }
 
@@ -153,6 +170,7 @@ class NotifyService extends ChangeNotifier {
   }
 
   Future<void> _connectMqtt() async {
+    if (!_hasAuth) return;
     final res = await api.get('/notify/mqtt-connect');
     if (!res.ok || res.data is! Map) {
       mqttStatus = 'error';
@@ -268,6 +286,7 @@ class NotifyService extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
+    if (!_hasAuth) return;
     final res = await api.get('/notify/inbox?page_num=1&page_size=30');
     if (!res.ok || res.data is! Map) return;
     final m = res.data as Map;
@@ -278,6 +297,7 @@ class NotifyService extends ChangeNotifier {
   }
 
   Future<void> markRead(int id) async {
+    if (!_hasAuth) return;
     await api.post('/notify/inbox/$id/read', {});
     await refresh();
   }

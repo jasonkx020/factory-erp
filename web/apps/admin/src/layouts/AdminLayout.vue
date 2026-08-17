@@ -15,6 +15,7 @@ import {
 import { ElMessage } from 'element-plus'
 import NotifyBell from '../components/NotifyBell.vue'
 import { useIsMobile } from '../composables/useMediaQuery'
+import { displayModuleTitle, loadCarrierCodeUnit, useCarrierCodeLabel } from '../composables/useCarrierCodeLabel'
 
 const auth = useAuthStore()
 const perm = usePermStore()
@@ -31,6 +32,7 @@ const domainSheetOpen = ref(false)
 const MOBILE_TOP_DOMAIN_COUNT = 5
 
 onMounted(() => {
+  void loadCarrierCodeUnit()
   if (auth.accessToken && (!auth.roles.length || !auth.permissions.length)) {
     void auth.fetchMe()
   }
@@ -57,9 +59,9 @@ const domainIcons: Record<string, string> = {
 const crumb = computed(() => {
   const d = route.params.domain as string
   const m = route.params.module as string
-  if (d && m) return `${decodeURIComponent(d)} / ${decodeURIComponent(m)}`
+  if (d && m) return `${decodeURIComponent(d)} / ${displayModuleTitle(decodeURIComponent(m))}`
   const hit = adminModuleForPath(route.path)
-  if (hit) return `${hit.domain} / ${hit.module}`
+  if (hit) return `${hit.domain} / ${displayModuleTitle(hit.module)}`
   if (route.path === '/' || route.path === '') return '工作台'
   return activeDomain.value || '工作台'
 })
@@ -261,7 +263,7 @@ function openSideDrawer() {
               }"
               @click.prevent="goModule(currentDomain, m)"
             >
-              <span class="side-link-text">{{ m }}</span>
+              <span class="side-link-text">{{ displayModuleTitle(m) }}</span>
               <span v-if="moduleOffline(currentDomain, m)" class="offline-badge">{{ OFFLINE_MENU_BADGE }}</span>
             </a>
           </div>
@@ -314,7 +316,7 @@ function openSideDrawer() {
             }"
             @click.prevent="goModule(currentDomain, m)"
           >
-            <span class="side-link-text">{{ m }}</span>
+            <span class="side-link-text">{{ displayModuleTitle(m) }}</span>
             <span v-if="moduleOffline(currentDomain, m)" class="offline-badge">{{ OFFLINE_MENU_BADGE }}</span>
           </a>
         </div>

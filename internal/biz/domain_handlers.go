@@ -168,7 +168,8 @@ func nullableBoolInt(v interface{}) interface{} {
 func (s *Services) handleProcesses(c *gin.Context, method, action string) bool {
 	switch action {
 	case "list":
-		rows, err := s.DB.Query(`SELECT id, code, name, process_type, is_piecework, is_handover_point FROM pd_process ORDER BY id`)
+		rows, err := s.DB.Query(`SELECT id, code, name, process_type, COALESCE(NULLIF(pay_mode,''),'none'), is_piecework, is_handover_point,
+			COALESCE(NULLIF(status,''),'active') FROM pd_process WHERE COALESCE(is_deleted,0)=0 ORDER BY id`)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR")
 			return true
@@ -177,10 +178,17 @@ func (s *Services) handleProcesses(c *gin.Context, method, action string) bool {
 		list := []gin.H{}
 		for rows.Next() {
 			var id int64
-			var code, name, typ string
+			var code, name, typ, payMode, status string
 			var piece, hand int
-			_ = rows.Scan(&id, &code, &name, &typ, &piece, &hand)
-			list = append(list, gin.H{"id": id, "code": code, "name": name, "process_type": typ, "is_piecework": piece == 1, "is_handover_point": hand == 1, "status": "active"})
+			_ = rows.Scan(&id, &code, &name, &typ, &payMode, &piece, &hand, &status)
+			payMode = normalizePayMode(payMode, piece == 1)
+			if status != "inactive" {
+				status = "active"
+			}
+			list = append(list, gin.H{
+				"id": id, "code": code, "name": name, "process_type": typ, "pay_mode": payMode,
+				"is_piecework": payModeToIsPiecework(payMode) == 1, "is_handover_point": hand == 1, "status": status,
+			})
 		}
 		api.OK(c, gin.H{"list": list, "total": len(list)})
 		return true
@@ -192,34 +200,58 @@ func (s *Services) handleProcesses(c *gin.Context, method, action string) bool {
 		if typ == "" {
 			typ = "other"
 		}
-		piece := 0
-		if v, ok := body["is_piecework"].(bool); ok && v {
-			piece = 1
+		pieceBool := asBool(body["is_piecework"])
+		payMode := normalizePayMode(strOr(body["pay_mode"]), pieceBool)
+		piece := payModeToIsPiecework(payMode)
+		status := strings.TrimSpace(strOrDef(body["status"], "active"))
+		if status != "inactive" {
+			status = "active"
 		}
-		res, err := s.DB.Exec(`INSERT INTO pd_process(code, name, process_type, is_piecework, is_handover_point) VALUES(?,?,?,?,0)`, code, name, typ, piece)
+		res, err := s.DB.Exec(`INSERT INTO pd_process(code, name, process_type, pay_mode, is_piecework, is_handover_point, status) VALUES(?,?,?,?,?,0,?)`,
+			code, name, typ, payMode, piece, status)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR")
 			return true
 		}
 		id, _ := res.LastInsertId()
-		api.OK(c, gin.H{"id": id, "code": code, "name": name})
+		after := gin.H{"id": id, "code": code, "name": name, "process_type": typ, "pay_mode": payMode, "is_piecework": piece == 1, "status": status}
+		s.writeAuditCtx(c, "pd_process", id, "create", "", nil, after)
+		api.OK(c, after)
 		return true
 	case "get", "update", "delete":
 		id := paramID(c)
 		if action == "get" {
-			var code, name, typ string
+			var code, name, typ, payMode, status string
 			var piece, hand int
-			err := s.DB.QueryRow(`SELECT code, name, process_type, is_piecework, is_handover_point FROM pd_process WHERE id=?`, id).
-				Scan(&code, &name, &typ, &piece, &hand)
+			err := s.DB.QueryRow(`SELECT code, name, process_type, COALESCE(NULLIF(pay_mode,''),'none'), is_piecework, is_handover_point,
+				COALESCE(NULLIF(status,''),'active') FROM pd_process WHERE id=? AND COALESCE(is_deleted,0)=0`, id).
+				Scan(&code, &name, &typ, &payMode, &piece, &hand, &status)
 			if err != nil {
 				api.FailJSON(c, "NOT_FOUND")
 				return true
 			}
-			api.OK(c, gin.H{"id": id, "code": code, "name": name, "process_type": typ, "is_piecework": piece == 1, "is_handover_point": hand == 1})
+			payMode = normalizePayMode(payMode, piece == 1)
+			if status != "inactive" {
+				status = "active"
+			}
+			api.OK(c, gin.H{
+				"id": id, "code": code, "name": name, "process_type": typ, "pay_mode": payMode,
+				"is_piecework": payModeToIsPiecework(payMode) == 1, "is_handover_point": hand == 1, "status": status,
+			})
 			return true
 		}
 		if action == "update" {
 			body := bindBody(c)
+			var beforeCode, beforeName, beforeTyp, beforeMode, beforeStatus string
+			var beforePiece, beforeHand int
+			_ = s.DB.QueryRow(`SELECT code, name, process_type, COALESCE(NULLIF(pay_mode,''),'none'), is_piecework, is_handover_point,
+				COALESCE(NULLIF(status,''),'active') FROM pd_process WHERE id=?`, id).
+				Scan(&beforeCode, &beforeName, &beforeTyp, &beforeMode, &beforePiece, &beforeHand, &beforeStatus)
+			before := gin.H{
+				"id": id, "code": beforeCode, "name": beforeName, "process_type": beforeTyp,
+				"pay_mode": normalizePayMode(beforeMode, beforePiece == 1), "is_piecework": beforePiece == 1,
+				"is_handover_point": beforeHand == 1, "status": beforeStatus,
+			}
 			name := strOr(body["name"])
 			typ := strOr(body["process_type"])
 			sets := []string{}
@@ -232,19 +264,48 @@ func (s *Services) handleProcesses(c *gin.Context, method, action string) bool {
 				sets = append(sets, "process_type=?")
 				args = append(args, typ)
 			}
-			if _, ok := body["is_piecework"]; ok {
-				sets = append(sets, "is_piecework=?")
-				args = append(args, boolToInt(asBool(body["is_piecework"])))
+			if _, ok := body["pay_mode"]; ok {
+				mode := normalizePayMode(strOr(body["pay_mode"]), asBool(body["is_piecework"]))
+				sets = append(sets, "pay_mode=?", "is_piecework=?")
+				args = append(args, mode, payModeToIsPiecework(mode))
+			} else if _, ok := body["is_piecework"]; ok {
+				mode := normalizePayMode("", asBool(body["is_piecework"]))
+				sets = append(sets, "pay_mode=?", "is_piecework=?")
+				args = append(args, mode, payModeToIsPiecework(mode))
 			}
 			if _, ok := body["is_handover_point"]; ok {
 				sets = append(sets, "is_handover_point=?")
 				args = append(args, boolToInt(asBool(body["is_handover_point"])))
 			}
+			if _, ok := body["status"]; ok {
+				st := strings.TrimSpace(strOr(body["status"]))
+				if st != "inactive" {
+					st = "active"
+				}
+				sets = append(sets, "status=?")
+				args = append(args, st)
+			}
+			if code := strings.TrimSpace(strOr(body["code"])); code != "" {
+				sets = append(sets, "code=?")
+				args = append(args, code)
+			}
 			if len(sets) > 0 {
+				sets = append(sets, "updated_at=NOW()")
 				args = append(args, id)
 				_, _ = s.DB.Exec(`UPDATE pd_process SET `+strings.Join(sets, ",")+` WHERE id=?`, args...)
 			}
-			api.OK(c, gin.H{"id": id})
+			var afterCode, afterName, afterTyp, afterMode, afterStatus string
+			var afterPiece, afterHand int
+			_ = s.DB.QueryRow(`SELECT code, name, process_type, COALESCE(NULLIF(pay_mode,''),'none'), is_piecework, is_handover_point,
+				COALESCE(NULLIF(status,''),'active') FROM pd_process WHERE id=?`, id).
+				Scan(&afterCode, &afterName, &afterTyp, &afterMode, &afterPiece, &afterHand, &afterStatus)
+			after := gin.H{
+				"id": id, "code": afterCode, "name": afterName, "process_type": afterTyp,
+				"pay_mode": normalizePayMode(afterMode, afterPiece == 1), "is_piecework": afterPiece == 1,
+				"is_handover_point": afterHand == 1, "status": afterStatus,
+			}
+			s.writeAuditCtx(c, "pd_process", id, "update", "", before, after)
+			api.OK(c, after)
 			return true
 		}
 		api.OK(c, gin.H{})
@@ -728,10 +789,25 @@ func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
 	case "list":
 		rows, err := s.DB.Query(`SELECT e.id, e.emp_no, e.name, COALESCE(e.org_id,0), COALESCE(e.dept_id,0), COALESCE(e.workshop_id,0), COALESCE(e.team_id,0),
 			COALESCE(e.job_title,''), e.emp_type, e.status, COALESCE(e.user_id,0), COALESCE(e.badge_code,''), COALESCE(e.mobile,''),
-			COALESCE(e.id_card_no,''), COALESCE(u.login_name,'')
+			COALESCE(e.id_card_no,''), COALESCE(u.login_name,''), COALESCE(p.bank_account,''), COALESCE(p.tax_no,''),
+			COALESCE(d.name,''), COALESCE(w.name,'')
 			FROM hr_employee e
 			LEFT JOIN iam_user u ON u.id=e.user_id AND COALESCE(u.is_deleted,0)=0
+			LEFT JOIN pay_worker_profile p ON p.employee_id=e.id
+			LEFT JOIN sys_department d ON d.id=e.dept_id
+			LEFT JOIN pd_workshop w ON w.id=e.workshop_id
 			WHERE COALESCE(e.is_deleted,0)=0 ORDER BY e.id`)
+		if err != nil {
+			// 兼容无部门/车间表名差异
+			rows, err = s.DB.Query(`SELECT e.id, e.emp_no, e.name, COALESCE(e.org_id,0), COALESCE(e.dept_id,0), COALESCE(e.workshop_id,0), COALESCE(e.team_id,0),
+				COALESCE(e.job_title,''), e.emp_type, e.status, COALESCE(e.user_id,0), COALESCE(e.badge_code,''), COALESCE(e.mobile,''),
+				COALESCE(e.id_card_no,''), COALESCE(u.login_name,''), COALESCE(p.bank_account,''), COALESCE(p.tax_no,''),
+				'', ''
+				FROM hr_employee e
+				LEFT JOIN iam_user u ON u.id=e.user_id AND COALESCE(u.is_deleted,0)=0
+				LEFT JOIN pay_worker_profile p ON p.employee_id=e.id
+				WHERE COALESCE(e.is_deleted,0)=0 ORDER BY e.id`)
+		}
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR")
 			return true
@@ -740,8 +816,8 @@ func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
 		list := []gin.H{}
 		for rows.Next() {
 			var id, org, dept, workshop, team, uid int64
-			var no, name, job, typ, status, badge, mobile, idCard, login string
-			_ = rows.Scan(&id, &no, &name, &org, &dept, &workshop, &team, &job, &typ, &status, &uid, &badge, &mobile, &idCard, &login)
+			var no, name, job, typ, status, badge, mobile, idCard, login, bank, tax, deptName, wsName string
+			_ = rows.Scan(&id, &no, &name, &org, &dept, &workshop, &team, &job, &typ, &status, &uid, &badge, &mobile, &idCard, &login, &bank, &tax, &deptName, &wsName)
 			if login == "" && uid > 0 {
 				_ = s.DB.QueryRow(`SELECT COALESCE(login_name,'') FROM iam_user WHERE employee_id=? AND COALESCE(is_deleted,0)=0 LIMIT 1`, id).Scan(&login)
 			}
@@ -750,6 +826,7 @@ func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
 				"id": id, "emp_no": no, "name": name, "org_id": org, "dept_id": dept, "workshop_id": workshop, "team_id": team,
 				"job_title": job, "emp_type": typ, "status": status, "user_id": uid, "badge_code": badge, "mobile": mobile,
 				"id_card_no": idCard, "login_name": login, "has_account": uid > 0 || login != "",
+				"bank_account": bank, "tax_no": tax, "dept_name": deptName, "workshop_name": wsName,
 			})
 		}
 		api.OK(c, gin.H{"list": list, "total": len(list)})
