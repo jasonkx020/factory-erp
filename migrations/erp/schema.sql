@@ -2881,6 +2881,10 @@ ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS weigh_fee DOUBLE PRECISION
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS weighbridge_id INTEGER;
 ALTER TABLE wf_ticket_category ADD COLUMN IF NOT EXISTS biz_hint TEXT;
 ALTER TABLE wf_ticket_category ADD COLUMN IF NOT EXISTS form_schema_json TEXT;
+ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS fund_account_id INTEGER;
+ALTER TABLE fin_prepay_prepaid ADD COLUMN IF NOT EXISTS fund_account_id INTEGER;
+ALTER TABLE fin_sales_return_finance ADD COLUMN IF NOT EXISTS fund_account_id INTEGER;
+ALTER TABLE sl_sales_order ADD COLUMN IF NOT EXISTS received_amount DOUBLE PRECISION NOT NULL DEFAULT 0;
 
 INSERT INTO erp_schema_migration (version, description, checksum)
 VALUES ('v1.0.0', 'postgresql baseline', '')

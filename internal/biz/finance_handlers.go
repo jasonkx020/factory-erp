@@ -128,6 +128,7 @@ func EnsureFinanceSchema(db *sql.DB) {
 }
 
 func (s *Services) handleFinanceDomain(c *gin.Context, method, openapiPath, action string) bool {
+	s.ensureFinanceCashColumns()
 	// keep supplier party guard for create
 	if s.handleFinancePartyGuard(c, method, openapiPath, action) {
 		return true
@@ -208,14 +209,7 @@ func (s *Services) adjustFundBalance(accountID int64, delta float64) error {
 }
 
 func (s *Services) insertLedger(accountID, subjectID int64, dir string, amount float64, counterparty, srcType string, srcID int64, remark string) (int64, error) {
-	docNo := finDocNo("LE")
-	bizDate := time.Now().Format("2006-01-02")
-	res, err := s.DB.Exec(`INSERT INTO fin_ledger_entry(doc_no, account_id, subject_id, direction, amount, biz_date, counterparty, source_doc_type, source_doc_id, remark)
-		VALUES(?,?,?,?,?,?,?,?,?,?)`, docNo, nullInt(accountID), nullInt(subjectID), dir, amount, bizDate, counterparty, srcType, nullInt(srcID), remark)
-	if err != nil {
-		return 0, err
-	}
-	return res.LastInsertId()
+	return s.insertLedgerDated(accountID, subjectID, dir, amount, counterparty, srcType, srcID, remark, time.Now().Format("2006-01-02"))
 }
 
 // ---------- subjects ----------
@@ -302,7 +296,13 @@ func (s *Services) handleFinFundTransfers(c *gin.Context, method, action string)
 	_ = method
 	switch action {
 	case "list":
-		return s.listDocTable(c, `SELECT * FROM fin_fund_transfer`)
+		return s.listDocTable(c, `SELECT * FROM (
+			SELECT t.id, t.doc_no, t.from_account_id, t.to_account_id, t.amount, t.status, COALESCE(t.remark,'') AS remark,
+			COALESCE(a.name,'') AS from_account_name, COALESCE(b.name,'') AS to_account_name
+			FROM fin_fund_transfer t
+			LEFT JOIN fin_fund_account a ON a.id=t.from_account_id
+			LEFT JOIN fin_fund_account b ON b.id=t.to_account_id
+		) x`)
 	case "get":
 		return s.getSimpleRow(c, `SELECT * FROM fin_fund_transfer WHERE id=?`, paramID(c))
 	case "create":
@@ -344,17 +344,21 @@ func (s *Services) handleFinFundTransfers(c *gin.Context, method, action string)
 		if status == "posted" {
 			return s.getSimpleRow(c, `SELECT * FROM fin_fund_transfer WHERE id=?`, id)
 		}
-		if err := s.adjustFundBalance(fromID, -amt); err != nil {
-			api.FailJSON(c, err.Error())
-			return true
+		if err := s.requireOpenFinPeriod(""); err != nil {
+			return failToJSON(c, err)
 		}
-		if err := s.adjustFundBalance(toID, amt); err != nil {
-			_ = s.adjustFundBalance(fromID, amt) // rollback best-effort
-			api.FailJSON(c, err.Error())
-			return true
+		if _, err := s.postCash(postCashReq{
+			AccountID: fromID, Direction: "out", Amount: amt,
+			SourceType: "fund_transfer_out", SourceID: id, Remark: "资金调出", Category: "资金调拨",
+		}); err != nil {
+			return failToJSON(c, err)
 		}
-		_, _ = s.insertLedger(fromID, 0, "out", amt, "", "fund_transfer", id, "资金调出")
-		_, _ = s.insertLedger(toID, 0, "in", amt, "", "fund_transfer", id, "资金调入")
+		if _, err := s.postCash(postCashReq{
+			AccountID: toID, Direction: "in", Amount: amt,
+			SourceType: "fund_transfer_in", SourceID: id, Remark: "资金调入", Category: "资金调拨",
+		}); err != nil {
+			return failToJSON(c, err)
+		}
 		_, _ = s.DB.Exec(`UPDATE fin_fund_transfer SET status='posted' WHERE id=?`, id)
 		return s.getSimpleRow(c, `SELECT * FROM fin_fund_transfer WHERE id=?`, id)
 	}
@@ -366,7 +370,14 @@ func (s *Services) handleFinLedger(c *gin.Context, method, action string) bool {
 	_ = method
 	switch action {
 	case "list":
-		return s.listDocTable(c, `SELECT * FROM fin_ledger_entry`)
+		return s.listDocTable(c, `SELECT * FROM (
+			SELECT e.id, e.doc_no, e.direction, e.amount, e.biz_date, COALESCE(e.counterparty,'') AS counterparty,
+			COALESCE(e.remark,'') AS remark, COALESCE(a.name,'') AS account_name, COALESCE(s.name,'') AS subject_name,
+			e.account_id, e.subject_id, e.source_doc_type, e.source_doc_id
+			FROM fin_ledger_entry e
+			LEFT JOIN fin_fund_account a ON a.id=e.account_id
+			LEFT JOIN fin_account_subject s ON s.id=e.subject_id
+		) t`)
 	case "get":
 		id := paramID(c)
 		rows, _ := s.DB.Query(`SELECT * FROM fin_ledger_entry WHERE id=?`, id)
@@ -400,8 +411,29 @@ func (s *Services) handleFinLedger(c *gin.Context, method, action string) bool {
 		}
 		accountID, _ := asInt64(body["account_id"])
 		subjectID, _ := asInt64(body["subject_id"])
-		docNo := strOrDef(body["doc_no"], finDocNo("LE"))
 		bizDate := strOrDef(body["biz_date"], time.Now().Format("2006-01-02"))
+		if err := s.requireOpenFinPeriod(bizDate); err != nil {
+			return failToJSON(c, err)
+		}
+		if accountID > 0 {
+			lid, err := s.postCash(postCashReq{
+				AccountID:    accountID,
+				Direction:    dir,
+				Amount:       amt,
+				Counterparty: strOr(body["counterparty"]),
+				SourceType:   "ledger_manual",
+				SourceID:     0,
+				Remark:       strOr(body["remark"]),
+				BizDate:      bizDate,
+				Category:     strOrDef(body["category"], ""),
+			})
+			if err != nil {
+				return failToJSON(c, err)
+			}
+			api.OK(c, gin.H{"id": lid, "posted": true})
+			return true
+		}
+		docNo := strOrDef(body["doc_no"], finDocNo("LE"))
 		res, err := s.DB.Exec(`INSERT INTO fin_ledger_entry(doc_no, account_id, subject_id, direction, amount, biz_date, counterparty, remark)
 			VALUES(?,?,?,?,?,?,?,?)`, docNo, nullInt(accountID), nullInt(subjectID), dir, amt, bizDate, strOr(body["counterparty"]), strOr(body["remark"]))
 		if err != nil {
@@ -503,6 +535,12 @@ func (s *Services) handleFinVouchers(c *gin.Context, method, action string) bool
 		}
 		vid, _ := res.LastInsertId()
 		lines, _ := body["lines"].([]interface{})
+		type vLine struct {
+			sid           int64
+			debit, credit float64
+			remark        string
+		}
+		parsed := make([]vLine, 0, 2)
 		if len(lines) == 0 {
 			sid, _ := asInt64(body["subject_id"])
 			debit, _ := asFloat(body["debit"])
@@ -510,15 +548,7 @@ func (s *Services) handleFinVouchers(c *gin.Context, method, action string) bool
 			if sid == 0 {
 				sid = 1
 			}
-			_, _ = s.DB.Exec(`INSERT INTO fin_voucher_line(voucher_id, subject_id, debit, credit, remark) VALUES(?,?,?,?,?)`,
-				vid, sid, debit, credit, strOr(body["remark"]))
-			if debit > 0 || credit > 0 {
-				// balancing line stub if only one side
-				if debit > 0 && credit == 0 {
-					_, _ = s.DB.Exec(`INSERT INTO fin_voucher_line(voucher_id, subject_id, debit, credit, remark) VALUES(?,?,0,?,'自动平衡')`,
-						vid, sid, debit)
-				}
-			}
+			parsed = append(parsed, vLine{sid: sid, debit: debit, credit: credit, remark: strOr(body["remark"])})
 		} else {
 			for _, ln := range lines {
 				m, _ := ln.(map[string]interface{})
@@ -528,9 +558,31 @@ func (s *Services) handleFinVouchers(c *gin.Context, method, action string) bool
 				sid, _ := asInt64(m["subject_id"])
 				debit, _ := asFloat(m["debit"])
 				credit, _ := asFloat(m["credit"])
-				_, _ = s.DB.Exec(`INSERT INTO fin_voucher_line(voucher_id, subject_id, debit, credit, remark) VALUES(?,?,?,?,?)`,
-					vid, sid, debit, credit, strOr(m["remark"]))
+				parsed = append(parsed, vLine{sid: sid, debit: debit, credit: credit, remark: strOr(m["remark"])})
 			}
+		}
+		subjSet := map[int64]struct{}{}
+		var sumD, sumC float64
+		for _, ln := range parsed {
+			if ln.debit > 0 && ln.credit > 0 {
+				_, _ = s.DB.Exec(`DELETE FROM fin_voucher WHERE id=?`, vid)
+				api.FailJSON(c, "VOUCHER_LINE_BOTH_SIDES")
+				return true
+			}
+			if ln.sid > 0 {
+				subjSet[ln.sid] = struct{}{}
+			}
+			sumD += ln.debit
+			sumC += ln.credit
+		}
+		if len(subjSet) <= 1 && sumD > 0.01 && sumC > 0.01 {
+			_, _ = s.DB.Exec(`DELETE FROM fin_voucher WHERE id=?`, vid)
+			api.FailJSON(c, "VOUCHER_SAME_SUBJECT")
+			return true
+		}
+		for _, ln := range parsed {
+			_, _ = s.DB.Exec(`INSERT INTO fin_voucher_line(voucher_id, subject_id, debit, credit, remark) VALUES(?,?,?,?,?)`,
+				vid, ln.sid, ln.debit, ln.credit, ln.remark)
 		}
 		api.OK(c, gin.H{"id": vid, "doc_no": docNo, "status": "draft"})
 		return true
@@ -550,6 +602,12 @@ func (s *Services) handleFinVouchers(c *gin.Context, method, action string) bool
 		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(debit),0), COALESCE(SUM(credit),0) FROM fin_voucher_line WHERE voucher_id=?`, id).Scan(&debit, &credit)
 		if debit-credit > 0.01 || credit-debit > 0.01 {
 			api.FailJSON(c, "VOUCHER_UNBALANCED")
+			return true
+		}
+		var subjN int
+		_ = s.DB.QueryRow(`SELECT COUNT(DISTINCT subject_id) FROM fin_voucher_line WHERE voucher_id=?`, id).Scan(&subjN)
+		if subjN <= 1 && debit > 0.01 && credit > 0.01 {
+			api.FailJSON(c, "VOUCHER_SAME_SUBJECT")
 			return true
 		}
 		_, _ = s.DB.Exec(`UPDATE fin_voucher SET status='approved' WHERE id=? AND status='draft'`, id)
@@ -573,6 +631,12 @@ func (s *Services) handleFinVouchers(c *gin.Context, method, action string) bool
 		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(debit),0), COALESCE(SUM(credit),0) FROM fin_voucher_line WHERE voucher_id=?`, id).Scan(&debit, &credit)
 		if debit-credit > 0.01 || credit-debit > 0.01 {
 			api.FailJSON(c, "VOUCHER_UNBALANCED")
+			return true
+		}
+		var subjN int
+		_ = s.DB.QueryRow(`SELECT COUNT(DISTINCT subject_id) FROM fin_voucher_line WHERE voucher_id=?`, id).Scan(&subjN)
+		if subjN <= 1 && debit > 0.01 && credit > 0.01 {
+			api.FailJSON(c, "VOUCHER_SAME_SUBJECT")
 			return true
 		}
 		if debit <= 0 {
@@ -631,7 +695,13 @@ func (s *Services) handleFinWriteoffs(c *gin.Context, method, action string) boo
 	_ = method
 	switch action {
 	case "list":
-		return s.listDocTable(c, `SELECT * FROM fin_receipt_writeoff`)
+		return s.listDocTable(c, `SELECT * FROM (
+			SELECT w.id, w.doc_no, w.customer_id, w.amount, w.fund_account_id, w.status, w.received_at, w.created_at,
+			COALESCE(c.name,'') AS customer_name, COALESCE(a.name,'') AS account_name
+			FROM fin_receipt_writeoff w
+			LEFT JOIN crm_customer c ON c.id=w.customer_id
+			LEFT JOIN fin_fund_account a ON a.id=w.fund_account_id
+		) t`)
 	case "get":
 		id := paramID(c)
 		rows, _ := s.DB.Query(`SELECT * FROM fin_receipt_writeoff WHERE id=?`, id)
@@ -711,11 +781,24 @@ func (s *Services) handleFinWriteoffs(c *gin.Context, method, action string) boo
 			return true
 		}
 		now := time.Now().Format("2006-01-02 15:04:05")
-		if fundID.Valid && fundID.Int64 > 0 {
-			_ = s.adjustFundBalance(fundID.Int64, amt)
-			_, _ = s.insertLedger(fundID.Int64, 0, "in", amt, fmt.Sprintf("customer:%d", cid.Int64), "receipt_writeoff", id, "收款核单")
+		accID := int64(0)
+		if fundID.Valid {
+			accID = fundID.Int64
+		}
+		if _, err := s.postCash(postCashReq{
+			AccountID:    accID,
+			Direction:    "in",
+			Amount:       amt,
+			Counterparty: fmt.Sprintf("customer:%d", cid.Int64),
+			SourceType:   "receipt_writeoff",
+			SourceID:     id,
+			Remark:       "收款核单",
+			Category:     "销售收款",
+		}); err != nil {
+			return failToJSON(c, err)
 		}
 		_, _ = s.DB.Exec(`UPDATE fin_receipt_writeoff SET status='confirmed', received_at=? WHERE id=?`, now, id)
+		s.applyWriteoffToOrders(id)
 		s.writeAuditCtx(c, "fin_receipt_writeoff", id, "confirm", "", gin.H{"status": status}, gin.H{"status": "confirmed", "amount": amt})
 		return s.handleFinWriteoffs(c, "GET", "get")
 	}
@@ -726,7 +809,13 @@ func (s *Services) handleFinRecognitions(c *gin.Context, method, action string) 
 	_ = method
 	switch action {
 	case "list":
-		return s.listDocTable(c, `SELECT * FROM fin_payment_recognition`)
+		return s.listDocTable(c, `SELECT * FROM (
+			SELECT r.id, r.doc_no, r.customer_id, r.amount, r.fund_account_id, r.status, COALESCE(r.remark,'') AS remark, r.created_at,
+			COALESCE(c.name,'') AS customer_name, COALESCE(a.name,'') AS account_name
+			FROM fin_payment_recognition r
+			LEFT JOIN crm_customer c ON c.id=r.customer_id
+			LEFT JOIN fin_fund_account a ON a.id=r.fund_account_id
+		) t`)
 	case "get":
 		return s.getSimpleRow(c, `SELECT * FROM fin_payment_recognition WHERE id=?`, paramID(c))
 	case "create":
@@ -770,11 +859,21 @@ func (s *Services) handleFinRecognitions(c *gin.Context, method, action string) 
 		}
 		fid := fundID.Int64
 		if fid == 0 {
-			_ = s.DB.QueryRow(`SELECT id FROM fin_fund_account ORDER BY id LIMIT 1`).Scan(&fid)
+			fid = s.defaultFundAccountID()
 		}
-		if fid > 0 {
-			_ = s.adjustFundBalance(fid, amt)
-			_, _ = s.insertLedger(fid, 0, "in", amt, fmt.Sprintf("customer:%d", cid), "payment_recognition", id, "销售认款")
+		if fid > 0 && !s.customerHasConfirmedWriteoff(cid) {
+			if _, err := s.postCash(postCashReq{
+				AccountID:    fid,
+				Direction:    "in",
+				Amount:       amt,
+				Counterparty: fmt.Sprintf("customer:%d", cid),
+				SourceType:   "payment_recognition",
+				SourceID:     id,
+				Remark:       "销售认款",
+				Category:     "销售收款",
+			}); err != nil {
+				return failToJSON(c, err)
+			}
 		}
 		_, _ = s.DB.Exec(`UPDATE fin_payment_recognition SET status='confirmed', fund_account_id=? WHERE id=?`, fid, id)
 		return s.getSimpleRow(c, `SELECT * FROM fin_payment_recognition WHERE id=?`, id)
@@ -834,8 +933,17 @@ func (s *Services) handleFinFX(c *gin.Context, method, openapiPath, action strin
 			return s.getSimpleRow(c, `SELECT * FROM fin_fx_settlement WHERE id=?`, id)
 		}
 		if fundID.Valid && fundID.Int64 > 0 {
-			_ = s.adjustFundBalance(fundID.Int64, local)
-			_, _ = s.insertLedger(fundID.Int64, 0, "in", local, "", "fx_settlement", id, "外币结汇")
+			if _, err := s.postCash(postCashReq{
+				AccountID:  fundID.Int64,
+				Direction:  "in",
+				Amount:     local,
+				SourceType: "fx_settlement",
+				SourceID:   id,
+				Remark:     "外币结汇",
+				Category:   "结汇",
+			}); err != nil {
+				return failToJSON(c, err)
+			}
 		}
 		_, _ = s.DB.Exec(`UPDATE fin_fx_settlement SET status='confirmed' WHERE id=?`, id)
 		return s.getSimpleRow(c, `SELECT * FROM fin_fx_settlement WHERE id=?`, id)
@@ -904,7 +1012,12 @@ func (s *Services) handleFinAlerts(c *gin.Context, method, action string) bool {
 	_ = method
 	switch action {
 	case "list":
-		return s.listDocTable(c, `SELECT * FROM fin_receipt_alert`)
+		return s.listDocTable(c, `SELECT * FROM (
+			SELECT a.id, a.customer_id, a.order_id, a.due_date, a.overdue_days, a.amount, a.status, COALESCE(a.handled_remark,'') AS handled_remark,
+			COALESCE(c.name,'') AS customer_name
+			FROM fin_receipt_alert a
+			LEFT JOIN crm_customer c ON c.id=a.customer_id
+		) t`)
 	case "create":
 		body := bindBody(c)
 		cid, _ := asInt64(body["customer_id"])
@@ -935,7 +1048,13 @@ func (s *Services) handleFinReconciles(c *gin.Context, method, action string) bo
 	_ = method
 	switch action {
 	case "list":
-		return s.listDocTable(c, `SELECT * FROM fin_cashier_reconcile`)
+		return s.listDocTable(c, `SELECT * FROM (
+			SELECT r.id, r.doc_no, r.fund_account_id, r.biz_date, r.book_balance, r.actual_balance,
+			(r.actual_balance - r.book_balance) AS diff, r.status, COALESCE(r.remark,'') AS remark,
+			COALESCE(a.name,'') AS account_name
+			FROM fin_cashier_reconcile r
+			LEFT JOIN fin_fund_account a ON a.id=r.fund_account_id
+		) t`)
 	case "get":
 		return s.getSimpleRow(c, `SELECT * FROM fin_cashier_reconcile WHERE id=?`, paramID(c))
 	case "create":
@@ -970,7 +1089,27 @@ func (s *Services) handleFinReconciles(c *gin.Context, method, action string) bo
 		return s.getSimpleRow(c, `SELECT * FROM fin_cashier_reconcile WHERE id=?`, id)
 	case "action:confirm":
 		id := paramID(c)
-		_, _ = s.DB.Exec(`UPDATE fin_cashier_reconcile SET status='confirmed' WHERE id=?`, id)
+		body := bindBody(c)
+		var book, actual float64
+		var remark, status string
+		err := s.DB.QueryRow(`SELECT book_balance, actual_balance, COALESCE(remark,''), status FROM fin_cashier_reconcile WHERE id=?`, id).
+			Scan(&book, &actual, &remark, &status)
+		if err == sql.ErrNoRows {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		if status == "confirmed" {
+			return s.getSimpleRow(c, `SELECT * FROM fin_cashier_reconcile WHERE id=?`, id)
+		}
+		diff := actual - book
+		note := strOrDef(body["remark"], remark)
+		if diff > 0.01 || diff < -0.01 {
+			if strings.TrimSpace(note) == "" {
+				api.FailJSON(c, "RECONCILE_DIFF_REMARK_REQUIRED")
+				return true
+			}
+		}
+		_, _ = s.DB.Exec(`UPDATE fin_cashier_reconcile SET status='confirmed', remark=? WHERE id=?`, note, id)
 		return s.getSimpleRow(c, `SELECT * FROM fin_cashier_reconcile WHERE id=?`, id)
 	}
 	return true
@@ -980,7 +1119,21 @@ func (s *Services) handleFinPrepays(c *gin.Context, method, action string) bool 
 	_ = method
 	switch action {
 	case "list":
-		return s.listDocTable(c, `SELECT * FROM fin_prepay_prepaid`)
+		return s.listDocTable(c, `SELECT * FROM (
+			SELECT p.id, p.doc_no, p.party_type, p.party_id, p.direction, p.amount, p.balance, p.status, p.fund_account_id,
+			CASE p.party_type
+				WHEN 'customer' THEN COALESCE(c.name,'')
+				WHEN 'supplier' THEN COALESCE(s.name,'')
+				WHEN 'farmer' THEN COALESCE(f.name,'')
+				ELSE ''
+			END AS party_name,
+			COALESCE(a.name,'') AS account_name
+			FROM fin_prepay_prepaid p
+			LEFT JOIN crm_customer c ON c.id=p.party_id AND p.party_type='customer'
+			LEFT JOIN pur_supplier s ON s.id=p.party_id AND p.party_type='supplier'
+			LEFT JOIN pur_farmer f ON f.id=p.party_id AND p.party_type='farmer'
+			LEFT JOIN fin_fund_account a ON a.id=p.fund_account_id
+		) t`)
 	case "get":
 		return s.getSimpleRow(c, `SELECT * FROM fin_prepay_prepaid WHERE id=?`, paramID(c))
 	case "create":
@@ -991,20 +1144,44 @@ func (s *Services) handleFinPrepays(c *gin.Context, method, action string) bool 
 			api.FailJSON(c, "PARTY_AMOUNT_REQUIRED")
 			return true
 		}
+		dir := strOrDef(body["direction"], "in")
+		fundID, err := s.resolveFundAccountID(bindFundAccountID(body))
+		if err != nil {
+			return failToJSON(c, err)
+		}
 		docNo := strOrDef(body["doc_no"], finDocNo("PP"))
 		bal := amt
 		if v, ok := asFloat(body["balance"]); ok {
 			bal = v
 		}
-		res, err := s.DB.Exec(`INSERT INTO fin_prepay_prepaid(doc_no, party_type, party_id, direction, amount, balance, status)
-			VALUES(?,?,?,?,?,?,'open')`, docNo, strOrDef(body["party_type"], "customer"), pid,
-			strOrDef(body["direction"], "in"), amt, bal)
+		res, err := s.DB.Exec(`INSERT INTO fin_prepay_prepaid(doc_no, party_type, party_id, direction, amount, balance, status, fund_account_id)
+			VALUES(?,?,?,?,?,?,'open',?)`, docNo, strOrDef(body["party_type"], "customer"), pid,
+			dir, amt, bal, fundID)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
 		}
 		id, _ := res.LastInsertId()
-		api.OK(c, gin.H{"id": id, "doc_no": docNo})
+		pt := strOrDef(body["party_type"], "customer")
+		cashDir := dir
+		cat := "预收"
+		if dir == "out" {
+			cat = "预付"
+		}
+		if _, err := s.postCash(postCashReq{
+			AccountID:    fundID,
+			Direction:    cashDir,
+			Amount:       amt,
+			Counterparty: fmt.Sprintf("%s:%d", pt, pid),
+			SourceType:   "prepay_prepaid",
+			SourceID:     id,
+			Remark:       cat,
+			Category:     cat,
+		}); err != nil {
+			_, _ = s.DB.Exec(`DELETE FROM fin_prepay_prepaid WHERE id=?`, id)
+			return failToJSON(c, err)
+		}
+		api.OK(c, gin.H{"id": id, "doc_no": docNo, "fund_account_id": fundID})
 		return true
 	case "update", "replace":
 		id := paramID(c)
@@ -1021,7 +1198,12 @@ func (s *Services) handleFinCostAccountings(c *gin.Context, method, action strin
 	_ = method
 	switch action {
 	case "list":
-		return s.listDocTable(c, `SELECT * FROM fin_cost_accounting`)
+		return s.listDocTable(c, `SELECT * FROM (
+			SELECT c.id, c.doc_no, c.period, c.task_id, c.product_id, c.material_cost, c.labor_cost, c.overhead, c.total_cost, c.status,
+			COALESCE(p.name,'') AS product_name
+			FROM fin_cost_accounting c
+			LEFT JOIN prd_product p ON p.id=c.product_id
+		) t`)
 	case "get":
 		id := paramID(c)
 		rows, _ := s.DB.Query(`SELECT * FROM fin_cost_accounting WHERE id=?`, id)
@@ -1071,27 +1253,39 @@ func (s *Services) handleFinCostAccountings(c *gin.Context, method, action strin
 		id := paramID(c)
 		var mat, labor, oh float64
 		var productID, taskID sql.NullInt64
-		_ = s.DB.QueryRow(`SELECT COALESCE(material_cost,0), COALESCE(labor_cost,0), COALESCE(overhead,0), product_id, task_id
-			FROM fin_cost_accounting WHERE id=?`, id).Scan(&mat, &labor, &oh, &productID, &taskID)
-		// pull piecework / report costs if available
-		if taskID.Valid {
-			var extra float64
-			_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM pd_piecework_summary WHERE task_id=?`, taskID.Int64).Scan(&extra)
-			if extra > 0 {
-				labor = extra
+		var period string
+		_ = s.DB.QueryRow(`SELECT COALESCE(material_cost,0), COALESCE(labor_cost,0), COALESCE(overhead,0), product_id, task_id, COALESCE(period,'')
+			FROM fin_cost_accounting WHERE id=?`, id).Scan(&mat, &labor, &oh, &productID, &taskID, &period)
+		if period == "" {
+			period = time.Now().Format("2006-01")
+		}
+		like := period + "%"
+		if labor <= 0 {
+			_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM pd_piecework_summary WHERE biz_date LIKE ?`, like).Scan(&labor)
+			if labor > 0 {
 				_, _ = s.DB.Exec(`INSERT INTO fin_cost_trace_line(cost_id, source_type, source_id, amount) VALUES(?,?,?,?)`,
-					id, "piecework", taskID.Int64, extra)
+					id, "piecework_day", 0, labor)
 			}
 		}
-		if productID.Valid {
+		if mat <= 0 {
+			_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM pur_farmer_settlement WHERE status IN ('settle_paid','paid') AND biz_date LIKE ?`, like).Scan(&mat)
+			if mat > 0 {
+				_, _ = s.DB.Exec(`INSERT INTO fin_cost_trace_line(cost_id, source_type, source_id, amount) VALUES(?,?,?,?)`,
+					id, "farmer_settlement", 0, mat)
+			}
+		}
+		if mat <= 0 && productID.Valid {
 			var reqCost float64
-			_ = s.DB.QueryRow(`SELECT COALESCE(SUM(qty),0) FROM pd_requisition_line WHERE product_id=?`, productID.Int64).Scan(&reqCost)
-			if reqCost > 0 && mat == 0 {
+			_ = s.DB.QueryRow(`SELECT COALESCE(SUM(l.qty * COALESCE(p.cost_price,0)),0)
+				FROM pd_material_requisition_line l LEFT JOIN prd_product p ON p.id=l.product_id
+				WHERE l.product_id=?`, productID.Int64).Scan(&reqCost)
+			if reqCost > 0 {
 				mat = reqCost
 				_, _ = s.DB.Exec(`INSERT INTO fin_cost_trace_line(cost_id, source_type, source_id, amount) VALUES(?,?,?,?)`,
 					id, "requisition", productID.Int64, reqCost)
 			}
 		}
+		_ = taskID
 		total := mat + labor + oh
 		_, _ = s.DB.Exec(`UPDATE fin_cost_accounting SET material_cost=?, labor_cost=?, overhead=?, total_cost=?, status='calculated' WHERE id=?`,
 			mat, labor, oh, total, id)
@@ -1144,60 +1338,138 @@ func (s *Services) handleFinCostTraces(c *gin.Context, action string) bool {
 
 func (s *Services) handleFinContractProfits(c *gin.Context, method, openapiPath, action string) bool {
 	if strings.Contains(openapiPath, "/recalc") || (method == "POST" && action == "create" && strings.Contains(openapiPath, "recalc")) {
-		// simple recalc: upsert sample from body or aggregate existing
 		body := bindBody(c)
+		period := strOrDef(body["period"], time.Now().Format("2006-01"))
 		cid, _ := asInt64(body["contract_id"])
-		if cid == 0 {
-			cid = 1
-		}
-		rev, _ := asFloat(body["revenue"])
-		cost, _ := asFloat(body["cost"])
-		if rev == 0 {
-			_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM fin_payment_recognition WHERE status='confirmed'`).Scan(&rev)
-		}
-		if cost == 0 {
-			_ = s.DB.QueryRow(`SELECT COALESCE(SUM(total_cost),0) FROM fin_cost_accounting WHERE status='calculated'`).Scan(&cost)
-		}
-		profit := rev - cost
-		var exist int64
-		_ = s.DB.QueryRow(`SELECT id FROM fin_contract_profit WHERE contract_id=? ORDER BY id DESC LIMIT 1`, cid).Scan(&exist)
-		if exist > 0 {
-			_, _ = s.DB.Exec(`UPDATE fin_contract_profit SET revenue=?, cost=?, profit=?, period=? WHERE id=?`,
-				rev, cost, profit, strOrDef(body["period"], time.Now().Format("2006-01")), exist)
-			api.OK(c, gin.H{"id": exist, "contract_id": cid, "revenue": rev, "cost": cost, "profit": profit})
+		if cid > 0 {
+			row := s.recalcOneContractProfit(cid, period)
+			api.OK(c, row)
 			return true
 		}
-		res, _ := s.DB.Exec(`INSERT INTO fin_contract_profit(contract_id, revenue, cost, profit, period) VALUES(?,?,?,?,?)`,
-			cid, rev, cost, profit, strOrDef(body["period"], time.Now().Format("2006-01")))
-		id, _ := res.LastInsertId()
-		api.OK(c, gin.H{"id": id, "contract_id": cid, "revenue": rev, "cost": cost, "profit": profit})
+		list := []gin.H{}
+		rows, err := s.DB.Query(`SELECT id FROM sl_contract WHERE COALESCE(is_deleted,0)=0 ORDER BY id`)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var id int64
+				if err := rows.Scan(&id); err == nil && id > 0 {
+					list = append(list, s.recalcOneContractProfit(id, period))
+				}
+			}
+		}
+		list = append(list, s.recalcPeriodFactoryProfit(period))
+		api.OK(c, gin.H{"list": list, "total": len(list), "period": period})
 		return true
 	}
 	if action == "list" {
-		return s.listDocTable(c, `SELECT * FROM fin_contract_profit`)
+		rows, err := s.DB.Query(`SELECT p.id, p.contract_id, p.revenue, p.cost, p.profit, COALESCE(p.period,''),
+			COALESCE(c.doc_no,''), COALESCE(c.title,''), COALESCE(cu.name,'')
+			FROM fin_contract_profit p
+			LEFT JOIN sl_contract c ON c.id=p.contract_id
+			LEFT JOIN crm_customer cu ON cu.id=c.customer_id
+			ORDER BY p.id DESC`)
+		if err != nil {
+			return s.listDocTable(c, `SELECT * FROM fin_contract_profit`)
+		}
+		defer rows.Close()
+		list := []gin.H{}
+		for rows.Next() {
+			var id, cid int64
+			var rev, cost, profit float64
+			var period, docNo, title, customer string
+			_ = rows.Scan(&id, &cid, &rev, &cost, &profit, &period, &docNo, &title, &customer)
+			margin := 0.0
+			if rev > 0.0001 {
+				margin = profit / rev
+			}
+			label := docNo
+			if cid == 0 {
+				label = "期间汇总"
+			}
+			list = append(list, gin.H{
+				"id": id, "contract_id": cid, "contract_no": label, "title": title, "customer_name": customer,
+				"revenue": rev, "cost": cost, "profit": profit, "margin": margin, "period": period,
+			})
+		}
+		api.OK(c, gin.H{"list": list, "total": len(list)})
+		return true
 	}
 	return true
+}
+
+func (s *Services) upsertContractProfit(contractID int64, revenue, cost float64, period string) gin.H {
+	profit := revenue - cost
+	var exist int64
+	_ = s.DB.QueryRow(`SELECT id FROM fin_contract_profit WHERE contract_id=? AND COALESCE(period,'')=? ORDER BY id DESC LIMIT 1`,
+		contractID, period).Scan(&exist)
+	if exist > 0 {
+		_, _ = s.DB.Exec(`UPDATE fin_contract_profit SET revenue=?, cost=?, profit=? WHERE id=?`, revenue, cost, profit, exist)
+		return gin.H{"id": exist, "contract_id": contractID, "revenue": revenue, "cost": cost, "profit": profit, "period": period}
+	}
+	res, _ := s.DB.Exec(`INSERT INTO fin_contract_profit(contract_id, revenue, cost, profit, period) VALUES(?,?,?,?,?)`,
+		contractID, revenue, cost, profit, period)
+	id, _ := res.LastInsertId()
+	return gin.H{"id": id, "contract_id": contractID, "revenue": revenue, "cost": cost, "profit": profit, "period": period}
+}
+
+func (s *Services) recalcOneContractProfit(cid int64, period string) gin.H {
+	var revenue, cost float64
+	_ = s.DB.QueryRow(`SELECT COALESCE(amount,0) FROM sl_contract WHERE id=?`, cid).Scan(&revenue)
+	if revenue <= 0 {
+		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(total_amount),0) FROM sl_sales_order WHERE contract_id=? AND COALESCE(is_deleted,0)=0`, cid).Scan(&revenue)
+	}
+	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(b.total_cost),0) FROM sl_cost_budget b
+		JOIN sl_sales_order o ON o.id=b.order_id WHERE o.contract_id=? AND COALESCE(o.is_deleted,0)=0`, cid).Scan(&cost)
+	if cost <= 0 {
+		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(total_cost),0) FROM fin_cost_accounting WHERE status='calculated' AND period=?`, period).Scan(&cost)
+	}
+	return s.upsertContractProfit(cid, revenue, cost, period)
+}
+
+func (s *Services) recalcPeriodFactoryProfit(period string) gin.H {
+	like := period + "%"
+	var revenue, cost float64
+	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(total_amount),0) FROM sl_sales_order WHERE COALESCE(is_deleted,0)=0 AND created_at LIKE ?`, like).Scan(&revenue)
+	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(total_cost),0) FROM fin_cost_accounting WHERE status='calculated' AND period=?`, period).Scan(&cost)
+	if cost <= 0 {
+		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM pur_farmer_settlement WHERE status IN ('settle_paid','paid') AND biz_date LIKE ?`, like).Scan(&cost)
+	}
+	return s.upsertContractProfit(0, revenue, cost, period)
 }
 
 func (s *Services) handleFinReturnFinances(c *gin.Context, method, action string) bool {
 	_ = method
 	switch action {
 	case "list":
-		return s.listDocTable(c, `SELECT * FROM fin_sales_return_finance`)
+		return s.listDocTable(c, `SELECT * FROM (
+			SELECT r.id, r.doc_no, r.order_id, r.amount, r.status, r.fund_account_id,
+			COALESCE(o.doc_no,'') AS order_no, COALESCE(a.name,'') AS account_name
+			FROM fin_sales_return_finance r
+			LEFT JOIN sl_sales_order o ON o.id=r.order_id
+			LEFT JOIN fin_fund_account a ON a.id=r.fund_account_id
+		) t`)
 	case "get":
 		return s.getSimpleRow(c, `SELECT * FROM fin_sales_return_finance WHERE id=?`, paramID(c))
 	case "create":
 		body := bindBody(c)
 		amt, _ := asFloat(body["amount"])
+		if amt <= 0 {
+			api.FailJSON(c, "AMOUNT_REQUIRED")
+			return true
+		}
+		fundID, err := s.resolveFundAccountID(bindFundAccountID(body))
+		if err != nil {
+			return failToJSON(c, err)
+		}
 		docNo := strOrDef(body["doc_no"], finDocNo("SRF"))
-		res, err := s.DB.Exec(`INSERT INTO fin_sales_return_finance(doc_no, order_id, amount, status) VALUES(?,?,?,'draft')`,
-			docNo, nullInt64Or(body["order_id"]), amt)
+		res, err := s.DB.Exec(`INSERT INTO fin_sales_return_finance(doc_no, order_id, amount, status, fund_account_id) VALUES(?,?,?,'draft',?)`,
+			docNo, nullInt64Or(body["order_id"]), amt, fundID)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
 		}
 		id, _ := res.LastInsertId()
-		api.OK(c, gin.H{"id": id, "doc_no": docNo})
+		api.OK(c, gin.H{"id": id, "doc_no": docNo, "fund_account_id": fundID})
 		return true
 	case "update", "replace":
 		id := paramID(c)
@@ -1208,11 +1480,32 @@ func (s *Services) handleFinReturnFinances(c *gin.Context, method, action string
 		id := paramID(c)
 		var amt float64
 		var status string
-		_ = s.DB.QueryRow(`SELECT amount, status FROM fin_sales_return_finance WHERE id=?`, id).Scan(&amt, &status)
+		var fundID sql.NullInt64
+		var orderID sql.NullInt64
+		_ = s.DB.QueryRow(`SELECT amount, status, fund_account_id, order_id FROM fin_sales_return_finance WHERE id=?`, id).Scan(&amt, &status, &fundID, &orderID)
 		if status == "confirmed" {
 			return s.getSimpleRow(c, `SELECT * FROM fin_sales_return_finance WHERE id=?`, id)
 		}
-		_, _ = s.insertLedger(0, 0, "out", amt, "", "sales_return_finance", id, "销售退货退单")
+		acc := int64(0)
+		if fundID.Valid {
+			acc = fundID.Int64
+		}
+		cp := ""
+		if orderID.Valid {
+			cp = fmt.Sprintf("order:%d", orderID.Int64)
+		}
+		if _, err := s.postCash(postCashReq{
+			AccountID:    acc,
+			Direction:    "out",
+			Amount:       amt,
+			Counterparty: cp,
+			SourceType:   "sales_return_finance",
+			SourceID:     id,
+			Remark:       "销售退货退单",
+			Category:     "销售退款",
+		}); err != nil {
+			return failToJSON(c, err)
+		}
 		_, _ = s.DB.Exec(`UPDATE fin_sales_return_finance SET status='confirmed' WHERE id=?`, id)
 		return s.getSimpleRow(c, `SELECT * FROM fin_sales_return_finance WHERE id=?`, id)
 	}
@@ -1223,7 +1516,13 @@ func (s *Services) handleFinArap(c *gin.Context, method, action string) bool {
 	_ = method
 	switch action {
 	case "list":
-		return s.listDocTable(c, `SELECT * FROM fin_arap_adjust`)
+		return s.listDocTable(c, `SELECT * FROM (
+			SELECT a.id, a.doc_no, a.party_type, a.party_id, a.amount, a.direction, a.status, COALESCE(a.remark,'') AS remark,
+			CASE a.party_type WHEN 'customer' THEN COALESCE(c.name,'') WHEN 'supplier' THEN COALESCE(s.name,'') ELSE '' END AS party_name
+			FROM fin_arap_adjust a
+			LEFT JOIN crm_customer c ON c.id=a.party_id AND a.party_type='customer'
+			LEFT JOIN pur_supplier s ON s.id=a.party_id AND a.party_type='supplier'
+		) t`)
 	case "get":
 		return s.getSimpleRow(c, `SELECT * FROM fin_arap_adjust WHERE id=?`, paramID(c))
 	case "create":
@@ -1253,11 +1552,8 @@ func (s *Services) handleFinArap(c *gin.Context, method, action string) bool {
 		return s.getSimpleRow(c, `SELECT * FROM fin_arap_adjust WHERE id=?`, id)
 	case "action:post":
 		id := paramID(c)
-		var amt float64
-		var dir, status, pt string
-		var pid int64
-		err := s.DB.QueryRow(`SELECT party_type, party_id, amount, direction, status FROM fin_arap_adjust WHERE id=?`, id).
-			Scan(&pt, &pid, &amt, &dir, &status)
+		var status string
+		err := s.DB.QueryRow(`SELECT status FROM fin_arap_adjust WHERE id=?`, id).Scan(&status)
 		if err == sql.ErrNoRows {
 			api.FailJSON(c, "NOT_FOUND")
 			return true
@@ -1265,11 +1561,6 @@ func (s *Services) handleFinArap(c *gin.Context, method, action string) bool {
 		if status == "posted" {
 			return s.getSimpleRow(c, `SELECT * FROM fin_arap_adjust WHERE id=?`, id)
 		}
-		ledgerDir := "in"
-		if dir == "decrease" {
-			ledgerDir = "out"
-		}
-		_, _ = s.insertLedger(0, 0, ledgerDir, amt, fmt.Sprintf("%s:%d", pt, pid), "arap_adjust", id, "往来调整")
 		_, _ = s.DB.Exec(`UPDATE fin_arap_adjust SET status='posted' WHERE id=?`, id)
 		return s.getSimpleRow(c, `SELECT * FROM fin_arap_adjust WHERE id=?`, id)
 	}
@@ -1281,12 +1572,12 @@ func (s *Services) handleFinApprovals(c *gin.Context, method, action string) boo
 	_ = method
 	switch action {
 	case "list":
-		// aggregate pending from vouchers + approval items
-		rows, err := s.DB.Query(`SELECT id, 'voucher' AS biz_type, id AS biz_id, doc_no, COALESCE(summary,'') AS title, status, created_at
+		rows, err := s.DB.Query(`SELECT id, 'voucher' AS source, id AS biz_id, 'voucher' AS biz_type, doc_no, COALESCE(summary,'') AS title, status, created_at
 			FROM fin_voucher WHERE status IN ('draft','submitted')
 			UNION ALL
-			SELECT id, biz_type, biz_id, COALESCE(doc_no,''), COALESCE(title,''), status, created_at FROM fin_approval_item WHERE status='pending'
-			ORDER BY id DESC`)
+			SELECT id, 'approval_item' AS source, biz_id, biz_type, COALESCE(doc_no,''), COALESCE(title,''), status, created_at
+			FROM fin_approval_item WHERE status='pending'
+			ORDER BY created_at DESC`)
 		if err != nil {
 			return s.listDocTable(c, `SELECT * FROM fin_approval_item`)
 		}
@@ -1294,17 +1585,32 @@ func (s *Services) handleFinApprovals(c *gin.Context, method, action string) boo
 		list, _ := rowsToMaps(rows)
 		api.OK(c, gin.H{"list": list, "total": len(list)})
 		return true
-	case "action:approve":
+	case "action:approve", "action:reject":
 		id := paramID(c)
-		_, _ = s.DB.Exec(`UPDATE fin_approval_item SET status='approved' WHERE id=?`, id)
-		_, _ = s.DB.Exec(`UPDATE fin_voucher SET status='approved' WHERE id=? AND status IN ('draft','submitted')`, id)
-		api.OK(c, gin.H{"id": id, "status": "approved"})
-		return true
-	case "action:reject":
-		id := paramID(c)
-		_, _ = s.DB.Exec(`UPDATE fin_approval_item SET status='rejected' WHERE id=?`, id)
-		_, _ = s.DB.Exec(`UPDATE fin_voucher SET status='rejected' WHERE id=? AND status IN ('draft','submitted')`, id)
-		api.OK(c, gin.H{"id": id, "status": "rejected"})
+		body := bindBody(c)
+		source := strOrDef(body["source"], c.Query("source"))
+		st := "approved"
+		if action == "action:reject" {
+			st = "rejected"
+		}
+		if source == "approval_item" {
+			_, _ = s.DB.Exec(`UPDATE fin_approval_item SET status=? WHERE id=?`, st, id)
+			api.OK(c, gin.H{"id": id, "source": source, "status": st})
+			return true
+		}
+		if source == "voucher" || source == "" {
+			var n int64
+			res, _ := s.DB.Exec(`UPDATE fin_voucher SET status=? WHERE id=? AND status IN ('draft','submitted')`, st, id)
+			if res != nil {
+				n, _ = res.RowsAffected()
+			}
+			if n == 0 && source == "" {
+				_, _ = s.DB.Exec(`UPDATE fin_approval_item SET status=? WHERE id=?`, st, id)
+			}
+			api.OK(c, gin.H{"id": id, "source": "voucher", "status": st})
+			return true
+		}
+		api.FailJSON(c, "UNKNOWN_APPROVAL_SOURCE")
 		return true
 	}
 	return true
@@ -1339,8 +1645,8 @@ func (s *Services) handleFinStatements(c *gin.Context, method, openapiPath, acti
 		var fundBal float64
 		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(balance),0) FROM fin_fund_account`).Scan(&fundBal)
 		payload := gin.H{
-			"period": period,
-			"source": "posted_vouchers",
+			"period":      period,
+			"source":      "posted_vouchers",
 			"profit_loss": gin.H{"income": income, "expense": expense, "profit": income - expense},
 			"cash_flow":   gin.H{"in": cashDebit, "out": cashCredit, "net": cashDebit - cashCredit, "fund_balance": fundBal},
 			"balance_sheet": gin.H{
@@ -1477,7 +1783,10 @@ func (s *Services) handleFinOrders(c *gin.Context, action string) bool {
 		api.OK(c, list[0])
 		return true
 	}
-	rows, err := s.DB.Query(`SELECT id, doc_no, status, created_at FROM sl_sales_order WHERE COALESCE(is_deleted,0)=0 ORDER BY id DESC LIMIT 200`)
+	rows, err := s.DB.Query(`SELECT o.id, o.doc_no, o.status, o.created_at, o.customer_id, COALESCE(o.total_amount,0) AS total_amount,
+		COALESCE(o.received_amount,0) AS received_amount, COALESCE(c.name,'') AS customer_name
+		FROM sl_sales_order o LEFT JOIN crm_customer c ON c.id=o.customer_id
+		WHERE COALESCE(o.is_deleted,0)=0 ORDER BY o.id DESC LIMIT 200`)
 	if err != nil {
 		api.OK(c, gin.H{"list": []gin.H{}, "total": 0})
 		return true

@@ -44,6 +44,8 @@ const loading = ref(false)
 const selectedRoleId = ref<number | null>(null)
 const menuDraft = ref<Row[]>([])
 const policyDraft = ref<Row[]>([])
+const permKeyword = ref('')
+const permDomainFilter = ref('')
 
 const COST_FIELDS = [
   { field_key: 'cost_price', field_name: '成本价' },
@@ -179,7 +181,25 @@ const roleOptions = computed(() =>
   roles.value.map((r) => ({ label: `${r.code || ''} ${r.name || ''}`.trim(), value: Number(r.id) })),
 )
 
-const permissionPreview = computed(() => permissions.value.slice(0, 80))
+const permDomains = computed(() => {
+  const set = new Set<string>()
+  permissions.value.forEach((p) => {
+    const d = String(p.domain || '').trim()
+    if (d) set.add(d)
+  })
+  return [...set]
+})
+
+const filteredPermissions = computed(() => {
+  const kw = permKeyword.value.trim().toLowerCase()
+  const domain = permDomainFilter.value
+  return permissions.value.filter((p) => {
+    if (domain && String(p.domain || '') !== domain) return false
+    if (!kw) return true
+    const hay = `${p.code || ''} ${p.domain || ''} ${p.module || ''} ${p.action || ''}`.toLowerCase()
+    return hay.includes(kw)
+  })
+})
 
 onMounted(loadAll)
 watch(() => props.module, loadAll)
@@ -187,18 +207,80 @@ watch(() => props.module, loadAll)
 
 <template>
   <HrPermView v-if="module === '角色管理'" />
-  <div v-else v-loading="loading" class="iam">
-    <h2 class="title">{{ module }}</h2>
-    <p class="desc">身份与权限配置；角色裁剪菜单/字段后即时对对应用户生效。</p>
+  <div v-else v-loading="loading" class="iam" :class="{ fill: module === '自定义权限' }">
+    <template v-if="module === '自定义权限'">
+      <div class="page-head">
+        <div>
+          <h2 class="title">自定义权限</h2>
+          <p class="desc">字段策略按角色生效；权限码字典只读，同步后可在「角色管理」中勾选授权。</p>
+        </div>
+        <div class="row" style="margin:0">
+          <el-button type="primary" @click="syncPermissions">同步权限码</el-button>
+          <el-button @click="loadAll">刷新</el-button>
+        </div>
+      </div>
 
-    <template v-if="module === '自定义权限' || module === '成本隐藏'">
+      <div class="field-panel">
+        <div class="field-panel-head">
+          <h3 class="sub">字段权限控制</h3>
+          <div class="row" style="margin:0">
+            <span>角色</span>
+            <el-select v-model="selectedRoleId" style="width:220px" placeholder="选择角色">
+              <el-option v-for="o in roleOptions" :key="o.value" :label="o.label" :value="o.value" />
+            </el-select>
+            <el-button type="primary" @click="saveFieldPolicies">保存字段策略</el-button>
+          </div>
+        </div>
+        <TableOrCards :data="policyDraft" :columns="policyCols">
+          <el-table :data="policyDraft" border>
+            <el-table-column prop="field_key" label="字段" min-width="140" />
+            <el-table-column prop="field_name" label="名称" min-width="120" />
+            <el-table-column label="可见" width="100">
+              <template #default="{ row }"><el-switch v-model="row.visible" /></template>
+            </el-table-column>
+            <el-table-column label="可编辑" width="100">
+              <template #default="{ row }"><el-switch v-model="row.editable" /></template>
+            </el-table-column>
+          </el-table>
+          <template #field-visible="{ row }"><el-switch v-model="row.visible" /></template>
+          <template #field-editable="{ row }"><el-switch v-model="row.editable" /></template>
+        </TableOrCards>
+      </div>
+
+      <div class="dict-toolbar">
+        <h3 class="sub">权限码字典</h3>
+        <span class="dict-count">共 {{ filteredPermissions.length }} / {{ permissions.length }} 条</span>
+        <el-input
+          v-model="permKeyword"
+          clearable
+          placeholder="搜索域 / 模块 / 动作 / 权限码"
+          style="width:260px"
+        />
+        <el-select v-model="permDomainFilter" clearable placeholder="按域筛选" style="width:160px">
+          <el-option v-for="d in permDomains" :key="d" :label="d" :value="d" />
+        </el-select>
+      </div>
+      <div class="dict-body">
+        <TableOrCards :data="filteredPermissions" :columns="permCols" empty-text="暂无权限码，请先同步">
+          <el-table :data="filteredPermissions" border height="100%" stripe>
+            <el-table-column prop="code" label="权限码" min-width="260" show-overflow-tooltip />
+            <el-table-column prop="domain" label="域" width="140" />
+            <el-table-column prop="module" label="模块" min-width="160" show-overflow-tooltip />
+            <el-table-column prop="action" label="动作" width="100" />
+          </el-table>
+        </TableOrCards>
+      </div>
+    </template>
+
+    <template v-else-if="module === '成本隐藏'">
+      <h2 class="title">{{ module }}</h2>
+      <p class="desc">按角色隐藏成本相关字段；保存后即时对对应用户生效。</p>
       <div class="row">
         <span>角色</span>
         <el-select v-model="selectedRoleId" style="width:260px" placeholder="选择角色">
           <el-option v-for="o in roleOptions" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>
         <el-button type="primary" @click="saveFieldPolicies">保存字段策略</el-button>
-        <el-button v-if="module === '自定义权限'" @click="syncPermissions">同步权限码</el-button>
         <el-button @click="loadAll">刷新</el-button>
       </div>
       <h3>成本字段策略（当前角色）</h3>
@@ -216,18 +298,11 @@ watch(() => props.module, loadAll)
         <template #field-visible="{ row }"><el-switch v-model="row.visible" /></template>
         <template #field-editable="{ row }"><el-switch v-model="row.editable" /></template>
       </TableOrCards>
-      <h3 style="margin-top:16px">权限码字典（只读）</h3>
-      <TableOrCards :data="permissionPreview" :columns="permCols">
-        <el-table :data="permissionPreview" border height="280">
-          <el-table-column prop="code" label="权限码" min-width="220" />
-          <el-table-column prop="domain" label="域" />
-          <el-table-column prop="module" label="模块" />
-          <el-table-column prop="action" label="动作" />
-        </el-table>
-      </TableOrCards>
     </template>
 
     <template v-else-if="module === '自定义菜单'">
+      <h2 class="title">{{ module }}</h2>
+      <p class="desc">按角色裁剪菜单可见性；保存后即时对对应用户生效。</p>
       <div class="row">
         <span>角色</span>
         <el-select v-model="selectedRoleId" style="width:260px" placeholder="选择角色">
@@ -256,6 +331,8 @@ watch(() => props.module, loadAll)
     </template>
 
     <template v-else-if="module === '登录控制'">
+      <h2 class="title">{{ module }}</h2>
+      <p class="desc">登录失败锁定、会话时长与密码策略。</p>
       <el-form label-width="140px" style="max-width:480px">
         <el-form-item label="最大失败次数">
           <el-input-number v-model="loginPolicy.max_fail_count" :min="1" />
@@ -281,7 +358,68 @@ watch(() => props.module, loadAll)
 
 <style scoped>
 .iam { background: #fff; padding: 16px; border-radius: 8px; border: 1px solid #d5dde3; }
-.title { margin: 0 0 4px; }
+.iam.fill {
+  height: calc(100vh - 120px);
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px 8px;
+  box-sizing: border-box;
+}
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  margin-bottom: 8px;
+}
+.title { margin: 0 0 4px; font-size: 18px; }
 .desc { color: #5c6b75; font-size: 13px; margin: 0 0 12px; }
+.page-head .desc { margin: 0; }
+.sub { margin: 0; font-size: 14px; font-weight: 600; }
 .row { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
+.field-panel {
+  flex-shrink: 0;
+  margin-bottom: 10px;
+}
+.field-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.dict-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  margin-bottom: 8px;
+}
+.dict-count { color: #5c6b75; font-size: 13px; margin-right: 4px; }
+.dict-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dict-body :deep(.table-or-cards),
+.dict-body :deep(.desktop-table) {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.dict-body :deep(.el-table) {
+  flex: 1;
+}
+@media (max-width: 768px) {
+  .iam.fill { height: auto; min-height: 0; }
+  .dict-body { min-height: 320px; }
+}
 </style>

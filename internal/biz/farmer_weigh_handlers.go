@@ -2123,6 +2123,12 @@ func (s *Services) payFarmerSettlement(c *gin.Context) bool {
 		api.FailJSON(c, "ALREADY_PAID")
 		return true
 	}
+	s.ensureFinanceCashColumns()
+	if err := s.postFarmerSettlementCash(id, bindFundAccountID(body), transferNo); err != nil {
+		if failToJSON(c, err) {
+			return true
+		}
+	}
 	_, _ = s.addEvidence(c, "farmer_settlement", id, "pay_receipt", payURL, gin.H{"transfer_no": transferNo})
 	_, err := s.DB.Exec(`UPDATE pur_farmer_settlement SET status='settle_paid', transfer_no=?, paid_at=NOW(), pay_evidence_url=?,
 		unit_price=COALESCE(NULLIF(?,0),unit_price), amount=COALESCE(NULLIF(?,0),amount), remark=COALESCE(NULLIF(?,''),remark)

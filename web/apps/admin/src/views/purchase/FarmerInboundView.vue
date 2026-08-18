@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { purchaseApi, bizApi } from '@erp/shared'
+import { purchaseApi, bizApi, financeApi } from '@erp/shared'
 import ConfirmSnapshotCompare from '../../components/closed-loop/ConfirmSnapshotCompare.vue'
 import TraceLotPanel from '../../components/trace/TraceLotPanel.vue'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
@@ -156,7 +156,8 @@ const confirmModel = ref<Record<string, unknown>>({
 })
 const payDlg = ref(false)
 const payRow = ref<Row | null>(null)
-const payForm = reactive({ transfer_no: '', pay_evidence_url: '' })
+const payForm = reactive({ transfer_no: '', pay_evidence_url: '', fund_account_id: 0 })
+const fundAccounts = ref<Row[]>([])
 const correctDlg = ref(false)
 const correctForm = reactive({ biz_type: 'weigh_ticket', biz_id: 0, reason: '', unit_price: '', net_weight: '' })
 const labelPreview = ref<Row | null>(null)
@@ -486,11 +487,25 @@ async function doConfirm() {
   await refresh()
 }
 
+async function loadFundAccounts() {
+  try {
+    const r = await financeApi.fundAccounts()
+    fundAccounts.value = ((r.data as { list?: Row[] })?.list) || []
+    if (!payForm.fund_account_id && fundAccounts.value[0]) {
+      payForm.fund_account_id = Number(fundAccounts.value[0].id)
+    }
+  } catch {
+    fundAccounts.value = []
+  }
+}
+
 function openPay(row: Row) {
   payRow.value = row
   payForm.transfer_no = ''
   payForm.pay_evidence_url = ''
+  payForm.fund_account_id = fundAccounts.value[0] ? Number(fundAccounts.value[0].id) : 0
   payDlg.value = true
+  void loadFundAccounts()
 }
 
 async function uploadPayEvidence(file: File) {
@@ -512,8 +527,12 @@ async function uploadPayEvidence(file: File) {
 async function doPay() {
   if (!payRow.value) return
   if (!payForm.transfer_no || !payForm.pay_evidence_url) return ElMessage.warning('转账单号与发票/转账截图必填')
+  if (!payForm.fund_account_id) return ElMessage.warning('请选择资金账户')
   const res = await purchaseApi.payFarmerSettlement(Number(payRow.value.id), { ...payForm })
-  if (res.code !== 1) return ElMessage.error(res.msg)
+  if (res.code !== 1) {
+    const msg = res.msg === 'PERIOD_CLOSED' ? '该期间已月结，不可入账' : res.msg === 'FUND_ACCOUNT_REQUIRED' ? '请选择资金账户' : res.msg
+    return ElMessage.error(msg)
+  }
   ElMessage.success(
     res.data && (res.data as Row).ticket_id
       ? `已支付关单，关联工单 #${(res.data as Row).ticket_id} 已办结`
@@ -993,6 +1012,11 @@ watch(
 
     <el-dialog v-model="payDlg" title="财务支付关单" width="480px">
       <el-form label-width="110px">
+        <el-form-item label="资金账户" required>
+          <el-select v-model="payForm.fund_account_id" style="width:100%" placeholder="付款账户">
+            <el-option v-for="f in fundAccounts" :key="String(f.id)" :label="`${f.name}（余额 ${f.balance}）`" :value="Number(f.id)" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="转账单号" required><el-input v-model="payForm.transfer_no" /></el-form-item>
         <el-form-item label="发票/转账截图" required>
           <el-upload :show-file-list="false" :http-request="(opt: any) => uploadPayEvidence(opt.file)" accept="image/*">

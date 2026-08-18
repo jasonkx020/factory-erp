@@ -5,6 +5,7 @@ export type MobileCardColumn = {
   /** Use as card title when no #title slot */
   primary?: boolean
   hideOnCard?: boolean
+  format?: (value: unknown, row: Record<string, unknown>) => string
 }
 
 const props = withDefaults(
@@ -24,8 +25,9 @@ const primaryCol = () => props.columns.find((c) => c.primary) || props.columns.f
 const fieldCols = () =>
   props.columns.filter((c) => !c.hideOnCard && c.prop !== primaryCol()?.prop)
 
-function cell(row: Record<string, unknown>, prop: string) {
-  const v = row[prop]
+function cell(row: Record<string, unknown>, col: MobileCardColumn) {
+  const v = row[col.prop]
+  if (col.format) return col.format(v, row)
   if (v == null || v === '') return '—'
   return String(v)
 }
@@ -40,7 +42,7 @@ function cell(row: Record<string, unknown>, prop: string) {
       <header class="mobile-card-head">
         <div class="mobile-card-title">
           <slot name="title" :row="row">
-            {{ primaryCol() ? cell(row, primaryCol()!.prop) : `#${idx + 1}` }}
+            {{ primaryCol() ? cell(row, primaryCol()!) : `#${idx + 1}` }}
           </slot>
         </div>
         <div v-if="$slots.extra" class="mobile-card-extra">
@@ -53,7 +55,7 @@ function cell(row: Record<string, unknown>, prop: string) {
             <dt>{{ col.label }}</dt>
             <dd>
               <slot :name="`field-${col.prop}`" :row="row" :value="row[col.prop]">
-                {{ cell(row, col.prop) }}
+                {{ cell(row, col) }}
               </slot>
             </dd>
           </div>

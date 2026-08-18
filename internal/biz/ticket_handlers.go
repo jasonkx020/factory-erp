@@ -862,6 +862,11 @@ func (s *Services) actionTicketBody(c *gin.Context, id int64, body map[string]in
 				api.FailJSON(c, "ALREADY_PAID")
 				return false
 			}
+			s.ensureFinanceCashColumns()
+			if err := s.postFarmerSettlementCash(sid, bindFundAccountID(body), transferNo); err != nil {
+				failToJSON(c, err)
+				return false
+			}
 			_, _ = s.addEvidence(c, "farmer_settlement", sid, "pay_receipt", payURL, gin.H{"transfer_no": transferNo})
 			_, err := s.DB.Exec(`UPDATE pur_farmer_settlement SET status='settle_paid', transfer_no=?, paid_at=NOW(), pay_evidence_url=? WHERE id=?`,
 				transferNo, payURL, sid)

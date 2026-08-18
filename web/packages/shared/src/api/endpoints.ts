@@ -857,7 +857,8 @@ export const financeApi = {
     api.post(`/finance/receipt-alerts/${id}/handle`, body || {}),
   reconciles: () => api.get<PageData>('/finance/cashier-reconciles'),
   createReconcile: (body: Record<string, unknown>) => api.post('/finance/cashier-reconciles', body),
-  confirmReconcile: (id: number) => api.post(`/finance/cashier-reconciles/${id}/confirm`, {}),
+  confirmReconcile: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/finance/cashier-reconciles/${id}/confirm`, body || {}),
   // 预收预付 / 往来
   prepays: () => api.get<PageData>('/finance/prepay-prepaids'),
   createPrepay: (body: Record<string, unknown>) => api.post('/finance/prepay-prepaids', body),
@@ -877,8 +878,10 @@ export const financeApi = {
   confirmReturnFinance: (id: number) => api.post(`/finance/sales-return-finances/${id}/confirm`, {}),
   // 审批 / 资金 / 报表 / 月结
   approvals: () => api.get<PageData>('/finance/approvals'),
-  approveFinance: (id: number) => api.post(`/finance/approvals/${id}/approve`, {}),
-  rejectFinance: (id: number) => api.post(`/finance/approvals/${id}/reject`, {}),
+  approveFinance: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/finance/approvals/${id}/approve`, body || {}),
+  rejectFinance: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/finance/approvals/${id}/reject`, body || {}),
   fundAccounts: () => api.get<PageData>('/finance/fund-accounts'),
   createFundAccount: (body: Record<string, unknown>) => api.post('/finance/fund-accounts', body),
   fundTransfers: () => api.get<PageData>('/finance/fund-transfers'),
