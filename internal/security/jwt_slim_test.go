@@ -44,3 +44,18 @@ func TestSlimTokenOmitsPermissions(t *testing.T) {
 		t.Fatalf("roles=%v", parsed.Roles)
 	}
 }
+
+func TestNormalizeClientTypeCustomer(t *testing.T) {
+	if got := NormalizeClientType("customer"); got != "customer" {
+		t.Fatalf("customer=%s", got)
+	}
+	if got := NormalizeClientType("portal"); got != "customer" {
+		t.Fatalf("portal=%s", got)
+	}
+	if got := NormalizeClientType("shop"); got != "customer" {
+		t.Fatalf("shop=%s", got)
+	}
+	if got := NormalizeClientType("unknown"); got != "employee" {
+		t.Fatalf("unknown=%s", got)
+	}
+}

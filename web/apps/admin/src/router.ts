@@ -17,6 +17,7 @@ const router = createRouter({
       component: () => import('./layouts/AdminLayout.vue'),
       children: [
         { path: '', name: 'home', component: () => import('./views/HomeView.vue') },
+        { path: 'account', name: 'account', component: () => import('./views/account/AccountView.vue') },
         { path: 'loops', name: 'loops', component: () => import('./views/LoopsView.vue') },
         { path: 'automation/trace', name: 'trace', component: () => import('./views/automation/TraceView.vue') },
         { path: 'automation/logs', name: 'logs', component: () => import('./views/automation/LogsView.vue') },
@@ -96,6 +97,7 @@ const router = createRouter({
         { path: 'hr/tool-issues', name: 'tool-issues', component: () => import('./views/hr/ToolIssueView.vue') },
         { path: 'workflow/tickets', name: 'workflow-tickets', component: () => import('./views/workflow/TicketCenterView.vue') },
         { path: 'system/personnel-transfers', redirect: '/hr/personnel-transfers' },
+        { path: 'hr/permissions', redirect: '/hr/roles' },
         {
           path: 'hr/:section?',
           name: 'hr-hub',

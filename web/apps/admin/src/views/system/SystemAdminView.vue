@@ -99,7 +99,7 @@ const SETTINGS: Record<string, { title: string; fields: FieldDef[] }> = {
     fields: [
       { key: 'auto_inbound_on_qc', label: '质检后自动入库', type: 'switch' },
       { key: 'require_box_code', label: '强制载体码', type: 'switch' },
-      { key: 'default_workshop_id', label: '默认车间', type: 'ref', ref: 'workshop' },
+      { key: 'default_workshop_dept_id', label: '默认车间', type: 'ref', ref: 'workshop' },
       { key: 'piecework_confirm_required', label: '计件需确认', type: 'switch' },
     ],
   },
@@ -195,8 +195,6 @@ const CRUD_FIELDS: Record<string, FieldDef[]> = {
     { key: 'employee_id', label: '员工', type: 'ref', ref: 'employee' },
     { key: 'from_dept_id', label: '原部门', type: 'ref', ref: 'dept' },
     { key: 'to_dept_id', label: '新部门', type: 'ref', ref: 'dept' },
-    { key: 'from_workshop_id', label: '原车间', type: 'ref', ref: 'workshop' },
-    { key: 'to_workshop_id', label: '新车间', type: 'ref', ref: 'workshop' },
     { key: 'reason', label: '原因', type: 'textarea' }, { key: 'effective_date', label: '生效日', type: 'date' },
   ],
   批量改价: [
@@ -205,7 +203,7 @@ const CRUD_FIELDS: Record<string, FieldDef[]> = {
   ],
   批量核算工资: [
     { key: 'period_ym', label: '期间', type: 'month' },
-    { key: 'workshop_id', label: '车间', type: 'ref', ref: 'workshop' },
+    { key: 'workshop_dept_id', label: '车间', type: 'ref', ref: 'workshop' },
   ],
   事项提醒: [
     { key: 'title', label: '标题' }, { key: 'content', label: '内容', type: 'textarea' },

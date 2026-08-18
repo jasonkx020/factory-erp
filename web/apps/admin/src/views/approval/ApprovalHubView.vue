@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   approvalApi,
@@ -11,6 +11,7 @@ import {
 import { EmployeeSelect, EnumSelect, SalesOrderSelect } from '../../components/select'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
+import { statusLabel, statusType } from '../sales/salesUi'
 
 type Row = Record<string, unknown>
 
@@ -67,6 +68,7 @@ const attendanceCols: MobileCardColumn[] = [
 ]
 
 const route = useRoute()
+const router = useRouter()
 const TITLE_MAP: Record<string, string> = {
   tasks: '任务管理',
   'doc-reviews': '单据审核',
@@ -91,6 +93,14 @@ const QUEUE_SECTIONS = new Set([
 
 const active = computed(() => String(route.params.section || 'tasks'))
 const title = computed(() => TITLE_MAP[active.value] || '审批管理')
+const chainHint = computed(() => {
+  if (active.value === 'inquiry-finance') return '询价提交后进入本队列；通过/驳回会回写询价单状态。销售侧「询价审批」也可直批。'
+  if (active.value === 'inquiry-lines') return '询价明细审批，处理单行报价。'
+  if (active.value === 'doc-reviews') return '单据审核队列，含销售订单提交与发货确认生成的待审。'
+  if (active.value === 'tasks') return '通用审批任务。销售订单提交后也会写入单据审核队列。'
+  return '审批通过或驳回后，关联业务单据状态会同步更新。'
+})
+const pendingCount = computed(() => list.value.filter((r) => String(r.status) === 'pending').length)
 const loading = ref(false)
 const list = ref<Row[]>([])
 const statusFilter = ref('')
@@ -303,8 +313,14 @@ watch(active, () => {
 <template>
   <div class="page" v-loading="loading">
     <div class="head">
-      <h2>{{ title }}</h2>
+      <div>
+        <h2>{{ title }}</h2>
+        <p class="desc">{{ chainHint }}</p>
+      </div>
       <div class="actions">
+        <el-tag v-if="pendingCount" type="warning" size="small">待审 {{ pendingCount }}</el-tag>
+        <el-button v-if="active === 'inquiry-finance'" link type="primary" @click="router.push('/sales/hub/inquiry-approve')">询价审批</el-button>
+        <el-button v-if="active === 'doc-reviews'" link type="primary" @click="router.push('/sales/hub/deliveries')">发货审批</el-button>
         <el-select
           v-if="active !== 'expense-requests' && active !== 'affairs' && active !== 'attendance'"
           v-model="statusFilter"
@@ -352,7 +368,9 @@ watch(active, () => {
           <el-table-column prop="doc_type" label="类型" width="110" />
           <el-table-column prop="doc_id" label="单据ID" width="80" />
           <el-table-column prop="amount" label="金额" width="100" />
-          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }"><el-tag size="small" :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template>
+          </el-table-column>
           <el-table-column prop="comment" label="意见" min-width="120" show-overflow-tooltip />
           <el-table-column prop="created_at" label="创建" width="160" />
           <el-table-column label="操作" width="140" fixed="right">
@@ -396,15 +414,20 @@ watch(active, () => {
           <el-table-column prop="biz_type" label="业务" width="110" />
           <el-table-column prop="biz_id" label="业务ID" width="80" />
           <el-table-column prop="amount" label="金额" width="100" />
-          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }"><el-tag size="small" :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template>
+          </el-table-column>
           <el-table-column prop="comment" label="意见" min-width="120" show-overflow-tooltip />
           <el-table-column prop="acted_at" label="审批时间" width="160" />
-          <el-table-column label="操作" width="140" fixed="right">
+          <el-table-column label="操作" width="200" fixed="right">
             <template #default="{ row }">
               <template v-if="row.status === 'pending'">
                 <el-button link type="success" @click="decideQueue(Number(row.id), true)">通过</el-button>
                 <el-button link type="danger" @click="decideQueue(Number(row.id), false)">驳回</el-button>
               </template>
+              <el-button v-if="row.biz_type === 'inquiry' || row.biz_type === 'sl_inquiry'" link @click="router.push('/sales/hub/inquiries')">看询价</el-button>
+              <el-button v-if="row.biz_type === 'delivery'" link @click="router.push('/sales/hub/deliveries')">看发货</el-button>
+              <el-button v-if="row.biz_type === 'sales_order'" link @click="router.push('/sales/hub/orders')">看订单</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -573,8 +596,9 @@ watch(active, () => {
 
 <style scoped>
 .page { padding: 16px; }
-.head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 12px; }
-.head h2 { margin: 0; font-size: 18px; }
+.head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; gap: 12px; }
+.head h2 { margin: 0 0 4px; font-size: 18px; }
+.desc { margin: 0; color: #5c6b75; font-size: 13px; max-width: 640px; line-height: 1.5; }
 .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .mb { margin-bottom: 12px; }
 </style>

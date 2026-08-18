@@ -43,7 +43,7 @@ export const useAuthStore = defineStore('auth', () => {
       if (r.msg === 'UNAUTHORIZED') logout()
       return false
     }
-    user.value = { ...r.data.user, employee_id: user.value?.employee_id, name: user.value?.name }
+    user.value = { ...user.value, ...r.data.user }
     roles.value = r.data.roles || []
     permissions.value = r.data.permissions || []
     menus.value = r.data.menus || []

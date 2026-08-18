@@ -3,15 +3,26 @@
 -- 开发种子：组织 / 仓 / 工序 / 角色分组 / admin
 -- 默认密码 admin123（bcrypt），仅用于本地开发
 
-INSERT INTO sys_organization(id, code, name, status) VALUES (1, 'ORG001', '加工厂演示组织', 'active');
+INSERT INTO sys_organization(id, code, name, status) VALUES (1, 'ORG001', '桂南木薯加工厂', 'active');
 
-INSERT INTO sys_department(id, org_id, code, name) VALUES (1, 1, 'D001', '生产部')
+-- 公司架构：一级总经办 → 二级职能/生产部门 → 三级车间（班组不进第 4 级树）
+INSERT INTO sys_department(id, org_id, parent_id, code, name, dept_type) VALUES
+ (1, 1, NULL, 'HQ01', '总经办', 'normal'),
+ (3, 1, 1, 'D-PROD', '生产部', 'normal'),
+ (4, 1, 1, 'D-WH', '仓储部', 'normal'),
+ (5, 1, 1, 'D-PUR', '采购部', 'normal'),
+ (6, 1, 1, 'D-SALES', '销售部', 'normal'),
+ (7, 1, 1, 'D-QC', '质检部', 'normal'),
+ (8, 1, 1, 'D-HR', '人事行政部', 'normal'),
+ (9, 1, 1, 'D-FIN', '财务部', 'normal'),
+ (2, 1, 3, 'WS01', '一车间', 'workshop'),
+ (10, 1, 3, 'WS02', '二车间', 'workshop')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO pd_workshop(id, org_id, dept_id, code, name) VALUES (1, 1, 1, 'WS01', '一车间')
-ON CONFLICT DO NOTHING;
-
-INSERT INTO pd_work_team(id, workshop_id, code, name) VALUES (1, 1, 'T01', '去皮一组')
+INSERT INTO pd_work_team(id, dept_id, code, name) VALUES
+ (1, 2, 'T01', '去皮一组'),
+ (2, 2, 'T02', '切断一组'),
+ (3, 10, 'T03', '切块一组')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO inv_warehouse(id, org_id, code, name, warehouse_type) VALUES
@@ -50,13 +61,13 @@ INSERT INTO iam_admin_group(id, code, name, remark, sort_no) VALUES
 ON CONFLICT DO NOTHING;
 
 INSERT INTO iam_role(id, code, name, data_scope_type, is_system, remark) VALUES
- (1, 'sys_admin', '系统管理员', 'all', 1, '系统管理+权限分配'),
+ (1, 'sys_admin', '系统管理员', 'all', 1, '系统管理+角色管理'),
  (2, 'boss', '老板', 'all', 1, '驾驶舱/财务只读'),
  (3, 'sales', '销售员', 'self', 1, '销售客户'),
  (4, 'purchase', '采购员', 'all', 1, '采购'),
  (5, 'warehouse', '仓管员', 'warehouse', 1, '库存按仓'),
  (6, 'planner', '生产计划', 'all', 1, '生产计划'),
- (7, 'foreman', '车间主任', 'workshop', 1, '车间调度'),
+ (7, 'foreman', '车间主任', 'dept_workshop', 1, '车间调度'),
  (8, 'piece', '计件工', 'self', 1, '报工领料'),
  (9, 'fixed', '固定工', 'team', 1, '收货质检'),
  (10, 'qc', '质检员', 'all', 1, '质检'),
@@ -70,8 +81,8 @@ INSERT INTO iam_admin_group_role(group_id, role_id) VALUES
 ON CONFLICT DO NOTHING;
 
 INSERT INTO iam_permission(code, name, domain, module, action) VALUES
- ('人事管理:权限分配:查看', '查看权限分配', '人事管理', '权限分配', '查看'),
- ('人事管理:权限分配:编辑', '编辑权限分配', '人事管理', '权限分配', '编辑'),
+ ('人事管理:角色管理:查看', '查看角色管理', '人事管理', '角色管理', '查看'),
+ ('人事管理:角色管理:编辑', '编辑角色管理', '人事管理', '角色管理', '编辑'),
  ('系统管理:自定义权限:查看', '查看自定义权限', '系统管理', '自定义权限', '查看'),
  ('系统管理:自定义权限:编辑', '编辑自定义权限', '系统管理', '自定义权限', '编辑'),
  ('系统管理:自定义菜单:编辑', '编辑自定义菜单', '系统管理', '自定义菜单', '编辑'),
@@ -99,6 +110,24 @@ SELECT 8, id FROM iam_permission WHERE code IN (
 )
 ON CONFLICT DO NOTHING;
 
+INSERT INTO iam_role_permission(role_id, permission_id)
+SELECT 9, id FROM iam_permission WHERE code IN (
+  '生产管理:扫码报工:新增','生产管理:扫码报工:查看'
+)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO iam_role_permission(role_id, permission_id)
+SELECT 7, id FROM iam_permission WHERE code IN (
+  '生产管理:扫码报工:新增','生产管理:扫码报工:查看','生产管理:联动式领料:新增','生产管理:生产派工:新增','工资管理:工序工资:查看'
+)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO iam_role_permission(role_id, permission_id)
+SELECT 6, id FROM iam_permission WHERE code IN (
+  '生产管理:生产派工:新增','工资管理:工序工资:查看'
+)
+ON CONFLICT DO NOTHING;
+
 INSERT INTO iam_field_policy(role_id, field_key, field_name, visible, editable) VALUES
  (8, 'cost_price', '成本价', 0, 0),
  (8, 'gross_margin', '毛利', 0, 0),
@@ -111,13 +140,13 @@ INSERT INTO iam_field_policy(role_id, field_key, field_name, visible, editable) 
 ON CONFLICT DO NOTHING;
 
 INSERT INTO iam_menu_custom(role_id, domain, module, menu_key, visible, sort_no) VALUES
- (8, '生产管理', '扫码报工', '生产管理:扫码报工', 1, 10),
+ (8, '生产管理', '过站记录', '生产管理:过站记录', 1, 10),
  (8, '生产管理', '联动式领料', '生产管理:联动式领料', 1, 20),
  (8, '工资管理', '工序工资', '工资管理:工序工资', 1, 30)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO hr_employee(id, emp_no, name, org_id, dept_id, workshop_id, emp_type, status)
-VALUES (1, 'E0001', '系统管理员', 1, 1, 1, 'office', 'active')
+INSERT INTO hr_employee(id, emp_no, name, org_id, dept_id, team_id, job_title, emp_type, mobile, badge_code, id_card_no, status) VALUES
+ (1, 'E0001', '系统管理员', 1, 1, NULL, '系统管理员', 'office', '13800001001', 'EMP-ADMIN', '450103198001011011', 'active')
 ON CONFLICT DO NOTHING;
 
 -- bcrypt(admin123) cost=10
@@ -133,16 +162,19 @@ INSERT INTO iam_admin_group_user(group_id, user_id) VALUES (1, 1)
 ON CONFLICT DO NOTHING;
 
 -- 各角色演示账号（密码均为 admin123，与 admin 相同 bcrypt）
-INSERT INTO hr_employee(id, emp_no, name, org_id, dept_id, workshop_id, emp_type, status) VALUES
- (10, 'E-PUR', '演示采购', 1, 1, 1, 'office', 'active'),
- (11, 'E-QC', '演示质检', 1, 1, 1, 'office', 'active'),
- (12, 'E-WH', '演示仓管', 1, 1, 1, 'warehouse', 'active'),
- (13, 'E-FM', '演示车间主任', 1, 1, 1, 'office', 'active'),
- (14, 'E-PC', '演示计件工', 1, 1, 1, 'piece', 'active'),
- (15, 'E-FX', '演示固定工', 1, 1, 1, 'fixed', 'active'),
- (16, 'E-SL', '演示销售', 1, 1, NULL, 'sales', 'active'),
- (17, 'E-FN', '演示财务', 1, 1, NULL, 'office', 'active'),
- (18, 'E-BS', '演示老板', 1, 1, NULL, 'office', 'active');
+INSERT INTO hr_employee(id, emp_no, name, org_id, dept_id, team_id, job_title, emp_type, mobile, badge_code, id_card_no, status) VALUES
+ (10, 'E-PUR', '李采购', 1, 5, NULL, '采购员', 'office', '13800001010', 'EMP-PUR', '450103199104121010', 'active'),
+ (11, 'E-QC', '孙质检', 1, 7, NULL, '质检员', 'office', '13800001011', 'EMP-QC', '450103199211091011', 'active'),
+ (12, 'E-WH', '黄仓管', 1, 4, NULL, '仓管员', 'warehouse', '13800001012', 'EMP-WH', '450103199006081012', 'active'),
+ (13, 'E-FM', '赵主任', 1, 3, NULL, '车间主任', 'office', '13800001013', 'EMP-FM', '450103198703221013', 'active'),
+ (14, 'E-PC', '陈计件', 1, 2, 1, '去皮计件工', 'piece', '13800001014', 'EMP-PC', '450103199505051014', 'active'),
+ (15, 'E-FX', '刘固定', 1, 2, 2, '收货固定工', 'fixed', '13800001015', 'EMP-FX', '450103199408181015', 'active'),
+ (16, 'E-SL', '周海燕', 1, 6, NULL, '销售员', 'sales', '13800001016', 'EMP-SL', '450103199203151016', 'active'),
+ (17, 'E-FN', '钱会计', 1, 9, NULL, '会计', 'office', '13800001017', 'EMP-FN', '450103198909091017', 'active'),
+ (18, 'E-BS', '韦建国', 1, 1, NULL, '总经理', 'office', '13800001018', 'EMP-BS', '450103197501011018', 'active'),
+ (19, 'E-PL', '吴计划', 1, 3, NULL, '生产计划员', 'office', '13800001019', 'EMP-PL', '450103198812011019', 'active'),
+ (20, 'E-HR', '郑人事', 1, 8, NULL, '人事专员', 'office', '13800001020', 'EMP-HR', '450103199109211020', 'active'),
+ (21, 'E-PAY', '冯薪资', 1, 9, NULL, '薪资员', 'office', '13800001021', 'EMP-PAY', '450103199307011021', 'active');
 
 INSERT INTO iam_user(id, login_name, password_hash, employee_id, user_type, status) VALUES
  (10, 'u_purchase', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 10, 'biz', 'active'),
@@ -153,13 +185,22 @@ INSERT INTO iam_user(id, login_name, password_hash, employee_id, user_type, stat
  (15, 'u_fixed', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 15, 'biz', 'active'),
  (16, 'u_sales', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 16, 'biz', 'active'),
  (17, 'u_finance', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 17, 'biz', 'active'),
- (18, 'u_boss', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 18, 'biz', 'active')
+ (18, 'u_boss', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 18, 'biz', 'active'),
+ (19, 'u_planner', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 19, 'biz', 'active'),
+ (20, 'u_hr', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 20, 'biz', 'active'),
+ (21, 'u_payroll', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 21, 'biz', 'active')
 ON CONFLICT DO NOTHING;
 
-UPDATE hr_employee SET user_id = id WHERE id BETWEEN 10 AND 18;
+UPDATE hr_employee SET user_id = id WHERE id BETWEEN 10 AND 21;
 
 INSERT INTO iam_user_role(user_id, role_id) VALUES
- (10, 4), (11, 10), (12, 5), (13, 7), (14, 8), (15, 9), (16, 3), (17, 13), (18, 2)
+ (10, 4), (11, 10), (12, 5), (13, 7), (14, 8), (15, 9), (16, 3), (17, 13), (18, 2),
+ (19, 6), (20, 11), (21, 12)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO iam_admin_group_user(group_id, user_id) VALUES
+ (3, 10), (4, 11), (4, 12), (4, 13), (5, 14), (5, 15), (3, 16), (6, 17), (2, 18),
+ (4, 19), (6, 20), (6, 21)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO prd_product(id, code, name, product_type, cost_price, sale_price, status) VALUES
@@ -196,43 +237,43 @@ INSERT INTO pd_routing(id, code, name, product_id, version_no, status) VALUES
  (2, 'RT-CASSAVA-RAW', '鲜木薯入厂产线', 1, 'V1', 'active'),
  (3, 'RT-CASSAVA-SEMI', '去芯薯肉入厂产线', 2, 'V1', 'active');
 
-INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
- (1, 1, 8, 'S1', '入库-原料', 0, 0, 1, 1, 0, 1, 1),
- (1, 2, 7, 'S2', '清洗', 0, 0, 1, 0, 0, 1, 1),
- (1, 3, 1, 'S3', '去皮-计件领料', 1, 0, 1, 0, 1, 1, 1),
- (1, 4, 2, 'S4', '收货-固定工', 0, 1, 1, 0, 0, NULL, 1),
- (1, 5, 3, 'S5', '切断-固定工', 0, 0, 1, 0, 0, NULL, 1),
- (1, 6, 4, 'S6', '去芯-计件', 1, 0, 1, 0, 0, NULL, 1),
- (1, 7, 2, 'S7', '收货-固定工', 0, 1, 1, 0, 0, NULL, 1),
- (1, 8, 9, 'S8', '入库-半成品库', 0, 0, 1, 1, 0, 2, 1),
- (1, 9, 10, 'S9', '出库切块-计件', 1, 0, 1, 0, 1, 2, 1),
- (1, 10, 9, 'S10', '入库-半成品库', 0, 0, 1, 1, 0, 2, 1),
- (1, 11, 6, 'S11', '过滤装袋', 0, 0, 1, 0, 0, NULL, 1),
- (1, 12, 11, 'S12', '入库-成品库销售', 0, 0, 0, 1, 0, 3, 1),
+INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
+ (1, 1, 8, 'S1', '入库-原料', 0, 0, 1, 1, 0, 1, 2),
+ (1, 2, 7, 'S2', '清洗', 0, 0, 1, 0, 0, 1, 2),
+ (1, 3, 1, 'S3', '去皮-计件领料', 1, 0, 1, 0, 1, 1, 2),
+ (1, 4, 2, 'S4', '收货-固定工', 0, 1, 1, 0, 0, NULL, 2),
+ (1, 5, 3, 'S5', '切断-固定工', 0, 0, 1, 0, 0, NULL, 2),
+ (1, 6, 4, 'S6', '去芯-计件', 1, 0, 1, 0, 0, NULL, 2),
+ (1, 7, 2, 'S7', '收货-固定工', 0, 1, 1, 0, 0, NULL, 2),
+ (1, 8, 9, 'S8', '入库-半成品库', 0, 0, 1, 1, 0, 2, 2),
+ (1, 9, 10, 'S9', '出库切块-计件', 1, 0, 1, 0, 1, 2, 2),
+ (1, 10, 9, 'S10', '入库-半成品库', 0, 0, 1, 1, 0, 2, 2),
+ (1, 11, 6, 'S11', '过滤装袋', 0, 0, 1, 0, 0, NULL, 2),
+ (1, 12, 11, 'S12', '入库-成品库销售', 0, 0, 0, 1, 0, 3, 2),
  -- 鲜木薯入厂（routing 2）
- (2, 1, 8, 'S1', '入库-原料', 0, 0, 1, 1, 0, 1, 1),
- (2, 2, 7, 'S2', '清洗', 0, 0, 1, 0, 0, 1, 1),
- (2, 3, 1, 'S3', '去皮-计件领料', 1, 0, 1, 0, 1, 1, 1),
- (2, 4, 2, 'S4', '收货-固定工', 0, 1, 1, 0, 0, NULL, 1),
- (2, 5, 3, 'S5', '切断-固定工', 0, 0, 1, 0, 0, NULL, 1),
- (2, 6, 4, 'S6', '去芯-计件', 1, 0, 1, 0, 0, NULL, 1),
- (2, 7, 2, 'S7', '收货-固定工', 0, 1, 1, 0, 0, NULL, 1),
- (2, 8, 9, 'S8', '入库-半成品库', 0, 0, 1, 1, 0, 2, 1),
- (2, 9, 10, 'S9', '出库切块-计件', 1, 0, 1, 0, 1, 2, 1),
- (2, 10, 9, 'S10', '入库-半成品库', 0, 0, 1, 1, 0, 2, 1),
- (2, 11, 6, 'S11', '过滤装袋', 0, 0, 1, 0, 0, NULL, 1),
- (2, 12, 11, 'S12', '入库-成品库销售', 0, 0, 0, 1, 0, 3, 1),
+ (2, 1, 8, 'S1', '入库-原料', 0, 0, 1, 1, 0, 1, 2),
+ (2, 2, 7, 'S2', '清洗', 0, 0, 1, 0, 0, 1, 2),
+ (2, 3, 1, 'S3', '去皮-计件领料', 1, 0, 1, 0, 1, 1, 2),
+ (2, 4, 2, 'S4', '收货-固定工', 0, 1, 1, 0, 0, NULL, 2),
+ (2, 5, 3, 'S5', '切断-固定工', 0, 0, 1, 0, 0, NULL, 2),
+ (2, 6, 4, 'S6', '去芯-计件', 1, 0, 1, 0, 0, NULL, 2),
+ (2, 7, 2, 'S7', '收货-固定工', 0, 1, 1, 0, 0, NULL, 2),
+ (2, 8, 9, 'S8', '入库-半成品库', 0, 0, 1, 1, 0, 2, 2),
+ (2, 9, 10, 'S9', '出库切块-计件', 1, 0, 1, 0, 1, 2, 2),
+ (2, 10, 9, 'S10', '入库-半成品库', 0, 0, 1, 1, 0, 2, 2),
+ (2, 11, 6, 'S11', '过滤装袋', 0, 0, 1, 0, 0, NULL, 2),
+ (2, 12, 11, 'S12', '入库-成品库销售', 0, 0, 0, 1, 0, 3, 2),
  -- 半成品入厂（routing 3）
- (3, 1, 9, 'S1', '入库-半成品库', 0, 0, 1, 1, 0, 2, 1),
- (3, 2, 10, 'S2', '出库切块-计件', 1, 0, 1, 0, 1, 2, 1),
- (3, 3, 9, 'S3', '入库-半成品库', 0, 0, 1, 1, 0, 2, 1),
- (3, 4, 6, 'S4', '过滤装袋', 0, 0, 1, 0, 0, NULL, 1),
- (3, 5, 11, 'S5', '入库-成品库销售', 0, 0, 0, 1, 0, 3, 1)
+ (3, 1, 9, 'S1', '入库-半成品库', 0, 0, 1, 1, 0, 2, 2),
+ (3, 2, 10, 'S2', '出库切块-计件', 1, 0, 1, 0, 1, 2, 2),
+ (3, 3, 9, 'S3', '入库-半成品库', 0, 0, 1, 1, 0, 2, 2),
+ (3, 4, 6, 'S4', '过滤装袋', 0, 0, 1, 0, 0, NULL, 2),
+ (3, 5, 11, 'S5', '入库-成品库销售', 0, 0, 0, 1, 0, 3, 2)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO hr_employee(id, emp_no, name, org_id, dept_id, workshop_id, emp_type, badge_code, status) VALUES
- (2, 'E0301', '陈某', 1, 1, 1, 'piece', 'EMP0301', 'active'),
- (3, 'E0205', '固定工甲', 1, 1, 1, 'fixed', 'EMP0205', 'active')
+INSERT INTO hr_employee(id, emp_no, name, org_id, dept_id, team_id, job_title, emp_type, mobile, badge_code, id_card_no, status) VALUES
+ (2, 'E0301', '陈某', 1, 2, 1, '去皮工', 'piece', '13800001002', 'EMP0301', '450103199601011002', 'active'),
+ (3, 'E0205', '固定工甲', 1, 2, 2, '收货员', 'fixed', '13800001003', 'EMP0205', '450103199702021003', 'active')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO inv_box_code(id, code, product_id, warehouse_id, batch_no, qty, weight, current_process_id, current_step_id, status) VALUES
@@ -263,6 +304,45 @@ ON CONFLICT DO NOTHING;
 INSERT INTO schema_meta(key, value) VALUES ('seeded', '1')
 ON CONFLICT DO NOTHING;
 
+INSERT INTO hr_employee_department(employee_id, dept_id, is_primary)
+SELECT id, dept_id, 1 FROM hr_employee WHERE COALESCE(dept_id, 0) > 0
+ON CONFLICT DO NOTHING;
+
+INSERT INTO hr_employee_department(employee_id, dept_id, is_primary) VALUES
+ (13, 2, 0)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO sys_department_role(dept_id, role_id) VALUES
+ (1, 1), (1, 2),
+ (3, 6),
+ (4, 5),
+ (5, 4),
+ (6, 3),
+ (7, 10),
+ (8, 11),
+ (9, 13), (9, 12),
+ (2, 7), (2, 8), (2, 9),
+ (10, 7), (10, 8), (10, 9)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO pay_worker_profile(employee_id, pay_type, monthly_base, bank_account, tax_no, status) VALUES
+ (1, 'fixed', 0, '6222080000000001', '450103198001011', 'active'),
+ (2, 'piece', 0, '6222080000000002', '450103199601011', 'active'),
+ (3, 'fixed', 3600, '6222080000000003', '450103199702021', 'active'),
+ (10, 'fixed', 4800, '6222080000000010', '450103199104121', 'active'),
+ (11, 'fixed', 4600, '6222080000000011', '450103199211091', 'active'),
+ (12, 'fixed', 4200, '6222080000000012', '450103199006081', 'active'),
+ (13, 'fixed', 6200, '6222080000000013', '450103198703221', 'active'),
+ (14, 'piece', 0, '6222080000000014', '450103199505051', 'active'),
+ (15, 'fixed', 3800, '6222080000000015', '450103199408181', 'active'),
+ (16, 'fixed', 4500, '6222080000000016', '450103199203151', 'active'),
+ (17, 'fixed', 5800, '6222080000000017', '450103198909091', 'active'),
+ (18, 'fixed', 12000, '6222080000000018', '450103197501011', 'active'),
+ (19, 'fixed', 5500, '6222080000000019', '450103198812011', 'active'),
+ (20, 'fixed', 5000, '6222080000000020', '450103199109211', 'active'),
+ (21, 'fixed', 5200, '6222080000000021', '450103199307011', 'active')
+ON CONFLICT DO NOTHING;
+
 -- Reset sequences after explicit id inserts
 SELECT setval(pg_get_serial_sequence('hr_employee', 'id'), COALESCE((SELECT MAX(id) FROM hr_employee), 1));
 SELECT setval(pg_get_serial_sequence('iam_admin_group', 'id'), COALESCE((SELECT MAX(id) FROM iam_admin_group), 1));
@@ -274,7 +354,6 @@ SELECT setval(pg_get_serial_sequence('inv_warehouse', 'id'), COALESCE((SELECT MA
 SELECT setval(pg_get_serial_sequence('pd_process', 'id'), COALESCE((SELECT MAX(id) FROM pd_process), 1));
 SELECT setval(pg_get_serial_sequence('pd_routing', 'id'), COALESCE((SELECT MAX(id) FROM pd_routing), 1));
 SELECT setval(pg_get_serial_sequence('pd_work_team', 'id'), COALESCE((SELECT MAX(id) FROM pd_work_team), 1));
-SELECT setval(pg_get_serial_sequence('pd_workshop', 'id'), COALESCE((SELECT MAX(id) FROM pd_workshop), 1));
 SELECT setval(pg_get_serial_sequence('prd_product', 'id'), COALESCE((SELECT MAX(id) FROM prd_product), 1));
 SELECT setval(pg_get_serial_sequence('pur_supplier', 'id'), COALESCE((SELECT MAX(id) FROM pur_supplier), 1));
 SELECT setval(pg_get_serial_sequence('pur_supplier_license', 'id'), COALESCE((SELECT MAX(id) FROM pur_supplier_license), 1));

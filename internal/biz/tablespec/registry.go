@@ -42,14 +42,10 @@ var Registry = map[string]*Spec{
 				{"seq_no", TypeInt}, {"process_id", TypeInt}, {"step_code", TypeStr}, {"step_name", TypeStr},
 				{"is_piecework", TypeBool}, {"is_inbound_checkpoint", TypeBool}, {"is_qc_required", TypeBool},
 				{"auto_next", TypeBool}, {"auto_stock_in", TypeBool}, {"auto_stock_out", TypeBool},
-				{"warehouse_id", TypeInt}, {"workshop_id", TypeInt},
+				{"warehouse_id", TypeInt}, {"workshop_dept_id", TypeInt},
 			},
 		},
 		Actions: map[string]string{"activate": "active", "close": "closed"},
-	},
-	"production/workshops": {
-		Table: "pd_workshop", DocNo: "code", Status: "status", SoftDelete: true,
-		Cols: []Col{{"org_id", TypeInt}, {"dept_id", TypeInt}, {"code", TypeStr}, {"name", TypeStr}, {"status", TypeStr}},
 	},
 	"production/boms": {
 		Table: "pd_bom", DocNo: "code", Status: "status", SoftDelete: false,
@@ -117,7 +113,7 @@ var Registry = map[string]*Spec{
 		Table: "sys_personnel_transfer", DocNo: "doc_no", Status: "status", SoftDelete: true,
 		Cols: []Col{
 			{"doc_no", TypeStr}, {"employee_id", TypeInt}, {"from_dept_id", TypeInt}, {"to_dept_id", TypeInt},
-			{"from_workshop_id", TypeInt}, {"to_workshop_id", TypeInt}, {"reason", TypeStr},
+			{"reason", TypeStr},
 			{"status", TypeStr}, {"effective_date", TypeStr}, {"confirmed_at", TypeStr}, {"created_by", TypeInt},
 		},
 		Actions: map[string]string{"confirm": "confirmed"},
@@ -132,7 +128,7 @@ var Registry = map[string]*Spec{
 	"system/batch-payroll-jobs": {
 		Table: "sys_batch_payroll_job", DocNo: "doc_no", Status: "status", SoftDelete: true,
 		Cols: []Col{
-			{"doc_no", TypeStr}, {"period_ym", TypeStr}, {"workshop_id", TypeInt}, {"status", TypeStr},
+			{"doc_no", TypeStr}, {"period_ym", TypeStr}, {"workshop_dept_id", TypeInt}, {"status", TypeStr},
 			{"result_msg", TypeStr}, {"created_by", TypeInt}, {"applied_at", TypeStr},
 		},
 	},

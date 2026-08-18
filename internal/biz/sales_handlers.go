@@ -14,9 +14,19 @@ import (
 )
 
 func (s *Services) handleSales(c *gin.Context, method, openapiPath, action string) bool {
+	s.ensureSalesLoopColumns()
+	if !s.bindPortalCustomer(c) {
+		return true
+	}
+	if isCustomerClient(c) && !customerSalesAllowed(method, openapiPath, action) {
+		api.FailJSON(c, "PERM_DENIED")
+		return true
+	}
 	switch {
 	case strings.HasPrefix(openapiPath, "/api/v1/sales/outbound-settles"):
 		return s.handleOutboundSettles(c, method, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/sales/self-order-rules"):
+		return s.handleSelfOrderRules(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/sales/orders"):
 		return s.handleSalesOrders(c, method, action, openapiPath)
 	case strings.HasPrefix(openapiPath, "/api/v1/sales/inquiries"):
@@ -106,6 +116,9 @@ func (s *Services) handleSalesOrders(c *gin.Context, method, action, path string
 			api.FailJSON(c, "NOT_FOUND")
 			return true
 		}
+		if s.refusePortalMismatch(c, ginHInt64(m["customer_id"])) {
+			return true
+		}
 		api.OK(c, m)
 		return true
 	case action == "update" || action == "replace":
@@ -123,6 +136,7 @@ func (s *Services) listSalesOrders(c *gin.Context, ownerUserID int64) bool {
 		where += ` AND o.owner_user_id=?`
 		args = append(args, ownerUserID)
 	}
+	applyPortalCustomerSQL(c, "o.customer_id", &where, &args)
 	if status != "" {
 		where += ` AND o.status=?`
 		args = append(args, status)
@@ -131,8 +145,13 @@ func (s *Services) listSalesOrders(c *gin.Context, ownerUserID int64) bool {
 		where += ` AND o.customer_id=?`
 		args = append(args, cid)
 	}
+	if kw := strings.TrimSpace(c.Query("keyword")); kw != "" {
+		where += ` AND (o.doc_no LIKE ? OR COALESCE(c.name,'') LIKE ? OR COALESCE(o.remark,'') LIKE ?)`
+		like := "%" + kw + "%"
+		args = append(args, like, like, like)
+	}
 	var total int
-	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM sl_sales_order o `+where, args...).Scan(&total)
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM sl_sales_order o LEFT JOIN crm_customer c ON c.id=o.customer_id `+where, args...).Scan(&total)
 	args = append(args, pageSize, (pageNum-1)*pageSize)
 	rows, err := s.DB.Query(`SELECT o.id, o.doc_no, o.customer_id, COALESCE(c.name,''), o.status, o.source,
 		COALESCE(o.total_amount,0), COALESCE(o.warehouse_id,3), COALESCE(o.remark,''), o.created_at
@@ -161,6 +180,9 @@ func (s *Services) listSalesOrders(c *gin.Context, ownerUserID int64) bool {
 func (s *Services) createSalesOrder(c *gin.Context, fromSelf bool) bool {
 	body := bindBody(c)
 	customerID, _ := asInt64(body["customer_id"])
+	if cid, ok := portalCustomerID(c); ok {
+		customerID = cid
+	}
 	if customerID <= 0 {
 		api.FailJSON(c, "CUSTOMER_REQUIRED")
 		return true
@@ -181,6 +203,31 @@ func (s *Services) createSalesOrder(c *gin.Context, fromSelf bool) bool {
 	source := strOrDef(body["source"], "manual")
 	if fromSelf {
 		source = "self"
+		var minQty, maxQty, maxAmt float64
+		var enabled int
+		_ = s.DB.QueryRow(`SELECT enabled, min_qty, COALESCE(max_qty,0), COALESCE(max_amount,0) FROM sl_self_order_rule WHERE enabled=1 ORDER BY id DESC LIMIT 1`).
+			Scan(&enabled, &minQty, &maxQty, &maxAmt)
+		if enabled == 1 {
+			var qtySum, amtGuess float64
+			for _, ln := range lines {
+				q, _ := asFloat(ln["qty"])
+				p, _ := asFloat(ln["price"])
+				qtySum += q
+				amtGuess += q * p
+			}
+			if minQty > 0 && qtySum < minQty {
+				api.FailJSON(c, "SELF_ORDER_MIN_QTY")
+				return true
+			}
+			if maxQty > 0 && qtySum > maxQty {
+				api.FailJSON(c, "SELF_ORDER_MAX_QTY")
+				return true
+			}
+			if maxAmt > 0 && amtGuess > maxAmt {
+				api.FailJSON(c, "SELF_ORDER_MAX_AMOUNT")
+				return true
+			}
+		}
 	}
 	docNo := strOrDef(body["doc_no"], fmt.Sprintf("SO%s", time.Now().Format("20060102150405")))
 	var ownerID int64
@@ -188,10 +235,13 @@ func (s *Services) createSalesOrder(c *gin.Context, fromSelf bool) bool {
 		ownerID = claims.UserID
 	}
 	status := strOrDef(body["status"], "draft")
+	if fromSelf {
+		status = "submitted"
+	}
 	var total float64
 	var lockID int64
 	type lineCalc struct {
-		pid, lockID int64
+		pid, lockID        int64
 		qty, price, amount float64
 	}
 	calcs := []lineCalc{}
@@ -301,6 +351,18 @@ func (s *Services) orderAction(c *gin.Context, toStatus string) bool {
 		return true
 	}
 	_, _ = s.DB.Exec(`UPDATE sl_sales_order SET status=?, updated_at=NOW() WHERE id=?`, toStatus, id)
+	if toStatus == "submitted" {
+		ord := s.loadSalesOrder(id)
+		var applicant int64
+		if claims := middleware.Claims(c); claims != nil {
+			applicant = claims.UserID
+		}
+		amt, _ := asFloat(ord["total_amount"])
+		s.enqueueSalesApproval("doc_review", "sales_order", strOr(ord["doc_no"]),
+			fmt.Sprintf("销售订单 %s", ord["doc_no"]), id, applicant, amt)
+		api.OK(c, ord)
+		return true
+	}
 	api.OK(c, s.loadSalesOrder(id))
 	return true
 }
@@ -312,12 +374,15 @@ func (s *Services) rebuyOrder(c *gin.Context) bool {
 		api.FailJSON(c, "NOT_FOUND")
 		return true
 	}
+	if s.refusePortalMismatch(c, ginHInt64(src["customer_id"])) {
+		return true
+	}
 	body := map[string]interface{}{
-		"customer_id": src["customer_id"],
+		"customer_id":  src["customer_id"],
 		"warehouse_id": src["warehouse_id"],
-		"source": "rebuy",
-		"remark": fmt.Sprintf("复购自 %v", src["doc_no"]),
-		"lines": src["lines"],
+		"source":       "rebuy",
+		"remark":       fmt.Sprintf("复购自 %v", src["doc_no"]),
+		"lines":        src["lines"],
 	}
 	// inject into context-like create
 	c.Set("rebuy_body", body)
@@ -426,6 +491,8 @@ func (s *Services) loadSalesOrder(id int64) gin.H {
 		"owner_user_id": ownerID, "status": status, "source": source, "price_lock_id": lockID,
 		"reorder_from_id": reorderFrom, "warehouse_id": wh, "total_amount": total, "remark": remark,
 		"created_at": created, "lines": lines,
+		"approvals":      s.loadApprovalTrail("sales_order", id),
+		"approval_chain": "草稿/询价转单 → 提交 → 预发货占用 → 发货审批出库 → 出厂结算",
 	}
 }
 
@@ -434,10 +501,16 @@ func (s *Services) handleMyOrders(c *gin.Context, method, action string) bool {
 	if claims := middleware.Claims(c); claims != nil {
 		uid = claims.UserID
 	}
+	if _, ok := portalCustomerID(c); ok {
+		uid = 0
+	}
 	if action == "get" {
 		m := s.loadSalesOrder(paramID(c))
 		if m["id"] == nil {
 			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		if s.refusePortalMismatch(c, ginHInt64(m["customer_id"])) {
 			return true
 		}
 		api.OK(c, m)

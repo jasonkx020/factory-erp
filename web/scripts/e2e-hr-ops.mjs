@@ -33,14 +33,14 @@ async function main() {
 
   const empNo = `OPS-${Date.now()}`
   const emp = await req('POST', '/hr/employees', {
-    emp_no: empNo, name: '人事运维工', emp_type: 'piece', workshop_id: 1, status: 'active',
+    emp_no: empNo, name: '人事运维工', emp_type: 'piece', status: 'active',
   }, token)
   assert(emp.code === 1 && emp.data?.id, `emp: ${emp.msg}`)
   const eid = emp.data.id
   log(`employee #${eid}`)
 
   const shift = await req('POST', '/hr/shifts', {
-    code: `SX${Date.now().toString().slice(-5)}`, name: 'E2E班', start_time: '08:00', end_time: '17:00', workshop_id: 1,
+    code: `SX${Date.now().toString().slice(-5)}`, name: 'E2E班', start_time: '08:00', end_time: '17:00', workshop_dept_id: 0,
   }, token)
   assert(shift.code === 1 && shift.data?.id, `shift: ${shift.msg}`)
   log(`shift #${shift.data.id}`)

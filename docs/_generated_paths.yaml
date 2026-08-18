@@ -5945,9 +5945,9 @@ paths:
       summary: 人事权限工作台-总览
       operationId: get_api_v1_iam_hr_perm_overview
       description: |
-        功能模块：权限分配；分期：1
+        功能模块：角色管理；分期：1
       x-erp-phase: 1
-      x-erp-module: 权限分配
+      x-erp-module: 角色管理
       parameters:
         - $ref: "#/components/parameters/PageNum"
         - $ref: "#/components/parameters/PageSize"
@@ -6069,9 +6069,9 @@ paths:
       summary: 用户-绑定员工
       operationId: put_api_v1_iam_users_id_bind_employee
       description: |
-        功能模块：权限分配；分期：1
+        功能模块：角色管理；分期：1
       x-erp-phase: 1
-      x-erp-module: 权限分配
+      x-erp-module: 角色管理
       parameters:
         - name: id
           in: path
@@ -6098,9 +6098,9 @@ paths:
       summary: 用户-解绑员工
       operationId: delete_api_v1_iam_users_id_bind_employee
       description: |
-        功能模块：权限分配；分期：1
+        功能模块：角色管理；分期：1
       x-erp-phase: 1
-      x-erp-module: 权限分配
+      x-erp-module: 角色管理
       parameters:
         - name: id
           in: path
@@ -6122,9 +6122,9 @@ paths:
       summary: 用户数据范围-查询
       operationId: get_api_v1_iam_users_id_data_scope
       description: |
-        功能模块：权限分配；分期：1
+        功能模块：角色管理；分期：1
       x-erp-phase: 1
-      x-erp-module: 权限分配
+      x-erp-module: 角色管理
       parameters:
         - name: id
           in: path
@@ -11295,122 +11295,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkAnyResponse"
 
-  /api/v1/production/workshops:
-    get:
-      tags: [生产管理]
-      summary: 车间档案-列表
-      operationId: get_api_v1_production_workshops
-      description: |
-        功能模块：车间管理；分期：1
-      x-erp-phase: 1
-      x-erp-module: 车间管理
-      parameters:
-        - $ref: "#/components/parameters/PageNum"
-        - $ref: "#/components/parameters/PageSize"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OkAnyResponse"
-    post:
-      tags: [生产管理]
-      summary: 车间档案-新建
-      operationId: post_api_v1_production_workshops
-      description: |
-        功能模块：车间管理；分期：1
-      x-erp-phase: 1
-      x-erp-module: 车间管理
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OkAnyResponse"
 
-  /api/v1/production/workshops/{id}:
-    get:
-      tags: [生产管理]
-      summary: 车间档案-详情
-      operationId: get_api_v1_production_workshops_id
-      description: |
-        功能模块：车间管理；分期：1
-      x-erp-phase: 1
-      x-erp-module: 车间管理
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OkAnyResponse"
-    put:
-      tags: [生产管理]
-      summary: 车间档案-更新
-      operationId: put_api_v1_production_workshops_id
-      description: |
-        功能模块：车间管理；分期：1
-      x-erp-phase: 1
-      x-erp-module: 车间管理
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OkAnyResponse"
-    delete:
-      tags: [生产管理]
-      summary: 车间档案-删除
-      operationId: delete_api_v1_production_workshops_id
-      description: |
-        功能模块：车间管理；分期：1
-      x-erp-phase: 1
-      x-erp-module: 车间管理
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OkEmptyResponse"
 
   /api/v1/purchase/analytics/supplier-performance:
     get:

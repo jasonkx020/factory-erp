@@ -14,11 +14,16 @@ import (
 )
 
 func (s *Services) handleOutboundSettles(c *gin.Context, method, action string) bool {
+	s.ensureSalesLoopColumns()
 	if action == "delete" {
 		return s.refuseDelete(c)
 	}
-	if strings.Contains(c.Request.URL.Path, "/close") || strings.HasSuffix(action, "close") {
+	path := c.Request.URL.Path
+	if strings.Contains(path, "/close") || strings.HasSuffix(action, "close") {
 		return s.closeOutboundSettle(c)
+	}
+	if strings.Contains(path, "/reopen") || strings.HasSuffix(action, "reopen") {
+		return s.reopenOutboundSettle(c)
 	}
 	switch {
 	case action == "list" || (method == "GET" && action != "get"):
@@ -45,7 +50,8 @@ func (s *Services) listOutboundSettles(c *gin.Context) bool {
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM sl_outbound_settle WHERE COALESCE(is_deleted,0)=0`).Scan(&total)
 	rows, err := s.DB.Query(`SELECT id, doc_no, biz_date, COALESCE(product_id,0), COALESCE(product_name,''), COALESCE(plate_no,''),
 		COALESCE(driver_name,''), COALESCE(trace_code,''), COALESCE(produce_date,''), qty, weight, COALESCE(unit,'kg'),
-		freight_fee, loading_fee, weigh_fee, unit_price, goods_amount, amount, status, COALESCE(remark,''), created_at
+		freight_fee, loading_fee, weigh_fee, unit_price, goods_amount, amount, status, COALESCE(remark,''), created_at,
+		COALESCE(order_id,0), COALESCE(delivery_id,0), COALESCE(closed_at,'')
 		FROM sl_outbound_settle WHERE COALESCE(is_deleted,0)=0 ORDER BY id DESC LIMIT ? OFFSET ?`, pageSize, (pageNum-1)*pageSize)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -54,17 +60,29 @@ func (s *Services) listOutboundSettles(c *gin.Context) bool {
 	defer rows.Close()
 	list := []gin.H{}
 	for rows.Next() {
-		var id, productID int64
-		var docNo, bizDate, pname, plate, driver, trace, produce, unit, status, remark, created string
+		var id, productID, orderID, deliveryID int64
+		var docNo, bizDate, pname, plate, driver, trace, produce, unit, status, remark, created, closedAt string
 		var qty, weight, freight, loading, weighFee, price, goods, amount float64
 		_ = rows.Scan(&id, &docNo, &bizDate, &productID, &pname, &plate, &driver, &trace, &produce, &qty, &weight, &unit,
-			&freight, &loading, &weighFee, &price, &goods, &amount, &status, &remark, &created)
-		list = append(list, gin.H{
+			&freight, &loading, &weighFee, &price, &goods, &amount, &status, &remark, &created, &orderID, &deliveryID, &closedAt)
+		item := gin.H{
 			"id": id, "doc_no": docNo, "biz_date": bizDate, "product_id": productID, "product_name": pname,
 			"plate_no": plate, "driver_name": driver, "trace_code": trace, "produce_date": produce,
 			"qty": qty, "weight": weight, "unit": unit, "freight_fee": freight, "loading_fee": loading, "weigh_fee": weighFee,
 			"unit_price": price, "goods_amount": goods, "amount": amount, "status": status, "remark": remark, "created_at": created,
-		})
+			"order_id": orderID, "delivery_id": deliveryID, "closed_at": closedAt,
+		}
+		if orderID > 0 {
+			var odoc string
+			_ = s.DB.QueryRow(`SELECT COALESCE(doc_no,'') FROM sl_sales_order WHERE id=?`, orderID).Scan(&odoc)
+			item["order_no"] = odoc
+		}
+		if deliveryID > 0 {
+			var ddoc string
+			_ = s.DB.QueryRow(`SELECT COALESCE(doc_no,'') FROM sl_delivery_approval WHERE id=?`, deliveryID).Scan(&ddoc)
+			item["delivery_no"] = ddoc
+		}
+		list = append(list, item)
 	}
 	api.PageOK(c, list, total, pageNum, pageSize)
 	return true
@@ -82,11 +100,12 @@ func (s *Services) createOutboundSettle(c *gin.Context) bool {
 	goods, total := settleAmount(weight, unitPrice, freight, loading, weighFee)
 	docNo := fmt.Sprintf("OS%s", time.Now().Format("20060102150405"))
 	res, err := s.DB.Exec(`INSERT INTO sl_outbound_settle(doc_no, biz_date, product_id, product_name, plate_no, driver_name,
-		trace_code, produce_date, qty, weight, unit, freight_fee, loading_fee, weigh_fee, unit_price, goods_amount, amount, status, remark)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'draft',?)`,
+		trace_code, produce_date, qty, weight, unit, freight_fee, loading_fee, weigh_fee, unit_price, goods_amount, amount, status, remark, order_id, delivery_id)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?)`,
 		docNo, strOrDef(body["biz_date"], time.Now().Format("2006-01-02")), nullIf0(asInt64Or0(body["product_id"])),
 		strOr(body["product_name"]), plate, strOr(body["driver_name"]), strOr(body["trace_code"]), strOr(body["produce_date"]),
-		qty, weight, strOrDef(body["unit"], "kg"), freight, loading, weighFee, unitPrice, goods, total, strOr(body["remark"]))
+		qty, weight, strOrDef(body["unit"], "kg"), freight, loading, weighFee, unitPrice, goods, total, strOr(body["remark"]),
+		nullIf0(asInt64Or0(body["order_id"])), nullIf0(asInt64Or0(body["delivery_id"])))
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
 		return true
@@ -121,10 +140,11 @@ func (s *Services) updateOutboundSettle(c *gin.Context) bool {
 		driver_name=COALESCE(NULLIF(?,''),driver_name), trace_code=COALESCE(NULLIF(?,''),trace_code),
 		produce_date=COALESCE(NULLIF(?,''),produce_date), qty=?, weight=?, unit=COALESCE(NULLIF(?,''),unit),
 		freight_fee=?, loading_fee=?, weigh_fee=?, unit_price=?, goods_amount=?, amount=?,
-		remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=?`,
+		remark=COALESCE(NULLIF(?,''),remark), order_id=COALESCE(NULLIF(?,0),order_id), delivery_id=COALESCE(NULLIF(?,0),delivery_id),
+		updated_at=NOW() WHERE id=?`,
 		strOr(body["product_name"]), plate, strOr(body["driver_name"]), strOr(body["trace_code"]), strOr(body["produce_date"]),
 		asFloatOr0(body["qty"]), weight, strOr(body["unit"]), freight, loading, weighFee, unitPrice, goods, total,
-		strOr(body["remark"]), id)
+		strOr(body["remark"]), asInt64Or0(body["order_id"]), asInt64Or0(body["delivery_id"]), id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
 		return true
@@ -135,9 +155,14 @@ func (s *Services) updateOutboundSettle(c *gin.Context) bool {
 
 func (s *Services) closeOutboundSettle(c *gin.Context) bool {
 	id := paramID(c)
-	_, err := s.DB.Exec(`UPDATE sl_outbound_settle SET status='closed', updated_at=NOW() WHERE id=? AND status='draft'`, id)
+	res, err := s.DB.Exec(`UPDATE sl_outbound_settle SET status='closed', closed_at=?, updated_at=NOW() WHERE id=? AND status='draft'`, salesNow(), id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
+		return true
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		api.FailJSON(c, "INVALID_STATUS")
 		return true
 	}
 	api.OK(c, s.loadOutboundSettle(id))
@@ -145,24 +170,38 @@ func (s *Services) closeOutboundSettle(c *gin.Context) bool {
 }
 
 func (s *Services) loadOutboundSettle(id int64) gin.H {
-	var productID int64
-	var docNo, bizDate, pname, plate, driver, trace, produce, unit, status, remark, created string
+	var productID, orderID, deliveryID int64
+	var docNo, bizDate, pname, plate, driver, trace, produce, unit, status, remark, created, closedAt string
 	var qty, weight, freight, loading, weighFee, price, goods, amount float64
 	err := s.DB.QueryRow(`SELECT doc_no, biz_date, COALESCE(product_id,0), COALESCE(product_name,''), COALESCE(plate_no,''),
 		COALESCE(driver_name,''), COALESCE(trace_code,''), COALESCE(produce_date,''), qty, weight, COALESCE(unit,'kg'),
-		freight_fee, loading_fee, weigh_fee, unit_price, goods_amount, amount, status, COALESCE(remark,''), created_at
+		freight_fee, loading_fee, weigh_fee, unit_price, goods_amount, amount, status, COALESCE(remark,''), created_at,
+		COALESCE(order_id,0), COALESCE(delivery_id,0), COALESCE(closed_at,'')
 		FROM sl_outbound_settle WHERE id=?`, id).
 		Scan(&docNo, &bizDate, &productID, &pname, &plate, &driver, &trace, &produce, &qty, &weight, &unit,
-			&freight, &loading, &weighFee, &price, &goods, &amount, &status, &remark, &created)
+			&freight, &loading, &weighFee, &price, &goods, &amount, &status, &remark, &created, &orderID, &deliveryID, &closedAt)
 	if err != nil {
 		return gin.H{}
 	}
-	return gin.H{
+	out := gin.H{
 		"id": id, "doc_no": docNo, "biz_date": bizDate, "product_id": productID, "product_name": pname,
 		"plate_no": plate, "driver_name": driver, "trace_code": trace, "produce_date": produce,
 		"qty": qty, "weight": weight, "unit": unit, "freight_fee": freight, "loading_fee": loading, "weigh_fee": weighFee,
 		"unit_price": price, "goods_amount": goods, "amount": amount, "status": status, "remark": remark, "created_at": created,
+		"order_id": orderID, "delivery_id": deliveryID, "closed_at": closedAt,
+		"finance_links": gin.H{
+			"writeoff": "/finance/hub/writeoffs",
+			"contract_profit": "/finance/hub/contract-profits",
+			"gross_profit": "/report/hub/gross-profit",
+		},
 	}
+	if orderID > 0 {
+		out["order"] = s.loadSalesOrder(orderID)
+	}
+	if deliveryID > 0 {
+		out["delivery"] = s.loadDelivery(deliveryID)
+	}
+	return out
 }
 
 // --- piece issue sheet ---

@@ -4,16 +4,18 @@ import "testing"
 
 func TestResolveSPAIndex(t *testing.T) {
 	cases := map[string]string{
-		"/":                              "index.html",
-		"/admin":                         "admin/index.html",
-		"/admin/":                        "admin/index.html",
-		"/admin/production/hub/tasks":    "admin/index.html",
-		"/front/boss":                    "front/boss/index.html",
-		"/front/boss/dashboard":          "front/boss/index.html",
-		"/front":                         "front/index.html",
-		"/assets/index-abc.js":           "",
-		"/admin/assets/index-abc.js":     "",
-		"/favicon.ico":                   "",
+		"/":                           "index.html",
+		"/admin":                      "admin/index.html",
+		"/admin/":                     "admin/index.html",
+		"/admin/production/hub/tasks": "admin/index.html",
+		"/front/boss":                 "front/boss/index.html",
+		"/front/boss/dashboard":       "front/boss/index.html",
+		"/front":                      "front/index.html",
+		"/shop":                       "index.html",
+		"/shop/login":                 "index.html",
+		"/assets/index-abc.js":        "",
+		"/admin/assets/index-abc.js":  "",
+		"/favicon.ico":                "",
 	}
 	for in, want := range cases {
 		got := ResolveSPAIndex(in)

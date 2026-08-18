@@ -27,7 +27,7 @@ func ensureHROpsTables(db *sql.DB) {
   name TEXT NOT NULL,
   start_time TEXT NOT NULL,
   end_time TEXT NOT NULL,
-  workshop_id INTEGER,
+  workshop_dept_id INTEGER,
   status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL DEFAULT (NOW())
 )`,
@@ -144,8 +144,8 @@ func ensureHROpsTables(db *sql.DB) {
 	var n int
 	_ = db.QueryRow(`SELECT COUNT(1) FROM hr_shift`).Scan(&n)
 	if n == 0 {
-		_, _ = db.Exec(`INSERT INTO hr_shift(code, name, start_time, end_time, workshop_id, status) VALUES('S1','白班','08:00','17:00',1,'active')`)
-		_, _ = db.Exec(`INSERT INTO hr_shift(code, name, start_time, end_time, workshop_id, status) VALUES('S2','夜班','20:00','05:00',1,'active')`)
+		_, _ = db.Exec(`INSERT INTO hr_shift(code, name, start_time, end_time, workshop_dept_id, status) VALUES('S1','白班','08:00','17:00',NULL,'active')`)
+		_, _ = db.Exec(`INSERT INTO hr_shift(code, name, start_time, end_time, workshop_dept_id, status) VALUES('S2','夜班','20:00','05:00',NULL,'active')`)
 	}
 	_ = db.QueryRow(`SELECT COUNT(1) FROM hr_attendance_rule`).Scan(&n)
 	if n == 0 {
@@ -194,7 +194,7 @@ func (s *Services) handleHROps(c *gin.Context, method, openapiPath, action strin
 func (s *Services) handleShifts(c *gin.Context, method, action string) bool {
 	switch action {
 	case "list":
-		rows, err := s.DB.Query(`SELECT id, code, name, start_time, end_time, COALESCE(workshop_id,0), status FROM hr_shift ORDER BY id`)
+		rows, err := s.DB.Query(`SELECT id, code, name, start_time, end_time, COALESCE(workshop_dept_id,0), status FROM hr_shift ORDER BY id`)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
@@ -205,7 +205,7 @@ func (s *Services) handleShifts(c *gin.Context, method, action string) bool {
 			var id, wid int64
 			var code, name, st, et, status string
 			_ = rows.Scan(&id, &code, &name, &st, &et, &wid, &status)
-			list = append(list, gin.H{"id": id, "code": code, "name": name, "start_time": st, "end_time": et, "workshop_id": wid, "status": status})
+			list = append(list, gin.H{"id": id, "code": code, "name": name, "start_time": st, "end_time": et, "workshop_dept_id": wid, "status": status})
 		}
 		api.OK(c, gin.H{"list": list, "total": len(list)})
 		return true
@@ -218,34 +218,34 @@ func (s *Services) handleShifts(c *gin.Context, method, action string) bool {
 		}
 		st := strOrDef(body["start_time"], "08:00")
 		et := strOrDef(body["end_time"], "17:00")
-		wid, _ := asInt64(body["workshop_id"])
-		res, err := s.DB.Exec(`INSERT INTO hr_shift(code, name, start_time, end_time, workshop_id, status) VALUES(?,?,?,?,?,'active')`,
+		wid := s.resolveWorkshopDeptID(body, false)
+		res, err := s.DB.Exec(`INSERT INTO hr_shift(code, name, start_time, end_time, workshop_dept_id, status) VALUES(?,?,?,?,?,'active')`,
 			code, name, st, et, nullIf0(wid))
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
 		}
 		id, _ := res.LastInsertId()
-		api.OK(c, gin.H{"id": id, "code": code, "name": name, "start_time": st, "end_time": et, "workshop_id": wid, "status": "active"})
+		api.OK(c, gin.H{"id": id, "code": code, "name": name, "start_time": st, "end_time": et, "workshop_dept_id": wid, "status": "active"})
 		return true
 	case "get":
 		id := paramID(c)
 		var code, name, st, et, status string
 		var wid int64
-		err := s.DB.QueryRow(`SELECT code, name, start_time, end_time, COALESCE(workshop_id,0), status FROM hr_shift WHERE id=?`, id).
+		err := s.DB.QueryRow(`SELECT code, name, start_time, end_time, COALESCE(workshop_dept_id,0), status FROM hr_shift WHERE id=?`, id).
 			Scan(&code, &name, &st, &et, &wid, &status)
 		if err != nil {
 			api.FailJSON(c, "NOT_FOUND")
 			return true
 		}
-		api.OK(c, gin.H{"id": id, "code": code, "name": name, "start_time": st, "end_time": et, "workshop_id": wid, "status": status})
+		api.OK(c, gin.H{"id": id, "code": code, "name": name, "start_time": st, "end_time": et, "workshop_dept_id": wid, "status": status})
 		return true
 	case "update":
 		id := paramID(c)
 		body := bindBody(c)
 		_, err := s.DB.Exec(`UPDATE hr_shift SET name=COALESCE(NULLIF(?,''),name), start_time=COALESCE(NULLIF(?,''),start_time),
-			end_time=COALESCE(NULLIF(?,''),end_time), workshop_id=COALESCE(?,workshop_id), status=COALESCE(NULLIF(?,''),status) WHERE id=?`,
-			strOr(body["name"]), strOr(body["start_time"]), strOr(body["end_time"]), nullIf0(hrInt(body["workshop_id"])), strOr(body["status"]), id)
+			end_time=COALESCE(NULLIF(?,''),end_time), workshop_dept_id=COALESCE(?,workshop_dept_id), status=COALESCE(NULLIF(?,''),status) WHERE id=?`,
+			strOr(body["name"]), strOr(body["start_time"]), strOr(body["end_time"]), nullIf0(hrInt(body["workshop_dept_id"])), strOr(body["status"]), id)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
@@ -1212,48 +1212,27 @@ func ensureOrgMaster(db *sql.DB) {
   parent_id INTEGER,
   code TEXT NOT NULL,
   name TEXT NOT NULL,
+  dept_type TEXT NOT NULL DEFAULT 'normal',
   status TEXT NOT NULL DEFAULT 'active',
   is_deleted INTEGER NOT NULL DEFAULT 0,
   UNIQUE(org_id, code)
 )`)
-	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS pd_workshop (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  org_id INTEGER,
-  dept_id INTEGER,
-  code TEXT NOT NULL,
-  name TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'active',
-  is_deleted INTEGER NOT NULL DEFAULT 0
-)`)
+	_, _ = db.Exec(`ALTER TABLE sys_department ADD COLUMN IF NOT EXISTS dept_type TEXT NOT NULL DEFAULT 'normal'`)
 	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS pd_work_team (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  workshop_id INTEGER NOT NULL,
+  dept_id INTEGER NOT NULL,
   code TEXT NOT NULL,
   name TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'active',
   is_deleted INTEGER NOT NULL DEFAULT 0,
-  UNIQUE(workshop_id, code)
+  UNIQUE(dept_id, code)
 )`)
 	var orgCnt int
 	_ = db.QueryRow(`SELECT COUNT(1) FROM sys_organization`).Scan(&orgCnt)
 	if orgCnt == 0 {
-		_, _ = db.Exec(`INSERT INTO sys_organization(id, code, name, status) VALUES(1,'ORG001','加工厂演示组织','active')`)
+		_, _ = db.Exec(`INSERT INTO sys_organization(id, code, name, status) VALUES(1,'ORG001','桂南木薯加工厂','active')`)
 	}
-	var deptCnt int
-	_ = db.QueryRow(`SELECT COUNT(1) FROM sys_department WHERE COALESCE(is_deleted,0)=0`).Scan(&deptCnt)
-	if deptCnt == 0 {
-		_, _ = db.Exec(`INSERT INTO sys_department(id, org_id, code, name, status) VALUES(1,1,'D001','生产部','active')`)
-	}
-	var wsCnt int
-	_ = db.QueryRow(`SELECT COUNT(1) FROM pd_workshop WHERE COALESCE(is_deleted,0)=0`).Scan(&wsCnt)
-	if wsCnt == 0 {
-		_, _ = db.Exec(`INSERT INTO pd_workshop(id, org_id, dept_id, code, name, status) VALUES(1,1,1,'WS01','一车间','active')`)
-	}
-	var teamCnt int
-	_ = db.QueryRow(`SELECT COUNT(1) FROM pd_work_team WHERE COALESCE(is_deleted,0)=0`).Scan(&teamCnt)
-	if teamCnt == 0 {
-		_, _ = db.Exec(`INSERT INTO pd_work_team(id, workshop_id, code, name, status) VALUES(1,1,'T01','去皮一组','active')`)
-	}
+	ensureFactoryOrgTree(db)
 }
 
 func (s *Services) allocDeptCode(orgID int64) string {
@@ -1271,25 +1250,44 @@ func (s *Services) allocDeptCode(orgID int64) string {
 func (s *Services) handleDepartments(c *gin.Context, method, action string) bool {
 	_ = method
 	ensureOrgMaster(s.DB)
+	ensureDeptRoleTable(s.DB)
 	switch action {
 	case "list":
-		rows, err := s.DB.Query(`SELECT id, COALESCE(org_id,0), COALESCE(code,''), COALESCE(name,''), COALESCE(status,'active')
-			FROM sys_department WHERE COALESCE(is_deleted,0)=0 ORDER BY id`)
+		flatRows, err := s.loadDeptFlatRows()
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
 		}
-		defer rows.Close()
-		list := []gin.H{}
-		for rows.Next() {
-			var id, orgID int64
-			var code, name, status string
-			if err := rows.Scan(&id, &orgID, &code, &name, &status); err != nil {
+		parentByID := deptParentMap(flatRows)
+		nameByID := make(map[int64]string, len(flatRows))
+		for _, d := range flatRows {
+			nameByID[d.ID] = d.Name
+		}
+		typeFilter := strings.TrimSpace(c.Query("dept_type"))
+		list := make([]gin.H, 0, len(flatRows))
+		for _, d := range flatRows {
+			if typeFilter != "" && d.DeptType != typeFilter {
 				continue
 			}
-			list = append(list, gin.H{"id": id, "org_id": orgID, "code": code, "name": name, "status": status})
+			level := calcDeptLevel(d.ID, parentByID)
+			directRoleIDs, _ := s.getDeptRoleIDs(d.ID)
+			effectiveRoleIDs, _ := s.getDeptEffectiveRoleIDs(d.ID)
+			parentName := ""
+			if d.ParentID > 0 {
+				parentName = nameByID[d.ParentID]
+			}
+			childIDs := s.getDeptDescendantIDs(d.ID)
+			childCount := len(childIDs)
+			list = append(list, gin.H{
+				"id": d.ID, "org_id": d.OrgID, "parent_id": d.ParentID, "parent_name": parentName,
+				"code": d.Code, "name": d.Name, "status": d.Status, "dept_type": d.DeptType,
+				"member_count": d.MemberCount,
+				"level":        level, "level_label": deptLevelLabel(level), "path": s.deptPathNames(d.ID),
+				"child_count": childCount, "has_children": childCount > 0,
+				"role_count": len(directRoleIDs), "effective_role_count": len(effectiveRoleIDs),
+			})
 		}
-		api.OK(c, gin.H{"list": list, "total": len(list)})
+		api.OK(c, gin.H{"list": list, "tree": buildDeptTreeNodes(list), "total": len(list), "max_level": maxDeptLevel})
 		return true
 	case "create":
 		body := bindBody(c)
@@ -1302,6 +1300,16 @@ func (s *Services) handleDepartments(c *gin.Context, method, action string) bool
 		if orgID == 0 {
 			orgID = 1
 		}
+		parentID, _ := asInt64(body["parent_id"])
+		deptType := normalizeDeptType(strOr(body["dept_type"]))
+		if err := s.validateDeptParent(0, parentID); err != nil {
+			api.FailJSON(c, err.Error())
+			return true
+		}
+		if err := s.validateDeptTypeParent(0, parentID, deptType); err != nil {
+			api.FailJSON(c, err.Error())
+			return true
+		}
 		code := strings.TrimSpace(strOr(body["code"]))
 		if code == "" {
 			code = s.allocDeptCode(orgID)
@@ -1313,33 +1321,57 @@ func (s *Services) handleDepartments(c *gin.Context, method, action string) bool
 			return true
 		}
 		status := strOrDef(body["status"], "active")
-		res, err := s.DB.Exec(`INSERT INTO sys_department(org_id, code, name, status) VALUES(?,?,?,?)`,
-			orgID, code, name, status)
+		res, err := s.DB.Exec(`INSERT INTO sys_department(org_id, parent_id, code, name, dept_type, status) VALUES(?,?,?,?,?,?)`,
+			orgID, nullIf0(parentID), code, name, deptType, status)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
 		}
 		id, _ := res.LastInsertId()
-		api.OK(c, gin.H{"id": id, "org_id": orgID, "code": code, "name": name, "status": status})
-		return true
-	case "get":
-		id := paramID(c)
-		var orgID int64
-		var code, name, status string
-		err := s.DB.QueryRow(`SELECT COALESCE(org_id,0), COALESCE(code,''), COALESCE(name,''), COALESCE(status,'active')
-			FROM sys_department WHERE id=? AND COALESCE(is_deleted,0)=0`, id).Scan(&orgID, &code, &name, &status)
+		if roleIDs, ok := int64SliceFromBody(body, "role_ids"); ok {
+			if err := s.setDeptRoleIDs(id, roleIDs); err != nil {
+				api.FailJSON(c, "DB_ERROR:"+err.Error())
+				return true
+			}
+		}
+		if empIDs, ok := int64SliceFromBody(body, "employee_ids"); ok && len(empIDs) > 0 {
+			if err := s.applyDeptMembers(id, empIDs); err != nil {
+				api.FailJSON(c, "DB_ERROR:"+err.Error())
+				return true
+			}
+		} else if roleIDs, _ := s.getDeptRoleIDs(id); len(roleIDs) > 0 {
+			s.syncDeptHierarchyRoleImpact(id)
+		}
+		if teams, ok := body["teams"].([]interface{}); ok && deptType == deptTypeWorkshop {
+			if err := s.syncDeptTeams(id, teams); err != nil {
+				api.FailJSON(c, "DB_ERROR:"+err.Error())
+				return true
+			}
+		}
+		detail, err := s.packDeptDetail(id)
 		if err != nil {
 			api.FailJSON(c, "NOT_FOUND")
 			return true
 		}
-		api.OK(c, gin.H{"id": id, "org_id": orgID, "code": code, "name": name, "status": status})
+		api.OK(c, detail)
+		return true
+	case "get":
+		id := paramID(c)
+		detail, err := s.packDeptDetail(id)
+		if err != nil {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		api.OK(c, detail)
 		return true
 	case "update", "replace":
 		id := paramID(c)
 		body := bindBody(c)
-		var curName, curStatus string
-		if err := s.DB.QueryRow(`SELECT COALESCE(name,''), COALESCE(status,'active') FROM sys_department WHERE id=? AND COALESCE(is_deleted,0)=0`, id).
-			Scan(&curName, &curStatus); err != nil {
+		var curName, curStatus, curType string
+		var curParentID int64
+		if err := s.DB.QueryRow(`SELECT COALESCE(name,''), COALESCE(status,'active'), COALESCE(parent_id,0), COALESCE(dept_type,'normal')
+			FROM sys_department WHERE id=? AND COALESCE(is_deleted,0)=0`, id).
+			Scan(&curName, &curStatus, &curParentID, &curType); err != nil {
 			api.FailJSON(c, "NOT_FOUND")
 			return true
 		}
@@ -1352,17 +1384,70 @@ func (s *Services) handleDepartments(c *gin.Context, method, action string) bool
 		if status == "" {
 			status = "active"
 		}
-		_, err := s.DB.Exec(`UPDATE sys_department SET name=?, status=? WHERE id=?`, name, status, id)
+		parentID := curParentID
+		if v, ok := asInt64(body["parent_id"]); ok {
+			parentID = v
+		}
+		deptType := curType
+		if body["dept_type"] != nil {
+			deptType = normalizeDeptType(strOr(body["dept_type"]))
+		}
+		if err := s.validateDeptParent(id, parentID); err != nil {
+			api.FailJSON(c, err.Error())
+			return true
+		}
+		if err := s.validateDeptTypeParent(id, parentID, deptType); err != nil {
+			api.FailJSON(c, err.Error())
+			return true
+		}
+		_, err := s.DB.Exec(`UPDATE sys_department SET name=?, status=?, parent_id=?, dept_type=? WHERE id=?`,
+			name, status, nullIf0(parentID), deptType, id)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
 		}
-		api.OK(c, gin.H{"id": id, "name": name, "status": status})
+		oldRoleIDs, _ := s.getDeptRoleIDs(id)
+		if roleIDs, ok := int64SliceFromBody(body, "role_ids"); ok {
+			if err := s.setDeptRoleIDs(id, roleIDs); err != nil {
+				api.FailJSON(c, "DB_ERROR:"+err.Error())
+				return true
+			}
+			s.syncDeptRolesAfterChange(id, oldRoleIDs, roleIDs)
+		}
+		if empIDs, ok := int64SliceFromBody(body, "employee_ids"); ok {
+			if err := s.applyDeptMembers(id, empIDs); err != nil {
+				api.FailJSON(c, "DB_ERROR:"+err.Error())
+				return true
+			}
+		}
+		if teams, ok := body["teams"].([]interface{}); ok && deptType == deptTypeWorkshop {
+			if err := s.syncDeptTeams(id, teams); err != nil {
+				api.FailJSON(c, "DB_ERROR:"+err.Error())
+				return true
+			}
+		}
+		if parentID != curParentID {
+			s.syncDeptHierarchyRoleImpact(id, curParentID, parentID)
+		}
+		detail, err := s.packDeptDetail(id)
+		if err != nil {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		api.OK(c, detail)
 		return true
 	case "delete":
 		id := paramID(c)
+		var childCnt int
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM sys_department WHERE parent_id=? AND COALESCE(is_deleted,0)=0`, id).Scan(&childCnt)
+		if childCnt > 0 {
+			api.FailJSON(c, "DEPT_HAS_CHILDREN")
+			return true
+		}
 		var n int
-		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_employee WHERE dept_id=? AND COALESCE(status,'')<>'left' AND COALESCE(is_deleted,0)=0`, id).Scan(&n)
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM hr_employee_department ed
+			JOIN hr_employee e ON e.id=ed.employee_id
+			WHERE ed.dept_id=? AND COALESCE(e.status,'')<>'left' AND COALESCE(e.is_deleted,0)=0`, id).Scan(&n)
 		if n > 0 {
 			api.FailJSON(c, "DEPT_IN_USE")
 			return true
@@ -1386,33 +1471,11 @@ func (s *Services) handleWorkTeams(c *gin.Context, method, action string) bool {
 		api.FailJSON(c, "METHOD_NOT_ALLOWED")
 		return true
 	}
-	workshopID := int64(0)
-	if v := strings.TrimSpace(c.Query("workshop_id")); v != "" {
-		fmt.Sscanf(v, "%d", &workshopID)
+	deptID := int64(0)
+	if v := strings.TrimSpace(c.Query("dept_id")); v != "" {
+		fmt.Sscanf(v, "%d", &deptID)
 	}
-	q := `SELECT id, COALESCE(workshop_id,0), COALESCE(code,''), COALESCE(name,''), COALESCE(status,'active')
-		FROM pd_work_team WHERE COALESCE(is_deleted,0)=0`
-	args := []interface{}{}
-	if workshopID > 0 {
-		q += ` AND workshop_id=?`
-		args = append(args, workshopID)
-	}
-	q += ` ORDER BY id`
-	rows, err := s.DB.Query(q, args...)
-	if err != nil {
-		api.FailJSON(c, "DB_ERROR:"+err.Error())
-		return true
-	}
-	defer rows.Close()
-	list := []gin.H{}
-	for rows.Next() {
-		var id, wsID int64
-		var code, name, status string
-		if err := rows.Scan(&id, &wsID, &code, &name, &status); err != nil {
-			continue
-		}
-		list = append(list, gin.H{"id": id, "workshop_id": wsID, "code": code, "name": name, "status": status})
-	}
+	list := s.listWorkTeamsByDept(deptID)
 	api.OK(c, gin.H{"list": list, "total": len(list)})
 	return true
 }

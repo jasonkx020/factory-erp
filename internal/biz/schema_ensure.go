@@ -64,45 +64,48 @@ func seedInboundProductRoutings(db *sql.DB) {
 	}
 
 	rawSteps := []string{
-		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
+		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
  (__RID__, 1, 8, 'S1', '入库-原料', 0, 0, 1, 1, 0, 1, 1)`,
-		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
+		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
  (__RID__, 2, 7, 'S2', '清洗', 0, 0, 1, 0, 0, 1, 1)`,
-		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
+		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
  (__RID__, 3, 1, 'S3', '去皮-计件领料', 1, 0, 1, 0, 1, 1, 1)`,
-		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
+		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
  (__RID__, 4, 2, 'S4', '收货-固定工', 0, 1, 1, 0, 0, NULL, 1)`,
-		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
+		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
  (__RID__, 5, 3, 'S5', '切断-固定工', 0, 0, 1, 0, 0, NULL, 1)`,
-		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
+		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
  (__RID__, 6, 4, 'S6', '去芯-计件', 1, 0, 1, 0, 0, NULL, 1)`,
-		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
+		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
  (__RID__, 7, 2, 'S7', '收货-固定工', 0, 1, 1, 0, 0, NULL, 1)`,
-		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
+		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
  (__RID__, 8, 9, 'S8', '入库-半成品库', 0, 0, 1, 1, 0, 2, 1)`,
-		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
+		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
  (__RID__, 9, 10, 'S9', '出库切块-计件', 1, 0, 1, 0, 1, 2, 1)`,
-		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
+		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
  (__RID__, 10, 9, 'S10', '入库-半成品库', 0, 0, 1, 1, 0, 2, 1)`,
-		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
+		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
  (__RID__, 11, 6, 'S11', '过滤装袋', 0, 0, 1, 0, 0, NULL, 1)`,
-		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
+		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
  (__RID__, 12, 11, 'S12', '入库-成品库销售', 0, 0, 0, 1, 0, 3, 1)`,
 	}
 	semiSteps := []string{
-		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
+		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
  (__RID__, 1, 9, 'S1', '入库-半成品库', 0, 0, 1, 1, 0, 2, 1)`,
-		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
+		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
  (__RID__, 2, 10, 'S2', '出库切块-计件', 1, 0, 1, 0, 1, 2, 1)`,
-		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
+		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
  (__RID__, 3, 9, 'S3', '入库-半成品库', 0, 0, 1, 1, 0, 2, 1)`,
-		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
+		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
  (__RID__, 4, 6, 'S4', '过滤装袋', 0, 0, 1, 0, 0, NULL, 1)`,
-		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_id) VALUES
+		`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
  (__RID__, 5, 11, 'S5', '入库-成品库销售', 0, 0, 0, 1, 0, 3, 1)`,
 	}
 	ensureRoutingWithSteps("RT-CASSAVA-RAW", "鲜木薯入厂产线", 1, rawSteps)
 	ensureRoutingWithSteps("RT-CASSAVA-SEMI", "去芯薯肉入厂产线", 2, semiSteps)
+	if ws := defaultWorkshopDeptIDDB(db); ws > 0 {
+		_, _ = db.Exec(`UPDATE pd_routing_step SET workshop_dept_id=? WHERE COALESCE(workshop_dept_id,0) IN (0,1)`, ws)
+	}
 }
 
 // SeedOpenShiftForToday ensures demo workers can pass shift gate when shifts are enabled.
@@ -114,8 +117,9 @@ func seedOpenShift(db *sql.DB) {
 	var sid int64
 	_ = db.QueryRow(`SELECT id FROM pd_shift WHERE status='open' AND (biz_date::date)=CURRENT_DATE ORDER BY id DESC LIMIT 1`).Scan(&sid)
 	if sid == 0 {
-		res, err := db.Exec(`INSERT INTO pd_shift(doc_no, workshop_id, biz_date, status, remark) VALUES(?,1,CURRENT_DATE,'open','demo open shift')`,
-			fmt.Sprintf("SHF%d", time.Now().UnixNano()%1e9))
+		ws := defaultWorkshopDeptIDDB(db)
+		res, err := db.Exec(`INSERT INTO pd_shift(doc_no, workshop_dept_id, biz_date, status, remark) VALUES(?,?,CURRENT_DATE,'open','demo open shift')`,
+			fmt.Sprintf("SHF%d", time.Now().UnixNano()%1e9), nullIf0(ws))
 		if err != nil {
 			return
 		}

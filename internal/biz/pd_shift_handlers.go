@@ -23,30 +23,30 @@ func (s *Services) handleProductionShifts(c *gin.Context, method, openapiPath, a
 		return s.listDocTable(c, `SELECT * FROM (
 			SELECT s.*, w.name AS workshop_name,
 			(SELECT COUNT(1) FROM pd_shift_member m WHERE m.shift_id=s.id) AS member_count
-			FROM pd_shift s LEFT JOIN pd_workshop w ON w.id=s.workshop_id
+			FROM pd_shift s LEFT JOIN sys_department w ON w.id=s.workshop_dept_id
 		)`)
 	case "create":
 		body := bindBody(c)
-		workshopID := asInt64Or0(body["workshop_id"])
+		workshopID := asInt64Or0(body["workshop_dept_id"])
 		if workshopID <= 0 {
-			workshopID = 1
+			workshopID = s.defaultWorkshopDeptID()
 		}
 		docNo := strOrDef(body["doc_no"], fmt.Sprintf("SH%s", time.Now().Format("060102150405")))
 		bizDate := strOrDef(body["biz_date"], time.Now().Format("2006-01-02"))
 		status := strOrDef(body["status"], "open")
-		res, err := s.DB.Exec(`INSERT INTO pd_shift(doc_no, workshop_id, biz_date, status, remark) VALUES(?,?,?,?,?)`,
+		res, err := s.DB.Exec(`INSERT INTO pd_shift(doc_no, workshop_dept_id, biz_date, status, remark) VALUES(?,?,?,?,?)`,
 			docNo, workshopID, bizDate, status, strOr(body["remark"]))
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
 		}
 		id, _ := res.LastInsertId()
-		api.OK(c, gin.H{"id": id, "doc_no": docNo, "workshop_id": workshopID, "biz_date": bizDate, "status": status})
+		api.OK(c, gin.H{"id": id, "doc_no": docNo, "workshop_dept_id": workshopID, "biz_date": bizDate, "status": status})
 		return true
 	case "get":
 		id := paramID(c)
 		rows, _ := s.DB.Query(`SELECT s.*, w.name AS workshop_name FROM pd_shift s
-			LEFT JOIN pd_workshop w ON w.id=s.workshop_id WHERE s.id=?`, id)
+			LEFT JOIN sys_department w ON w.id=s.workshop_dept_id WHERE s.id=?`, id)
 		if rows == nil {
 			api.FailJSON(c, "NOT_FOUND")
 			return true

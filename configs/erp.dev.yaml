@@ -4,7 +4,7 @@ server:
 database:
   driver: postgres
   dsn: "postgres://erp:erp123456@192.168.1.116:5432/erp_factory?sslmode=disable"
-  init_schema: false
+  init_schema: true
   migrations_dir: migrations
   schema_path: migrations/erp/schema.sql
   data_path: migrations/erp/data-dev.sql

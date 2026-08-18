@@ -23,7 +23,7 @@ const shiftCols: MobileCardColumn[] = [
   { prop: 'code', label: '编码' },
   { prop: 'start_time', label: '开始' },
   { prop: 'end_time', label: '结束' },
-  { prop: 'workshop_id', label: '车间' },
+  { prop: 'workshop_dept_id', label: '车间' },
   { prop: 'status', label: '状态' },
 ]
 const attRuleCols: MobileCardColumn[] = [
@@ -190,7 +190,7 @@ function openCreate() {
   const m = props.module
   Object.keys(form).forEach((k) => delete form[k])
   if (m === '离职登记') Object.assign(form, { employee_id: null, offboard_date: today(), reason: '', revoke_permission: true })
-  else if (m === '班次管理') Object.assign(form, { code: `S${Date.now().toString().slice(-4)}`, name: '', start_time: '08:00', end_time: '17:00', workshop_id: 1 })
+  else if (m === '班次管理') Object.assign(form, { code: `S${Date.now().toString().slice(-4)}`, name: '', start_time: '08:00', end_time: '17:00', workshop_dept_id: 0 })
   else if (m === '考勤管理') Object.assign(form, { name: '', shift_id: shifts.value[0] ? Number(shifts.value[0].id) : 0, late_minutes: 10, early_minutes: 10 })
   else if (m === '考勤明细') Object.assign(form, { employee_id: null, biz_date: today(), punch_type: 'in', shift_id: shifts.value[0] ? Number(shifts.value[0].id) : null })
   else if (m === '请假管理') Object.assign(form, { employee_id: null, leave_type: 'annual', start_at: `${today()} 09:00:00`, end_at: `${today()} 18:00:00`, remark: '' })
@@ -379,7 +379,7 @@ onMounted(load)
         <el-table-column prop="name" label="名称" />
         <el-table-column prop="start_time" label="开始" width="90" />
         <el-table-column prop="end_time" label="结束" width="90" />
-        <el-table-column prop="workshop_id" label="车间" width="80" />
+        <el-table-column prop="workshop_dept_id" label="车间" width="80" />
         <el-table-column prop="status" label="状态" width="90" />
         <el-table-column label="操作" width="140">
           <template #default="{ row }">
@@ -590,7 +590,7 @@ onMounted(load)
           <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
           <el-form-item label="开始"><el-time-picker v-model="form.start_time" value-format="HH:mm" format="HH:mm" style="width:100%" /></el-form-item>
           <el-form-item label="结束"><el-time-picker v-model="form.end_time" value-format="HH:mm" format="HH:mm" style="width:100%" /></el-form-item>
-          <el-form-item label="车间"><WorkshopSelect v-model="form.workshop_id" style="width:100%" /></el-form-item>
+          <el-form-item label="车间"><WorkshopSelect v-model="form.workshop_dept_id" style="width:100%" /></el-form-item>
           <el-form-item v-if="editingId" label="状态"><el-select v-model="form.status" style="width:100%"><el-option label="启用" value="active" /><el-option label="停用" value="inactive" /></el-select></el-form-item>
         </template>
         <template v-else-if="module === '考勤管理'">

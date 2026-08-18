@@ -23,7 +23,7 @@ type Claims struct {
 }
 
 // NormalizeClientType maps legacy client labels onto the canonical set:
-// admin | boss | employee | mobile
+// admin | boss | employee | mobile | customer
 func NormalizeClientType(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "admin", "web":
@@ -32,6 +32,8 @@ func NormalizeClientType(raw string) string {
 		return "boss"
 	case "mobile":
 		return "mobile"
+	case "customer", "portal", "shop":
+		return "customer"
 	case "employee", "pad", "mp_worker", "mp_sales", "front":
 		return "employee"
 	case "":

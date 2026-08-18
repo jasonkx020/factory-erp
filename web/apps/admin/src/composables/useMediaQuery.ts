@@ -38,3 +38,8 @@ export function useMediaQuery(query: string): Ref<boolean> {
 export function useIsMobile(): Ref<boolean> {
   return useMediaQuery('(max-width: 768px)')
 }
+
+/** Tight header: icon-only domain items and compact right tools. */
+export function useIsCompact(): Ref<boolean> {
+  return useMediaQuery('(max-width: 1100px)')
+}

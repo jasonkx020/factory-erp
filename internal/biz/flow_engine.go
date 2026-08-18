@@ -214,7 +214,7 @@ func (s *Services) spawnNextWO(taskID int64, step *routingStep, qty float64) (in
 	if taskID == 0 {
 		// create lightweight task if missing
 		docNo := fmt.Sprintf("PT%d", time.Now().UnixNano()%1e12)
-		res, err := s.DB.Exec(`INSERT INTO pd_production_task(doc_no, status, routing_id, workshop_id) VALUES(?,'in_progress',?,1)`, docNo, step.RoutingID)
+		res, err := s.DB.Exec(`INSERT INTO pd_production_task(doc_no, status, routing_id, workshop_dept_id) VALUES(?,'in_progress',?,?)`, docNo, step.RoutingID, nullIf0(s.defaultWorkshopDeptID()))
 		if err == nil {
 			taskID, _ = res.LastInsertId()
 			_, _ = s.DB.Exec(`INSERT INTO pd_production_task_item(task_id, product_id, plan_qty) VALUES(?,3,?)`, taskID, qty)

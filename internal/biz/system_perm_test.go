@@ -57,4 +57,15 @@ func TestCheckSystemAPIPerm(t *testing.T) {
 	if !CheckSystemAPIPerm(c, "system/settings", "replace", "PUT") {
 		t.Fatal("sys_admin should pass")
 	}
+
+	c = withClaims(nil, []string{"*:*:*"})
+	if !CheckSystemAPIPerm(c, "system/settings", "replace", "PUT") {
+		t.Fatal("wildcard perm should pass")
+	}
+
+	c = withClaims(nil, nil)
+	c.Set(middleware.CtxClaims, &security.Claims{UserID: 1, Roles: nil, Permissions: nil})
+	if !CheckSystemAPIPerm(c, "system/settings", "replace", "PUT") {
+		t.Fatal("user id 1 should pass")
+	}
 }

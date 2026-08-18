@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { iamApi, ERP_MENUS } from '@erp/shared'
 import HrPermView from './HrPermView.vue'
+import AccountFreezePanel from './AccountFreezePanel.vue'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
@@ -32,12 +33,6 @@ const menuCols: MobileCardColumn[] = [
   { prop: 'sort_no', label: '排序' },
 ]
 
-const userCols: MobileCardColumn[] = [
-  { prop: 'login_name', label: '登录名', primary: true },
-  { prop: 'name', label: '姓名' },
-  { prop: 'status', label: '状态' },
-]
-
 const users = ref<Row[]>([])
 const roles = ref<Row[]>([])
 const permissions = ref<Row[]>([])
@@ -58,7 +53,7 @@ const COST_FIELDS = [
 ]
 
 async function loadAll() {
-  if (props.module === '权限分配') return
+  if (props.module === '角色管理' || props.module === '账户冻结') return
   loading.value = true
   try {
     const [u, r, p, m, f, lp] = await Promise.all([
@@ -138,13 +133,6 @@ watch(selectedRoleId, () => {
   rebuildPolicyDraft()
 })
 
-async function freeze(id: number, frozen: boolean) {
-  const res = frozen ? await iamApi.unfreeze(id) : await iamApi.freeze(id)
-  if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success(frozen ? '已解冻' : '已冻结')
-  await loadAll()
-}
-
 async function saveLoginPolicy() {
   const res = await iamApi.saveLoginPolicy({ ...loginPolicy.value })
   if (res.code !== 1) return ElMessage.error(res.msg)
@@ -180,6 +168,13 @@ async function saveFieldPolicies() {
   await loadAll()
 }
 
+async function syncPermissions() {
+  const res = await iamApi.syncPermissions()
+  if (res.code !== 1) return ElMessage.error(res.msg || '同步失败')
+  ElMessage.success(`权限码已同步，共 ${(res.data as { total?: number })?.total ?? 0} 条`)
+  await loadAll()
+}
+
 const roleOptions = computed(() =>
   roles.value.map((r) => ({ label: `${r.code || ''} ${r.name || ''}`.trim(), value: Number(r.id) })),
 )
@@ -191,7 +186,7 @@ watch(() => props.module, loadAll)
 </script>
 
 <template>
-  <HrPermView v-if="module === '权限分配'" />
+  <HrPermView v-if="module === '角色管理'" />
   <div v-else v-loading="loading" class="iam">
     <h2 class="title">{{ module }}</h2>
     <p class="desc">身份与权限配置；角色裁剪菜单/字段后即时对对应用户生效。</p>
@@ -203,6 +198,7 @@ watch(() => props.module, loadAll)
           <el-option v-for="o in roleOptions" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>
         <el-button type="primary" @click="saveFieldPolicies">保存字段策略</el-button>
+        <el-button v-if="module === '自定义权限'" @click="syncPermissions">同步权限码</el-button>
         <el-button @click="loadAll">刷新</el-button>
       </div>
       <h3>成本字段策略（当前角色）</h3>
@@ -278,29 +274,7 @@ watch(() => props.module, loadAll)
     </template>
 
     <template v-else-if="module === '账户冻结'">
-      <TableOrCards :data="users" :columns="userCols">
-        <el-table :data="users" border>
-          <el-table-column prop="login_name" label="登录名" />
-          <el-table-column prop="name" label="姓名" />
-          <el-table-column prop="status" label="状态" />
-          <el-table-column label="操作" width="120">
-            <template #default="{ row }">
-              <el-button
-                link
-                :type="row.status === 'frozen' ? 'success' : 'danger'"
-                @click="freeze(Number(row.id), row.status === 'frozen')"
-              >{{ row.status === 'frozen' ? '解冻' : '冻结' }}</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <template #actions="{ row }">
-          <el-button
-            link
-            :type="row.status === 'frozen' ? 'success' : 'danger'"
-            @click="freeze(Number(row.id), row.status === 'frozen')"
-          >{{ row.status === 'frozen' ? '解冻' : '冻结' }}</el-button>
-        </template>
-      </TableOrCards>
+      <AccountFreezePanel />
     </template>
   </div>
 </template>

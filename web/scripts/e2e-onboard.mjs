@@ -46,7 +46,6 @@ async function main() {
     name: '入职E2E工人',
     emp_type: 'piece',
     dept_id: 1,
-    workshop_id: 1,
     team_id: 1,
     job_title: '去皮工',
     mobile: '13800001111',
@@ -100,7 +99,7 @@ async function main() {
   // 临时工：与计件工采集字段一致，仅类别不同
   const empNo3 = `ONB3-${Date.now()}`
   const d3 = await req('POST', '/hr/onboards', {
-    emp_no: empNo3, name: '临时工E2E', emp_type: '临时工', workshop_id: 1, need_account: false,
+    emp_no: empNo3, name: '临时工E2E', emp_type: '临时工', need_account: false,
   }, token)
   assert(d3.code === 1, `draft3: ${d3.msg}`)
   const d3Detail = await req('GET', `/hr/onboards/${d3.data.id}`, undefined, token)

@@ -388,7 +388,20 @@ func (s *Services) syncBizAfterApproval(bizType string, bizID int64, status stri
 	case "purchase_plan":
 		_, _ = s.DB.Exec(`UPDATE pur_plan SET status=? WHERE id=?`, st, bizID)
 	case "inquiry", "sl_inquiry":
-		_, _ = s.DB.Exec(`UPDATE sl_inquiry SET status=? WHERE id=?`, st, bizID)
+		now := time.Now().Format("2006-01-02 15:04:05")
+		if st == "approved" {
+			_, _ = s.DB.Exec(`UPDATE sl_inquiry SET status='approved', approved_at=?, updated_at=? WHERE id=?`, now, now, bizID)
+		} else if st == "rejected" {
+			_, _ = s.DB.Exec(`UPDATE sl_inquiry SET status='rejected', rejected_at=?, updated_at=? WHERE id=?`, now, now, bizID)
+		} else {
+			_, _ = s.DB.Exec(`UPDATE sl_inquiry SET status=? WHERE id=?`, st, bizID)
+		}
+	case "delivery", "sl_delivery":
+		delSt := "approved"
+		if st == "rejected" {
+			delSt = "rejected"
+		}
+		_, _ = s.DB.Exec(`UPDATE sl_delivery_approval SET status=? WHERE id=? AND status IN ('draft','pending')`, delSt, bizID)
 	case "leave", "hr_leave_request":
 		_, _ = s.DB.Exec(`UPDATE hr_leave_request SET status=? WHERE id=?`, st, bizID)
 	case "overtime_patch", "hr_overtime_patch":

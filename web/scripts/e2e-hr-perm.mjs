@@ -45,7 +45,6 @@ async function main() {
     name: '权限E2E员工',
     emp_type: 'piece',
     status: 'active',
-    workshop_id: 1,
   }, token)
   assert(emp.code === 1 && emp.data?.id, `create employee: ${emp.msg}`)
   const empID = emp.data.id
@@ -71,15 +70,17 @@ async function main() {
   assert(setR.code === 1, `set roles: ${setR.msg}`)
   log(`roles -> ${roleID}`)
 
+  const depts = await req('GET', '/hr/departments?dept_type=workshop', undefined, token)
+  const wsDept = ((depts.data?.list || [])[0] || {}).id || 0
   const scope = await req('PUT', `/iam/users/${uid}/data-scope`, {
-    data_scope_type: 'workshop',
-    workshop_id: 1,
+    data_scope_type: 'dept_workshop',
+    dept_id: wsDept,
     team_id: 0,
   }, token)
-  assert(scope.code === 1 && scope.data?.data_scope_type === 'workshop', `data-scope: ${scope.msg}`)
+  assert(scope.code === 1 && scope.data?.data_scope_type === 'dept_workshop', `data-scope: ${scope.msg}`)
   const getScope = await req('GET', `/iam/users/${uid}/data-scope`, undefined, token)
-  assert(getScope.code === 1 && getScope.data?.workshop_id === 1, `get data-scope: ${getScope.msg}`)
-  log('data-scope workshop')
+  assert(getScope.code === 1 && getScope.data?.dept_id === wsDept, `get data-scope: ${getScope.msg}`)
+  log('data-scope dept_workshop')
 
   // create second employee + bind/unbind on a fresh user via create user
   const emp2No = `E2E-HR2-${Date.now()}`
@@ -149,7 +150,7 @@ async function main() {
   // role management
   const code = `e2e_role_${Date.now()}`
   const createdRole = await req('POST', '/iam/roles', {
-    code, name: 'E2E角色', data_scope_type: 'workshop', remark: 'e2e',
+    code, name: 'E2E角色', data_scope_type: 'dept_workshop', remark: 'e2e',
   }, token)
   assert(createdRole.code === 1 && createdRole.data?.id, `create role: ${createdRole.msg}`)
   const rid = createdRole.data.id

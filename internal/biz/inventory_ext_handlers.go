@@ -48,7 +48,7 @@ func EnsureInventoryExtSchema(db *sql.DB) {
   doc_no TEXT NOT NULL UNIQUE,
   stocktake_type TEXT NOT NULL DEFAULT 'warehouse',
   warehouse_id INTEGER,
-  workshop_id INTEGER,
+  workshop_dept_id INTEGER,
   biz_date TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'draft',
   remark TEXT,
@@ -270,9 +270,9 @@ func (s *Services) createStocktake(c *gin.Context, stType string) bool {
 	if wh == 0 {
 		wh = 1
 	}
-	ws, _ := asInt64(body["workshop_id"])
+	ws, _ := asInt64(body["workshop_dept_id"])
 	bizDate := strOrDef(body["biz_date"], time.Now().Format("2006-01-02"))
-	res, err := s.DB.Exec(`INSERT INTO inv_stocktake(doc_no, stocktake_type, warehouse_id, workshop_id, biz_date, status, remark)
+	res, err := s.DB.Exec(`INSERT INTO inv_stocktake(doc_no, stocktake_type, warehouse_id, workshop_dept_id, biz_date, status, remark)
 		VALUES(?,?,?,?,?,'draft',?)`, docNo, stType, wh, nullInt(ws), bizDate, strOr(body["remark"]))
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())

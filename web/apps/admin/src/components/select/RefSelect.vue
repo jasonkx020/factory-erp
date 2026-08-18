@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, type StyleValue } from 'vue'
 
 type Row = Record<string, unknown>
 
@@ -15,7 +15,7 @@ const props = withDefaults(
     filterable?: boolean
     multiple?: boolean
     disabled?: boolean
-    style?: string
+    style?: StyleValue
     allowZero?: boolean
     zeroLabel?: string
   }>(),

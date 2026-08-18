@@ -42,14 +42,16 @@ func (h *Handler) Login(c *gin.Context) {
 	}
 	clientType := security.NormalizeClientType(req.ClientType)
 	var id int64
-	var hash, userType, status, name string
-	var empID sql.NullInt64
+	var hash, userType, status, name, customerName string
+	var empID, customerID sql.NullInt64
 	err := h.DB.QueryRow(`
-		SELECT u.id, u.password_hash, u.user_type, u.status, u.employee_id, COALESCE(e.name,'')
+		SELECT u.id, u.password_hash, u.user_type, u.status, u.employee_id, COALESCE(u.customer_id,0),
+			COALESCE(NULLIF(cu.name,''), COALESCE(e.name,'')), COALESCE(cu.name,'')
 		FROM iam_user u
 		LEFT JOIN hr_employee e ON e.id = u.employee_id
+		LEFT JOIN crm_customer cu ON cu.id = u.customer_id
 		WHERE u.login_name = ? AND u.is_deleted = 0`, req.LoginName).
-		Scan(&id, &hash, &userType, &status, &empID, &name)
+		Scan(&id, &hash, &userType, &status, &empID, &customerID, &name, &customerName)
 	if err == sql.ErrNoRows || !security.CheckPassword(hash, req.Password) {
 		api.FailJSON(c, "INVALID_CREDENTIAL")
 		return
@@ -60,6 +62,14 @@ func (h *Handler) Login(c *gin.Context) {
 	}
 	if status == "frozen" {
 		api.FailJSON(c, "USER_FROZEN")
+		return
+	}
+	if clientType == "customer" && (userType != "customer" || customerID.Int64 <= 0) {
+		api.FailJSON(c, "CUSTOMER_ACCOUNT_REQUIRED")
+		return
+	}
+	if userType == "customer" && clientType != "customer" {
+		api.FailJSON(c, "CLIENT_TYPE_MISMATCH")
 		return
 	}
 	roles, perms := security.LoadUserRolesPerms(h.DB, id)
@@ -85,12 +95,14 @@ func (h *Handler) Login(c *gin.Context) {
 		"expires_in":    h.Cfg.JWT.AccessTTLMin * 60,
 		"client_type":   clientType,
 		"user": gin.H{
-			"id":          id,
-			"login_name":  req.LoginName,
-			"user_type":   userType,
-			"employee_id": empID.Int64,
-			"name":        name,
-			"status":      status,
+			"id":            id,
+			"login_name":    req.LoginName,
+			"user_type":     userType,
+			"employee_id":   empID.Int64,
+			"customer_id":   customerID.Int64,
+			"customer_name": customerName,
+			"name":          name,
+			"status":        status,
 		},
 		"roles":       roles,
 		"permissions": perms,
@@ -175,19 +187,28 @@ func (h *Handler) Me(c *gin.Context) {
 	roles, perms := security.CachedUserRolesPerms(h.DB, claims.UserID)
 	menus := h.loadMenus(claims.UserID)
 	fields := h.loadFieldPolicies(claims.UserID)
-	var empID sql.NullInt64
-	var empName, empNo, badgeCode string
-	_ = h.DB.QueryRow(`SELECT u.employee_id, COALESCE(e.name,''), COALESCE(e.emp_no,''), COALESCE(e.badge_code,'')
+	var empID, customerID sql.NullInt64
+	var empName, empNo, badgeCode, customerName, displayName string
+	_ = h.DB.QueryRow(`SELECT u.employee_id, COALESCE(u.customer_id,0),
+		COALESCE(e.name,''), COALESCE(e.emp_no,''), COALESCE(e.badge_code,''), COALESCE(cu.name,''),
+		COALESCE(NULLIF(cu.name,''), COALESCE(e.name,''))
 		FROM iam_user u
-		LEFT JOIN hr_employee e ON e.id=u.employee_id WHERE u.id=?`, claims.UserID).
-		Scan(&empID, &empName, &empNo, &badgeCode)
+		LEFT JOIN hr_employee e ON e.id=u.employee_id
+		LEFT JOIN crm_customer cu ON cu.id=u.customer_id
+		WHERE u.id=?`, claims.UserID).
+		Scan(&empID, &customerID, &empName, &empNo, &badgeCode, &customerName, &displayName)
+	if displayName == "" {
+		displayName = empName
+	}
 	api.OK(c, gin.H{
 		"user": gin.H{
 			"id":            claims.UserID,
 			"login_name":    claims.LoginName,
 			"user_type":     claims.UserType,
 			"employee_id":   empID.Int64,
-			"name":          empName,
+			"customer_id":   customerID.Int64,
+			"customer_name": customerName,
+			"name":          displayName,
 			"employee_name": empName,
 			"emp_no":        empNo,
 			"badge_code":    badgeCode,

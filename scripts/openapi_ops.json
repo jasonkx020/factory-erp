@@ -788,6 +788,26 @@
     "path": "/api/v1/hr/attendance/rules/{id}"
   },
   {
+    "method": "GET",
+    "path": "/api/v1/hr/departments"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/departments"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/departments/{id}"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/hr/departments/{id}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/hr/departments/{id}"
+  },
+  {
     "method": "POST",
     "path": "/api/v1/hr/employee-imports"
   },
@@ -974,6 +994,10 @@
   {
     "method": "DELETE",
     "path": "/api/v1/hr/shifts/{id}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/work-teams"
   },
   {
     "method": "GET",
@@ -1198,6 +1222,10 @@
   {
     "method": "POST",
     "path": "/api/v1/inventory/box-codes/{id}/bind"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/inventory/box-codes/{id}/destroy"
   },
   {
     "method": "GET",
@@ -1989,26 +2017,6 @@
   },
   {
     "method": "GET",
-    "path": "/api/v1/production/workshops"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/workshops"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/workshops/{id}"
-  },
-  {
-    "method": "PUT",
-    "path": "/api/v1/production/workshops/{id}"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/workshops/{id}"
-  },
-  {
-    "method": "GET",
     "path": "/api/v1/purchase/analytics/supplier-performance"
   },
   {
@@ -2364,12 +2372,8 @@
     "path": "/api/v1/purchase/weigh-tickets/{id}/warehouse-confirm"
   },
   {
-    "method": "GET",
-    "path": "/api/v1/purchase/weigh-tickets/by-trace"
-  },
-  {
     "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/by-trace"
+    "path": "/api/v1/purchase/weigh-tickets/{id}/box-stock-in"
   },
   {
     "method": "GET",

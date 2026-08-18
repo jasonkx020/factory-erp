@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   useAuthStore,
@@ -14,7 +14,7 @@ import {
 } from '@erp/shared'
 import { ElMessage } from 'element-plus'
 import NotifyBell from '../components/NotifyBell.vue'
-import { useIsMobile } from '../composables/useMediaQuery'
+import { useIsCompact, useIsMobile } from '../composables/useMediaQuery'
 import { displayModuleTitle, loadCarrierCodeUnit, useCarrierCodeLabel } from '../composables/useCarrierCodeLabel'
 
 const auth = useAuthStore()
@@ -25,17 +25,52 @@ const portalUrl = portalHomeUrl()
 const menuFilter = ref('')
 const activeDomain = ref('')
 const isMobile = useIsMobile()
+const isCompact = useIsCompact()
 const sideDrawerOpen = ref(false)
-const domainSheetOpen = ref(false)
+const topMenusEl = ref<HTMLElement | null>(null)
+const measureEl = ref<HTMLElement | null>(null)
+const menusWidth = ref(0)
+const homeWidth = ref(0)
+const moreWidth = ref(0)
+const domainWidths = ref<number[]>([])
 
-/** How many domain icons to keep in the top bar on mobile; rest go to「更多」. */
-const MOBILE_TOP_DOMAIN_COUNT = 5
+let menusRo: ResizeObserver | null = null
+
+function measureItems() {
+  const nav = topMenusEl.value
+  const row = measureEl.value
+  if (nav) {
+    const w = nav.clientWidth
+    if (w > 0) menusWidth.value = w
+  }
+  if (!row) return
+  const kids = row.children
+  if (kids.length < 2) return
+  homeWidth.value = (kids[0] as HTMLElement).offsetWidth
+  moreWidth.value = (kids[kids.length - 1] as HTMLElement).offsetWidth
+  const dw: number[] = []
+  for (let i = 1; i < kids.length - 1; i++) {
+    dw.push((kids[i] as HTMLElement).offsetWidth)
+  }
+  domainWidths.value = dw
+}
 
 onMounted(() => {
   void loadCarrierCodeUnit()
   if (auth.accessToken && (!auth.roles.length || !auth.permissions.length)) {
     void auth.fetchMe()
   }
+  void nextTick().then(measureItems)
+  if (typeof ResizeObserver === 'undefined' || !topMenusEl.value) return
+  menusRo = new ResizeObserver(() => {
+    measureItems()
+  })
+  menusRo.observe(topMenusEl.value)
+})
+
+onUnmounted(() => {
+  menusRo?.disconnect()
+  menusRo = null
 })
 
 const menus = computed(() => perm.visibleMenus)
@@ -57,6 +92,7 @@ const domainIcons: Record<string, string> = {
 }
 
 const crumb = computed(() => {
+  if (route.path === '/account') return '个人中心'
   const d = route.params.domain as string
   const m = route.params.module as string
   if (d && m) return `${decodeURIComponent(d)} / ${displayModuleTitle(decodeURIComponent(m))}`
@@ -89,21 +125,58 @@ const sidebarGroups = computed(() => {
 
 const showSidebar = computed(() => currentDomain.value !== '' && route.path !== '/' && route.path !== '')
 
+const visibleDomainCount = computed(() => {
+  const n = menus.value.length
+  if (n === 0) return 0
+  const w = menusWidth.value
+  const widths = domainWidths.value
+  // Prefer showing everything until we have a real measurement.
+  if (w <= 0 || widths.length !== n) return n
+  let labeled = homeWidth.value
+  for (const dw of widths) labeled += dw
+  if (labeled <= w) return n
+  let used = homeWidth.value + moreWidth.value
+  let count = 0
+  for (const dw of widths) {
+    if (used + dw <= w) {
+      used += dw
+      count++
+    } else {
+      break
+    }
+  }
+  return count
+})
+
 const topDomains = computed(() => {
-  if (!isMobile.value) return menus.value
-  return menus.value.slice(0, MOBILE_TOP_DOMAIN_COUNT)
+  const all = menus.value
+  const count = visibleDomainCount.value
+  if (count >= all.length) return all
+  const visible = all.slice(0, count)
+  const current = currentDomain.value
+  if (!current || visible.some((d) => d.domain === current)) return visible
+  const extra = all.find((d) => d.domain === current)
+  if (!extra || count < 1) return visible
+  return [...visible.slice(0, count - 1), extra]
 })
 
 const moreDomains = computed(() => {
-  if (!isMobile.value) return []
-  return menus.value.slice(MOBILE_TOP_DOMAIN_COUNT)
+  const shown = new Set(topDomains.value.map((d) => d.domain))
+  return menus.value.filter((d) => !shown.has(d.domain))
 })
+
+watch(
+  [menus, isMobile],
+  async () => {
+    await nextTick()
+    measureItems()
+  },
+)
 
 watch(
   () => route.path,
   (path) => {
     sideDrawerOpen.value = false
-    domainSheetOpen.value = false
     const hit = adminModuleForPath(path)
     if (hit) {
       activeDomain.value = hit.domain
@@ -111,7 +184,7 @@ watch(
     }
     const d = route.params.domain as string
     if (d) activeDomain.value = decodeURIComponent(d)
-    else if (path === '/' || path === '') activeDomain.value = ''
+    else if (path === '/' || path === '' || path === '/account') activeDomain.value = ''
   },
   { immediate: true },
 )
@@ -119,7 +192,6 @@ watch(
 function selectDomain(domain: string) {
   activeDomain.value = domain
   menuFilter.value = ''
-  domainSheetOpen.value = false
   const entry = menus.value.find((x) => x.domain === domain)
   const first = entry?.modules?.[0]
   if (first) goModule(domain, first)
@@ -165,6 +237,20 @@ function logout() {
   router.replace('/login')
 }
 
+const userLabel = computed(() => auth.user?.name || auth.user?.login_name || '用户')
+
+function onUserCommand(cmd: string) {
+  if (cmd === 'account') {
+    router.push('/account')
+    return
+  }
+  if (cmd === 'portal') {
+    window.location.href = portalUrl
+    return
+  }
+  if (cmd === 'logout') logout()
+}
+
 function openSideDrawer() {
   if (!showSidebar.value) {
     ElMessage.info('请先选择业务域')
@@ -175,7 +261,7 @@ function openSideDrawer() {
 </script>
 
 <template>
-  <div class="admin-shell" :class="{ 'is-mobile': isMobile }">
+  <div class="admin-shell" :class="{ 'is-mobile': isMobile, 'is-compact': isCompact }">
     <header class="top-nav">
       <button
         v-if="isMobile"
@@ -193,7 +279,21 @@ function openSideDrawer() {
         <span v-if="!isMobile" class="brand-text">加工厂</span>
       </button>
 
-      <nav class="top-menus">
+      <nav ref="topMenusEl" class="top-menus">
+        <div ref="measureEl" class="top-menus-measure" aria-hidden="true">
+          <button type="button" tabindex="-1" class="top-item">
+            <span class="ico">🏠</span>
+            <span class="lbl">工作台</span>
+          </button>
+          <button v-for="d in menus" :key="'m-' + d.domain" type="button" tabindex="-1" class="top-item">
+            <span class="ico">{{ domainIcons[d.domain] || '📁' }}</span>
+            <span class="lbl">{{ d.domain.replace(/管理$/, '') }}</span>
+          </button>
+          <button type="button" tabindex="-1" class="top-item more-item">
+            <span class="ico">⋯</span>
+            <span class="lbl">更多</span>
+          </button>
+        </div>
         <button
           type="button"
           class="top-item"
@@ -215,23 +315,61 @@ function openSideDrawer() {
           <span class="ico">{{ domainIcons[d.domain] || '📁' }}</span>
           <span class="lbl">{{ d.domain.replace(/管理$/, '') }}</span>
         </button>
-        <button
-          v-if="isMobile && moreDomains.length"
-          type="button"
-          class="top-item more-item"
-          title="更多业务域"
-          @click="domainSheetOpen = true"
+        <el-dropdown
+          v-if="moreDomains.length"
+          trigger="click"
+          placement="bottom-end"
+          teleported
+          popper-class="admin-more-domains-popper"
+          class="more-dropdown"
+          @command="selectDomain"
         >
-          <span class="ico">⋯</span>
-          <span class="lbl">更多</span>
-        </button>
+          <button
+            type="button"
+            class="top-item more-item"
+            :class="{ active: moreDomains.some((d) => domainActive(d.domain)) }"
+            title="更多业务域"
+          >
+            <span class="ico">⋯</span>
+            <span class="lbl">更多</span>
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item
+                v-for="d in moreDomains"
+                :key="d.domain"
+                :command="d.domain"
+                :class="{ 'is-overflow-active': domainActive(d.domain) }"
+              >
+                <span class="more-opt">
+                  <span class="more-opt-ico">{{ domainIcons[d.domain] || '📁' }}</span>
+                  <span>{{ d.domain }}</span>
+                </span>
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </nav>
 
       <div class="top-right">
-        <a v-if="!isMobile" class="portal-link" :href="portalUrl" title="返回入口">入口</a>
+        <a v-if="!isMobile" class="portal-link" :href="portalUrl" title="返回入口">
+          <span class="portal-ico" aria-hidden="true">⌂</span>
+          <span v-if="!isCompact" class="portal-text">入口</span>
+        </a>
         <NotifyBell />
-        <span v-if="!isMobile" class="user-name">{{ auth.user?.name || auth.user?.login_name || '用户' }}</span>
-        <el-button link type="danger" size="small" @click="logout">退出</el-button>
+        <el-dropdown trigger="click" @command="onUserCommand">
+          <button type="button" class="user-trigger" :title="userLabel">
+            <span class="user-name">{{ userLabel }}</span>
+            <span class="user-caret">▾</span>
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="account">个人中心</el-dropdown-item>
+              <el-dropdown-item v-if="isMobile || isCompact" command="portal">返回入口</el-dropdown-item>
+              <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </header>
 
@@ -324,23 +462,6 @@ function openSideDrawer() {
       </nav>
       <div v-else class="side-empty">请先从顶部选择业务域</div>
     </el-drawer>
-
-    <!-- Mobile more domains sheet -->
-    <el-drawer v-model="domainSheetOpen" direction="btt" size="55%" title="全部业务域">
-      <div class="domain-sheet">
-        <button
-          v-for="d in menus"
-          :key="d.domain"
-          type="button"
-          class="domain-sheet-item"
-          :class="{ active: domainActive(d.domain) }"
-          @click="selectDomain(d.domain)"
-        >
-          <span class="ico">{{ domainIcons[d.domain] || '📁' }}</span>
-          <span>{{ d.domain }}</span>
-        </button>
-      </div>
-    </el-drawer>
   </div>
 </template>
 
@@ -401,12 +522,20 @@ function openSideDrawer() {
   flex: 1;
   display: flex;
   align-items: stretch;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: hidden;
   min-width: 0;
+  position: relative;
 }
-.top-menus::-webkit-scrollbar {
-  height: 0;
+.top-menus-measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: stretch;
+  height: 56px;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
 }
 .top-item {
   display: flex;
@@ -445,29 +574,68 @@ function openSideDrawer() {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.more-dropdown {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  height: 100%;
+}
+.more-dropdown :deep(.el-tooltip__trigger) {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+}
 .top-right {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 0 14px;
   flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+  background: #2c3e50;
   border-left: 1px solid rgba(255, 255, 255, 0.08);
 }
 .portal-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: #aeb6bf;
   font-size: 12px;
   text-decoration: none;
+  white-space: nowrap;
+}
+.portal-ico {
+  font-size: 14px;
+  line-height: 1;
 }
 .portal-link:hover {
   color: #fff;
 }
+.user-trigger {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 140px;
+  padding: 4px 2px 4px 6px;
+  border: 0;
+  background: transparent;
+  color: #d5dbdb;
+  cursor: pointer;
+}
+.user-trigger:hover {
+  color: #fff;
+}
 .user-name {
   font-size: 12px;
-  color: #d5dbdb;
-  max-width: 100px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.user-caret {
+  font-size: 10px;
+  opacity: 0.7;
+  flex-shrink: 0;
 }
 
 .body {
@@ -613,30 +781,10 @@ function openSideDrawer() {
   padding: 16px 20px;
 }
 
-.domain-sheet {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.domain-sheet-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 0;
-  border-radius: 8px;
-  background: #f8f9fa;
-  color: #2c3e50;
-  font-size: 14px;
-  text-align: left;
-  cursor: pointer;
-}
-.domain-sheet-item.active {
-  background: #714b67;
-  color: #fff;
-}
-.domain-sheet-item .ico {
-  font-size: 18px;
+@media (max-width: 1100px) {
+  .user-trigger {
+    max-width: 88px;
+  }
 }
 
 @media (max-width: 768px) {
@@ -645,10 +793,14 @@ function openSideDrawer() {
   }
   .top-item {
     min-width: 44px;
+    padding: 4px 6px;
   }
   .top-right {
     gap: 6px;
     padding: 0 8px;
+  }
+  .user-trigger {
+    max-width: 72px;
   }
   .brand {
     padding: 0 10px;
@@ -657,5 +809,22 @@ function openSideDrawer() {
     height: 36px;
     padding: 0 10px;
   }
+}
+</style>
+
+<style>
+.admin-more-domains-popper .more-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.admin-more-domains-popper .more-opt-ico {
+  font-size: 15px;
+  line-height: 1;
+}
+.admin-more-domains-popper .is-overflow-active {
+  color: #714b67;
+  font-weight: 600;
+  background: #f3eaf2;
 }
 </style>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { StyleValue } from 'vue'
 import RefSelect from './RefSelect.vue'
 import { loadProcesses } from './entitySelects'
 
@@ -8,7 +9,7 @@ withDefaults(
     placeholder?: string
     clearable?: boolean
     disabled?: boolean
-    style?: string
+    style?: StyleValue
   }>(),
   { placeholder: '选择工序', clearable: true, disabled: false, style: 'width:180px' },
 )

@@ -75,11 +75,22 @@ const pageTitle = computed(() => {
   }
 })
 
+const headStats = computed(() => {
+  const items = [
+    showFarmers.value ? { label: '农户档案', value: farmers.value.length, tone: 'primary' } : null,
+    showWeigh.value ? { label: '到货单', value: arrivals.value.length, tone: 'warning' } : null,
+    showWeigh.value ? { label: '过磅单', value: tickets.value.length, tone: 'success' } : null,
+    showSettlements.value ? { label: '结算单', value: settlements.value.length, tone: 'info' } : null,
+  ].filter(Boolean) as { label: string; value: number; tone: string }[]
+  return items
+})
+
 const farmers = ref<Row[]>([])
 const arrivals = ref<Row[]>([])
 const tickets = ref<Row[]>([])
 const settlements = ref<Row[]>([])
 const loading = ref(false)
+const farmerDlg = ref(false)
 const farmerForm = reactive({ name: '', mobile: '', origin: '', remark: '', default_unit_price: 1 })
 const arrivalForm = reactive({
   farmer_id: 0,
@@ -231,9 +242,17 @@ async function createFarmer() {
   const res = await purchaseApi.createFarmer({ ...farmerForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success('农户已建档')
+  farmerDlg.value = false
   farmerForm.name = ''
   farmerForm.mobile = ''
+  farmerForm.origin = ''
+  farmerForm.remark = ''
+  farmerForm.default_unit_price = 1
   await refresh()
+}
+
+function openFarmerDialog() {
+  farmerDlg.value = true
 }
 
 async function createArrival() {
@@ -573,29 +592,34 @@ watch(
 
 <template>
   <div class="page" v-loading="loading">
-    <h2>{{ pageTitle }}</h2>
+    <section class="page-head">
+      <div>
+        <h2 class="page-title">{{ pageTitle }}</h2>
+        <p class="hint">
+          到货拍照质检定级 → 过磅图+自动预填 → 对照原图确认出码贴标 → 仓管扫码入库 → 财务转账回单关单。业务可查可改不可删。
+        </p>
+      </div>
+      <div v-if="headStats.length" class="head-stats">
+        <div v-for="item in headStats" :key="item.label" class="stat-card" :data-tone="item.tone">
+          <span class="stat-label">{{ item.label }}</span>
+          <strong class="stat-value">{{ item.value }}</strong>
+        </div>
+      </div>
+    </section>
     <el-alert v-if="showWeigh" type="warning" show-icon :closable="false" class="mb" style="margin-bottom:12px"
       title="日常过磅收货请优先使用 Flutter App「过磅收货」。管理端用于审核、查询与补单。" />
-    <p class="hint">
-      到货拍照质检定级 → 过磅图+自动预填 → 对照原图确认出码贴标 → 仓管扫码入库 → 财务转账回单关单。业务可查可改不可删。
-    </p>
 
-    <el-row v-if="showFarmers || showWeigh" :gutter="16">
-      <el-col v-if="showFarmers" :span="showWeigh ? 8 : 12" :xs="24">
-        <el-card header="农户建档">
-          <el-form label-width="80px" size="small">
-            <el-form-item label="姓名"><el-input v-model="farmerForm.name" /></el-form-item>
-            <el-form-item label="电话"><el-input v-model="farmerForm.mobile" /></el-form-item>
-            <el-form-item label="产地"><el-input v-model="farmerForm.origin" /></el-form-item>
-            <el-form-item label="默认单价"><el-input-number v-model="farmerForm.default_unit_price" :min="0" :step="0.1" /></el-form-item>
-            <el-button type="primary" @click="createFarmer">保存</el-button>
-          </el-form>
-        </el-card>
-      </el-col>
+    <el-row v-if="showWeigh" :gutter="16" class="top-panels">
       <template v-if="showWeigh">
-        <el-col :span="showFarmers ? 8 : 12" :xs="24">
-          <el-card header="到货 + 质检照">
-            <el-form label-width="90px" size="small">
+        <el-col :span="12" :xs="24">
+          <el-card class="section-card" shadow="hover">
+            <template #header>
+              <div class="card-head">
+                <span>到货 + 质检照</span>
+                <small>先建到货单，再做质检定级</small>
+              </div>
+            </template>
+            <el-form label-width="90px" size="small" class="stack-form">
               <el-form-item label="农户">
                 <el-select v-model="arrivalForm.farmer_id" style="width:100%">
                   <el-option v-for="f in farmers" :key="String(f.id)" :label="String(f.name)" :value="Number(f.id)" />
@@ -614,9 +638,15 @@ watch(
             </el-form>
           </el-card>
         </el-col>
-        <el-col :span="showFarmers ? 8 : 12" :xs="24">
-          <el-card header="过磅草稿（入厂）">
-            <el-form label-width="100px" size="small">
+        <el-col :span="12" :xs="24">
+          <el-card class="section-card" shadow="hover">
+            <template #header>
+              <div class="card-head">
+                <span>过磅草稿（入厂）</span>
+                <small>支持批号校验、现场录入与照片留痕</small>
+              </div>
+            </template>
+            <el-form label-width="100px" size="small" class="stack-form">
               <el-alert
                 type="info"
                 :closable="false"
@@ -730,7 +760,16 @@ watch(
       </template>
     </el-row>
 
-    <el-card v-if="showFarmers" header="农户列表" style="margin-top:16px">
+    <el-card v-if="showFarmers" class="section-card" shadow="hover" style="margin-top:16px">
+      <template #header>
+        <div class="card-head card-head-row">
+          <div>
+            <span>农户列表</span>
+            <small>快速查看建档状态与默认单价</small>
+          </div>
+          <el-button type="primary" plain size="small" @click="openFarmerDialog">新建农户</el-button>
+        </div>
+      </template>
       <TableOrCards :data="farmers" :loading="loading" :columns="farmerCols">
         <el-table :data="farmers" size="small">
           <el-table-column prop="id" label="ID" width="70" />
@@ -743,7 +782,13 @@ watch(
       </TableOrCards>
     </el-card>
 
-    <el-card v-if="showWeigh" header="到货质检" style="margin-top:16px">
+    <el-card v-if="showWeigh" class="section-card" shadow="hover" style="margin-top:16px">
+      <template #header>
+        <div class="card-head">
+          <span>到货质检</span>
+          <small>定级后才能进入后续过磅流程</small>
+        </div>
+      </template>
       <TableOrCards :data="arrivals" :loading="loading" :columns="arrivalCols">
         <el-table :data="arrivals" size="small">
           <el-table-column prop="doc_no" label="单号" width="150" />
@@ -766,7 +811,13 @@ watch(
       </TableOrCards>
     </el-card>
 
-    <el-card v-if="showWeigh" header="过磅确认 / 出码（入库请到仓管待办）" style="margin-top:16px">
+    <el-card v-if="showWeigh" class="section-card" shadow="hover" style="margin-top:16px">
+      <template #header>
+        <div class="card-head">
+          <span>过磅确认 / 出码</span>
+          <small>入库仍需到仓管待办继续处理</small>
+        </div>
+      </template>
       <p class="hint">确认出码后系统将溯源码与单号推送给仓管；仓管确认后方为采购完成。</p>
       <TableOrCards :data="tickets" :loading="loading" :columns="ticketCols">
         <el-table :data="tickets" size="small">
@@ -820,7 +871,13 @@ watch(
     <!-- 原料溯源：列表 + 详情 -->
     <el-row v-if="showTrace && props.section === 'trace'" :gutter="16" style="margin-top:16px">
       <el-col :span="10" :xs="24">
-        <el-card header="过磅单据（点选倒查）">
+        <el-card class="section-card" shadow="hover">
+          <template #header>
+            <div class="card-head">
+              <span>过磅单据</span>
+              <small>点选后在右侧做溯源倒查</small>
+            </div>
+          </template>
           <el-input
             v-model="traceListKeyword"
             clearable
@@ -856,7 +913,13 @@ watch(
         </el-card>
       </el-col>
       <el-col :span="14" :xs="24">
-        <el-card header="溯源详情">
+        <el-card class="section-card" shadow="hover">
+          <template #header>
+            <div class="card-head">
+              <span>溯源详情</span>
+              <small>支持按单号 / 溯源码追溯</small>
+            </div>
+          </template>
           <TraceLotPanel v-model:code="traceCode" />
         </el-card>
       </el-col>
@@ -864,7 +927,13 @@ watch(
 
     <el-row v-if="showSettlements || (showTrace && props.section !== 'trace')" :gutter="16" style="margin-top:16px">
       <el-col v-if="showSettlements" :span="showTrace && props.section !== 'trace' ? 14 : 24" :xs="24">
-        <el-card header="农户结算（财务支付须转账单号+回单）">
+        <el-card class="section-card" shadow="hover">
+          <template #header>
+            <div class="card-head">
+              <span>农户结算</span>
+              <small>财务支付需补齐转账单号与回单凭证</small>
+            </div>
+          </template>
           <TableOrCards :data="settlements" :loading="loading" :columns="settlementCols">
             <el-table :data="settlements" size="small">
               <el-table-column prop="doc_no" label="结算单" width="140" />
@@ -892,7 +961,13 @@ watch(
         </el-card>
       </el-col>
       <el-col v-if="showTrace && props.section !== 'trace'" :span="showSettlements ? 10 : 24" :xs="24">
-        <el-card header="溯源倒查">
+        <el-card class="section-card" shadow="hover">
+          <template #header>
+            <div class="card-head">
+              <span>溯源倒查</span>
+              <small>辅助核对批次与单据链路</small>
+            </div>
+          </template>
           <TraceLotPanel v-model:code="traceCode" />
         </el-card>
       </el-col>
@@ -961,13 +1036,64 @@ watch(
         <el-button type="primary" @click="saveOnsiteFarmer">保存并关联</el-button>
       </template>
     </el-dialog>
+    <el-dialog v-model="farmerDlg" title="新建农户" width="460px">
+      <el-form label-width="90px" class="stack-form">
+        <el-form-item label="姓名" required><el-input v-model="farmerForm.name" /></el-form-item>
+        <el-form-item label="电话"><el-input v-model="farmerForm.mobile" /></el-form-item>
+        <el-form-item label="产地"><el-input v-model="farmerForm.origin" /></el-form-item>
+        <el-form-item label="默认单价"><el-input-number v-model="farmerForm.default_unit_price" :min="0" :step="0.1" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="farmerDlg = false">取消</el-button>
+        <el-button type="primary" @click="createFarmer">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped>
-.page { padding: 16px 20px; }
-.hint { color: #667; font-size: 13px; margin: 0 0 12px; }
+.page { padding: 16px 20px; background: #f6f8fb; min-height: 100%; }
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.page-title { margin: 0 0 6px; font-size: 22px; font-weight: 600; color: #1f2d3d; }
+.hint { color: #667; font-size: 13px; margin: 0; line-height: 1.65; }
+.head-stats { display: flex; flex-wrap: wrap; gap: 10px; }
+.stat-card {
+  min-width: 110px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid #e6ebf2;
+  box-shadow: 0 6px 18px rgba(31, 45, 61, 0.05);
+}
+.stat-card[data-tone='primary'] { border-color: #d9e8ff; }
+.stat-card[data-tone='warning'] { border-color: #f6dfb7; }
+.stat-card[data-tone='success'] { border-color: #cfe8d7; }
+.stat-card[data-tone='info'] { border-color: #dce8f5; }
+.stat-label { display: block; color: #6b7785; font-size: 12px; margin-bottom: 4px; }
+.stat-value { font-size: 20px; color: #1f2d3d; }
+.top-panels { margin-bottom: 4px; }
+.section-card { border-radius: 14px; border: 1px solid #e7edf5; }
+.card-head { display: flex; flex-direction: column; gap: 2px; }
+.card-head-row { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+.card-head span { font-size: 15px; font-weight: 600; color: #1f2d3d; }
+.card-head small { color: #7a8797; font-size: 12px; }
+.stack-form :deep(.el-form-item) { margin-bottom: 14px; }
+.stack-form :deep(.el-input-number) { width: 100%; }
 .sec { margin: 12px 0 8px; font-size: 14px; font-weight: 600; }
-.label-preview { margin-top: 12px; }
+.label-preview { margin-top: 12px; padding: 12px; border-radius: 12px; background: #f8fbff; border: 1px dashed #d5e3f4; }
+:deep(.el-card__header) { padding: 14px 18px; border-bottom: 1px solid #eef2f7; }
+:deep(.el-card__body) { padding: 18px; }
+:deep(.el-table) { --el-table-header-bg-color: #f8fafc; border-radius: 10px; }
 :deep(.el-table .is-selected > td) { background: #ecf8f6 !important; }
+@media (max-width: 900px) {
+  .page-head { flex-direction: column; }
+  .head-stats { width: 100%; }
+  .stat-card { flex: 1; min-width: 0; }
+}
 </style>

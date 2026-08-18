@@ -4770,6 +4770,129 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkEmptyResponse"
 
+  /api/v1/hr/departments:
+    get:
+      tags: [人事管理]
+      summary: 公司架构-列表
+      operationId: get_api_v1_hr_departments
+      description: |
+        功能模块：公司架构；分期：1
+      x-erp-phase: 1
+      x-erp-module: 公司架构
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+        - name: dept_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [normal, workshop]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    post:
+      tags: [人事管理]
+      summary: 公司架构-新建
+      operationId: post_api_v1_hr_departments
+      description: |
+        功能模块：公司架构；分期：1
+      x-erp-phase: 1
+      x-erp-module: 公司架构
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
+  /api/v1/hr/departments/{id}:
+    get:
+      tags: [人事管理]
+      summary: 公司架构-详情
+      operationId: get_api_v1_hr_departments_id
+      description: |
+        功能模块：公司架构；分期：1
+      x-erp-phase: 1
+      x-erp-module: 公司架构
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    put:
+      tags: [人事管理]
+      summary: 公司架构-更新
+      operationId: put_api_v1_hr_departments_id
+      description: |
+        功能模块：公司架构；分期：1
+      x-erp-phase: 1
+      x-erp-module: 公司架构
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+    delete:
+      tags: [人事管理]
+      summary: 公司架构-删除
+      operationId: delete_api_v1_hr_departments_id
+      description: |
+        功能模块：公司架构；分期：1
+      x-erp-phase: 1
+      x-erp-module: 公司架构
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEmptyResponse"
+
   /api/v1/hr/employee-imports:
     post:
       tags: [人事管理]
@@ -5885,6 +6008,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkEmptyResponse"
 
+  /api/v1/hr/work-teams:
+    get:
+      tags: [人事管理]
+      summary: 班组-列表
+      operationId: get_api_v1_hr_work_teams
+      description: |
+        功能模块：公司架构；分期：1
+      x-erp-phase: 1
+      x-erp-module: 公司架构
+      parameters:
+        - $ref: "#/components/parameters/PageNum"
+        - $ref: "#/components/parameters/PageSize"
+        - name: dept_id
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkAnyResponse"
+
   /api/v1/hr/visits:
     get:
       tags: [人事管理]
@@ -6134,9 +6283,9 @@ paths:
       summary: 人事权限工作台-总览
       operationId: get_api_v1_iam_hr_perm_overview
       description: |
-        功能模块：权限分配；分期：1
+        功能模块：角色管理；分期：1
       x-erp-phase: 1
-      x-erp-module: 权限分配
+      x-erp-module: 角色管理
       parameters:
         - $ref: "#/components/parameters/PageNum"
         - $ref: "#/components/parameters/PageSize"
@@ -6497,9 +6646,9 @@ paths:
       summary: 用户-绑定员工
       operationId: put_api_v1_iam_users_id_bind_employee
       description: |
-        功能模块：权限分配；分期：1
+        功能模块：角色管理；分期：1
       x-erp-phase: 1
-      x-erp-module: 权限分配
+      x-erp-module: 角色管理
       parameters:
         - name: id
           in: path
@@ -6526,9 +6675,9 @@ paths:
       summary: 用户-解绑员工
       operationId: delete_api_v1_iam_users_id_bind_employee
       description: |
-        功能模块：权限分配；分期：1
+        功能模块：角色管理；分期：1
       x-erp-phase: 1
-      x-erp-module: 权限分配
+      x-erp-module: 角色管理
       parameters:
         - name: id
           in: path
@@ -11744,122 +11893,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkAnyResponse"
 
-  /api/v1/production/workshops:
-    get:
-      tags: [生产管理]
-      summary: 车间档案-列表
-      operationId: get_api_v1_production_workshops
-      description: |
-        功能模块：车间管理；分期：1
-      x-erp-phase: 1
-      x-erp-module: 车间管理
-      parameters:
-        - $ref: "#/components/parameters/PageNum"
-        - $ref: "#/components/parameters/PageSize"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OkAnyResponse"
-    post:
-      tags: [生产管理]
-      summary: 车间档案-新建
-      operationId: post_api_v1_production_workshops
-      description: |
-        功能模块：车间管理；分期：1
-      x-erp-phase: 1
-      x-erp-module: 车间管理
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OkAnyResponse"
 
-  /api/v1/production/workshops/{id}:
-    get:
-      tags: [生产管理]
-      summary: 车间档案-详情
-      operationId: get_api_v1_production_workshops_id
-      description: |
-        功能模块：车间管理；分期：1
-      x-erp-phase: 1
-      x-erp-module: 车间管理
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OkAnyResponse"
-    put:
-      tags: [生产管理]
-      summary: 车间档案-更新
-      operationId: put_api_v1_production_workshops_id
-      description: |
-        功能模块：车间管理；分期：1
-      x-erp-phase: 1
-      x-erp-module: 车间管理
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OkAnyResponse"
-    delete:
-      tags: [生产管理]
-      summary: 车间档案-删除
-      operationId: delete_api_v1_production_workshops_id
-      description: |
-        功能模块：车间管理；分期：1
-      x-erp-phase: 1
-      x-erp-module: 车间管理
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OkEmptyResponse"
 
   /api/v1/purchase/analytics/supplier-performance:
     get:

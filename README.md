@@ -215,12 +215,12 @@ go run ./cmd/erp-api -config configs/erp.dev.yaml
 ```bash
 cd web
 npm install
-npm run dev:portal     # 入口 :5170
+npm run dev:portal     # 入口 :5170（含客户自助 /shop）
 npm run dev:admin      # 管理后台 :5173  client_type=admin
 npm run dev:boss       # 老板驾驶舱 :5177  client_type=boss
 ```
 
-员工现场作业**无 Web 前端**（原统一员工端已下线）；请使用 Flutter App。客户自助下单亦无 Web；相关销售/客户 API 仍保留在 OpenAPI 与后端。
+员工现场作业**无 Web 前端**（原统一员工端已下线）；请使用 Flutter App。客户自助 Web 为 Portal `/shop`（登录 `client_type=customer`，演示账号 `cust01` / `admin123`）。
 
 ### 单端口发布（打进 exe + 可外置）
 

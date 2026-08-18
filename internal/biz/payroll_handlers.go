@@ -33,7 +33,7 @@ func EnsurePayrollSchema(db *sql.DB) {
 			period_year INTEGER NOT NULL,
 			period_month INTEGER NOT NULL,
 			status TEXT NOT NULL DEFAULT 'draft',
-			workshop_id INTEGER,
+			workshop_dept_id INTEGER,
 			calc_at TEXT,
 			paid_at TEXT,
 			remark TEXT,
@@ -91,7 +91,7 @@ func EnsurePayrollSchema(db *sql.DB) {
 			created_at TEXT NOT NULL DEFAULT (NOW())
 		)`,
 		`ALTER TABLE pay_worker_profile ADD COLUMN monthly_base REAL NOT NULL DEFAULT 0`,
-		`ALTER TABLE pay_payroll_sheet ADD COLUMN workshop_id INTEGER`,
+		`ALTER TABLE pay_payroll_sheet ADD COLUMN workshop_dept_id INTEGER`,
 		`ALTER TABLE pay_payroll_sheet ADD COLUMN paid_at TEXT`,
 		`ALTER TABLE pay_payroll_sheet ADD COLUMN remark TEXT`,
 		`ALTER TABLE pay_payroll_sheet_line ADD COLUMN emp_type TEXT`,
@@ -114,6 +114,8 @@ func EnsurePayrollSchema(db *sql.DB) {
 func (s *Services) handlePayroll(c *gin.Context, method, action, path string) bool {
 	EnsurePayrollSchema(s.DB)
 	switch {
+	case strings.Contains(path, "work-records"):
+		return s.handlePayrollWorkRecords(c)
 	case strings.Contains(path, "wage-rates"):
 		return s.handleWageRates(c, action)
 	case strings.Contains(path, "worker-profiles"):
@@ -391,7 +393,7 @@ func (s *Services) handlePayrollSheets(c *gin.Context, method, action, path stri
 	case action == "action:pay":
 		return s.setPayrollSheetStatus(c, "paid")
 	case action == "list":
-		rows, err := s.DB.Query(`SELECT id, doc_no, period_year, period_month, status, COALESCE(workshop_id,0),
+		rows, err := s.DB.Query(`SELECT id, doc_no, period_year, period_month, status, COALESCE(workshop_dept_id,0),
 			COALESCE(calc_at,''), COALESCE(paid_at,''), COALESCE(remark,''), created_at
 			FROM pay_payroll_sheet ORDER BY period_year DESC, period_month DESC, id DESC`)
 		if err != nil {
@@ -410,7 +412,7 @@ func (s *Services) handlePayrollSheets(c *gin.Context, method, action, path stri
 			_ = s.DB.QueryRow(`SELECT COUNT(1), COALESCE(SUM(total_amount),0) FROM pay_payroll_sheet_line WHERE sheet_id=?`, id).Scan(&lineCnt, &total)
 			list = append(list, gin.H{
 				"id": id, "doc_no": docNo, "period_year": y, "period_month": m, "period_ym": fmt.Sprintf("%04d-%02d", y, m),
-				"status": status, "workshop_id": ws, "calc_at": calcAt, "paid_at": paidAt, "remark": remark,
+				"status": status, "workshop_dept_id": ws, "calc_at": calcAt, "paid_at": paidAt, "remark": remark,
 				"created_at": created, "line_count": lineCnt, "total_amount": total,
 			})
 		}
@@ -439,7 +441,7 @@ func (s *Services) getPayrollSheet(c *gin.Context) bool {
 	var docNo, status, calcAt, paidAt, remark, created string
 	var y, m int
 	var ws int64
-	err := s.DB.QueryRow(`SELECT doc_no, period_year, period_month, status, COALESCE(workshop_id,0),
+	err := s.DB.QueryRow(`SELECT doc_no, period_year, period_month, status, COALESCE(workshop_dept_id,0),
 		COALESCE(calc_at,''), COALESCE(paid_at,''), COALESCE(remark,''), created_at FROM pay_payroll_sheet WHERE id=?`, id).
 		Scan(&docNo, &y, &m, &status, &ws, &calcAt, &paidAt, &remark, &created)
 	if err != nil {
@@ -484,7 +486,7 @@ func (s *Services) getPayrollSheet(c *gin.Context) bool {
 	}
 	api.OK(c, gin.H{
 		"id": id, "doc_no": docNo, "period_year": y, "period_month": m, "period_ym": fmt.Sprintf("%04d-%02d", y, m),
-		"status": status, "workshop_id": ws, "calc_at": calcAt, "paid_at": paidAt, "remark": remark,
+		"status": status, "workshop_dept_id": ws, "calc_at": calcAt, "paid_at": paidAt, "remark": remark,
 		"created_at": created, "lines": lines, "total_amount": sum,
 	})
 	return true
@@ -502,7 +504,7 @@ func (s *Services) batchGeneratePayrollSheet(c *gin.Context) bool {
 		now := time.Now()
 		year, month = int64(now.Year()), int64(now.Month())
 	}
-	ws, _ := asInt64(body["workshop_id"])
+	ws, _ := asInt64(body["workshop_dept_id"])
 	force, _ := body["force"].(bool)
 	sheetID, docNo, n, errMsg := s.generatePayrollSheet(int(year), int(month), ws, claimsUserID(c), force)
 	if errMsg != "" {
@@ -537,11 +539,11 @@ func (s *Services) generatePayrollSheet(year, month int, workshopID, createdBy i
 	}
 	if sheetID == 0 {
 		docNo = fmt.Sprintf("PS%04d%02d", year, month)
-		res, err := s.DB.Exec(`INSERT INTO pay_payroll_sheet(doc_no, period_year, period_month, status, workshop_id, calc_at, created_by)
+		res, err := s.DB.Exec(`INSERT INTO pay_payroll_sheet(doc_no, period_year, period_month, status, workshop_dept_id, calc_at, created_by)
 			VALUES(?,?,?,'draft',?,?,?)`, docNo, year, month, nullIf0(workshopID), time.Now().Format("2006-01-02 15:04:05"), nullIf0(createdBy))
 		if err != nil {
 			docNo = fmt.Sprintf("PS%04d%02d-%d", year, month, time.Now().Unix()%10000)
-			res, err = s.DB.Exec(`INSERT INTO pay_payroll_sheet(doc_no, period_year, period_month, status, workshop_id, calc_at, created_by)
+			res, err = s.DB.Exec(`INSERT INTO pay_payroll_sheet(doc_no, period_year, period_month, status, workshop_dept_id, calc_at, created_by)
 				VALUES(?,?,?,'draft',?,?,?)`, docNo, year, month, nullIf0(workshopID), time.Now().Format("2006-01-02 15:04:05"), nullIf0(createdBy))
 			if err != nil {
 				return 0, "", 0, "DB_ERROR:" + err.Error()
@@ -549,7 +551,7 @@ func (s *Services) generatePayrollSheet(year, month int, workshopID, createdBy i
 		}
 		sheetID, _ = res.LastInsertId()
 	} else {
-		_, _ = s.DB.Exec(`UPDATE pay_payroll_sheet SET calc_at=?, workshop_id=COALESCE(?,workshop_id), status='draft' WHERE id=?`,
+		_, _ = s.DB.Exec(`UPDATE pay_payroll_sheet SET calc_at=?, workshop_dept_id=COALESCE(?,workshop_dept_id), status='draft' WHERE id=?`,
 			time.Now().Format("2006-01-02 15:04:05"), nullIf0(workshopID), sheetID)
 	}
 
@@ -561,7 +563,7 @@ func (s *Services) generatePayrollSheet(year, month int, workshopID, createdBy i
 		WHERE COALESCE(e.is_deleted,0)=0 AND e.status='active'`
 	args := []interface{}{}
 	if workshopID > 0 {
-		q += ` AND e.workshop_id=?`
+		q += ` AND EXISTS (SELECT 1 FROM hr_employee_department ed WHERE ed.employee_id=e.id AND ed.dept_id=?)`
 		args = append(args, workshopID)
 	}
 	rows, err := s.DB.Query(q, args...)
@@ -937,5 +939,147 @@ func (s *Services) runCommissionCalc(c *gin.Context) bool {
 		}
 	}
 	api.OK(c, gin.H{"period": period, "rule_id": ruleID, "rate": rate, "created": n})
+	return true
+}
+
+func (s *Services) handlePayrollWorkRecords(c *gin.Context) bool {
+	var empID int64
+	fmt.Sscanf(strings.TrimSpace(c.Query("employee_id")), "%d", &empID)
+	if empID <= 0 {
+		api.FailJSON(c, "EMPLOYEE_ID_REQUIRED")
+		return true
+	}
+	today := time.Now().Format("2006-01-02")
+	from := strings.TrimSpace(c.Query("date_from"))
+	if from == "" {
+		from = strings.TrimSpace(c.Query("biz_date"))
+	}
+	to := strings.TrimSpace(c.Query("date_to"))
+	if from == "" {
+		from = today
+	}
+	if to == "" {
+		to = from
+	}
+	if from > to {
+		from, to = to, from
+	}
+
+	emp := gin.H{"id": empID, "emp_no": "", "name": ""}
+	var empNo, name string
+	if err := s.DB.QueryRow(`SELECT COALESCE(emp_no,''), COALESCE(name,'') FROM hr_employee WHERE id=?`, empID).Scan(&empNo, &name); err == nil {
+		emp["emp_no"] = empNo
+		emp["name"] = name
+	}
+
+	var issueKg, returnKg, pieceQty, pieceAmt, wageAmt float64
+	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(kg),0) FROM pd_station_flow_log
+		WHERE worker_id=? AND biz_date>=? AND biz_date<=? AND event_type='issue'`, empID, from, to).Scan(&issueKg)
+	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(kg),0) FROM pd_station_flow_log
+		WHERE worker_id=? AND biz_date>=? AND biz_date<=? AND event_type='return'`, empID, from, to).Scan(&returnKg)
+	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(qty),0), COALESCE(SUM(amount),0) FROM pd_piecework_summary
+		WHERE worker_id=? AND biz_date>=? AND biz_date<=?`, empID, from, to).Scan(&pieceQty, &pieceAmt)
+
+	fromT, errFrom := time.Parse("2006-01-02", from)
+	toT, errTo := time.Parse("2006-01-02", to)
+	now := time.Now()
+	if errFrom != nil {
+		fromT = now
+	}
+	if errTo != nil {
+		toT = fromT
+	}
+	fromYM := fromT.Year()*100 + int(fromT.Month())
+	toYM := toT.Year()*100 + int(toT.Month())
+	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(l.total_amount),0)
+		FROM pay_payroll_sheet_line l
+		JOIN pay_payroll_sheet s ON s.id=l.sheet_id
+		WHERE l.employee_id=? AND (s.period_year*100+s.period_month) BETWEEN ? AND ?`,
+		empID, fromYM, toYM).Scan(&wageAmt)
+
+	flows := []gin.H{}
+	if rows, err := s.DB.Query(`SELECT id, event_type, biz_date, COALESCE(board_code,''), COALESCE(process_id,0), COALESCE(process_name,''),
+		COALESCE(kg,0), COALESCE(pay_mode,''), COALESCE(emp_type,''), COALESCE(rate,0), COALESCE(amount,0), COALESCE(remark,''), CAST(created_at AS TEXT)
+		FROM pd_station_flow_log
+		WHERE worker_id=? AND biz_date>=? AND biz_date<=?
+		ORDER BY id DESC LIMIT 500`, empID, from, to); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id, procID int64
+			var et, bd, board, processName, payMode, empType, remark, created string
+			var kg, rate, amount float64
+			if err := rows.Scan(&id, &et, &bd, &board, &procID, &processName, &kg, &payMode, &empType, &rate, &amount, &remark, &created); err != nil {
+				continue
+			}
+			flows = append(flows, gin.H{
+				"id": id, "event_type": et, "biz_date": bd, "board_code": board,
+				"process_id": procID, "process_name": processName,
+				"kg": kg, "pay_mode": payMode, "emp_type": empType, "rate": rate, "amount": amount,
+				"remark": remark, "created_at": created,
+			})
+		}
+	}
+
+	piecework := []gin.H{}
+	if rows, err := s.DB.Query(`SELECT s.id, s.process_id, COALESCE(p.name,''), s.biz_date, s.qty, COALESCE(s.weight,0), s.amount
+		FROM pd_piecework_summary s
+		LEFT JOIN pd_process p ON p.id=s.process_id
+		WHERE s.worker_id=? AND s.biz_date>=? AND s.biz_date<=?
+		ORDER BY s.biz_date DESC, s.id DESC LIMIT 500`, empID, from, to); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id, procID int64
+			var processName, bizDate string
+			var qty, weight, amount float64
+			if err := rows.Scan(&id, &procID, &processName, &bizDate, &qty, &weight, &amount); err != nil {
+				continue
+			}
+			piecework = append(piecework, gin.H{
+				"id": id, "process_id": procID, "process_name": processName,
+				"biz_date": bizDate, "qty": qty, "weight": weight, "amount": amount,
+			})
+		}
+	}
+
+	wages := []gin.H{}
+	if rows, err := s.DB.Query(`SELECT l.id, s.id, s.doc_no, s.period_year, s.period_month, COALESCE(s.status,''),
+		COALESCE(s.calc_at,''), COALESCE(s.paid_at,''), COALESCE(l.emp_type,''),
+		l.piece_amount, l.attendance_amount, l.commission_amount, l.adjust_amount, l.total_amount
+		FROM pay_payroll_sheet_line l
+		JOIN pay_payroll_sheet s ON s.id=l.sheet_id
+		WHERE l.employee_id=? AND (s.period_year*100+s.period_month) BETWEEN ? AND ?
+		ORDER BY s.period_year DESC, s.period_month DESC, l.id DESC
+		LIMIT 100`, empID, fromYM, toYM); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var lineID, sheetID int64
+			var year, month int
+			var docNo, status, calcAt, paidAt, empType string
+			var piece, att, comm, adj, total float64
+			if err := rows.Scan(&lineID, &sheetID, &docNo, &year, &month, &status, &calcAt, &paidAt, &empType,
+				&piece, &att, &comm, &adj, &total); err != nil {
+				continue
+			}
+			wages = append(wages, gin.H{
+				"id": lineID, "sheet_id": sheetID, "doc_no": docNo,
+				"period_year": year, "period_month": month,
+				"period_ym": fmt.Sprintf("%04d-%02d", year, month),
+				"status": status, "calc_at": calcAt, "paid_at": paidAt, "emp_type": empType,
+				"piece_amount": piece, "attendance_amount": att, "commission_amount": comm,
+				"adjust_amount": adj, "total_amount": total,
+			})
+		}
+	}
+
+	api.OK(c, gin.H{
+		"employee": emp,
+		"date_from": from, "date_to": to,
+		"kpi": gin.H{
+			"issue_kg": issueKg, "return_kg": returnKg,
+			"piece_qty": pieceQty, "piece_amount": pieceAmt, "wage_amount": wageAmt,
+			"flow_count": len(flows), "piecework_count": len(piecework), "wage_count": len(wages),
+		},
+		"flows": flows, "piecework": piecework, "wages": wages,
+	})
 	return true
 }

@@ -24,6 +24,7 @@ import {
   DispatchSelect,
   SupplierSelect,
   CustomerSelect,
+  EmployeeSelect,
   RoleSelect,
   WarehouseSelect,
   EnumSelect,
@@ -49,7 +50,7 @@ const shiftCols: MobileCardColumn[] = [
   { prop: 'biz_date', label: '日期' },
   { prop: 'workshop_name', label: '车间' },
   { prop: 'member_count', label: '人数' },
-  { prop: 'status', label: '状态' },
+  { prop: 'status_label', label: '状态' },
 ]
 const shiftMemberCols: MobileCardColumn[] = [
   { prop: 'employee_name', label: '员工', primary: true },
@@ -57,7 +58,7 @@ const shiftMemberCols: MobileCardColumn[] = [
 ]
 const taskCols: MobileCardColumn[] = [
   { prop: 'doc_no', label: '单号', primary: true },
-  { prop: 'status', label: '状态' },
+  { prop: 'status_label', label: '状态' },
   { prop: 'plan_qty', label: '计划' },
   { prop: 'completed_qty', label: '完工' },
   { prop: 'progress_pct', label: '进度%' },
@@ -66,10 +67,10 @@ const taskCols: MobileCardColumn[] = [
 const dispatchCols: MobileCardColumn[] = [
   { prop: 'doc_no', label: '单号', primary: true },
   { prop: 'task_id', label: '任务' },
-  { prop: 'process_id', label: '工序' },
-  { prop: 'worker_id', label: '工人' },
+  { prop: 'process_name', label: '工序' },
+  { prop: 'worker_name', label: '工人' },
   { prop: 'qty', label: '数量' },
-  { prop: 'status', label: '状态' },
+  { prop: 'status_label', label: '状态' },
 ]
 const reportCols: MobileCardColumn[] = [
   { prop: 'doc_no', label: '单号', primary: true },
@@ -130,7 +131,7 @@ const reqCols: MobileCardColumn[] = [
 ]
 const workbenchCols: MobileCardColumn[] = [
   { prop: 'doc_no', label: '单号', primary: true },
-  { prop: 'status', label: '状态' },
+  { prop: 'status_label', label: '状态' },
   { prop: 'created_at', label: '创建' },
 ]
 const wipCols: MobileCardColumn[] = [
@@ -170,11 +171,6 @@ const yieldTraceCols: MobileCardColumn[] = [
   { prop: 'output_kg', label: '完工 kg' },
   { prop: 'loss_kg', label: '扣损 kg' },
   { prop: 'loss_rate', label: '扣损率' },
-]
-const workshopCols: MobileCardColumn[] = [
-  { prop: 'name', label: '名称', primary: true },
-  { prop: 'code', label: '编码' },
-  { prop: 'status', label: '状态' },
 ]
 const progressCols: MobileCardColumn[] = [
   { prop: 'doc_no', label: '任务单', primary: true },
@@ -263,7 +259,6 @@ const TITLE_MAP: Record<string, string> = {
   workbench: '车间工作台',
   'process-wip': '工序在制',
   'process-yield': '工序扣损',
-  workshops: '车间管理',
   outsources: '委外加工',
   consignments: '受托加工',
   'cost-hide': '成本隐藏',
@@ -278,6 +273,9 @@ const TITLE_MAP: Record<string, string> = {
 
 const active = computed(() => String(route.params.section || 'tasks'))
 const title = computed(() => TITLE_MAP[active.value] || '生产管理')
+const useCustomHead = computed(() =>
+  ['shifts', 'tasks', 'dispatches', 'flex', 'workbench', 'process-wip'].includes(active.value),
+)
 const embedRoutings = computed(() => active.value === 'routings')
 const embedPieceIssue = computed(() => active.value === 'piece-issue')
 const reportTab = ref('ledger')
@@ -321,10 +319,30 @@ function itemProgress(it: Row) {
 
 function statusTagType(st: unknown): 'success' | 'warning' | 'info' | 'danger' {
   const s = String(st || '')
-  if (s === 'closed' || s === 'done' || s === 'finished') return 'success'
-  if (s === 'in_progress' || s === 'released') return 'warning'
-  if (s === 'cancelled' || s === 'void') return 'danger'
+  if (s === 'closed' || s === 'done' || s === 'finished' || s === 'received' || s === 'confirmed') return 'success'
+  if (s === 'in_progress' || s === 'released' || s === 'dispatched' || s === 'reassigned' || s === 'open') return 'warning'
+  if (s === 'cancelled' || s === 'void' || s === 'failed') return 'danger'
   return 'info'
+}
+
+function docStatusLabel(st: unknown): string {
+  const map: Record<string, string> = {
+    pending: '待开始',
+    released: '已释放',
+    in_progress: '进行中',
+    closed: '已关闭',
+    cancelled: '已取消',
+    merged: '已整合',
+    dispatched: '已派发',
+    reassigned: '已改派',
+    received: '已接收',
+    confirmed: '已确认',
+    done: '已完成',
+    finished: '已完成',
+    open: '开工中',
+  }
+  const s = String(st || '')
+  return map[s] || s || '—'
 }
 const products = ref<Row[]>([])
 const processes = ref<Row[]>([])
@@ -347,19 +365,140 @@ const shiftMembers = computed(() =>
     process_name: m.process_id === 0 ? '全工序' : m.process_name,
   })),
 )
-const shiftForm = reactive({ workshop_id: 1, remark: '产线开工' })
-const shiftMemberForm = reactive({ employee_id: 2, process_id: 0 })
+const shiftForm = reactive({ workshop_dept_id: null as number | null, remark: '产线开工' })
+const shiftMemberForm = reactive({ employee_id: null as number | null, process_id: 0 })
+const shiftKeyword = ref('')
+const shiftWorkshopFilter = ref<number | null>(null)
+const shiftStatusFilter = ref('')
+const shiftCreateDlg = ref(false)
+const shiftDrawer = ref(false)
 
-const taskForm = reactive({ product_id: 3, qty: 1000, routing_id: 1, workshop_id: 1, remark: '' })
+function shiftStatusLabel(st: unknown): string {
+  const s = String(st || '')
+  if (s === 'open') return '开工中'
+  if (s === 'closed') return '已收工'
+  return s || '—'
+}
+function shiftStatusTagType(st: unknown): 'success' | 'info' {
+  return String(st) === 'open' ? 'success' : 'info'
+}
+
+const shiftFiltered = computed(() => {
+  const kw = shiftKeyword.value.trim().toLowerCase()
+  const ws = shiftWorkshopFilter.value
+  const st = shiftStatusFilter.value
+  return list.value
+    .filter((r) => {
+      if (ws && Number(r.workshop_dept_id) !== ws) return false
+      if (st && String(r.status) !== st) return false
+      if (kw) {
+        const no = String(r.doc_no || '').toLowerCase()
+        const shop = String(r.workshop_name || '').toLowerCase()
+        const remark = String(r.remark || '').toLowerCase()
+        if (!no.includes(kw) && !shop.includes(kw) && !remark.includes(kw)) return false
+      }
+      return true
+    })
+    .map((r) => ({ ...r, status_label: shiftStatusLabel(r.status) }))
+})
+
+const shiftStats = computed(() => {
+  const rows = list.value
+  const today = new Date().toISOString().slice(0, 10)
+  return {
+    open: rows.filter((r) => r.status === 'open').length,
+    closed: rows.filter((r) => r.status === 'closed').length,
+    today: rows.filter((r) => String(r.biz_date || '').slice(0, 10) === today).length,
+    members: rows.reduce((s, r) => s + Number(r.member_count || 0), 0),
+  }
+})
+const shiftOpen = computed(() => String(shiftDetail.value?.status) === 'open')
+
+function shiftRowClass({ row }: { row: Row }) {
+  return shiftDetail.value && Number(row.id) === Number(shiftDetail.value.id) ? 'is-current-shift' : ''
+}
+
+function processName(id: unknown) {
+  const n = Number(id || 0)
+  if (!n) return '—'
+  const p = processes.value.find((x) => Number(x.id) === n)
+  return p ? String(p.name || p.code || n) : `#${n}`
+}
+function workerName(id: unknown) {
+  const n = Number(id || 0)
+  if (!n) return '—'
+  const w = workers.value.find((x) => Number(x.id) === n)
+  return w ? String(w.name || w.emp_no || n) : `#${n}`
+}
+
+const taskKeyword = ref('')
+const taskStatusFilter = ref('')
+const taskCreateDlg = ref(false)
+const dispatchKeyword = ref('')
+const dispatchStatusFilter = ref('')
+const dispatchCreateDlg = ref(false)
+
+const taskFiltered = computed(() => {
+  const kw = taskKeyword.value.trim().toLowerCase()
+  const st = taskStatusFilter.value
+  return list.value
+    .filter((r) => {
+      if (st && String(r.status) !== st) return false
+      if (kw && !String(r.doc_no || '').toLowerCase().includes(kw) && !String(r.remark || '').toLowerCase().includes(kw)) return false
+      return true
+    })
+    .map((r) => ({ ...r, status_label: docStatusLabel(r.status) }))
+})
+const taskStats = computed(() => {
+  const rows = list.value
+  return {
+    pending: rows.filter((r) => r.status === 'pending').length,
+    running: rows.filter((r) => r.status === 'in_progress' || r.status === 'released').length,
+    closed: rows.filter((r) => r.status === 'closed').length,
+    total: rows.length,
+  }
+})
+
+const dispatchFiltered = computed(() => {
+  const kw = dispatchKeyword.value.trim().toLowerCase()
+  const st = dispatchStatusFilter.value
+  return list.value
+    .filter((r) => {
+      if (st && String(r.status) !== st) return false
+      if (kw && !String(r.doc_no || '').toLowerCase().includes(kw)) return false
+      return true
+    })
+    .map((r) => ({
+      ...r,
+      qty: r.qty ?? r.plan_qty,
+      process_name: r.process_name || processName(r.process_id),
+      worker_name: r.worker_name || workerName(r.worker_id),
+      status_label: docStatusLabel(r.status),
+    }))
+})
+const dispatchStats = computed(() => {
+  const rows = list.value
+  return {
+    dispatched: rows.filter((r) => r.status === 'dispatched').length,
+    reassigned: rows.filter((r) => r.status === 'reassigned').length,
+    received: rows.filter((r) => r.status === 'received' || r.status === 'closed' || r.status === 'done').length,
+    total: rows.length,
+  }
+})
+const canCreateDispatch = computed(() => active.value === 'flex' || fieldInputOnAdmin)
+const workbenchDisplay = computed(() =>
+  list.value.map((r) => ({ ...r, status_label: docStatusLabel(r.status) })),
+)
+
+const taskForm = reactive({ product_id: 3, qty: 1000, routing_id: 1, workshop_dept_id: 0, remark: '' })
 const multiLines = ref<{ product_id: number; qty: number }[]>([{ product_id: 3, qty: 100 }])
 const processEditDlg = ref(false)
 const processEditForm = reactive({ id: 0, code: '', name: '', process_type: 'other', pay_mode: 'none', status: 'active' })
-const dispatchForm = reactive({ task_id: null as number | null, process_id: 1, worker_id: 2, qty: 100 })
+const dispatchForm = reactive({ task_id: null as number | null, process_id: null as number | null, worker_id: null as number | null, qty: 100 })
 const reportForm = reactive({ process_id: 1, worker_id: 2, qty: 100, dispatch_id: null as number | null })
 const reqForm = reactive({ product_id: 1, qty: 100, warehouse_id: 1 })
 const processForm = reactive({ code: '', name: '', process_type: 'other', pay_mode: 'none', status: 'active' })
 const processDlg = ref(false)
-const workshopForm = reactive({ code: '', name: '' })
 const bomForm = reactive({ product_id: 3, name: '生产BOM', component_product_id: 1, qty: 1.2, scrap_rate: 0.05 })
 const scrapForm = reactive({ product_id: 1, qty: 10, scrap_type: 'cut_defect', process_id: 1, remark: '' })
 const returnForm = reactive({ box_code: '', return_weight: 30, warehouse_id: 1, reason: '提前下班' })
@@ -401,7 +540,6 @@ async function loadMeta() {
     outForm.process_id = id
   }
   if (workers.value[0]) {
-    dispatchForm.worker_id = Number(workers.value[0].id)
     reportForm.worker_id = Number(workers.value[0].id)
   }
   if (products.value[0]) {
@@ -493,9 +631,6 @@ async function refresh() {
           : await productionApi.processYields(qs || undefined)
         break
       }
-      case 'workshops':
-        res = await productionApi.workshops()
-        break
       case 'outsources':
         res = await productionApi.outsources()
         break
@@ -538,12 +673,23 @@ async function refresh() {
   }
 }
 
+function openCreateTask() {
+  taskForm.remark = ''
+  if (products.value[0] && !taskForm.product_id) taskForm.product_id = Number(products.value[0].id)
+  taskCreateDlg.value = true
+}
+
 async function createTask() {
+  if (!taskForm.product_id) return ElMessage.warning('请选择产品')
+  if (!taskForm.qty) return ElMessage.warning('请填写计划量')
   const res = await productionApi.createTask({ ...taskForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success(`任务 ${(res.data as Row)?.doc_no}`)
   dispatchForm.task_id = Number((res.data as Row)?.id)
+  taskCreateDlg.value = false
   await refresh()
+  const id = Number((res.data as Row)?.id)
+  if (id) await openTask(id)
 }
 
 async function closeTask(id: number) {
@@ -585,12 +731,23 @@ function closeTaskDetail() {
   taskDetailDrawer.value = false
 }
 
+function openCreateDispatch() {
+  dispatchForm.task_id = null
+  dispatchForm.process_id = processes.value[0] ? Number(processes.value[0].id) : null
+  dispatchForm.worker_id = null
+  dispatchForm.qty = 100
+  dispatchCreateDlg.value = true
+}
+
 async function createDispatch() {
-  if (!dispatchForm.task_id) return ElMessage.warning('请选择任务或先建任务')
+  if (!dispatchForm.task_id) return ElMessage.warning('请选择任务')
+  if (!dispatchForm.process_id) return ElMessage.warning('请选择工序')
+  if (!dispatchForm.worker_id) return ElMessage.warning('请选择工人')
   const apiCall = active.value === 'flex' ? productionApi.createFlexDispatch : productionApi.createDispatch
   const res = await apiCall({ ...dispatchForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success(`派工 ${(res.data as Row)?.doc_no}`)
+  dispatchCreateDlg.value = false
   await refresh()
 }
 
@@ -751,7 +908,7 @@ async function createMultiTask() {
     product_id: first.product_id,
     qty: first.qty,
     routing_id: taskForm.routing_id,
-    workshop_id: taskForm.workshop_id,
+    workshop_dept_id: taskForm.workshop_dept_id,
     remark: taskForm.remark || '一单多商品',
   })
   if (res.code !== 1) return ElMessage.error(res.msg)
@@ -763,17 +920,6 @@ async function createMultiTask() {
   }
   ElMessage.success(`多商品任务 ${(res.data as Row)?.doc_no}`)
   dispatchForm.task_id = taskId
-  await refresh()
-}
-
-async function createWorkshop() {
-  if (!workshopForm.name) return ElMessage.warning('请填车间名')
-  const res = await productionApi.createWorkshop({
-    code: workshopForm.code || `WS${Date.now().toString().slice(-4)}`,
-    name: workshopForm.name,
-  })
-  if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success('车间已创建')
   await refresh()
 }
 
@@ -947,37 +1093,59 @@ async function createHide() {
   await refresh()
 }
 
+function openCreateShift() {
+  shiftForm.workshop_dept_id = null
+  shiftForm.remark = '产线开工'
+  shiftCreateDlg.value = true
+}
+
 async function createShift() {
+  if (!shiftForm.workshop_dept_id) return ElMessage.warning('请选择车间')
   const res = await productionApi.createShift({ ...shiftForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success(`班次 ${(res.data as Row)?.doc_no}`)
+  shiftCreateDlg.value = false
   await refresh()
+  const id = Number((res.data as Row)?.id)
+  if (id) await openShift(id)
 }
 
 async function openShift(id: number) {
   const res = await productionApi.getShift(id)
   if (res.code !== 1) return ElMessage.error(res.msg)
   shiftDetail.value = (res.data as Row) || null
+  shiftMemberForm.employee_id = null
+  shiftMemberForm.process_id = 0
+  shiftDrawer.value = true
 }
 
 async function closeShiftRow(id: number) {
   const res = await productionApi.closeShift(id)
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success('已收工')
-  shiftDetail.value = null
   await refresh()
+  if (shiftDetail.value && Number(shiftDetail.value.id) === id) {
+    await openShift(id)
+  }
 }
 
 async function addShiftMember() {
   if (!shiftDetail.value?.id) return ElMessage.warning('请先选择班次')
-  const res = await productionApi.addShiftMember(Number(shiftDetail.value.id), { ...shiftMemberForm })
+  if (String(shiftDetail.value.status) !== 'open') return ElMessage.warning('已收工班次不可改成员')
+  if (!shiftMemberForm.employee_id) return ElMessage.warning('请选择员工')
+  const res = await productionApi.addShiftMember(Number(shiftDetail.value.id), {
+    employee_id: shiftMemberForm.employee_id,
+    process_id: shiftMemberForm.process_id,
+  })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success('已添加授权')
+  shiftMemberForm.employee_id = null
   await openShift(Number(shiftDetail.value.id))
 }
 
 async function removeShiftMember(memberId: number) {
   if (!shiftDetail.value?.id) return
+  if (String(shiftDetail.value.status) !== 'open') return ElMessage.warning('已收工班次不可改成员')
   const res = await productionApi.removeShiftMember(Number(shiftDetail.value.id), memberId)
   if (res.code !== 1) return ElMessage.error(res.msg)
   await openShift(Number(shiftDetail.value.id))
@@ -986,6 +1154,14 @@ async function removeShiftMember(memberId: number) {
 watch(active, () => {
   reportTab.value = 'ledger'
   shiftDetail.value = null
+  shiftDrawer.value = false
+  shiftKeyword.value = ''
+  shiftWorkshopFilter.value = null
+  shiftStatusFilter.value = ''
+  taskKeyword.value = ''
+  taskStatusFilter.value = ''
+  dispatchKeyword.value = ''
+  dispatchStatusFilter.value = ''
   refresh()
 })
 watch(wipProductId, () => {
@@ -1014,7 +1190,7 @@ onMounted(async () => {
     <PieceIssueView v-else-if="embedPieceIssue" />
 
     <div v-else class="page" v-loading="loading">
-      <div class="head">
+      <div v-if="!useCustomHead" class="head">
         <h2>{{ title }}</h2>
         <p class="hint">管理端：配置、查询、结算与例外补单。日常过站/过磅请在 Flutter App 完成。</p>
       </div>
@@ -1065,119 +1241,231 @@ onMounted(async () => {
 
       <!-- 产线班次：替代日常派工授权 -->
       <template v-else-if="active==='shifts'">
-        <el-alert type="info" show-icon :closable="false" class="mb"
-          title="产线开工班次授权：工人须在当日 open 班次成员中方可 App 过站。与「人事·考勤班次」不同。" />
-        <el-row :gutter="12">
-          <el-col :span="14" :xs="24">
-            <el-card header="开工 / 班次列表" class="mb">
-              <el-form inline size="small" class="mb">
-                <el-form-item label="车间"><WorkshopSelect v-model="shiftForm.workshop_id" /></el-form-item>
-                <el-form-item label="备注"><el-input v-model="shiftForm.remark" style="width:160px" /></el-form-item>
-                <el-button type="primary" @click="createShift">开工</el-button>
-              </el-form>
-              <TableOrCards :data="list" :loading="loading" :columns="shiftCols">
-                <el-table :data="list" size="small" highlight-current-row @row-click="(row: Row) => openShift(Number(row.id))">
-                  <el-table-column prop="doc_no" label="班次号" width="150" />
-                  <el-table-column prop="biz_date" label="日期" width="110" />
-                  <el-table-column prop="workshop_name" label="车间" width="100" />
-                  <el-table-column prop="member_count" label="人数" width="70" />
-                  <el-table-column prop="status" label="状态" width="90" />
-                  <el-table-column label="操作" width="100">
-                    <template #default="{ row }">
-                      <el-button v-if="row.status==='open'" link type="warning" @click.stop="closeShiftRow(Number(row.id))">收工</el-button>
-                    </template>
-                  </el-table-column>
-                </el-table>
-                <template #extra="{ row }">
-                  <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
-                </template>
-                <template #actions="{ row }">
-                  <el-button link type="primary" @click="openShift(Number(row.id))">成员</el-button>
-                  <el-button v-if="row.status==='open'" link type="warning" @click="closeShiftRow(Number(row.id))">收工</el-button>
-                </template>
-              </TableOrCards>
-            </el-card>
-          </el-col>
-          <el-col :span="10" :xs="24">
-            <el-card header="成员授权" v-if="shiftDetail">
-              <p class="hint mb">班次 {{ shiftDetail.doc_no }} · process_id=0 表示全工序</p>
-              <el-form inline size="small" class="mb">
-                <el-form-item label="员工">
-                  <el-select v-model="shiftMemberForm.employee_id" style="width:120px">
-                    <el-option v-for="w in workers" :key="String(w.id)" :label="String(w.name)" :value="Number(w.id)" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="工序">
-                  <el-select v-model="shiftMemberForm.process_id" style="width:120px">
-                    <el-option label="全工序" :value="0" />
-                    <el-option v-for="p in processes" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
-                  </el-select>
-                </el-form-item>
-                <el-button type="primary" @click="addShiftMember">添加</el-button>
-              </el-form>
-              <TableOrCards :data="shiftMembers" :columns="shiftMemberCols">
-                <el-table :data="shiftMembers" size="small">
-                  <el-table-column prop="employee_name" label="员工" />
-                  <el-table-column prop="process_name" label="工序" width="100">
-                    <template #default="{ row }">{{ row.process_id === 0 ? '全工序' : row.process_name }}</template>
-                  </el-table-column>
-                  <el-table-column label="操作" width="80">
-                    <template #default="{ row }">
-                      <el-button link type="danger" @click="removeShiftMember(Number(row.id))">移除</el-button>
-                    </template>
-                  </el-table-column>
-                </el-table>
-                <template #actions="{ row }">
-                  <el-button link type="danger" @click="removeShiftMember(Number(row.id))">移除</el-button>
-                </template>
-              </TableOrCards>
-            </el-card>
-            <el-empty v-else description="点击左侧班次查看/维护成员" />
-          </el-col>
-        </el-row>
-      </template>
+        <header class="page-head">
+          <div>
+            <h2 class="title">产线班次</h2>
+            <p class="desc">工人须在当日开工班次成员中才能 App 过站。与人事「考勤班次」无关。</p>
+          </div>
+          <div class="head-meta">
+            <span class="meta-pill">筛选 {{ shiftFiltered.length }} / 全部 {{ list.length }}</span>
+          </div>
+        </header>
 
-      <!-- 生产任务单：单商品任务 -->
-      <template v-else-if="active==='tasks'">
-        <p class="mode-hint">本页创建单商品生产任务；多商品请走「一单多商品」。</p>
-        <el-card header="新建生产任务" class="mb">
-          <el-form inline size="small">
-            <el-form-item label="产品">
-              <el-select v-model="taskForm.product_id" style="width:160px">
-                <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="计划量"><el-input-number v-model="taskForm.qty" :min="1" /></el-form-item>
-            <el-form-item label="工艺"><RoutingSelect v-model="taskForm.routing_id" /></el-form-item>
-            <el-form-item label="车间"><WorkshopSelect v-model="taskForm.workshop_id" /></el-form-item>
-            <el-button type="primary" @click="createTask">新建</el-button>
-          </el-form>
-        </el-card>
-        <TableOrCards :data="list" :loading="loading" :columns="taskCols">
-          <el-table :data="list" size="small">
-            <el-table-column prop="doc_no" label="单号" width="160" />
-            <el-table-column prop="status" label="状态" width="100" />
-            <el-table-column prop="plan_qty" label="计划" width="90" />
-            <el-table-column prop="completed_qty" label="完工" width="90" />
-            <el-table-column label="进度" min-width="140">
+        <div class="shift-stats">
+          <div class="stat ok">
+            <div class="label">开工中</div>
+            <div class="value">{{ shiftStats.open }}</div>
+          </div>
+          <div class="stat">
+            <div class="label">已收工</div>
+            <div class="value">{{ shiftStats.closed }}</div>
+          </div>
+          <div class="stat">
+            <div class="label">今日班次</div>
+            <div class="value">{{ shiftStats.today }}</div>
+          </div>
+          <div class="stat">
+            <div class="label">授权人数</div>
+            <div class="value">{{ shiftStats.members }}</div>
+          </div>
+        </div>
+
+        <div class="row shift-toolbar">
+          <el-button type="primary" @click="openCreateShift">开工</el-button>
+          <el-button @click="refresh">刷新</el-button>
+          <WorkshopSelect v-model="shiftWorkshopFilter" placeholder="全部车间" clearable />
+          <el-select v-model="shiftStatusFilter" clearable placeholder="状态" style="width:120px">
+            <el-option label="开工中" value="open" />
+            <el-option label="已收工" value="closed" />
+          </el-select>
+          <el-input v-model="shiftKeyword" clearable placeholder="班次号 / 车间 / 备注" style="width:220px" />
+        </div>
+
+        <TableOrCards :data="shiftFiltered" :loading="loading" :columns="shiftCols" empty-text="暂无班次，请点击「开工」">
+          <el-table
+            :data="shiftFiltered"
+            border
+            stripe
+            class="shift-table"
+            empty-text="暂无班次"
+            highlight-current-row
+            :row-class-name="shiftRowClass"
+            @row-click="(row: Row) => openShift(Number(row.id))"
+          >
+            <el-table-column prop="doc_no" label="班次号" min-width="150">
               <template #default="{ row }">
-                <el-progress
-                  :percentage="Math.min(100, Number(row.progress_pct || 0))"
-                  :stroke-width="10"
-                  :text-inside="false"
-                />
+                <div class="name-cell">
+                  <span class="name">{{ row.doc_no || '—' }}</span>
+                  <span v-if="row.id" class="id-hint">#{{ row.id }}</span>
+                </div>
               </template>
             </el-table-column>
-            <el-table-column prop="created_at" label="创建时间" width="160" />
-            <el-table-column label="操作" width="200">
+            <el-table-column prop="biz_date" label="日期" width="120" />
+            <el-table-column prop="workshop_name" label="车间" min-width="120">
               <template #default="{ row }">
-                <el-button link type="primary" @click="openTask(Number(row.id)); dispatchForm.task_id=Number(row.id)">明细</el-button>
-                <el-button v-if="row.status!=='closed'" link type="warning" @click="closeTask(Number(row.id))">关闭</el-button>
+                <span :class="{ muted: !row.workshop_name }">{{ row.workshop_name || '—' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="member_count" label="人数" width="80" align="center" />
+            <el-table-column label="状态" width="100" align="center">
+              <template #default="{ row }">
+                <el-tag size="small" :type="shiftStatusTagType(row.status)">{{ row.status_label }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span :class="{ muted: !row.remark }">{{ row.remark || '—' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="140" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click.stop="openShift(Number(row.id))">成员</el-button>
+                <el-button v-if="row.status==='open'" link type="warning" @click.stop="closeShiftRow(Number(row.id))">收工</el-button>
               </template>
             </el-table-column>
           </el-table>
           <template #extra="{ row }">
-            <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+            <el-tag size="small" :type="shiftStatusTagType(row.status)">{{ row.status_label }}</el-tag>
+          </template>
+          <template #actions="{ row }">
+            <el-button link type="primary" @click="openShift(Number(row.id))">成员</el-button>
+            <el-button v-if="row.status==='open'" link type="warning" @click="closeShiftRow(Number(row.id))">收工</el-button>
+          </template>
+        </TableOrCards>
+
+        <el-dialog v-model="shiftCreateDlg" title="开工" width="480px" destroy-on-close>
+          <el-form label-width="80px">
+            <el-form-item label="车间" required>
+              <WorkshopSelect v-model="shiftForm.workshop_dept_id" style="width:100%" />
+            </el-form-item>
+            <el-form-item label="备注">
+              <el-input v-model="shiftForm.remark" placeholder="如：白班 / 夜班" maxlength="64" show-word-limit />
+            </el-form-item>
+          </el-form>
+          <p class="form-tip">开工后请在成员抽屉中授权当日可过站工人。工序选「全工序」表示该工人本班次可过任意站。</p>
+          <template #footer>
+            <el-button @click="shiftCreateDlg = false">取消</el-button>
+            <el-button type="primary" @click="createShift">开工</el-button>
+          </template>
+        </el-dialog>
+
+        <el-drawer v-model="shiftDrawer" size="480px">
+          <template #header>
+            <div v-if="shiftDetail" class="shift-drawer-head">
+              <span class="name">{{ shiftDetail.doc_no }}</span>
+              <el-tag size="small" :type="shiftStatusTagType(shiftDetail.status)">{{ shiftStatusLabel(shiftDetail.status) }}</el-tag>
+            </div>
+          </template>
+          <template v-if="shiftDetail">
+            <div class="shift-meta">
+              <span>日期 {{ shiftDetail.biz_date || '—' }}</span>
+              <span>车间 {{ shiftDetail.workshop_name || '—' }}</span>
+              <span>人数 {{ shiftMembers.length }}</span>
+            </div>
+            <p v-if="!shiftOpen" class="form-tip">已收工，成员只读。</p>
+            <div v-else class="row shift-member-bar">
+              <EmployeeSelect v-model="shiftMemberForm.employee_id" placeholder="选择员工" style="width:160px" />
+              <el-select v-model="shiftMemberForm.process_id" placeholder="工序" style="width:140px">
+                <el-option label="全工序" :value="0" />
+                <el-option v-for="p in processes" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
+              </el-select>
+              <el-button type="primary" @click="addShiftMember">添加</el-button>
+            </div>
+            <TableOrCards :data="shiftMembers" :columns="shiftMemberCols" empty-text="尚未授权成员">
+              <el-table :data="shiftMembers" border stripe size="small" empty-text="尚未授权成员">
+                <el-table-column prop="employee_name" label="员工" min-width="120" />
+                <el-table-column label="工序" width="120">
+                  <template #default="{ row }">{{ row.process_id === 0 ? '全工序' : (row.process_name || '—') }}</template>
+                </el-table-column>
+                <el-table-column v-if="shiftOpen" label="操作" width="80" fixed="right">
+                  <template #default="{ row }">
+                    <el-button link type="danger" @click="removeShiftMember(Number(row.id))">移除</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <template #actions="{ row }">
+                <el-button v-if="shiftOpen" link type="danger" @click="removeShiftMember(Number(row.id))">移除</el-button>
+              </template>
+            </TableOrCards>
+          </template>
+          <template #footer>
+            <el-button @click="shiftDrawer = false">关闭</el-button>
+            <el-button
+              v-if="shiftOpen && shiftDetail"
+              type="warning"
+              @click="closeShiftRow(Number(shiftDetail.id))"
+            >收工</el-button>
+          </template>
+        </el-drawer>
+      </template>
+
+      <!-- 生产任务单：单商品任务 -->
+      <template v-else-if="active==='tasks'">
+        <header class="page-head">
+          <div>
+            <h2 class="title">生产任务单</h2>
+            <p class="desc">创建单商品生产任务；日常过站在 App。点行查看明细与工艺路径。</p>
+          </div>
+          <div class="head-meta">
+            <span class="meta-pill">筛选 {{ taskFiltered.length }} / 全部 {{ list.length }}</span>
+          </div>
+        </header>
+        <div class="shift-stats">
+          <div class="stat"><div class="label">全部</div><div class="value">{{ taskStats.total }}</div></div>
+          <div class="stat"><div class="label">待开始</div><div class="value">{{ taskStats.pending }}</div></div>
+          <div class="stat ok"><div class="label">进行中</div><div class="value">{{ taskStats.running }}</div></div>
+          <div class="stat"><div class="label">已关闭</div><div class="value">{{ taskStats.closed }}</div></div>
+        </div>
+        <div class="row shift-toolbar">
+          <el-button type="primary" @click="openCreateTask">新建任务</el-button>
+          <el-button @click="refresh">刷新</el-button>
+          <el-select v-model="taskStatusFilter" clearable placeholder="状态" style="width:130px">
+            <el-option label="待开始" value="pending" />
+            <el-option label="已释放" value="released" />
+            <el-option label="进行中" value="in_progress" />
+            <el-option label="已关闭" value="closed" />
+          </el-select>
+          <el-input v-model="taskKeyword" clearable placeholder="单号 / 备注" style="width:200px" />
+        </div>
+        <TableOrCards :data="taskFiltered" :loading="loading" :columns="taskCols" empty-text="暂无任务，请点击「新建任务」">
+          <el-table
+            :data="taskFiltered"
+            border
+            stripe
+            class="hub-table"
+            empty-text="暂无任务"
+            @row-click="(row: Row) => openTask(Number(row.id))"
+          >
+            <el-table-column prop="doc_no" label="单号" min-width="150">
+              <template #default="{ row }">
+                <div class="name-cell">
+                  <span class="name">{{ row.doc_no || '—' }}</span>
+                  <span v-if="row.id" class="id-hint">#{{ row.id }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="100" align="center">
+              <template #default="{ row }">
+                <el-tag size="small" :type="statusTagType(row.status)">{{ row.status_label }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="plan_qty" label="计划" width="90" align="right" />
+            <el-table-column prop="completed_qty" label="完工" width="90" align="right" />
+            <el-table-column label="进度" min-width="160">
+              <template #default="{ row }">
+                <el-progress :percentage="Math.min(100, Number(row.progress_pct || 0))" :stroke-width="10" />
+              </template>
+            </el-table-column>
+            <el-table-column prop="created_at" label="创建时间" min-width="160" />
+            <el-table-column label="操作" width="140" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click.stop="openTask(Number(row.id)); dispatchForm.task_id=Number(row.id)">明细</el-button>
+                <el-button v-if="row.status!=='closed'" link type="warning" @click.stop="closeTask(Number(row.id))">关闭</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag size="small" :type="statusTagType(row.status)">{{ row.status_label }}</el-tag>
             <span class="hint">{{ Number(row.completed_qty || 0) }}/{{ Number(row.plan_qty || 0) }} · {{ Number(row.progress_pct || 0).toFixed(0) }}%</span>
           </template>
           <template #actions="{ row }">
@@ -1185,6 +1473,30 @@ onMounted(async () => {
             <el-button v-if="row.status!=='closed'" link type="warning" @click="closeTask(Number(row.id))">关闭</el-button>
           </template>
         </TableOrCards>
+        <el-dialog v-model="taskCreateDlg" title="新建生产任务" width="520px" destroy-on-close>
+          <el-form label-width="80px">
+            <el-form-item label="产品" required>
+              <ProductSelect v-model="taskForm.product_id" style="width:100%" />
+            </el-form-item>
+            <el-form-item label="计划量" required>
+              <el-input-number v-model="taskForm.qty" :min="1" style="width:100%" />
+            </el-form-item>
+            <el-form-item label="工艺">
+              <RoutingSelect v-model="taskForm.routing_id" style="width:100%" />
+            </el-form-item>
+            <el-form-item label="车间">
+              <WorkshopSelect v-model="taskForm.workshop_dept_id" style="width:100%" />
+            </el-form-item>
+            <el-form-item label="备注">
+              <el-input v-model="taskForm.remark" placeholder="可选" maxlength="64" />
+            </el-form-item>
+          </el-form>
+          <p class="form-tip">多商品任务请走「一单多商品」。日常过站请在 App 完成。</p>
+          <template #footer>
+            <el-button @click="taskCreateDlg = false">取消</el-button>
+            <el-button type="primary" @click="createTask">创建</el-button>
+          </template>
+        </el-dialog>
       </template>
 
       <!-- 一单多商品：多行商品任务 -->
@@ -1193,7 +1505,7 @@ onMounted(async () => {
         <el-card header="新建多商品任务" class="mb">
           <el-form inline size="small" class="mb">
             <el-form-item label="工艺"><RoutingSelect v-model="taskForm.routing_id" /></el-form-item>
-            <el-form-item label="车间"><WorkshopSelect v-model="taskForm.workshop_id" /></el-form-item>
+            <el-form-item label="车间"><WorkshopSelect v-model="taskForm.workshop_dept_id" /></el-form-item>
             <el-button @click="addMultiLine">加一行</el-button>
             <el-button type="primary" @click="createMultiTask">创建任务</el-button>
           </el-form>
@@ -1240,45 +1552,90 @@ onMounted(async () => {
 
       <!-- 派工 / 灵活 -->
       <template v-else-if="active==='dispatches' || active==='flex'">
-        <el-alert type="info" show-icon :closable="false" class="mb" :title="`正常流转无需派工，App 扫工牌+${codeLabel}即可过站。此处仅用于例外派岗/灵活派发。`" />
-        <el-card v-if="fieldInputOnAdmin || active==='flex'" :header="active==='flex' ? '灵活派发（例外）' : '例外派岗'" class="mb">
-          <el-form inline size="small">
-            <el-form-item label="任务"><ProdTaskSelect v-model="dispatchForm.task_id" /></el-form-item>
-            <el-form-item label="工序">
-              <el-select v-model="dispatchForm.process_id" style="width:140px">
-                <el-option v-for="p in processes" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="工人">
-              <el-select v-model="dispatchForm.worker_id" style="width:140px">
-                <el-option v-for="w in workers" :key="String(w.id)" :label="String(w.name)" :value="Number(w.id)" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="数量"><el-input-number v-model="dispatchForm.qty" :min="1" /></el-form-item>
-            <el-button type="primary" @click="createDispatch">派工</el-button>
-          </el-form>
-        </el-card>
-        <TableOrCards :data="list" :loading="loading" :columns="dispatchCols">
-          <el-table :data="list" size="small">
-            <el-table-column prop="doc_no" label="单号" width="150" />
-            <el-table-column prop="task_id" label="任务" width="80" />
-            <el-table-column prop="process_id" label="工序" width="80" />
-            <el-table-column prop="worker_id" label="工人" width="80" />
-            <el-table-column prop="qty" label="数量" width="90" />
-            <el-table-column prop="status" label="状态" width="100" />
-            <el-table-column label="操作" width="120">
+        <header class="page-head">
+          <div>
+            <h2 class="title">{{ title }}</h2>
+            <p class="desc">{{ active==='flex' ? '灵活改派工人到指定任务/工序，属例外通道。日常过站请走 App。' : `正常流转无需派工，App 扫工牌+${codeLabel}即可过站。此处仅用于例外补派。` }}</p>
+          </div>
+          <div class="head-meta">
+            <span class="meta-pill">筛选 {{ dispatchFiltered.length }} / 全部 {{ list.length }}</span>
+          </div>
+        </header>
+        <div class="shift-stats">
+          <div class="stat"><div class="label">全部</div><div class="value">{{ dispatchStats.total }}</div></div>
+          <div class="stat warn"><div class="label">已派发</div><div class="value">{{ dispatchStats.dispatched }}</div></div>
+          <div class="stat"><div class="label">已改派</div><div class="value">{{ dispatchStats.reassigned }}</div></div>
+          <div class="stat ok"><div class="label">已接收</div><div class="value">{{ dispatchStats.received }}</div></div>
+        </div>
+        <div class="row shift-toolbar">
+          <el-button v-if="canCreateDispatch" type="primary" @click="openCreateDispatch">{{ active==='flex' ? '灵活派发' : '例外派岗' }}</el-button>
+          <el-button @click="refresh">刷新</el-button>
+          <el-select v-model="dispatchStatusFilter" clearable placeholder="状态" style="width:130px">
+            <el-option label="已派发" value="dispatched" />
+            <el-option label="已改派" value="reassigned" />
+            <el-option label="已接收" value="received" />
+          </el-select>
+          <el-input v-model="dispatchKeyword" clearable placeholder="单号" style="width:180px" />
+        </div>
+        <TableOrCards :data="dispatchFiltered" :loading="loading" :columns="dispatchCols" empty-text="暂无派工单">
+          <el-table :data="dispatchFiltered" border stripe class="hub-table" empty-text="暂无派工单">
+            <el-table-column prop="doc_no" label="单号" min-width="150">
+              <template #default="{ row }">
+                <div class="name-cell">
+                  <span class="name">{{ row.doc_no || '—' }}</span>
+                  <span v-if="row.id" class="id-hint">#{{ row.id }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="task_id" label="任务" width="90">
+              <template #default="{ row }">
+                <span :class="{ muted: !row.task_id }">{{ row.task_id || '—' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="process_name" label="工序" min-width="110" />
+            <el-table-column prop="worker_name" label="工人" min-width="110" />
+            <el-table-column label="数量" width="90" align="right">
+              <template #default="{ row }">{{ Number(row.qty ?? row.plan_qty ?? 0) }}</template>
+            </el-table-column>
+            <el-table-column label="状态" width="100" align="center">
+              <template #default="{ row }">
+                <el-tag size="small" :type="statusTagType(row.status)">{{ row.status_label }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="90" fixed="right">
               <template #default="{ row }">
                 <el-button v-if="row.status==='dispatched'" link type="primary" @click="receiveDispatch(Number(row.id))">接收</el-button>
               </template>
             </el-table-column>
           </el-table>
           <template #extra="{ row }">
-            <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+            <el-tag size="small" :type="statusTagType(row.status)">{{ row.status_label }}</el-tag>
           </template>
           <template #actions="{ row }">
             <el-button v-if="row.status==='dispatched'" link type="primary" @click="receiveDispatch(Number(row.id))">接收</el-button>
           </template>
         </TableOrCards>
+        <el-dialog v-model="dispatchCreateDlg" :title="active==='flex' ? '灵活派发' : '例外派岗'" width="520px" destroy-on-close>
+          <el-form label-width="80px">
+            <el-form-item label="任务" required>
+              <ProdTaskSelect v-model="dispatchForm.task_id" style="width:100%" />
+            </el-form-item>
+            <el-form-item label="工序" required>
+              <ProcessSelect v-model="dispatchForm.process_id" style="width:100%" />
+            </el-form-item>
+            <el-form-item label="工人" required>
+              <EmployeeSelect v-model="dispatchForm.worker_id" style="width:100%" />
+            </el-form-item>
+            <el-form-item label="数量">
+              <el-input-number v-model="dispatchForm.qty" :min="1" style="width:100%" />
+            </el-form-item>
+          </el-form>
+          <p class="form-tip">仅例外场景使用。正常过站由工人在 App 扫工牌完成。</p>
+          <template #footer>
+            <el-button @click="dispatchCreateDlg = false">取消</el-button>
+            <el-button type="primary" @click="createDispatch">派工</el-button>
+          </template>
+        </el-dialog>
       </template>
 
       <!-- 过站记录：台账 + 加工明细 -->
@@ -1500,44 +1857,115 @@ onMounted(async () => {
 
       <!-- 工作台 -->
       <template v-else-if="active==='workbench'">
-        <el-row :gutter="12" class="mb" v-if="overview">
-          <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">今日过站</div><div class="kpi-n">{{ overview.today_station_passes ?? overview.today_reports }}</div></el-card></el-col>
-          <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">待确认</div><div class="kpi-n">{{ overview.pending_confirm ?? 0 }}</div></el-card></el-col>
-          <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">开工班次</div><div class="kpi-n">{{ overview.open_shifts ?? 0 }}</div></el-card></el-col>
-          <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">流转失败</div><div class="kpi-n">{{ overview.failed_flow_events }}</div></el-card></el-col>
-        </el-row>
-        <p v-if="overview" class="hint mb">例外派工 {{ overview.exception_dispatches ?? overview.open_dispatches ?? 0 }} 张 · 开立任务 {{ overview.open_tasks }}</p>
-        <el-card header="今日/在制任务">
-          <TableOrCards :data="list" :loading="loading" :columns="workbenchCols">
-            <el-table :data="list" size="small">
-              <el-table-column prop="doc_no" label="单号" />
-              <el-table-column prop="status" label="状态" width="120" />
-              <el-table-column prop="created_at" label="创建" />
-            </el-table>
-            <template #extra="{ row }">
-              <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
-            </template>
-          </TableOrCards>
-        </el-card>
+        <header class="page-head">
+          <div>
+            <h2 class="title">车间工作台</h2>
+            <p class="desc">今日过站、待确认、开工班次与在制任务一览。点行可打开任务明细。</p>
+          </div>
+          <div class="head-meta">
+            <span class="meta-pill">在制任务 {{ workbenchDisplay.length }}</span>
+          </div>
+        </header>
+        <div class="shift-stats">
+          <div class="stat ok">
+            <div class="label">今日过站</div>
+            <div class="value">{{ overview?.today_station_passes ?? overview?.today_reports ?? 0 }}</div>
+          </div>
+          <div class="stat warn">
+            <div class="label">待确认</div>
+            <div class="value">{{ overview?.pending_confirm ?? 0 }}</div>
+          </div>
+          <div class="stat">
+            <div class="label">开工班次</div>
+            <div class="value">{{ overview?.open_shifts ?? 0 }}</div>
+          </div>
+          <div class="stat">
+            <div class="label">流转失败</div>
+            <div class="value">{{ overview?.failed_flow_events ?? 0 }}</div>
+          </div>
+        </div>
+        <p class="form-tip">例外派工 {{ overview?.exception_dispatches ?? overview?.open_dispatches ?? 0 }} 张 · 开立任务 {{ overview?.open_tasks ?? 0 }}</p>
+        <div class="row shift-toolbar">
+          <el-button @click="refresh">刷新</el-button>
+        </div>
+        <TableOrCards :data="workbenchDisplay" :loading="loading" :columns="workbenchCols" empty-text="暂无在制任务">
+          <el-table
+            :data="workbenchDisplay"
+            border
+            stripe
+            class="hub-table"
+            empty-text="暂无在制任务"
+            @row-click="(row: Row) => openTask(Number(row.id))"
+          >
+            <el-table-column prop="doc_no" label="单号" min-width="160">
+              <template #default="{ row }">
+                <div class="name-cell">
+                  <span class="name">{{ row.doc_no || '—' }}</span>
+                  <span v-if="row.id" class="id-hint">#{{ row.id }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="110" align="center">
+              <template #default="{ row }">
+                <el-tag size="small" :type="statusTagType(row.status)">{{ row.status_label }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="created_at" label="创建" min-width="160" />
+            <el-table-column label="操作" width="90" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click.stop="openTask(Number(row.id))">明细</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <template #extra="{ row }">
+            <el-tag size="small" :type="statusTagType(row.status)">{{ row.status_label }}</el-tag>
+          </template>
+          <template #actions="{ row }">
+            <el-button link type="primary" @click="openTask(Number(row.id))">明细</el-button>
+          </template>
+        </TableOrCards>
       </template>
 
       <!-- 工序在制 -->
       <template v-else-if="active==='process-wip'">
-        <div class="row mb">
-          <ProductSelect v-model="wipProductId" clearable placeholder="按产品筛选（默认鲜木薯工艺）" style="width:240px" />
-          <el-button @click="refresh">刷新</el-button>
-          <span v-if="wipSummary" class="hint">工艺 {{ wipSummary.routing_code || '-' }} · 只读统计（领取/退库请在 App）</span>
+        <header class="page-head">
+          <div>
+            <h2 class="title">工序在制</h2>
+            <p class="desc">按工艺步骤查看在制板与重量。领取 / 退库请在 App 完成。</p>
+          </div>
+          <div class="head-meta">
+            <span class="meta-pill">工艺 {{ wipSummary?.routing_code || '—' }}</span>
+          </div>
+        </header>
+        <div class="shift-stats cols-5">
+          <div class="stat">
+            <div class="label">在制板数</div>
+            <div class="value">{{ wipSummary?.total_boards ?? wipSummary?.total_boxes ?? 0 }}</div>
+          </div>
+          <div class="stat">
+            <div class="label">在制 kg</div>
+            <div class="value">{{ Number(wipSummary?.total_weight || 0).toFixed(1) }}</div>
+          </div>
+          <div class="stat ok">
+            <div class="label">在仓 kg</div>
+            <div class="value">{{ Number(wipSummary?.total_stock_kg || 0).toFixed(1) }}</div>
+          </div>
+          <div class="stat warn">
+            <div class="label">待确认过站</div>
+            <div class="value">{{ wipSummary?.pending_confirm_reports ?? 0 }}</div>
+          </div>
+          <div class="stat">
+            <div class="label">待确认 kg</div>
+            <div class="value">{{ Number(wipSummary?.pending_confirm_weight || 0).toFixed(1) }}</div>
+          </div>
         </div>
-        <el-row v-if="wipSummary" :gutter="12" class="mb">
-          <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">在制板数</div><div class="kpi-n">{{ wipSummary.total_boards ?? wipSummary.total_boxes ?? 0 }}</div></el-card></el-col>
-          <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">在制重量 kg</div><div class="kpi-n">{{ Number(wipSummary.total_weight || 0).toFixed(1) }}</div></el-card></el-col>
-          <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">在仓重量 kg</div><div class="kpi-n">{{ Number(wipSummary.total_stock_kg || 0).toFixed(1) }}</div></el-card></el-col>
-          <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">待确认过站</div><div class="kpi-n">{{ wipSummary.pending_confirm_reports ?? 0 }}</div></el-card></el-col>
-          <el-col :span="6" :xs="24"><el-card shadow="never"><div class="kpi">待确认重量</div><div class="kpi-n">{{ Number(wipSummary.pending_confirm_weight || 0).toFixed(1) }}</div></el-card></el-col>
-        </el-row>
-        <p v-if="wipSummary?.unassigned" class="hint mb">
-          未挂工序板 {{ (wipSummary.unassigned as Row).board_count || (wipSummary.unassigned as Row).box_count || 0 }} ·
-          重量 {{ Number((wipSummary.unassigned as Row).wip_weight || 0).toFixed(1) }} kg
+        <div class="row shift-toolbar">
+          <ProductSelect v-model="wipProductId" clearable placeholder="按产品筛选" style="width:240px" />
+          <el-button @click="refresh">刷新</el-button>
+        </div>
+        <p v-if="wipSummary?.unassigned" class="form-tip">
+          未挂工序板 {{ (wipSummary.unassigned as Row).board_count || (wipSummary.unassigned as Row).box_count || 0 }}
+          · 重量 {{ Number((wipSummary.unassigned as Row).wip_weight || 0).toFixed(1) }} kg
           <el-button
             v-if="Number((wipSummary.unassigned as Row).board_count || (wipSummary.unassigned as Row).box_count || 0) > 0"
             link
@@ -1545,31 +1973,35 @@ onMounted(async () => {
             @click="openWipBoxes(0, '未挂工序', true)"
           >查看</el-button>
         </p>
-        <TableOrCards :data="list" :loading="loading" :columns="wipCols">
-          <el-table :data="list" size="small" border stripe @row-click="(row: Row) => openWipBoxes(Number(row.step_id), String(row.step_name || ''), false)">
-            <el-table-column prop="seq_no" label="序" width="60" />
-            <el-table-column prop="step_code" label="步骤码" width="90" />
-            <el-table-column prop="step_name" label="步骤" min-width="140" />
+        <TableOrCards :data="list" :loading="loading" :columns="wipCols" empty-text="暂无在制步骤">
+          <el-table :data="list" border stripe class="hub-table" empty-text="暂无在制步骤" @row-click="(row: Row) => openWipBoxes(Number(row.step_id), String(row.step_name || ''), false)">
+            <el-table-column prop="seq_no" label="序" width="60" align="center" />
+            <el-table-column prop="step_code" label="步骤码" width="100" />
+            <el-table-column prop="step_name" label="步骤" min-width="140">
+              <template #default="{ row }">
+                <span class="name">{{ row.step_name || '—' }}</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="process_name" label="工序" width="120" />
-            <el-table-column prop="board_count" label="板数" width="80">
+            <el-table-column label="板数" width="80" align="center">
               <template #default="{ row }">{{ row.board_count ?? row.box_count ?? 0 }}</template>
             </el-table-column>
-            <el-table-column label="可领 kg" width="100">
+            <el-table-column label="可领 kg" width="100" align="right">
               <template #default="{ row }">{{ Number(row.available_kg || 0).toFixed(2) }}</template>
             </el-table-column>
-            <el-table-column label="领取未完 kg" width="120">
+            <el-table-column label="领取未完 kg" width="120" align="right">
               <template #default="{ row }">{{ Number(row.occupied_kg || 0).toFixed(2) }}</template>
             </el-table-column>
-            <el-table-column label="在制重量 kg" width="120">
+            <el-table-column label="在制 kg" width="110" align="right">
               <template #default="{ row }">{{ Number(row.wip_weight || 0).toFixed(2) }}</template>
             </el-table-column>
-            <el-table-column label="在仓 kg" width="100">
+            <el-table-column label="在仓 kg" width="100" align="right">
               <template #default="{ row }">{{ Number(row.stock_kg || 0).toFixed(2) }}</template>
             </el-table-column>
-            <el-table-column label="在仓板数" width="90">
+            <el-table-column label="在仓板数" width="90" align="center">
               <template #default="{ row }">{{ row.stock_box_count ?? 0 }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="90">
+            <el-table-column label="操作" width="90" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click.stop="openWipBoxes(Number(row.step_id), String(row.step_name || ''), false)">板明细</el-button>
               </template>
@@ -1580,18 +2012,22 @@ onMounted(async () => {
           </template>
         </TableOrCards>
         <el-drawer v-model="wipDrawer" :title="wipDrawerTitle" size="480px">
-          <TableOrCards :data="wipBoxes" :columns="wipBoxCols">
-            <el-table :data="wipBoxes" size="small" border>
+          <TableOrCards :data="wipBoxes" :columns="wipBoxCols" empty-text="该步骤暂无板">
+            <el-table :data="wipBoxes" border stripe size="small" class="hub-table" empty-text="该步骤暂无板">
               <el-table-column prop="code" label="板码" min-width="140" />
               <el-table-column prop="product_name" label="产品" width="100" />
-              <el-table-column label="可领 kg" width="90">
+              <el-table-column label="可领 kg" width="90" align="right">
                 <template #default="{ row }">{{ Number(row.available_kg ?? row.weight ?? 0).toFixed(2) }}</template>
               </el-table-column>
-              <el-table-column label="领取未完 kg" width="110">
+              <el-table-column label="领取未完 kg" width="110" align="right">
                 <template #default="{ row }">{{ Number(row.occupied_kg || 0).toFixed(2) }}</template>
               </el-table-column>
               <el-table-column prop="trace_code" label="溯源" width="110" />
-              <el-table-column prop="status" label="状态" width="80" />
+              <el-table-column label="状态" width="90" align="center">
+                <template #default="{ row }">
+                  <el-tag v-if="row.status != null" size="small" :type="statusTagType(row.status)">{{ docStatusLabel(row.status) }}</el-tag>
+                </template>
+              </el-table-column>
               <el-table-column label="工人占用" min-width="160">
                 <template #default="{ row }">
                   <div v-if="Array.isArray(row.occupancies) && row.occupancies.length">
@@ -1599,12 +2035,12 @@ onMounted(async () => {
                       {{ o.worker_name || o.worker_id }} · {{ Number(o.open_kg || 0).toFixed(2) }} kg
                     </div>
                   </div>
-                  <span v-else class="hint">—</span>
+                  <span v-else class="muted">—</span>
                 </template>
               </el-table-column>
             </el-table>
             <template #extra="{ row }">
-              <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
+              <el-tag v-if="row.status != null" size="small" :type="statusTagType(row.status)">{{ docStatusLabel(row.status) }}</el-tag>
             </template>
           </TableOrCards>
         </el-drawer>
@@ -1644,27 +2080,6 @@ onMounted(async () => {
           </el-table>
           <template #extra="{ row }">
             <el-tag size="small">{{ ((Number(row.loss_rate || 0) * 100).toFixed(1)) }}%</el-tag>
-          </template>
-        </TableOrCards>
-      </template>
-
-      <!-- 车间 -->
-      <template v-else-if="active==='workshops'">
-        <el-card header="新建车间" class="mb">
-          <el-form inline size="small">
-            <el-form-item label="编码"><el-input v-model="workshopForm.code" /></el-form-item>
-            <el-form-item label="名称"><el-input v-model="workshopForm.name" /></el-form-item>
-            <el-button type="primary" @click="createWorkshop">新建</el-button>
-          </el-form>
-        </el-card>
-        <TableOrCards :data="list" :loading="loading" :columns="workshopCols">
-          <el-table :data="list" size="small">
-            <el-table-column prop="code" label="编码" width="120" />
-            <el-table-column prop="name" label="名称" />
-            <el-table-column prop="status" label="状态" width="90" />
-          </el-table>
-          <template #extra="{ row }">
-            <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
           </template>
         </TableOrCards>
       </template>
@@ -2014,10 +2429,10 @@ onMounted(async () => {
             <el-progress :percentage="taskProgressPct" :stroke-width="16" />
           </div>
           <div class="meta-row mb">
-            <el-tag :type="statusTagType(detail.status)" size="small">{{ detail.status }}</el-tag>
+            <el-tag :type="statusTagType(detail.status)" size="small">{{ docStatusLabel(detail.status) }}</el-tag>
             <span class="hint">创建 {{ detail.created_at || '-' }}</span>
             <span v-if="detail.routing_id" class="hint">工艺 #{{ detail.routing_id }}</span>
-            <span v-if="detail.workshop_id" class="hint">车间 #{{ detail.workshop_id }}</span>
+            <span v-if="detail.workshop_dept_id" class="hint">车间 #{{ detail.workshop_dept_id }}</span>
           </div>
 
           <h4 class="sec-title">商品行</h4>
@@ -2163,5 +2578,41 @@ onMounted(async () => {
 }
 @media (max-width: 640px) {
   .flow-arrow { display: none; }
+}
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+.title { margin: 0 0 4px; font-size: 18px; font-weight: 600; color: #1f2a33; }
+.desc { color: #5c6b75; font-size: 13px; margin: 0 0 12px; line-height: 1.5; max-width: 640px; }
+.head-meta { flex-shrink: 0; padding-top: 2px; }
+.meta-pill {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #eef6f1;
+  color: #2f6b4f;
+  font-size: 12px;
+  font-weight: 500;
+}
+.shift-stats { display: grid; grid-template-columns: repeat(4, minmax(96px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.stat { background: #f6f8fa; border: 1px solid #e8eef2; border-radius: 8px; padding: 10px 12px; }
+.stat.ok { background: #eef6f1; border-color: #d5eade; }
+.stat.warn { background: #fff7f0; border-color: #f0e0d0; }
+.stat .label { font-size: 12px; color: #6b7a85; }
+.stat .value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; color: #1f2a33; }
+.shift-toolbar { margin-bottom: 14px; }
+.name-cell { display: flex; align-items: baseline; gap: 8px; }
+.name { font-weight: 500; color: #1f2a33; }
+.id-hint { font-size: 12px; color: #98a2a8; }
+.muted { color: #98a2a8; }
+.shift-table :deep(.el-table__header th) { background: #f6f8fa; color: #4a5a66; font-weight: 600; }
+.shift-table :deep(.is-current-shift) { background: #eef6f1 !important; }
+.hub-table :deep(.el-table__header th) { background: #f6f8fa; color: #4a5a66; font-weight: 600; }
+.shift-stats.cols-5 { grid-template-columns: repeat(5, minmax(96px, 1fr)); }
+.form-tip { margin: 0 0 12px; font-size: 13px; color: #5c6b75; background: #f6f8fa; padding: 8px 10px; border-radius: 6px; }
+.shift-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: #5c6b75; margin-bottom: 14px; }
+.shift-drawer-head { display: flex; align-items: center; gap: 8px; }
+.shift-member-bar { margin-bottom: 12px; }
+@media (max-width: 720px) {
+  .shift-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .shift-stats.cols-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 </style>

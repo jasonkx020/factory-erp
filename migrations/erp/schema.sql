@@ -40,20 +40,7 @@ CREATE TABLE IF NOT EXISTS sys_department (
   parent_id INTEGER,
   code TEXT NOT NULL,
   name TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'active',
-  created_at TEXT NOT NULL DEFAULT NOW(),
-  updated_at TEXT NOT NULL DEFAULT NOW(),
-  is_deleted INTEGER NOT NULL DEFAULT 0,
-  UNIQUE(org_id, code),
-  FOREIGN KEY(org_id) REFERENCES sys_organization(id)
-);
-
-CREATE TABLE IF NOT EXISTS pd_workshop (
-  id BIGSERIAL PRIMARY KEY,
-  org_id INTEGER NOT NULL,
-  dept_id INTEGER,
-  code TEXT NOT NULL,
-  name TEXT NOT NULL,
+  dept_type TEXT NOT NULL DEFAULT 'normal',
   status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL DEFAULT NOW(),
   updated_at TEXT NOT NULL DEFAULT NOW(),
@@ -64,15 +51,15 @@ CREATE TABLE IF NOT EXISTS pd_workshop (
 
 CREATE TABLE IF NOT EXISTS pd_work_team (
   id BIGSERIAL PRIMARY KEY,
-  workshop_id INTEGER NOT NULL,
+  dept_id INTEGER NOT NULL,
   code TEXT NOT NULL,
   name TEXT NOT NULL,
   leader_employee_id INTEGER,
   status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL DEFAULT NOW(),
   is_deleted INTEGER NOT NULL DEFAULT 0,
-  UNIQUE(workshop_id, code),
-  FOREIGN KEY(workshop_id) REFERENCES pd_workshop(id)
+  UNIQUE(dept_id, code),
+  FOREIGN KEY(dept_id) REFERENCES sys_department(id)
 );
 
 CREATE TABLE IF NOT EXISTS inv_warehouse (
@@ -142,7 +129,6 @@ CREATE TABLE IF NOT EXISTS hr_employee (
   name TEXT NOT NULL,
   org_id INTEGER NOT NULL,
   dept_id INTEGER,
-  workshop_id INTEGER,
   team_id INTEGER,
   job_title TEXT,
   emp_type TEXT NOT NULL DEFAULT 'office',
@@ -163,6 +149,7 @@ CREATE TABLE IF NOT EXISTS iam_user (
   login_name TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   employee_id INTEGER,
+  customer_id INTEGER,
   user_type TEXT NOT NULL DEFAULT 'biz',
   status TEXT NOT NULL DEFAULT 'active',
   freeze_reason TEXT,
@@ -322,7 +309,7 @@ CREATE TABLE IF NOT EXISTS iam_user_data_scope (
   id BIGSERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL UNIQUE,
   data_scope_type TEXT NOT NULL,
-  workshop_id INTEGER,
+  dept_id INTEGER,
   team_id INTEGER,
   created_at TEXT NOT NULL DEFAULT NOW(),
   updated_at TEXT NOT NULL DEFAULT NOW(),
@@ -413,6 +400,34 @@ CREATE TABLE IF NOT EXISTS iam_onboard_role_template (
   role_id INTEGER NOT NULL,
   created_at TEXT NOT NULL DEFAULT NOW(),
   UNIQUE(emp_type, role_id),
+  FOREIGN KEY(role_id) REFERENCES iam_role(id)
+);
+
+CREATE TABLE IF NOT EXISTS sys_department_role (
+  dept_id INTEGER NOT NULL,
+  role_id INTEGER NOT NULL,
+  PRIMARY KEY (dept_id, role_id),
+  FOREIGN KEY(dept_id) REFERENCES sys_department(id),
+  FOREIGN KEY(role_id) REFERENCES iam_role(id)
+);
+
+CREATE TABLE IF NOT EXISTS hr_employee_department (
+  employee_id INTEGER NOT NULL,
+  dept_id INTEGER NOT NULL,
+  is_primary INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (employee_id, dept_id),
+  FOREIGN KEY(employee_id) REFERENCES hr_employee(id),
+  FOREIGN KEY(dept_id) REFERENCES sys_department(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_hr_employee_department_dept ON hr_employee_department(dept_id);
+
+CREATE TABLE IF NOT EXISTS iam_user_extra_role (
+  user_id INTEGER NOT NULL,
+  role_id INTEGER NOT NULL,
+  PRIMARY KEY (user_id, role_id),
+  FOREIGN KEY(user_id) REFERENCES iam_user(id),
   FOREIGN KEY(role_id) REFERENCES iam_role(id)
 );
 
@@ -586,7 +601,7 @@ CREATE TABLE IF NOT EXISTS pd_routing_step (
   auto_stock_in INTEGER NOT NULL DEFAULT 0,
   auto_stock_out INTEGER NOT NULL DEFAULT 0,
   warehouse_id INTEGER,
-  workshop_id INTEGER,
+  workshop_dept_id INTEGER,
   UNIQUE(routing_id, seq_no),
   FOREIGN KEY(routing_id) REFERENCES pd_routing(id),
   FOREIGN KEY(process_id) REFERENCES pd_process(id)
@@ -741,7 +756,7 @@ CREATE TABLE IF NOT EXISTS pd_production_task (
   plan_start TEXT,
   plan_end TEXT,
   routing_id INTEGER,
-  workshop_id INTEGER,
+  workshop_dept_id INTEGER,
   org_id INTEGER,
   owner_user_id INTEGER,
   remark TEXT,
@@ -1524,7 +1539,7 @@ CREATE TABLE IF NOT EXISTS hr_shift (
   name TEXT NOT NULL,
   start_time TEXT NOT NULL,
   end_time TEXT NOT NULL,
-  workshop_id INTEGER,
+  workshop_dept_id INTEGER,
   status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL DEFAULT NOW()
 );
@@ -1708,7 +1723,7 @@ CREATE TABLE IF NOT EXISTS inv_stocktake (
   doc_no TEXT NOT NULL UNIQUE,
   stocktake_type TEXT NOT NULL DEFAULT 'warehouse',
   warehouse_id INTEGER,
-  workshop_id INTEGER,
+  workshop_dept_id INTEGER,
   biz_date TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'draft',
   remark TEXT,
@@ -1826,7 +1841,7 @@ CREATE TABLE IF NOT EXISTS pay_payroll_sheet (
 			period_year INTEGER NOT NULL,
 			period_month INTEGER NOT NULL,
 			status TEXT NOT NULL DEFAULT 'draft',
-			workshop_id INTEGER,
+			workshop_dept_id INTEGER,
 			calc_at TEXT,
 			paid_at TEXT,
 			remark TEXT,
@@ -2084,7 +2099,7 @@ CREATE TABLE IF NOT EXISTS pd_scrap_record (
 CREATE TABLE IF NOT EXISTS pd_shift (
   id BIGSERIAL PRIMARY KEY,
   doc_no TEXT NOT NULL,
-  workshop_id INTEGER NOT NULL DEFAULT 1,
+  workshop_dept_id INTEGER,
   biz_date TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'open',
   remark TEXT,
@@ -2316,11 +2331,13 @@ CREATE TABLE IF NOT EXISTS sl_contract (
   id BIGSERIAL PRIMARY KEY,
   doc_no TEXT NOT NULL UNIQUE,
   customer_id INTEGER NOT NULL,
+  order_id INTEGER,
   title TEXT,
   amount DOUBLE PRECISION NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'draft',
   signed_at TEXT,
   expire_at TEXT,
+  attachment_url TEXT,
   remark TEXT,
   created_at TEXT NOT NULL DEFAULT NOW(),
   updated_at TEXT NOT NULL DEFAULT NOW(),
@@ -2337,7 +2354,8 @@ CREATE TABLE IF NOT EXISTS sl_cost_budget (
   sale_amount DOUBLE PRECISION NOT NULL DEFAULT 0,
   margin DOUBLE PRECISION NOT NULL DEFAULT 0,
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT NOW()
+  created_at TEXT NOT NULL DEFAULT NOW(),
+  updated_at TEXT NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS sl_delivery_approval (
@@ -2349,6 +2367,9 @@ CREATE TABLE IF NOT EXISTS sl_delivery_approval (
   warehouse_id INTEGER,
   shipped_at TEXT,
   logistics_no TEXT,
+  reject_reason TEXT,
+  received_at TEXT,
+  receive_remark TEXT,
   remark TEXT,
   created_at TEXT NOT NULL DEFAULT NOW(),
   updated_at TEXT NOT NULL DEFAULT NOW()
@@ -2370,6 +2391,10 @@ CREATE TABLE IF NOT EXISTS sl_inquiry (
   status TEXT NOT NULL DEFAULT 'draft',
   source TEXT NOT NULL DEFAULT 'sales',
   expire_at TEXT,
+  reject_reason TEXT,
+  submitted_at TEXT,
+  approved_at TEXT,
+  rejected_at TEXT,
   remark TEXT,
   created_at TEXT NOT NULL DEFAULT NOW(),
   updated_at TEXT NOT NULL DEFAULT NOW(),
@@ -2418,6 +2443,9 @@ CREATE TABLE IF NOT EXISTS sl_outbound_settle (
   goods_amount DOUBLE PRECISION DEFAULT 0,
   amount DOUBLE PRECISION DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'draft',
+  order_id INTEGER,
+  delivery_id INTEGER,
+  closed_at TEXT,
   remark TEXT,
   created_at TEXT NOT NULL DEFAULT NOW(),
   updated_at TEXT NOT NULL DEFAULT NOW(),
@@ -2453,6 +2481,7 @@ CREATE TABLE IF NOT EXISTS sl_price_lock (
   effective_from TEXT NOT NULL,
   effective_to TEXT,
   status TEXT NOT NULL DEFAULT 'active',
+  version_no INTEGER NOT NULL DEFAULT 1,
   remark TEXT,
   created_at TEXT NOT NULL DEFAULT NOW()
 );
@@ -2497,6 +2526,8 @@ CREATE TABLE IF NOT EXISTS sl_sales_bom (
   product_id INTEGER NOT NULL,
   name TEXT,
   status TEXT NOT NULL DEFAULT 'active',
+  version_no INTEGER NOT NULL DEFAULT 1,
+  remark TEXT,
   created_at TEXT NOT NULL DEFAULT NOW()
 );
 
@@ -2553,6 +2584,8 @@ CREATE TABLE IF NOT EXISTS sl_self_order_rule (
   name TEXT NOT NULL,
   enabled INTEGER NOT NULL DEFAULT 1,
   min_qty DOUBLE PRECISION NOT NULL DEFAULT 0,
+  max_qty DOUBLE PRECISION NOT NULL DEFAULT 0,
+  max_amount DOUBLE PRECISION NOT NULL DEFAULT 0,
   allow_products_json TEXT,
   remark TEXT,
   created_at TEXT NOT NULL DEFAULT NOW()
@@ -2578,7 +2611,7 @@ CREATE TABLE IF NOT EXISTS sys_approval_flow_node (
 
 CREATE TABLE IF NOT EXISTS sys_batch_payroll_job (
 			id BIGSERIAL PRIMARY KEY,
-			doc_no TEXT, period_ym TEXT, workshop_id INTEGER, status TEXT DEFAULT 'draft',
+			doc_no TEXT, period_ym TEXT, workshop_dept_id INTEGER, status TEXT DEFAULT 'draft',
 			result_msg TEXT, created_by INTEGER, applied_at TEXT, is_deleted INTEGER DEFAULT 0, created_at TEXT
 		);
 
@@ -2661,7 +2694,7 @@ CREATE TABLE IF NOT EXISTS sys_notify_rule (
 CREATE TABLE IF NOT EXISTS sys_personnel_transfer (
 			id BIGSERIAL PRIMARY KEY,
 			doc_no TEXT, employee_id INTEGER, from_dept_id INTEGER, to_dept_id INTEGER,
-			from_workshop_id INTEGER, to_workshop_id INTEGER, reason TEXT,
+			reason TEXT,
 			status TEXT DEFAULT 'draft', effective_date TEXT, confirmed_at TEXT, created_by INTEGER,
 			is_deleted INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT
 		);

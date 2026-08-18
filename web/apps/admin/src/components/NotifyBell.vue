@@ -35,7 +35,9 @@ onUnmounted(() => {
 <template>
   <span class="bell-wrap">
     <el-badge :value="notify.unread" :hidden="!notify.unread" :max="99">
-      <el-button link @click="openDrawer">通知</el-button>
+      <button type="button" class="bell-btn" title="通知" aria-label="通知" @click="openDrawer">
+        <span class="bell-ico" aria-hidden="true">🔔</span>
+      </button>
     </el-badge>
     <el-drawer v-model="drawer" title="实时通知 / 待办" :size="drawerSize">
       <div class="meta">MQTT: {{ notify.mqttStatus }}</div>
@@ -62,7 +64,31 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.bell-wrap { margin-right: 12px; }
+.bell-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+.bell-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #d5dbdb;
+  cursor: pointer;
+}
+.bell-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.bell-ico {
+  font-size: 15px;
+  line-height: 1;
+}
 .meta { font-size: 11px; color: #999; margin-bottom: 8px; }
 .item { padding: 10px 0; border-bottom: 1px solid #eee; cursor: pointer; }
 .item.unread .t { font-weight: 600; color: #0d7a6f; }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { StyleValue } from 'vue'
 import RefSelect from './RefSelect.vue'
 import { loadStockTxns, txnLabel } from './entitySelects'
 
@@ -7,7 +8,7 @@ withDefaults(
     modelValue?: number | null
     placeholder?: string
     clearable?: boolean
-    style?: string
+    style?: StyleValue
   }>(),
   { placeholder: '选择库存流水', clearable: true, style: 'width:220px' },
 )

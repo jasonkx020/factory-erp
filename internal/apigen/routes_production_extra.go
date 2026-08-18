@@ -30,6 +30,8 @@ func RegisterProductionExtra(r *gin.RouterGroup, h Handler) {
 	r.POST("/production/board-moves", h.Dispatch("POST", "/api/v1/production/board-moves", "/production/board-moves", "production/board-moves", "create"))
 	r.POST("/production/board-close/preview", h.Dispatch("POST", "/api/v1/production/board-close/preview", "/production/board-close/preview", "production/board-close", "action:preview"))
 	r.POST("/production/board-close", h.Dispatch("POST", "/api/v1/production/board-close", "/production/board-close", "production/board-close", "create"))
+	r.GET("/production/process-wip", h.Dispatch("GET", "/api/v1/production/process-wip", "/production/process-wip", "production/process-wip", "list"))
+	r.GET("/production/process-wip/boxes", h.Dispatch("GET", "/api/v1/production/process-wip/boxes", "/production/process-wip/boxes", "production/process-wip", "list"))
 	r.GET("/production/process-yields", h.Dispatch("GET", "/api/v1/production/process-yields", "/production/process-yields", "production/process-yields", "list"))
 	r.GET("/production/process-yields/traces", h.Dispatch("GET", "/api/v1/production/process-yields/traces", "/production/process-yields/traces", "production/process-yields", "list"))
 	r.POST("/production/piecework-summaries/day-settle", h.Dispatch("POST", "/api/v1/production/piecework-summaries/day-settle", "/production/piecework-summaries/day-settle", "production/piecework-summaries", "action:day-settle"))

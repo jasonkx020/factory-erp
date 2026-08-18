@@ -209,7 +209,7 @@ function openCreate() {
   Object.keys(form).forEach((k) => delete form[k])
   const m = props.module
   if (m === '工人信息管理') Object.assign(form, { employee_id: null, pay_type: 'piece', monthly_base: 0, bank_account: '', tax_no: '', status: 'active' })
-  else if (m === '工资批量管理' || m === '薪酬核算') Object.assign(form, { period_ym: todayYM(), workshop_id: null, force: false })
+  else if (m === '工资批量管理' || m === '薪酬核算') Object.assign(form, { period_ym: todayYM(), workshop_dept_id: null, force: false })
   else if (m === '工序工资') Object.assign(form, { process_id: null, rate: 0.22, rate_unit: 'yuan/kg', effective_from: new Date().toISOString().slice(0, 10) })
   else if (m === '销售提成') Object.assign(form, { mode: 'rule', name: '', rate: 0.01, effective_from: new Date().toISOString().slice(0, 10), period: todayYM(), employee_id: null, base_amount: 0 })
   dlg.value = true
@@ -251,7 +251,7 @@ async function save() {
       status: String(form.status || 'active'),
     })
   } else if (m === '工资批量管理' || m === '薪酬核算') {
-    res = await payrollApi.calcSheet({ period_ym: form.period_ym, workshop_id: form.workshop_id || 0, force: !!form.force })
+    res = await payrollApi.calcSheet({ period_ym: form.period_ym, workshop_dept_id: form.workshop_dept_id || 0, force: !!form.force })
   } else if (m === '工序工资') {
     if (!form.process_id) return ElMessage.warning('请选择工序')
     const payload = {
@@ -768,7 +768,7 @@ onMounted(load)
         </template>
         <template v-else-if="module === '工资批量管理' || module === '薪酬核算'">
           <el-form-item label="期间"><el-date-picker v-model="form.period_ym" type="month" value-format="YYYY-MM" style="width:100%" /></el-form-item>
-          <el-form-item label="车间"><WorkshopSelect v-model="form.workshop_id" style="width:100%" /></el-form-item>
+          <el-form-item label="车间"><WorkshopSelect v-model="form.workshop_dept_id" style="width:100%" /></el-form-item>
           <el-form-item label="强制重算"><el-switch v-model="form.force" /></el-form-item>
           <p class="hint">计件工：汇总当月计件金额；固定/职能：取月薪基数（可按迟到微调）；提成：取已算提成。</p>
         </template>

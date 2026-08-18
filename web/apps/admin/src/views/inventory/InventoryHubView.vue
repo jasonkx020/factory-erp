@@ -202,7 +202,7 @@ const txnForm = reactive({
 })
 const stocktakeForm = reactive({
   warehouse_id: 1,
-  workshop_id: 1,
+  workshop_dept_id: 0,
   product_id: 1,
   count_qty: 0,
   remark: '',
@@ -382,7 +382,7 @@ async function createStocktake() {
   const res = await inventoryApi.createStocktake(
     {
       warehouse_id: stocktakeForm.warehouse_id,
-      workshop_id: stocktakeForm.workshop_id,
+      workshop_dept_id: stocktakeForm.workshop_dept_id,
       product_id: stocktakeForm.product_id,
       count_qty: stocktakeForm.count_qty,
       remark: stocktakeForm.remark,
@@ -659,7 +659,7 @@ watch([active, transferTab, assembleTab], refresh)
           <el-form inline size="small">
             <el-form-item label="仓库"><WarehouseSelect v-model="stocktakeForm.warehouse_id" /></el-form-item>
             <el-form-item v-if="active==='workshop-stocktakes'" label="车间">
-              <WorkshopSelect v-model="stocktakeForm.workshop_id" />
+              <WorkshopSelect v-model="stocktakeForm.workshop_dept_id" />
             </el-form-item>
             <el-form-item label="物料">
               <el-select v-model="stocktakeForm.product_id" style="width:160px" filterable>

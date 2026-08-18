@@ -47,6 +47,15 @@ export const usePermStore = defineStore('perm', () => {
         return true
       }
     }
+    // 权限分配更名为角色管理：兼容旧权限码
+    if (domain === '人事管理' && module === '角色管理') {
+      if (
+        auth.hasPerm('人事管理:权限分配:查看') ||
+        auth.hasPerm('人事管理:权限分配:编辑')
+      ) {
+        return true
+      }
+    }
     return hasDomainModulePerm(domain, module)
   }
 
@@ -65,7 +74,7 @@ export const usePermStore = defineStore('perm', () => {
   }
 
   function isIamModule(module: string) {
-    return ['权限分配', '自定义权限', '自定义菜单', '登录控制', '账户冻结', '成本隐藏'].includes(module)
+    return ['角色管理', '自定义权限', '自定义菜单', '登录控制', '账户冻结', '成本隐藏'].includes(module)
   }
 
   function isSupplierModule(module: string) {
@@ -85,7 +94,7 @@ export const usePermStore = defineStore('perm', () => {
   }
 
   function isDeptModule(module: string) {
-    return module === '部门管理'
+    return module === '公司架构' || module === '部门管理'
   }
 
   function isHrOpsModule(module: string) {
@@ -106,7 +115,7 @@ export const usePermStore = defineStore('perm', () => {
   }
 
   function isPayrollModule(module: string) {
-    return ['工人信息管理', '工资批量管理', '工序工资', '薪酬核算', '销售提成'].includes(module)
+    return ['工人信息管理', '工资批量管理', '工序工资', '薪酬核算', '员工工作台账', '销售提成'].includes(module)
   }
 
   return {

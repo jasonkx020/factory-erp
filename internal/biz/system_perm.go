@@ -114,7 +114,7 @@ func CheckSystemAPIPerm(c *gin.Context, resourceKey, action, method string) bool
 		c.AbortWithStatusJSON(http.StatusUnauthorized, api.Response{Code: 0, Msg: "UNAUTHORIZED"})
 		return false
 	}
-	if claimsIsSysAdmin(claims.Roles, claims.Permissions) {
+	if claims.UserID == 1 || claimsIsSysAdmin(claims.Roles, claims.Permissions) {
 		return true
 	}
 
@@ -140,20 +140,29 @@ func CheckSystemAPIPerm(c *gin.Context, resourceKey, action, method string) bool
 
 	viewCode := "系统管理:" + module + ":查看"
 	editCode := "系统管理:" + module + ":编辑"
-	// 人事「权限分配」可读写权限码目录（与系统「自定义权限」等价入口）
-	hrView, hrEdit := "", ""
+	extraView, extraEdit := []string{}, []string{}
 	if resourceKey == "iam/permissions" || strings.HasPrefix(resourceKey, "iam/permissions/") {
-		hrView = "人事管理:权限分配:查看"
-		hrEdit = "人事管理:权限分配:编辑"
+		if method == "GET" && resourceKey != "iam/permissions/sync" {
+			extraView = append(extraView, "人事管理:角色管理:查看", "人事管理:权限分配:查看")
+			extraEdit = append(extraEdit, "人事管理:角色管理:编辑", "人事管理:权限分配:编辑")
+		}
+	}
+	if resourceKey == "iam/users" || strings.HasPrefix(resourceKey, "iam/users/") {
+		extraView = append(extraView, "人事管理:角色管理:查看", "人事管理:权限分配:查看")
+		extraEdit = append(extraEdit, "人事管理:角色管理:编辑", "人事管理:权限分配:编辑")
+		if action == "get" || action == "list" || action == "replace" || action == "update" {
+			extraView = append(extraView, "人事管理:员工档案:查看")
+			extraEdit = append(extraEdit, "人事管理:员工档案:编辑")
+		}
 	}
 	if needEdit {
-		if !claimsHasCode(claims.Permissions, editCode, hrEdit) {
+		if !claimsHasCode(claims.Permissions, append([]string{editCode}, extraEdit...)...) {
 			c.AbortWithStatusJSON(http.StatusForbidden, api.Response{Code: 0, Msg: "PERM_DENIED"})
 			return false
 		}
 		return true
 	}
-	if !claimsHasCode(claims.Permissions, viewCode, editCode, hrView, hrEdit) {
+	if !claimsHasCode(claims.Permissions, append(append([]string{viewCode, editCode}, extraView...), extraEdit...)...) {
 		c.AbortWithStatusJSON(http.StatusForbidden, api.Response{Code: 0, Msg: "PERM_DENIED"})
 		return false
 	}

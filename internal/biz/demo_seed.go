@@ -19,6 +19,7 @@ func EnsureDemoData(db *sql.DB) {
 	var ver string
 	_ = db.QueryRow(`SELECT value FROM schema_meta WHERE key='demo_showcase_version'`).Scan(&ver)
 	if ver == demoShowcaseVersion {
+		ensureDemoCustomerPortal(db)
 		return
 	}
 
@@ -43,6 +44,7 @@ func EnsureDemoData(db *sql.DB) {
 	seedDemoReport(db, today, now)
 
 	_, _ = db.Exec(`INSERT OR REPLACE INTO schema_meta(key, value) VALUES('demo_showcase_version', ?)`, demoShowcaseVersion)
+	ensureDemoCustomerPortal(db)
 	log.Printf("demo showcase data ensured (%s)", demoShowcaseVersion)
 }
 
@@ -362,9 +364,10 @@ func seedDemoPurchase(db *sql.DB, today, now string) {
 }
 
 func seedDemoProduction(db *sql.DB, today, now string) {
-	_, _ = db.Exec(`INSERT INTO pd_production_task(doc_no, source_type, status, plan_start, plan_end, routing_id, workshop_id, owner_user_id, remark) VALUES
- ('DEMO-TK-001', 'sales_order', 'in_progress', ?, date('now','+3 day'), 1, 1, 1, '生产任务演示'),
- ('DEMO-TK-002', 'manual', 'pending', ?, date('now','+5 day'), 1, 1, 1, '待释放任务')`, today, today)
+	ws := defaultWorkshopDeptIDDB(db)
+	_, _ = db.Exec(`INSERT INTO pd_production_task(doc_no, source_type, status, plan_start, plan_end, routing_id, workshop_dept_id, owner_user_id, remark) VALUES
+ ('DEMO-TK-001', 'sales_order', 'in_progress', ?, date('now','+3 day'), 1, ?, 1, '生产任务演示'),
+ ('DEMO-TK-002', 'manual', 'pending', ?, date('now','+5 day'), 1, ?, 1, '待释放任务')`, today, nullIf0(ws), today, nullIf0(ws))
 	tk1 := demoID(db, `SELECT id FROM pd_production_task WHERE doc_no='DEMO-TK-001'`)
 	tk2 := demoID(db, `SELECT id FROM pd_production_task WHERE doc_no='DEMO-TK-002'`)
 	if tk1 > 0 {
@@ -490,9 +493,10 @@ func seedDemoInventory(db *sql.DB, today, now string) {
 	_, _ = db.Exec(`INSERT INTO inv_inbound_qc(doc_no, stock_txn_id, product_id, qty_check, qty_pass, qty_fail, result, status, remark) VALUES
  ('DEMO-IIQC-001', ?, 1, 5000, 4850, 150, 'pass', 'done', '入库质检演示')`, nullIf0(inID))
 
-	_, _ = db.Exec(`INSERT INTO inv_stocktake(doc_no, stocktake_type, warehouse_id, workshop_id, biz_date, status, remark) VALUES
+	ws := defaultWorkshopDeptIDDB(db)
+	_, _ = db.Exec(`INSERT INTO inv_stocktake(doc_no, stocktake_type, warehouse_id, workshop_dept_id, biz_date, status, remark) VALUES
  ('DEMO-TKW-001', 'warehouse', 1, NULL, ?, 'posted', '仓库盘点演示'),
- ('DEMO-TKP-001', 'workshop', NULL, 1, ?, 'draft', '车间盘点演示')`, today, today)
+ ('DEMO-TKP-001', 'workshop', NULL, ?, ?, 'draft', '车间盘点演示')`, today, nullIf0(ws), today)
 	stw := demoID(db, `SELECT id FROM inv_stocktake WHERE doc_no='DEMO-TKW-001'`)
 	stp := demoID(db, `SELECT id FROM inv_stocktake WHERE doc_no='DEMO-TKP-001'`)
 	if stw > 0 {
@@ -651,10 +655,6 @@ func seedDemoFinance(db *sql.DB, today, now, period string) {
 }
 
 func seedDemoHR(db *sql.DB, today, now, period string) {
-	_, _ = db.Exec(`INSERT INTO hr_employee(emp_no, name, org_id, dept_id, workshop_id, emp_type, status) VALUES
- ('E1101', '演示仓管', 1, 1, 1, 'warehouse', 'active'),
- ('E1102', '演示销售', 1, 1, NULL, 'sales', 'active')`)
-
 	_, _ = db.Exec(`INSERT INTO hr_attendance_record(employee_id, biz_date, check_in_at, check_out_at, source)
 		SELECT 2, ?, ? || ' 08:02:00', ? || ' 18:05:00', 'demo'
 		WHERE NOT EXISTS (SELECT 1 FROM hr_attendance_record WHERE employee_id=2 AND biz_date=? AND source='demo')`, today, today, today, today)
@@ -690,7 +690,7 @@ func seedDemoHR(db *sql.DB, today, now, period string) {
  (?,2,'小刀',1,1)`, demoTI2)
 	}
 
-	eSales := demoID(db, `SELECT id FROM hr_employee WHERE emp_no='E1102'`)
+	eSales := demoID(db, `SELECT id FROM hr_employee WHERE emp_no='E-SL'`)
 	_, _ = db.Exec(`INSERT INTO hr_visit_record(employee_id, customer_id, visit_at, content, location)
 		SELECT ?, 1, ?, '商务拜访确认下周提货', '南宁'
 		WHERE ? > 0 AND NOT EXISTS (SELECT 1 FROM hr_visit_record WHERE content LIKE '%下周提货%')`, nullIf0(eSales), now, eSales)
@@ -703,7 +703,7 @@ func seedDemoHR(db *sql.DB, today, now, period string) {
 		SELECT 2, ?, '完成去皮工序800kg，设备运行正常'
 		WHERE NOT EXISTS (SELECT 1 FROM hr_employee_journal WHERE employee_id=2 AND biz_date=? AND content LIKE '%去皮工序%')`, today, today)
 
-	eWH := demoID(db, `SELECT id FROM hr_employee WHERE emp_no='E1101'`)
+	eWH := demoID(db, `SELECT id FROM hr_employee WHERE emp_no='E-WH'`)
 	_, _ = db.Exec(`INSERT INTO hr_onboard(employee_id, status, remark, onboard_date, need_account, login_name)
 		SELECT ?, 'done', '入职登记演示', ?, 1, 'cangguan'
 		WHERE ? > 0 AND NOT EXISTS (SELECT 1 FROM hr_onboard WHERE login_name='cangguan')`, nullIf0(eWH), today, eWH)
@@ -719,7 +719,7 @@ func seedDemoHR(db *sql.DB, today, now, period string) {
 }
 
 func seedDemoPayroll(db *sql.DB, today, now string) {
-	eSales := demoID(db, `SELECT id FROM hr_employee WHERE emp_no='E1102'`)
+	eSales := demoID(db, `SELECT id FROM hr_employee WHERE emp_no='E-SL'`)
 	_, _ = db.Exec(`INSERT INTO pay_worker_profile(employee_id, pay_type, monthly_base, bank_account, status)
 		SELECT 2, 'piece', 0, '622202******1234', 'active'
 		WHERE NOT EXISTS (SELECT 1 FROM pay_worker_profile WHERE employee_id=2)`)
@@ -733,8 +733,8 @@ func seedDemoPayroll(db *sql.DB, today, now string) {
 	}
 
 	y, m := time.Now().AddDate(0, -1, 0).Year(), int(time.Now().AddDate(0, -1, 0).Month())
-	_, _ = db.Exec(`INSERT INTO pay_payroll_sheet(doc_no, period_year, period_month, status, workshop_id, calc_at, remark, created_by) VALUES
- ('DEMO-PAY-001', ?, ?, 'confirmed', 1, ?, '薪酬核算演示', 1)`, y, m, now)
+	_, _ = db.Exec(`INSERT INTO pay_payroll_sheet(doc_no, period_year, period_month, status, workshop_dept_id, calc_at, remark, created_by) VALUES
+ ('DEMO-PAY-001', ?, ?, 'confirmed', ?, ?, '薪酬核算演示', 1)`, y, m, nullIf0(defaultWorkshopDeptIDDB(db)), now)
 	sheet := demoID(db, `SELECT id FROM pay_payroll_sheet WHERE doc_no='DEMO-PAY-001'`)
 	if sheet > 0 {
 		_, _ = db.Exec(`INSERT INTO pay_payroll_sheet_line(sheet_id, employee_id, emp_type, piece_amount, attendance_amount, commission_amount, adjust_amount, total_amount)
@@ -801,8 +801,8 @@ func seedDemoSystem(db *sql.DB, today, now, period string) {
 	_, _ = db.Exec(`INSERT INTO sys_batch_price_job(id, doc_no, target_type, adjust_type, adjust_value, status, result_msg) VALUES
  (1, 'DEMO-BP-001', 'product', 'percent', 0.05, 'done', '已调价3个SKU')`)
 
-	_, _ = db.Exec(`INSERT INTO sys_batch_payroll_job(id, doc_no, period_ym, workshop_id, status, result_msg) VALUES
- (1, 'DEMO-BPAY-001', ?, 1, 'done', '已核算21人')`, period)
+	_, _ = db.Exec(`INSERT INTO sys_batch_payroll_job(id, doc_no, period_ym, workshop_dept_id, status, result_msg) VALUES
+ (1, 'DEMO-BPAY-001', ?, ?, 'done', '已核算21人')`, period, nullIf0(defaultWorkshopDeptIDDB(db)))
 
 	_, _ = db.Exec(`INSERT INTO sys_reminder(id, title, content, remind_at, target_user_id, status) VALUES
  (1, '月结提醒', '请完成本月财务月结', datetime('now','+2 day'), 1, 'open')`)

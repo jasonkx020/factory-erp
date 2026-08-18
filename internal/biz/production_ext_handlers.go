@@ -139,22 +139,11 @@ func EnsureProductionExtSchema(db *sql.DB) {
   shortage_qty REAL NOT NULL DEFAULT 0,
   suggest_action TEXT
 )`,
-		`CREATE TABLE IF NOT EXISTS pd_workshop (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  code TEXT NOT NULL UNIQUE,
-  name TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'active',
-  remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (NOW()),
-  is_deleted INTEGER NOT NULL DEFAULT 0
-)`,
 		`ALTER TABLE pd_scrap_record ADD COLUMN scrap_type TEXT`,
 		`ALTER TABLE pd_scrap_record ADD COLUMN remark TEXT`,
 		`ALTER TABLE pd_dispatch ADD COLUMN dispatch_type TEXT DEFAULT 'normal'`,
 	}
 	execSchemaRuns(db, "production-ext", stmts)
-	_, _ = db.Exec(`INSERT INTO pd_workshop(id, code, name, status, remark) VALUES
- (1, 'WS-MAIN', '主车间', 'active', '木薯粗加工主车间')`)
 	_, _ = db.Exec(`INSERT INTO pd_bom(id, code, product_id, version_no, name, status) VALUES
  (1, 'BOM-CASSAVA-DICE', 3, 'V1', '袋装木薯丁BOM', 'active')`)
 	var bn int
@@ -210,66 +199,9 @@ func (s *Services) handleProductionExt(c *gin.Context, method, openapiPath, acti
 		return s.handleProductionProgress(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/process-wip"):
 		return s.handleProcessWip(c, openapiPath, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/production/workshops"):
-		return s.handleWorkshopsCRUD(c, method, action)
 	default:
 		return false
 	}
-}
-
-// ---------- workshops ----------
-
-func (s *Services) handleWorkshopsCRUD(c *gin.Context, method, action string) bool {
-	switch action {
-	case "list":
-		return s.listDocTable(c, `SELECT * FROM pd_workshop WHERE COALESCE(is_deleted,0)=0`)
-	case "create":
-		body := bindBody(c)
-		code := strOrDef(body["code"], fmt.Sprintf("WS%s", time.Now().Format("060102150405")))
-		name := strOr(body["name"])
-		if name == "" {
-			api.FailJSON(c, "NAME_REQUIRED")
-			return true
-		}
-		res, err := s.DB.Exec(`INSERT INTO pd_workshop(code, name, status, remark) VALUES(?,?,?,?)`,
-			code, name, strOrDef(body["status"], "active"), strOr(body["remark"]))
-		if err != nil {
-			api.FailJSON(c, "DB_ERROR:"+err.Error())
-			return true
-		}
-		id, _ := res.LastInsertId()
-		api.OK(c, gin.H{"id": id, "code": code, "name": name, "status": "active"})
-		return true
-	case "get":
-		id := paramID(c)
-		rows, _ := s.DB.Query(`SELECT * FROM pd_workshop WHERE id=?`, id)
-		if rows == nil {
-			api.FailJSON(c, "NOT_FOUND")
-			return true
-		}
-		defer rows.Close()
-		list, _ := rowsToMaps(rows)
-		if len(list) == 0 {
-			api.FailJSON(c, "NOT_FOUND")
-			return true
-		}
-		api.OK(c, list[0])
-		return true
-	case "update", "replace":
-		id := paramID(c)
-		body := bindBody(c)
-		_, _ = s.DB.Exec(`UPDATE pd_workshop SET name=COALESCE(NULLIF(?,''),name), status=COALESCE(NULLIF(?,''),status),
-			remark=COALESCE(NULLIF(?,''),remark) WHERE id=?`,
-			strOr(body["name"]), strOr(body["status"]), strOr(body["remark"]), id)
-		api.OK(c, gin.H{"id": id})
-		return true
-	case "delete":
-		_, _ = s.DB.Exec(`UPDATE pd_workshop SET is_deleted=1, status='inactive' WHERE id=?`, paramID(c))
-		api.OK(c, gin.H{})
-		return true
-	}
-	_ = method
-	return true
 }
 
 // ---------- task merges ----------

@@ -43,7 +43,7 @@ var sysSettingDefaults = map[string]map[string]interface{}{
 		"default_warehouse_id": 3, "price_precision": 2,
 	},
 	"production": {
-		"auto_inbound_on_qc": true, "require_box_code": true, "default_workshop_id": 1,
+		"auto_inbound_on_qc": true, "require_box_code": true, "default_workshop_dept_id": 0,
 		"piecework_confirm_required": true,
 	},
 	"table_customs": {
@@ -112,7 +112,7 @@ func EnsureSystemAdminSchema(db *sql.DB) {
 		`CREATE TABLE IF NOT EXISTS sys_personnel_transfer (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			doc_no TEXT, employee_id INTEGER, from_dept_id INTEGER, to_dept_id INTEGER,
-			from_workshop_id INTEGER, to_workshop_id INTEGER, reason TEXT,
+			doc_no TEXT, employee_id INTEGER, from_dept_id INTEGER, to_dept_id INTEGER, reason TEXT,
 			status TEXT DEFAULT 'draft', effective_date TEXT, confirmed_at TEXT, created_by INTEGER,
 			is_deleted INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT
 		)`,
@@ -124,7 +124,7 @@ func EnsureSystemAdminSchema(db *sql.DB) {
 		)`,
 		`CREATE TABLE IF NOT EXISTS sys_batch_payroll_job (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			doc_no TEXT, period_ym TEXT, workshop_id INTEGER, status TEXT DEFAULT 'draft',
+			doc_no TEXT, period_ym TEXT, workshop_dept_id INTEGER, status TEXT DEFAULT 'draft',
 			result_msg TEXT, created_by INTEGER, applied_at TEXT, is_deleted INTEGER DEFAULT 0, created_at TEXT
 		)`,
 		`CREATE TABLE IF NOT EXISTS sys_reminder (
@@ -359,7 +359,7 @@ func (s *Services) createBatchPayrollJob(c *gin.Context) bool {
 	body := bindBody(c)
 	docNo := strOrDef(body["doc_no"], fmt.Sprintf("PAY-%d", time.Now().Unix()%1e10))
 	period := strOrDef(body["period_ym"], time.Now().Format("2006-01"))
-	ws, _ := asInt64(body["workshop_id"])
+	ws, _ := asInt64(body["workshop_dept_id"])
 	now := time.Now().Format("2006-01-02 15:04:05")
 	var year, month int64
 	fmt.Sscanf(period, "%d-%d", &year, &month)
@@ -371,7 +371,7 @@ func (s *Services) createBatchPayrollJob(c *gin.Context) bool {
 	} else {
 		result = fmt.Sprintf("已生成工资单 %s，共 %d 人", sheetNo, n)
 	}
-	res, err := s.DB.Exec(`INSERT INTO sys_batch_payroll_job(doc_no, period_ym, workshop_id, status, result_msg, created_by, applied_at, created_at)
+	res, err := s.DB.Exec(`INSERT INTO sys_batch_payroll_job(doc_no, period_ym, workshop_dept_id, status, result_msg, created_by, applied_at, created_at)
 		VALUES(?,?,?,?,?,?,?,?)`, docNo, period, ws, map[bool]string{true: "done", false: "failed"}[errMsg == ""], result, claimsUserID(c), now, now)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -397,15 +397,12 @@ func (s *Services) publishAnnouncement(c *gin.Context) bool {
 func (s *Services) confirmPersonnelTransfer(c *gin.Context) bool {
 	id := paramID(c)
 	now := time.Now().Format("2006-01-02 15:04:05")
-	var empID, toDept, toWs int64
-	_ = s.DB.QueryRow(`SELECT employee_id, COALESCE(to_dept_id,0), COALESCE(to_workshop_id,0) FROM sys_personnel_transfer WHERE id=?`, id).
-		Scan(&empID, &toDept, &toWs)
+	var empID, toDept int64
+	_ = s.DB.QueryRow(`SELECT employee_id, COALESCE(to_dept_id,0) FROM sys_personnel_transfer WHERE id=?`, id).
+		Scan(&empID, &toDept)
 	if empID > 0 {
 		if toDept > 0 {
-			_, _ = s.DB.Exec(`UPDATE hr_employee SET dept_id=? WHERE id=?`, toDept, empID)
-		}
-		if toWs > 0 {
-			_, _ = s.DB.Exec(`UPDATE hr_employee SET workshop_id=? WHERE id=?`, toWs, empID)
+			_ = s.addEmployeeToDepartment(empID, toDept, true)
 		}
 	}
 	_, err := s.DB.Exec(`UPDATE sys_personnel_transfer SET status='confirmed', confirmed_at=? WHERE id=?`, now, id)

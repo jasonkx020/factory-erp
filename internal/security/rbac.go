@@ -57,6 +57,9 @@ func LoadUserRolesPerms(db *sql.DB, userID int64) (roles []string, perms []strin
 			}
 		}
 	}
+	if IsFounderUser(db, userID) {
+		roles, perms = elevateFounder(roles, perms)
+	}
 	return roles, perms
 }
 

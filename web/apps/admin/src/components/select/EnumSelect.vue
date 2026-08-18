@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, type StyleValue } from 'vue'
 import type { FormOption } from '@erp/shared'
 
 const props = withDefaults(
@@ -10,7 +10,7 @@ const props = withDefaults(
     clearable?: boolean
     filterable?: boolean
     disabled?: boolean
-    style?: string
+    style?: StyleValue
   }>(),
   {
     placeholder: '请选择',

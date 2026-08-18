@@ -44,15 +44,20 @@ export async function loadRoles(): Promise<Row[]> {
 }
 
 export async function loadWorkshops(): Promise<Row[]> {
-  return asList(await productionApi.workshops())
+  return asList(await hrApi.departments('dept_type=workshop'))
 }
 
 export async function loadDepartments(): Promise<Row[]> {
-  return asList(await hrApi.departments())
+  const res = await hrApi.departments()
+  const list = await asList(res)
+  return list.map((d) => ({
+    ...d,
+    name: String(d.path || d.name || ''),
+  }))
 }
 
-export async function loadWorkTeams(workshopId?: number): Promise<Row[]> {
-  return asList(await hrApi.workTeams(workshopId))
+export async function loadWorkTeams(deptId?: number): Promise<Row[]> {
+  return asList(await hrApi.workTeams(deptId))
 }
 
 export async function loadProcesses(): Promise<Row[]> {

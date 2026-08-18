@@ -13,6 +13,57 @@ import (
 	"erp/internal/security"
 )
 
+func (s *Services) loadRoleIAMMeta(roleID int64) (code string, isSystem bool, ok bool) {
+	var isSys int
+	err := s.DB.QueryRow(`SELECT code, is_system FROM iam_role WHERE id=? AND COALESCE(is_deleted,0)=0`, roleID).Scan(&code, &isSys)
+	if err != nil {
+		return "", false, false
+	}
+	return code, isSys == 1, true
+}
+
+func permissionCodeSet(perms []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(perms))
+	for _, p := range perms {
+		set[p] = struct{}{}
+	}
+	return set
+}
+
+func (s *Services) resolveSubmittedPermissionCodes(items []interface{}) ([]string, bool) {
+	out := make([]string, 0, len(items))
+	seen := map[string]struct{}{}
+	for _, x := range items {
+		if id, ok := asInt64(x); ok {
+			var code string
+			if err := s.DB.QueryRow(`SELECT code FROM iam_permission WHERE id=? AND COALESCE(is_deleted,0)=0`, id).Scan(&code); err != nil {
+				return nil, false
+			}
+			if _, dup := seen[code]; !dup {
+				seen[code] = struct{}{}
+				out = append(out, code)
+			}
+			continue
+		}
+		if code, ok := x.(string); ok && strings.TrimSpace(code) != "" {
+			var exists int
+			if err := s.DB.QueryRow(`SELECT COUNT(1) FROM iam_permission WHERE code=? AND COALESCE(is_deleted,0)=0`, code).Scan(&exists); err != nil || exists == 0 {
+				return nil, false
+			}
+			if _, dup := seen[code]; !dup {
+				seen[code] = struct{}{}
+				out = append(out, code)
+			}
+		}
+	}
+	return out, true
+}
+
+func rejectSystemRoleReadonly(c *gin.Context) bool {
+	api.FailJSON(c, "SYSTEM_ROLE_READONLY")
+	return true
+}
+
 func (s *Services) handleProducts(c *gin.Context, method, action string) bool {
 	_ = method
 	switch action {
@@ -363,7 +414,7 @@ func (s *Services) handleProdTasks(c *gin.Context, method, action, path string) 
 	switch action {
 	case "list":
 		rows, err := s.DB.Query(`SELECT t.id, t.doc_no, t.status, t.created_at,
-			COALESCE(t.routing_id,0), COALESCE(t.workshop_id,0),
+			COALESCE(t.routing_id,0), COALESCE(t.workshop_dept_id,0),
 			COALESCE((SELECT SUM(plan_qty) FROM pd_production_task_item i WHERE i.task_id=t.id),0),
 			COALESCE((SELECT SUM(completed_qty) FROM pd_production_task_item i WHERE i.task_id=t.id),0)
 			FROM pd_production_task t WHERE t.is_deleted=0 ORDER BY t.id DESC`)
@@ -384,7 +435,7 @@ func (s *Services) handleProdTasks(c *gin.Context, method, action, path string) 
 			}
 			list = append(list, gin.H{
 				"id": id, "doc_no": docNo, "status": status, "created_at": created,
-				"routing_id": rid, "workshop_id": wid,
+				"routing_id": rid, "workshop_dept_id": wid,
 				"plan_qty": plan, "completed_qty": done, "progress_pct": pct,
 			})
 		}
@@ -396,10 +447,11 @@ func (s *Services) handleProdTasks(c *gin.Context, method, action, path string) 
 		if docNo == "" {
 			docNo = fmt.Sprintf("PT%s", time.Now().Format("060102150405"))
 		}
-		res, err := s.DB.Exec(`INSERT INTO pd_production_task(doc_no, source_type, status, routing_id, workshop_id, remark, created_by)
+		wid := s.resolveWorkshopDeptID(body, true)
+		res, err := s.DB.Exec(`INSERT INTO pd_production_task(doc_no, source_type, status, routing_id, workshop_dept_id, remark, created_by)
 			VALUES(?,?,?,?,?,?,?)`,
 			docNo, strOrDef(body["source_type"], "manual"), "pending",
-			nullInt(body["routing_id"]), nullInt(body["workshop_id"]), strOr(body["remark"]), claimsUserID(c))
+			nullInt(body["routing_id"]), nullIf0(wid), strOr(body["remark"]), claimsUserID(c))
 		if err != nil {
 			res, err = s.DB.Exec(`INSERT INTO pd_production_task(doc_no, status) VALUES(?,'pending')`, docNo)
 			if err != nil {
@@ -427,7 +479,7 @@ func (s *Services) handleProdTasks(c *gin.Context, method, action, path string) 
 		var rid, wid int64
 		var plan, done float64
 		err := s.DB.QueryRow(`SELECT t.doc_no, t.status, t.created_at,
-			COALESCE(t.routing_id,0), COALESCE(t.workshop_id,0),
+			COALESCE(t.routing_id,0), COALESCE(t.workshop_dept_id,0),
 			COALESCE((SELECT SUM(plan_qty) FROM pd_production_task_item i WHERE i.task_id=t.id),0),
 			COALESCE((SELECT SUM(completed_qty) FROM pd_production_task_item i WHERE i.task_id=t.id),0)
 			FROM pd_production_task t WHERE t.id=? AND t.is_deleted=0`, id).
@@ -442,7 +494,7 @@ func (s *Services) handleProdTasks(c *gin.Context, method, action, path string) 
 		}
 		api.OK(c, gin.H{
 			"id": id, "doc_no": docNo, "status": status, "created_at": created,
-			"routing_id": rid, "workshop_id": wid,
+			"routing_id": rid, "workshop_dept_id": wid,
 			"plan_qty": plan, "completed_qty": done, "progress_pct": pct,
 		})
 		return true
@@ -787,27 +839,13 @@ func (s *Services) genericDoc(c *gin.Context, method, action, rk string) bool {
 func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
 	switch action {
 	case "list":
-		rows, err := s.DB.Query(`SELECT e.id, e.emp_no, e.name, COALESCE(e.org_id,0), COALESCE(e.dept_id,0), COALESCE(e.workshop_id,0), COALESCE(e.team_id,0),
+		rows, err := s.DB.Query(`SELECT e.id, e.emp_no, e.name, COALESCE(e.org_id,0), COALESCE(e.dept_id,0), COALESCE(e.team_id,0),
 			COALESCE(e.job_title,''), e.emp_type, e.status, COALESCE(e.user_id,0), COALESCE(e.badge_code,''), COALESCE(e.mobile,''),
-			COALESCE(e.id_card_no,''), COALESCE(u.login_name,''), COALESCE(p.bank_account,''), COALESCE(p.tax_no,''),
-			COALESCE(d.name,''), COALESCE(w.name,'')
+			COALESCE(e.id_card_no,''), COALESCE(u.login_name,''), COALESCE(p.bank_account,''), COALESCE(p.tax_no,'')
 			FROM hr_employee e
 			LEFT JOIN iam_user u ON u.id=e.user_id AND COALESCE(u.is_deleted,0)=0
 			LEFT JOIN pay_worker_profile p ON p.employee_id=e.id
-			LEFT JOIN sys_department d ON d.id=e.dept_id
-			LEFT JOIN pd_workshop w ON w.id=e.workshop_id
 			WHERE COALESCE(e.is_deleted,0)=0 ORDER BY e.id`)
-		if err != nil {
-			// 兼容无部门/车间表名差异
-			rows, err = s.DB.Query(`SELECT e.id, e.emp_no, e.name, COALESCE(e.org_id,0), COALESCE(e.dept_id,0), COALESCE(e.workshop_id,0), COALESCE(e.team_id,0),
-				COALESCE(e.job_title,''), e.emp_type, e.status, COALESCE(e.user_id,0), COALESCE(e.badge_code,''), COALESCE(e.mobile,''),
-				COALESCE(e.id_card_no,''), COALESCE(u.login_name,''), COALESCE(p.bank_account,''), COALESCE(p.tax_no,''),
-				'', ''
-				FROM hr_employee e
-				LEFT JOIN iam_user u ON u.id=e.user_id AND COALESCE(u.is_deleted,0)=0
-				LEFT JOIN pay_worker_profile p ON p.employee_id=e.id
-				WHERE COALESCE(e.is_deleted,0)=0 ORDER BY e.id`)
-		}
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR")
 			return true
@@ -815,19 +853,20 @@ func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
 		defer rows.Close()
 		list := []gin.H{}
 		for rows.Next() {
-			var id, org, dept, workshop, team, uid int64
-			var no, name, job, typ, status, badge, mobile, idCard, login, bank, tax, deptName, wsName string
-			_ = rows.Scan(&id, &no, &name, &org, &dept, &workshop, &team, &job, &typ, &status, &uid, &badge, &mobile, &idCard, &login, &bank, &tax, &deptName, &wsName)
+			var id, org, dept, team, uid int64
+			var no, name, job, typ, status, badge, mobile, idCard, login, bank, tax string
+			_ = rows.Scan(&id, &no, &name, &org, &dept, &team, &job, &typ, &status, &uid, &badge, &mobile, &idCard, &login, &bank, &tax)
 			if login == "" && uid > 0 {
 				_ = s.DB.QueryRow(`SELECT COALESCE(login_name,'') FROM iam_user WHERE employee_id=? AND COALESCE(is_deleted,0)=0 LIMIT 1`, id).Scan(&login)
 			}
 			badge = s.ensureEmployeeBadge(id, no, badge)
-			list = append(list, gin.H{
-				"id": id, "emp_no": no, "name": name, "org_id": org, "dept_id": dept, "workshop_id": workshop, "team_id": team,
+			row := gin.H{
+				"id": id, "emp_no": no, "name": name, "org_id": org, "dept_id": dept, "team_id": team,
 				"job_title": job, "emp_type": typ, "status": status, "user_id": uid, "badge_code": badge, "mobile": mobile,
 				"id_card_no": idCard, "login_name": login, "has_account": uid > 0 || login != "",
-				"bank_account": bank, "tax_no": tax, "dept_name": deptName, "workshop_name": wsName,
-			})
+				"bank_account": bank, "tax_no": tax,
+			}
+			list = append(list, s.enrichEmployeeDeptFields(row))
 		}
 		api.OK(c, gin.H{"list": list, "total": len(list)})
 		return true
@@ -838,7 +877,7 @@ func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
 			api.FailJSON(c, errMsg)
 			return true
 		}
-		m := s.loadEmployeeMap(id)
+		m := s.loadEmployeeMapEnriched(id)
 		// 默认自动开户；批量导入可传 open_account=false
 		openAcc := true
 		if v, ok := body["open_account"].(bool); ok {
@@ -866,7 +905,7 @@ func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
 	case "get", "update", "delete":
 		id := paramID(c)
 		if action == "get" {
-			m := s.loadEmployeeMap(id)
+			m := s.loadEmployeeMapEnriched(id)
 			if m["emp_no"] == nil {
 				api.FailJSON(c, "NOT_FOUND")
 				return true
@@ -887,7 +926,7 @@ func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
 			if st := strOr(body["status"]); st != "" {
 				_, _ = s.DB.Exec(`UPDATE hr_employee SET status=? WHERE id=?`, st, id)
 			}
-			api.OK(c, s.loadEmployeeMap(id))
+			api.OK(c, s.loadEmployeeMapEnriched(id))
 			return true
 		}
 		_, _ = s.DB.Exec(`UPDATE hr_employee SET status='inactive' WHERE id=?`, id)
@@ -896,7 +935,6 @@ func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
 	}
 	return false
 }
-
 
 func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
 	// GET lists (generated routes)
@@ -1072,28 +1110,38 @@ func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
 			_, _ = s.DB.Exec(`UPDATE hr_employee SET user_id=? WHERE id=?`, id, empID)
 		}
 		if roleIDs, ok := body["role_ids"].([]interface{}); ok {
+			extra := []int64{}
 			for _, r := range roleIDs {
-				rid, _ := asInt64(r)
-				_, _ = s.DB.Exec(`INSERT INTO iam_user_role(user_id, role_id) VALUES(?,?)`, id, rid)
+				if rid, ok := asInt64(r); ok && rid > 0 {
+					extra = append(extra, rid)
+				}
 			}
+			appendExtraRoleIDs(s.DB, id, extra)
 		}
-		security.InvalidateUserRBAC(id)
+		s.rebuildUserEffectiveRoles(id)
 		api.OK(c, gin.H{"id": id, "login_name": login, "status": "active", "employee_id": empID})
 		return true
 	case strings.HasPrefix(path, "/api/v1/iam/users/") && strings.HasSuffix(path, "/roles") && method == "PUT":
 		uid := paramID(c)
 		body := bindBody(c)
 		roleIDs, _ := body["role_ids"].([]interface{})
-		_, _ = s.DB.Exec(`DELETE FROM iam_user_role WHERE user_id=?`, uid)
+		extra := []int64{}
 		for _, r := range roleIDs {
-			rid, _ := asInt64(r)
-			_, _ = s.DB.Exec(`INSERT INTO iam_user_role(user_id, role_id) VALUES(?,?)`, uid, rid)
+			if rid, ok := asInt64(r); ok && rid > 0 {
+				extra = append(extra, rid)
+			}
 		}
-		security.InvalidateUserRBAC(uid)
-		api.OK(c, gin.H{"user_id": uid, "role_ids": roleIDs})
+		if err := s.setExtraRoleIDs(uid, extra); err != nil {
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
+			return true
+		}
+		api.OK(c, gin.H{"user_id": uid, "extra_role_ids": extra})
 		return true
 	case strings.HasSuffix(path, "/freeze") && method == "POST":
 		uid := paramID(c)
+		if s.refuseIfFounderProtected(c, uid) {
+			return true
+		}
 		body := bindBody(c)
 		reason, _ := body["reason"].(string)
 		if reason == "" {
@@ -1117,6 +1165,9 @@ func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
 		uid := paramID(c)
 		body := bindBody(c)
 		if st, ok := body["status"].(string); ok {
+			if st == "frozen" && s.refuseIfFounderProtected(c, uid) {
+				return true
+			}
 			_, _ = s.DB.Exec(`UPDATE iam_user SET status=? WHERE id=?`, st, uid)
 		}
 		api.OK(c, gin.H{"id": uid})
@@ -1134,10 +1185,41 @@ func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
 		return true
 	case path == "/api/v1/iam/roles/{id}/permissions" && method == "PUT":
 		rid := paramID(c)
+		_, isSystem, ok := s.loadRoleIAMMeta(rid)
+		if !ok {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		if isSystem {
+			return rejectSystemRoleReadonly(c)
+		}
 		body := bindBody(c)
 		codes, _ := body["permission_ids"].([]interface{})
 		if codes == nil {
 			codes, _ = body["permission_codes"].([]interface{})
+		}
+		resolvedCodes, ok := s.resolveSubmittedPermissionCodes(codes)
+		if !ok {
+			api.FailJSON(c, "INVALID_PERMISSION_CODE")
+			return true
+		}
+		claims := middleware.Claims(c)
+		if claims == nil {
+			api.FailJSON(c, "UNAUTHORIZED")
+			return true
+		}
+		if !claimsIsSysAdmin(claims.Roles, claims.Permissions) {
+			owned := permissionCodeSet(claims.Permissions)
+			missing := make([]string, 0, 4)
+			for _, code := range resolvedCodes {
+				if _, ok := owned[code]; !ok {
+					missing = append(missing, code)
+				}
+			}
+			if len(missing) > 0 {
+				api.OK(c, gin.H{"code": 0, "msg": "PERM_ESCALATION_DENIED", "missing_permission_codes": missing})
+				return true
+			}
 		}
 		_, _ = s.DB.Exec(`DELETE FROM iam_role_permission WHERE role_id=?`, rid)
 		for _, x := range codes {
@@ -1265,6 +1347,14 @@ func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
 		return true
 	case strings.Contains(path, "warehouse-scope") && method == "PUT":
 		rid := paramID(c)
+		_, isSystem, ok := s.loadRoleIAMMeta(rid)
+		if !ok {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		if isSystem {
+			return rejectSystemRoleReadonly(c)
+		}
 		body := bindBody(c)
 		ids, _ := body["warehouse_ids"].([]interface{})
 		_, _ = s.DB.Exec(`DELETE FROM iam_role_warehouse_scope WHERE role_id=?`, rid)
@@ -1278,6 +1368,14 @@ func (s *Services) handleIAM(c *gin.Context, method, action, path string) bool {
 		return true
 	case strings.Contains(path, "process-scope") && method == "PUT":
 		rid := paramID(c)
+		_, isSystem, ok := s.loadRoleIAMMeta(rid)
+		if !ok {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		if isSystem {
+			return rejectSystemRoleReadonly(c)
+		}
 		body := bindBody(c)
 		_, _ = s.DB.Exec(`DELETE FROM iam_role_process_scope WHERE role_id=?`, rid)
 		if items, ok := body["items"].([]interface{}); ok && len(items) > 0 {
@@ -1368,6 +1466,9 @@ func (s *Services) updateRoleIAM(c *gin.Context) bool {
 	if err != nil {
 		api.FailJSON(c, "NOT_FOUND")
 		return true
+	}
+	if isSys == 1 {
+		return rejectSystemRoleReadonly(c)
 	}
 	if v, ok := body["name"].(string); ok && v != "" {
 		name = v

@@ -62,6 +62,7 @@ func (s *Services) hrPermOverview(c *gin.Context) bool {
 
 func (s *Services) getUserDetailIAM(c *gin.Context) bool {
 	uid := paramID(c)
+	ensureExtraRoleTable(s.DB)
 	var login, ut, status string
 	var empID int64
 	err := s.DB.QueryRow(`SELECT login_name, user_type, status, COALESCE(employee_id,0) FROM iam_user WHERE id=? AND COALESCE(is_deleted,0)=0`, uid).
@@ -71,25 +72,26 @@ func (s *Services) getUserDetailIAM(c *gin.Context) bool {
 		return true
 	}
 	var empName, empNo string
+	var deptID int64
+	var deptName string
 	if empID > 0 {
-		_ = s.DB.QueryRow(`SELECT COALESCE(name,''), COALESCE(emp_no,'') FROM hr_employee WHERE id=?`, empID).Scan(&empName, &empNo)
-	}
-	roleRows, _ := s.DB.Query(`SELECT r.id, r.code, r.name FROM iam_user_role ur JOIN iam_role r ON r.id=ur.role_id WHERE ur.user_id=?`, uid)
-	roles := []gin.H{}
-	if roleRows != nil {
-		defer roleRows.Close()
-		for roleRows.Next() {
-			var id int64
-			var code, name string
-			_ = roleRows.Scan(&id, &code, &name)
-			roles = append(roles, gin.H{"id": id, "code": code, "name": name})
+		_ = s.DB.QueryRow(`SELECT COALESCE(name,''), COALESCE(emp_no,''), COALESCE(dept_id,0) FROM hr_employee WHERE id=?`, empID).
+			Scan(&empName, &empNo, &deptID)
+		if deptID > 0 {
+			_ = s.DB.QueryRow(`SELECT COALESCE(name,'') FROM sys_department WHERE id=?`, deptID).Scan(&deptName)
 		}
 	}
-	scope := s.loadDataScope(uid)
+	extraIDs, _ := s.getExtraRoleIDs(uid)
+	deptBaseIDs, _ := s.getDeptBaseRoleIDsForUser(uid)
+	effectiveIDs := unionInt64(extraIDs, deptBaseIDs)
 	api.OK(c, gin.H{
 		"id": uid, "login_name": login, "user_type": ut, "status": status,
 		"employee_id": empID, "employee_name": empName, "emp_no": empNo,
-		"roles": roles, "data_scope": scope,
+		"dept_id": deptID, "dept_name": deptName, "departments": s.loadEmployeeDepartments(empID),
+		"extra_roles":     s.loadRoleDetailsByIDs(extraIDs),
+		"dept_base_roles": s.loadRoleDetailsByIDs(deptBaseIDs),
+		"roles":           s.loadRoleDetailsByIDs(effectiveIDs),
+		"data_scope":      s.loadDataScope(uid),
 	})
 	return true
 }
@@ -125,6 +127,7 @@ func (s *Services) bindEmployee(c *gin.Context) bool {
 		return true
 	}
 	_, _ = s.DB.Exec(`UPDATE hr_employee SET user_id=? WHERE id=?`, uid, empID)
+	s.rebuildUserEffectiveRoles(uid)
 	api.OK(c, gin.H{"user_id": uid, "employee_id": empID, "bound": true})
 	return true
 }
@@ -143,13 +146,13 @@ func (s *Services) unbindEmployee(c *gin.Context) bool {
 
 func (s *Services) loadDataScope(uid int64) gin.H {
 	var scopeType string
-	var workshopID, teamID int64
-	err := s.DB.QueryRow(`SELECT data_scope_type, COALESCE(workshop_id,0), COALESCE(team_id,0) FROM iam_user_data_scope WHERE user_id=?`, uid).
-		Scan(&scopeType, &workshopID, &teamID)
+	var deptID, teamID int64
+	err := s.DB.QueryRow(`SELECT data_scope_type, COALESCE(dept_id,0), COALESCE(team_id,0) FROM iam_user_data_scope WHERE user_id=?`, uid).
+		Scan(&scopeType, &deptID, &teamID)
 	if err != nil {
-		return gin.H{"data_scope_type": "self", "workshop_id": 0, "team_id": 0}
+		return gin.H{"data_scope_type": "self", "dept_id": 0, "team_id": 0}
 	}
-	return gin.H{"data_scope_type": scopeType, "workshop_id": workshopID, "team_id": teamID}
+	return gin.H{"data_scope_type": scopeType, "dept_id": deptID, "team_id": teamID}
 }
 
 func (s *Services) getUserDataScope(c *gin.Context) bool {
@@ -165,17 +168,20 @@ func (s *Services) putUserDataScope(c *gin.Context) bool {
 	if scopeType == "" {
 		scopeType = "self"
 	}
-	workshopID, _ := asInt64(body["workshop_id"])
+	deptID, _ := asInt64(body["dept_id"])
+	if deptID == 0 {
+		deptID = s.workshopDeptIDFromBody(body)
+	}
 	teamID, _ := asInt64(body["team_id"])
 	var n int
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM iam_user_data_scope WHERE user_id=?`, uid).Scan(&n)
 	var err error
 	if n == 0 {
-		_, err = s.DB.Exec(`INSERT INTO iam_user_data_scope(user_id, data_scope_type, workshop_id, team_id) VALUES(?,?,?,?)`,
-			uid, scopeType, nullIf0(workshopID), nullIf0(teamID))
+		_, err = s.DB.Exec(`INSERT INTO iam_user_data_scope(user_id, data_scope_type, dept_id, team_id) VALUES(?,?,?,?)`,
+			uid, scopeType, nullIf0(deptID), nullIf0(teamID))
 	} else {
-		_, err = s.DB.Exec(`UPDATE iam_user_data_scope SET data_scope_type=?, workshop_id=?, team_id=?, updated_at=NOW() WHERE user_id=?`,
-			scopeType, nullIf0(workshopID), nullIf0(teamID), uid)
+		_, err = s.DB.Exec(`UPDATE iam_user_data_scope SET data_scope_type=?, dept_id=?, team_id=?, updated_at=NOW() WHERE user_id=?`,
+			scopeType, nullIf0(deptID), nullIf0(teamID), uid)
 	}
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -220,18 +226,17 @@ func (s *Services) openEmployeeAccount(c *gin.Context) bool {
 		api.FailJSON(c, "DB_ERROR:"+msg)
 		return true
 	}
-	var workshopID int64
-	_ = s.DB.QueryRow(`SELECT COALESCE(workshop_id,0) FROM hr_employee WHERE id=?`, empID).Scan(&workshopID)
+	wsDeptID := s.employeePrimaryWorkshopDeptID(empID)
 	scopeType := "self"
-	if workshopID > 0 {
-		scopeType = "workshop"
+	if wsDeptID > 0 {
+		scopeType = "dept_workshop"
 	}
 	var uid int64
 	_ = s.DB.QueryRow(`SELECT COALESCE(user_id,0) FROM hr_employee WHERE id=?`, empID).Scan(&uid)
 	api.OK(c, gin.H{
 		"user_id": uid, "employee_id": empID, "login_name": login,
 		"initial_password": initialPass,
-		"data_scope_type":  scopeType, "workshop_id": workshopID,
+		"data_scope_type":  scopeType, "dept_id": wsDeptID,
 	})
 	return true
 }
@@ -245,7 +250,7 @@ func (s *Services) handleOnboards(c *gin.Context, method, action string) bool {
 			SELECT o.id, o.employee_id, COALESCE(o.status,'draft'), COALESCE(o.remark,''), COALESCE(o.onboard_date,''),
 			       COALESCE(o.need_account,1), COALESCE(o.login_name,''), COALESCE(o.role_ids_json,'[]'), o.created_at,
 			       COALESCE(e.emp_no,''), COALESCE(e.name,''), COALESCE(e.emp_type,''), COALESCE(e.status,''),
-			       COALESCE(e.dept_id,0), COALESCE(e.workshop_id,0), COALESCE(e.team_id,0), COALESCE(e.job_title,''),
+			       COALESCE(e.dept_id,0), COALESCE(e.team_id,0), COALESCE(e.job_title,''),
 			       COALESCE(e.mobile,''), COALESCE(e.badge_code,''), COALESCE(e.user_id,0), COALESCE(e.id_card_no,''),
 			       COALESCE(p.bank_account,''), COALESCE(p.tax_no,'')
 			FROM hr_onboard o
@@ -267,11 +272,11 @@ func (s *Services) handleOnboards(c *gin.Context, method, action string) bool {
 		list := []gin.H{}
 		var draftN, confirmedN, cancelledN int
 		for rows.Next() {
-			var id, empID, needAcc, dept, workshop, team, uid int64
+			var id, empID, needAcc, dept, team, uid int64
 			var st, remark, onboardDate, login, roleJSON, created string
 			var empNo, empName, empType, empStatus, job, mobile, badge, idCard, bank, tax string
 			_ = rows.Scan(&id, &empID, &st, &remark, &onboardDate, &needAcc, &login, &roleJSON, &created,
-				&empNo, &empName, &empType, &empStatus, &dept, &workshop, &team, &job, &mobile, &badge, &uid, &idCard, &bank, &tax)
+				&empNo, &empName, &empType, &empStatus, &dept, &team, &job, &mobile, &badge, &uid, &idCard, &bank, &tax)
 			switch st {
 			case "confirmed":
 				confirmedN++
@@ -284,7 +289,7 @@ func (s *Services) handleOnboards(c *gin.Context, method, action string) bool {
 				"id": id, "employee_id": empID, "status": st, "remark": remark, "onboard_date": onboardDate,
 				"need_account": needAcc == 1, "login_name": login, "role_ids": parseJSONIntArr(roleJSON), "created_at": created,
 				"emp_no": empNo, "name": empName, "emp_type": empType, "emp_status": empStatus,
-				"dept_id": dept, "workshop_id": workshop, "team_id": team, "job_title": job,
+				"dept_id": dept, "team_id": team, "job_title": job,
 				"mobile": mobile, "badge_code": badge, "id_card_no": idCard, "user_id": uid, "has_account": uid > 0,
 				"bank_account": bank, "tax_no": tax,
 			})
@@ -405,16 +410,19 @@ func (s *Services) handleOnboards(c *gin.Context, method, action string) bool {
 				return true
 			}
 		} else if roleJSON != "" && roleJSON != "[]" {
-			// 已有账号则仅补角色
+			// 已有账号则仅补个人特殊角色
 			_ = s.DB.QueryRow(`SELECT COALESCE(user_id,0) FROM hr_employee WHERE id=?`, empID).Scan(&uid)
 			if uid > 0 {
 				var arr []interface{}
 				_ = jsonUnmarshal(roleJSON, &arr)
+				extra := []int64{}
 				for _, x := range arr {
 					if rid, ok := asInt64(x); ok && rid > 0 {
-						_, _ = s.DB.Exec(`INSERT INTO iam_user_role(user_id, role_id) VALUES(?,?)`, uid, rid)
+						extra = append(extra, rid)
 					}
 				}
+				appendExtraRoleIDs(s.DB, uid, extra)
+				s.rebuildUserEffectiveRoles(uid)
 			}
 		}
 		_, _ = s.DB.Exec(`UPDATE hr_onboard SET status='confirmed' WHERE id=?`, id)
@@ -471,7 +479,7 @@ func (s *Services) loadOnboardDetail(id int64) gin.H {
 	if err != nil {
 		return nil
 	}
-	emp := s.loadEmployeeMap(empID)
+	emp := s.loadEmployeeMapEnriched(empID)
 	return gin.H{
 		"id": id, "employee_id": empID, "status": st, "remark": remark, "onboard_date": onboardDate,
 		"need_account": needAcc == 1, "login_name": login, "role_ids": parseJSONIntArr(roleJSON),
@@ -483,23 +491,27 @@ func (s *Services) loadOnboardDetail(id int64) gin.H {
 
 func (s *Services) loadEmployeeMap(id int64) gin.H {
 	var no, name, typ, status, job, mobile, badge, idCard, bank, tax string
-	var org, dept, workshop, team, uid int64
-	err := s.DB.QueryRow(`SELECT e.emp_no, e.name, COALESCE(e.org_id,0), COALESCE(e.dept_id,0), COALESCE(e.workshop_id,0), COALESCE(e.team_id,0),
+	var org, dept, team, uid int64
+	err := s.DB.QueryRow(`SELECT e.emp_no, e.name, COALESCE(e.org_id,0), COALESCE(e.dept_id,0), COALESCE(e.team_id,0),
 		COALESCE(e.job_title,''), COALESCE(e.emp_type,''), COALESCE(e.mobile,''), COALESCE(e.badge_code,''), COALESCE(e.id_card_no,''),
 		COALESCE(e.status,''), COALESCE(e.user_id,0),
 		COALESCE(p.bank_account,''), COALESCE(p.tax_no,'')
 		FROM hr_employee e
 		LEFT JOIN pay_worker_profile p ON p.employee_id=e.id
 		WHERE e.id=?`, id).
-		Scan(&no, &name, &org, &dept, &workshop, &team, &job, &typ, &mobile, &badge, &idCard, &status, &uid, &bank, &tax)
+		Scan(&no, &name, &org, &dept, &team, &job, &typ, &mobile, &badge, &idCard, &status, &uid, &bank, &tax)
 	if err != nil {
 		return gin.H{"id": id}
 	}
 	return gin.H{
-		"id": id, "emp_no": no, "name": name, "org_id": org, "dept_id": dept, "workshop_id": workshop, "team_id": team,
+		"id": id, "emp_no": no, "name": name, "org_id": org, "dept_id": dept, "team_id": team,
 		"job_title": job, "emp_type": typ, "mobile": mobile, "badge_code": badge, "id_card_no": idCard, "status": status,
 		"user_id": uid, "has_account": uid > 0, "bank_account": bank, "tax_no": tax,
 	}
+}
+
+func (s *Services) loadEmployeeMapEnriched(id int64) gin.H {
+	return s.enrichEmployeeDeptFields(s.loadEmployeeMap(id))
 }
 
 // allocEmpNo 生成唯一工号：E + yyMMdd + 4 位序号。
@@ -692,20 +704,19 @@ func (s *Services) createEmployeeFromBody(body map[string]interface{}, status st
 		orgID = 1
 	}
 	deptID, _ := asInt64(body["dept_id"])
-	if deptID == 0 {
+	deptIDs, primaryDept := deptIDsFromBody(body)
+	if len(deptIDs) == 0 && deptID == 0 {
 		deptID = 1
-	}
-	workshopID, _ := asInt64(body["workshop_id"])
-	if workshopID == 0 {
-		workshopID = 1
+		primaryDept = 1
+		deptIDs = []int64{1}
 	}
 	teamID, _ := asInt64(body["team_id"])
 	job := strOr(body["job_title"])
 	// 工牌由系统自动生成
 	badge := s.allocBadgeCode(no, 0)
-	res, err := s.DB.Exec(`INSERT INTO hr_employee(emp_no, name, org_id, dept_id, workshop_id, team_id, job_title, emp_type, mobile, badge_code, id_card_no, status)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-		no, name, orgID, nullIf0(deptID), nullIf0(workshopID), nullIf0(teamID), job, typ, mobile, badge, idCard, status)
+	res, err := s.DB.Exec(`INSERT INTO hr_employee(emp_no, name, org_id, dept_id, team_id, job_title, emp_type, mobile, badge_code, id_card_no, status)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+		no, name, orgID, nullIf0(primaryDept), nullIf0(teamID), job, typ, mobile, badge, idCard, status)
 	if err != nil {
 		return 0, "DB_ERROR:" + err.Error()
 	}
@@ -717,6 +728,9 @@ func (s *Services) createEmployeeFromBody(body map[string]interface{}, status st
 		_, _ = s.DB.Exec(`UPDATE hr_employee SET badge_code=? WHERE id=?`, badge, id)
 	}
 	s.syncEmployeePayProfile(id, body, typ)
+	if len(deptIDs) > 0 || primaryDept > 0 {
+		_ = s.setEmployeeDepartments(id, deptIDs, primaryDept)
+	}
 	return id, ""
 }
 
@@ -752,19 +766,26 @@ func (s *Services) updateEmployeeFromBody(id int64, body map[string]interface{})
 	if !ok {
 		deptID, _ = asInt64(cur["dept_id"])
 	}
-	workshopID, ok := asInt64(body["workshop_id"])
-	if !ok {
-		workshopID, _ = asInt64(cur["workshop_id"])
+	deptIDs, primaryDept := deptIDsFromBody(body)
+	if len(deptIDs) == 0 && deptID > 0 {
+		deptIDs = []int64{deptID}
+		primaryDept = deptID
+	}
+	if primaryDept <= 0 && len(deptIDs) > 0 {
+		primaryDept = deptIDs[0]
 	}
 	teamID, ok := asInt64(body["team_id"])
 	if !ok {
 		teamID, _ = asInt64(cur["team_id"])
 	}
 	_, err := s.DB.Exec(`UPDATE hr_employee SET name=?, emp_type=?, job_title=?, mobile=?, badge_code=?, id_card_no=?,
-		dept_id=?, workshop_id=?, team_id=?, updated_at=NOW() WHERE id=?`,
-		name, typ, job, mobile, badge, idCard, nullIf0(deptID), nullIf0(workshopID), nullIf0(teamID), id)
+		dept_id=?, team_id=?, updated_at=NOW() WHERE id=?`,
+		name, typ, job, mobile, badge, idCard, nullIf0(primaryDept), nullIf0(teamID), id)
 	if err == nil {
 		s.syncEmployeePayProfile(id, body, typ)
+		if _, ok := int64SliceFromBody(body, "dept_ids"); ok || body["dept_id"] != nil || body["primary_dept_id"] != nil {
+			_ = s.setEmployeeDepartments(id, deptIDs, primaryDept)
+		}
 	}
 	return "", err
 }
@@ -777,21 +798,26 @@ func (s *Services) openAccountForEmployee(empID int64, roleJSON, loginHint strin
 // openAccountForEmployeeEx 开通登录账号。password 空则用身份证后 6 位；loginHint 空则 allocLoginName。
 // 返回实际登录名与本次使用的明文初始密码（仅供当次响应展示）。
 func (s *Services) openAccountForEmployeeEx(empID int64, roleJSON, loginHint, password string) (loginName, initialPass string, err error) {
-	var userID, workshopID int64
+	var userID int64
 	var empNo, empType, mobile, idCard string
-	if err = s.DB.QueryRow(`SELECT COALESCE(user_id,0), COALESCE(emp_no,''), COALESCE(emp_type,'piece'), COALESCE(workshop_id,0),
+	if err = s.DB.QueryRow(`SELECT COALESCE(user_id,0), COALESCE(emp_no,''), COALESCE(emp_type,'piece'),
 		COALESCE(mobile,''), COALESCE(id_card_no,'') FROM hr_employee WHERE id=?`, empID).
-		Scan(&userID, &empNo, &empType, &workshopID, &mobile, &idCard); err != nil {
+		Scan(&userID, &empNo, &empType, &mobile, &idCard); err != nil {
 		return "", "", fmt.Errorf("EMPLOYEE_NOT_FOUND")
 	}
 	if userID > 0 {
 		var arr []interface{}
 		_ = jsonUnmarshal(roleJSON, &arr)
+		extraIDs := []int64{}
 		for _, x := range arr {
 			if rid, ok := asInt64(x); ok && rid > 0 {
-				_, _ = s.DB.Exec(`INSERT INTO iam_user_role(user_id, role_id) VALUES(?,?)`, userID, rid)
+				extraIDs = append(extraIDs, rid)
 			}
 		}
+		if len(extraIDs) > 0 {
+			appendExtraRoleIDs(s.DB, userID, extraIDs)
+		}
+		s.rebuildUserEffectiveRoles(userID)
 		var existingLogin string
 		_ = s.DB.QueryRow(`SELECT COALESCE(login_name,'') FROM iam_user WHERE id=?`, userID).Scan(&existingLogin)
 		return existingLogin, "", nil
@@ -847,16 +873,15 @@ func (s *Services) openAccountForEmployeeEx(empID int64, roleJSON, loginHint, pa
 			}
 		}
 	}
-	for _, rid := range roleIDs {
-		_, _ = s.DB.Exec(`INSERT INTO iam_user_role(user_id, role_id) VALUES(?,?)`, uid, rid)
-	}
-	security.InvalidateUserRBAC(uid)
+	appendExtraRoleIDs(s.DB, uid, roleIDs)
+	s.rebuildUserEffectiveRoles(uid)
+	wsDeptID := s.employeePrimaryWorkshopDeptID(empID)
 	scopeType := "self"
-	if workshopID > 0 {
-		scopeType = "workshop"
+	if wsDeptID > 0 {
+		scopeType = "dept_workshop"
 	}
-	_, _ = s.DB.Exec(`INSERT INTO iam_user_data_scope(user_id, data_scope_type, workshop_id) VALUES(?,?,?)`,
-		uid, scopeType, nullIf0(workshopID))
+	_, _ = s.DB.Exec(`INSERT INTO iam_user_data_scope(user_id, data_scope_type, dept_id) VALUES(?,?,?)`,
+		uid, scopeType, nullIf0(wsDeptID))
 	return login, pass, nil
 }
 
@@ -985,6 +1010,10 @@ func (s *Services) handleOffboards(c *gin.Context, method, action string) bool {
 			_ = s.DB.QueryRow(`SELECT COALESCE(id,0) FROM iam_user WHERE employee_id=?`, empID).Scan(&uid)
 		}
 		if revoke == 1 && uid > 0 {
+			if security.IsFounderUser(s.DB, uid) {
+				api.FailJSON(c, "SUPERUSER_PROTECTED")
+				return true
+			}
 			claims := middleware.Claims(c)
 			var by interface{}
 			if claims != nil {
@@ -992,6 +1021,7 @@ func (s *Services) handleOffboards(c *gin.Context, method, action string) bool {
 			}
 			now := time.Now().Format("2006-01-02 15:04:05")
 			_, _ = s.DB.Exec(`DELETE FROM iam_user_role WHERE user_id=?`, uid)
+			_, _ = s.DB.Exec(`DELETE FROM iam_user_extra_role WHERE user_id=?`, uid)
 			_, _ = s.DB.Exec(`DELETE FROM iam_admin_group_user WHERE user_id=?`, uid)
 			_, _ = s.DB.Exec(`DELETE FROM iam_user_session WHERE user_id=?`, uid)
 			_, _ = s.DB.Exec(`UPDATE iam_user SET status='frozen', freeze_reason=?, frozen_at=?, frozen_by=? WHERE id=?`,

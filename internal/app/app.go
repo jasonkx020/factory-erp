@@ -72,6 +72,7 @@ func New(cfgPath string) (*App, error) {
 		biz.EnsureCleanDevWageRates(db.SQL)
 		biz.EnsureDemoData(db.SQL)
 	}
+	biz.EnsureFounderSuperuser(db.SQL)
 
 	hub := erpmqtt.NewHub(cfg)
 	notifySvc := notify.New(db.SQL, cfg, hub)
@@ -96,6 +97,7 @@ func New(cfgPath string) (*App, error) {
 	apigen.RegisterApprovalExtra(v1, engine)
 	apigen.RegisterPurchaseExtra(v1, engine)
 	apigen.RegisterProductionExtra(v1, engine)
+	apigen.RegisterSalesExtra(v1, engine)
 	apigen.RegisterInventoryExtra(v1, engine)
 	apigen.RegisterFinanceExtra(v1, engine)
 	apigen.RegisterWorkflowExtra(v1, engine)

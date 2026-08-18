@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
@@ -11,9 +11,8 @@ import {
   empTypeLabel,
   hrApi,
   iamApi,
-  productionApi,
 } from '@erp/shared'
-import { DeptSelect, EnumSelect, TeamSelect, WorkshopSelect } from '../../components/select'
+import { EnumSelect, TeamSelect } from '../../components/select'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 import { downloadExcel } from '../../utils/exportExcel'
@@ -27,7 +26,6 @@ const empCols: MobileCardColumn[] = [
   { prop: 'emp_type_label', label: '用工类型' },
   { prop: 'job_title', label: '岗位' },
   { prop: 'mobile', label: '手机' },
-  { prop: 'workshop_name', label: '车间' },
   { prop: 'dept_name', label: '部门' },
   { prop: 'status_label', label: '状态' },
   { prop: 'account_label', label: '账号' },
@@ -38,7 +36,7 @@ const exporting = ref(false)
 const list = ref<Row[]>([])
 const roles = ref<Row[]>([])
 const deptMap = ref<Record<number, string>>({})
-const workshopMap = ref<Record<number, string>>({})
+const deptTypeMap = ref<Record<number, string>>({})
 const statusFilter = ref('')
 const typeFilter = ref('')
 const keyword = ref('')
@@ -60,8 +58,9 @@ const form = reactive({
   mobile: '',
   id_card_no: '',
   org_id: 1,
-  dept_id: 1,
-  workshop_id: 1,
+  dept_id: 0,
+  dept_ids: [] as number[],
+  primary_dept_id: 0,
   team_id: 0,
   badge_code: '',
   status: 'active',
@@ -71,6 +70,9 @@ const form = reactive({
 const showOrgAdvanced = ref(false)
 
 const accountForm = reactive({ login_name: '', password: '', role_ids: [] as number[] })
+const extraRoleIds = ref<number[]>([])
+const deptBaseRoles = ref<Row[]>([])
+const editingUserId = ref(0)
 
 const errLabel: Record<string, string> = {
   NAME_REQUIRED: '请填写姓名',
@@ -102,6 +104,20 @@ function empStatusTagType(v: unknown): 'success' | 'info' | 'danger' {
   return 'info'
 }
 
+const deptOptions = computed(() =>
+  Object.entries(deptMap.value).map(([id, name]) => ({
+    value: Number(id),
+    label: deptTypeMap.value[Number(id)] === 'workshop' ? `${name}（车间）` : name,
+  })),
+)
+
+const formWorkshopDeptId = computed(() => {
+  for (const id of form.dept_ids) {
+    if (deptTypeMap.value[id] === 'workshop') return id
+  }
+  return 0
+})
+
 function lookupName(map: Record<number, string>, id: unknown, apiName?: unknown) {
   const fromApi = String(apiName || '').trim()
   if (fromApi && !fromApi.startsWith('#')) return fromApi
@@ -111,15 +127,13 @@ function lookupName(map: Record<number, string>, id: unknown, apiName?: unknown)
 }
 
 function mapEmployee(r: Row): Row {
-  const deptName = lookupName(deptMap.value, r.dept_id, r.dept_name)
-  const workshopName = lookupName(workshopMap.value, r.workshop_id, r.workshop_name)
+  const deptName = String(r.dept_name || '').trim() || lookupName(deptMap.value, r.dept_id, r.dept_name)
   return {
     ...r,
     emp_type_label: empTypeLabel(r.emp_type),
     status_label: empStatusLabel(r.status),
     account_label: hasAccount(r) ? '已开户' : '未开户',
     dept_name: deptName,
-    workshop_name: workshopName,
   }
 }
 
@@ -186,26 +200,23 @@ async function refreshBadgePreview(code: string) {
 async function load() {
   loading.value = true
   try {
-    const [e, r, d, w] = await Promise.all([
+    const [e, r, d] = await Promise.all([
       hrApi.employees(),
       iamApi.roles(),
       hrApi.departments(),
-      productionApi.workshops(),
     ])
     const depts = ((d.data as { list?: Row[] })?.list) || []
-    const shops = ((w.data as { list?: Row[] })?.list) || []
     const dm: Record<number, string> = {}
-    const wm: Record<number, string> = {}
+    const tm: Record<number, string> = {}
     for (const x of depts) {
       const id = Number(x.id) || 0
-      if (id > 0) dm[id] = String(x.name || x.code || id)
-    }
-    for (const x of shops) {
-      const id = Number(x.id) || 0
-      if (id > 0) wm[id] = String(x.name || x.code || id)
+      if (id > 0) {
+        dm[id] = String(x.path || x.name || x.code || id)
+        tm[id] = String(x.dept_type || 'normal')
+      }
     }
     deptMap.value = dm
-    workshopMap.value = wm
+    deptTypeMap.value = tm
     const rows = ((e.data as { list?: Row[] })?.list) || []
     list.value = rows.map(mapEmployee)
     roles.value = ((r.data as { list?: Row[] })?.list) || []
@@ -216,6 +227,9 @@ async function load() {
 
 function openCreate() {
   editingId.value = null
+  editingUserId.value = 0
+  extraRoleIds.value = []
+  deptBaseRoles.value = []
   showOrgAdvanced.value = false
   Object.assign(form, {
     emp_no: '',
@@ -225,8 +239,9 @@ function openCreate() {
     mobile: '',
     id_card_no: '',
     org_id: 1,
-    dept_id: 1,
-    workshop_id: 1,
+    dept_id: 0,
+    dept_ids: [],
+    primary_dept_id: 0,
     team_id: 0,
     badge_code: '',
     status: 'active',
@@ -236,27 +251,79 @@ function openCreate() {
   dlg.value = true
 }
 
-function openEdit(row: Row) {
+async function openEdit(row: Row) {
   editingId.value = Number(row.id)
   showOrgAdvanced.value = false
+  let data = row
+  if (!row.dept_ids || row.user_id == null) {
+    const res = await hrApi.getEmployee(editingId.value)
+    if (res.code === 1) data = (res.data || {}) as Row
+  }
+  const deptIds = ((data.dept_ids as number[]) || []).map(Number)
+  const primary = Number(data.dept_id) || deptIds[0] || 0
   Object.assign(form, {
-    emp_no: row.emp_no || '',
-    name: row.name || '',
-    emp_type: row.emp_type || DEFAULT_EMP_TYPE,
-    job_title: row.job_title || '',
-    mobile: row.mobile || '',
-    id_card_no: row.id_card_no || '',
-    org_id: Number(row.org_id) || 1,
-    dept_id: Number(row.dept_id) || 1,
-    workshop_id: Number(row.workshop_id) || 1,
-    team_id: Number(row.team_id) || 0,
-    badge_code: row.badge_code || '',
-    status: row.status || 'active',
-    bank_account: row.bank_account || '',
-    tax_no: row.tax_no || '',
+    emp_no: data.emp_no || '',
+    name: data.name || '',
+    emp_type: data.emp_type || DEFAULT_EMP_TYPE,
+    job_title: data.job_title || '',
+    mobile: data.mobile || '',
+    id_card_no: data.id_card_no || '',
+    org_id: Number(data.org_id) || 1,
+    dept_id: primary,
+    dept_ids: deptIds.length ? deptIds : primary ? [primary] : [],
+    primary_dept_id: primary,
+    team_id: Number(data.team_id) || 0,
+    badge_code: data.badge_code || '',
+    status: data.status || 'active',
+    bank_account: data.bank_account || '',
+    tax_no: data.tax_no || '',
   })
+  editingUserId.value = Number(data.user_id) || 0
+  extraRoleIds.value = []
   dlg.value = true
+  void refreshDeptBaseRoles(form.dept_ids)
+  if (editingUserId.value) void loadExtraRoles(editingUserId.value)
 }
+
+async function refreshDeptBaseRoles(ids: number[]) {
+  const seen = new Map<number, Row>()
+  await Promise.all(
+    ids.filter((id) => id > 0).map(async (id) => {
+      const res = await hrApi.getDepartment(id)
+      if (res.code !== 1) return
+      const list = ((res.data as Row)?.effective_roles as Row[]) || []
+      for (const r of list) {
+        const rid = Number(r.id)
+        if (rid > 0 && !seen.has(rid)) seen.set(rid, r)
+      }
+    }),
+  )
+  deptBaseRoles.value = [...seen.values()]
+}
+
+async function loadExtraRoles(userId: number) {
+  const res = await iamApi.getUser(userId)
+  if (res.code !== 1) return
+  const extra = ((res.data as Row)?.extra_roles as Row[]) || []
+  extraRoleIds.value = extra.map((x) => Number(x.id)).filter((id) => id > 0)
+}
+
+watch(
+  () => form.dept_ids.slice(),
+  (ids) => {
+    if (ids.length === 1) {
+      form.primary_dept_id = ids[0]
+      form.dept_id = ids[0]
+    } else if (ids.length > 1 && !ids.includes(form.primary_dept_id)) {
+      form.primary_dept_id = ids[0]
+      form.dept_id = ids[0]
+    } else if (ids.length === 0) {
+      form.primary_dept_id = 0
+      form.dept_id = 0
+    }
+    if (dlg.value) void refreshDeptBaseRoles(ids)
+  },
+)
 
 async function showCreatedCredentials(data: Row) {
   const empNo = String(data.emp_no || '')
@@ -307,8 +374,9 @@ async function save() {
       emp_type: form.emp_type,
       job_title: form.job_title,
       status: form.status,
-      dept_id: form.dept_id,
-      workshop_id: form.workshop_id,
+      dept_ids: form.dept_ids,
+      primary_dept_id: form.primary_dept_id || form.dept_ids[0] || form.dept_id,
+      dept_id: form.primary_dept_id || form.dept_ids[0] || form.dept_id,
       team_id: form.team_id,
       org_id: form.org_id,
       bank_account: form.bank_account.trim(),
@@ -321,8 +389,9 @@ async function save() {
       mobile: form.mobile.trim(),
       emp_type: form.emp_type,
       job_title: form.job_title,
-      dept_id: form.dept_id,
-      workshop_id: form.workshop_id,
+      dept_ids: form.dept_ids,
+      primary_dept_id: form.primary_dept_id || form.dept_ids[0] || form.dept_id,
+      dept_id: form.primary_dept_id || form.dept_ids[0] || form.dept_id,
       team_id: form.team_id,
       open_account: true,
       bank_account: form.bank_account.trim(),
@@ -334,6 +403,10 @@ async function save() {
   else res = await hrApi.createEmployee(body)
   if (res.code !== 1) return ElMessage.error(errLabel[res.msg] || res.msg || '保存失败')
   const data = (res.data || {}) as Row
+  if (editingUserId.value) {
+    const rr = await iamApi.setRoles(editingUserId.value, extraRoleIds.value)
+    if (rr.code !== 1) ElMessage.warning(`档案已保存，个人额外角色未更新：${rr.msg || ''}`)
+  }
   dlg.value = false
   if (!editingId.value) {
     await showCreatedCredentials(data)
@@ -403,7 +476,7 @@ function exportEmployeesExcel() {
   if (!rows.length) return ElMessage.warning('当前筛选无员工可导出')
   const aoa: (string | number)[][] = [
     ['员工档案'],
-    ['工号', '姓名', '登录账号', '用工类型', '岗位', '手机', '身份证', '部门', '车间', '银行卡', '税号', '工牌码', '状态', '账号'],
+    ['工号', '姓名', '登录账号', '用工类型', '岗位', '手机', '身份证', '部门', '银行卡', '税号', '工牌码', '状态', '账号'],
   ]
   for (const r of rows) {
     aoa.push([
@@ -415,7 +488,6 @@ function exportEmployeesExcel() {
       String(r.mobile || ''),
       String(r.id_card_no || ''),
       String(r.dept_name || ''),
-      String(r.workshop_name || ''),
       String(r.bank_account || ''),
       String(r.tax_no || ''),
       String(r.badge_code || ''),
@@ -520,7 +592,7 @@ onMounted(load)
       <div>
         <h2 class="title">员工档案</h2>
         <p class="desc">
-          快速建档只需姓名、身份证、手机；工号与工牌自动生成。部门在「人事管理 → 部门管理」维护，车间在「生产管理 → 车间管理」维护；档案列表直接显示名称。
+          快速建档只需姓名、身份证、手机；工号与工牌自动生成。部门与车间统一在「人事管理 → 公司架构」维护（车间为带类型的组织节点）。
         </p>
       </div>
       <div class="head-meta">
@@ -576,14 +648,9 @@ onMounted(load)
           </template>
         </el-table-column>
         <el-table-column prop="mobile" label="手机" width="120" />
-        <el-table-column label="部门" width="110">
+        <el-table-column label="部门" min-width="140">
           <template #default="{ row }">
             <span :class="{ muted: !row.dept_name }">{{ row.dept_name || '—' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="车间" width="110">
-          <template #default="{ row }">
-            <span :class="{ muted: !row.workshop_name }">{{ row.workshop_name || '—' }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="bank_account" label="银行卡" min-width="140" show-overflow-tooltip>
@@ -650,11 +717,44 @@ onMounted(load)
         <el-form-item label="岗位">
           <el-input v-model="form.job_title" placeholder="可选" />
         </el-form-item>
-        <el-form-item label="部门">
-          <DeptSelect v-model="form.dept_id" allow-zero zero-label="未设置" style="width:100%" />
+        <el-form-item label="所属部门">
+          <el-select
+            v-model="form.dept_ids"
+            multiple
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="可选择多个部门"
+            style="width:100%"
+          >
+            <el-option v-for="opt in deptOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+          </el-select>
+          <p class="form-tip-inline">员工可同时归属多个部门（含车间节点），权限为全部所属部门有效权限的并集。</p>
         </el-form-item>
-        <el-form-item label="车间">
-          <WorkshopSelect v-model="form.workshop_id" allow-zero zero-label="未设置" style="width:100%" />
+        <el-form-item label="部门基础角色">
+          <div v-if="deptBaseRoles.length" class="role-readonly">
+            <el-tag v-for="r in deptBaseRoles" :key="'db'+r.id" size="small" type="info">{{ r.name || r.code }}</el-tag>
+          </div>
+          <p v-else class="form-tip-inline">所选部门暂无基础角色，请到「公司架构」配置。</p>
+        </el-form-item>
+        <el-form-item v-if="editingUserId" label="个人额外角色">
+          <el-select v-model="extraRoleIds" multiple filterable collapse-tags placeholder="可选，部门权限之外" style="width:100%">
+            <el-option v-for="r in roles" :key="'er'+r.id" :label="`${r.name || r.code}`" :value="Number(r.id)" />
+          </el-select>
+          <p class="form-tip-inline">开户后可改；数据范围跟角色走，不按人单独配。</p>
+        </el-form-item>
+        <el-form-item v-if="form.dept_ids.length > 1" label="主部门">
+          <el-select v-model="form.primary_dept_id" placeholder="报表/调动默认部门" style="width:100%">
+            <el-option
+              v-for="id in form.dept_ids"
+              :key="id"
+              :label="deptMap[id] || `#${id}`"
+              :value="id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-else-if="form.dept_ids.length === 1" label="主部门">
+          <span class="badge-readonly">{{ deptMap[form.dept_ids[0]] || form.dept_ids[0] }}</span>
         </el-form-item>
         <el-divider content-position="left">工资发放（与财务工人信息同源）</el-divider>
         <el-form-item label="银行卡">
@@ -680,7 +780,7 @@ onMounted(load)
             <el-form-item label="班组">
               <TeamSelect
                 v-model="form.team_id"
-                :workshop-id="form.workshop_id"
+                :dept-id="formWorkshopDeptId"
                 allow-zero
                 zero-label="未设置"
                 style="width:100%"
@@ -692,7 +792,7 @@ onMounted(load)
           <el-form-item label="班组">
             <TeamSelect
               v-model="form.team_id"
-              :workshop-id="form.workshop_id"
+              :dept-id="formWorkshopDeptId"
               allow-zero
               zero-label="未设置"
               style="width:100%"
@@ -726,7 +826,7 @@ onMounted(load)
         <el-form-item label="初始密码">
           <el-input v-model="accountForm.password" placeholder="留空则用身份证后 6 位" />
         </el-form-item>
-        <el-form-item label="角色">
+        <el-form-item label="个人额外角色">
           <el-select v-model="accountForm.role_ids" multiple filterable style="width:100%">
             <el-option v-for="r in roles" :key="String(r.id)" :label="`${r.name || r.code || r.id}`" :value="Number(r.id)" />
           </el-select>
@@ -775,6 +875,8 @@ onMounted(load)
 .preview-sub { font-size: 12px; color: #5c6b75; margin-top: 4px; }
 .badge-readonly { font-size: 13px; font-weight: 600; }
 .form-tip { margin: 0 0 12px; font-size: 13px; color: #5c6b75; background: #f6f8fa; padding: 8px 10px; border-radius: 6px; }
+.form-tip-inline { margin: 6px 0 0; font-size: 12px; color: #8a9aa3; line-height: 1.5; }
+.role-readonly { display: flex; flex-wrap: wrap; gap: 6px; }
 @media (max-width: 720px) {
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

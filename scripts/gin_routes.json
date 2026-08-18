@@ -177,22 +177,6 @@
   },
   {
     "method": "GET",
-    "path": "/api/v1/production/workshop-workbench/overview"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/workshop-workbench/today-tasks"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/workshops"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/workshops/:id"
-  },
-  {
-    "method": "GET",
     "path": "/api/v1/production/dispatches"
   },
   {
@@ -238,6 +222,14 @@
   {
     "method": "GET",
     "path": "/api/v1/production/qc-orders/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/workshop-workbench/overview"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/workshop-workbench/today-tasks"
   },
   {
     "method": "GET",
@@ -353,10 +345,6 @@
   },
   {
     "method": "GET",
-    "path": "/api/v1/purchase/role-users"
-  },
-  {
-    "method": "GET",
     "path": "/api/v1/purchase/farmers"
   },
   {
@@ -433,19 +421,23 @@
   },
   {
     "method": "GET",
-    "path": "/api/v1/payroll/wage-rates"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/payroll/wage-rates/:id"
-  },
-  {
-    "method": "GET",
     "path": "/api/v1/payroll/worker-profiles"
   },
   {
     "method": "GET",
     "path": "/api/v1/payroll/worker-profiles/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/payroll/work-records"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/payroll/wage-rates"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/payroll/wage-rates/:id"
   },
   {
     "method": "GET",
@@ -685,22 +677,6 @@
   },
   {
     "method": "GET",
-    "path": "/api/v1/sales/contracts"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/contracts/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/cost-budgets"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sales/cost-budgets/:order_id"
-  },
-  {
-    "method": "GET",
     "path": "/api/v1/sales/sales-boms"
   },
   {
@@ -714,6 +690,26 @@
   {
     "method": "GET",
     "path": "/api/v1/sales/self-orders"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/self-order-rules"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/contracts"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/contracts/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/cost-budgets"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sales/cost-budgets/:order_id"
   },
   {
     "method": "GET",
@@ -1765,10 +1761,6 @@
   },
   {
     "method": "POST",
-    "path": "/api/v1/production/workshops"
-  },
-  {
-    "method": "POST",
     "path": "/api/v1/product/products"
   },
   {
@@ -1793,22 +1785,6 @@
   },
   {
     "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/:id/box-stock-in"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/:id/box-stock-in/complete"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/:id/warehouse-confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/:id/warehouse-return"
-  },
-  {
-    "method": "POST",
     "path": "/api/v1/purchase/weigh-tickets/:id/qc"
   },
   {
@@ -1818,6 +1794,14 @@
   {
     "method": "POST",
     "path": "/api/v1/purchase/weigh-tickets/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/warehouse-confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/box-stock-in"
   },
   {
     "method": "POST",
@@ -2005,6 +1989,42 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/sales/pre-shipments"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/pre-shipments/:id/release"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/pre-shipments/:id/reserve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/pre-shipments/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/pre-shipments/:id/cancel"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/price-locks"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/price-locks/:id/activate"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/price-locks/:id/deactivate"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/prints"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/sales/orders"
   },
   {
@@ -2033,43 +2053,7 @@
   },
   {
     "method": "POST",
-    "path": "/api/v1/sales/pre-shipments"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/pre-shipments/:id/release"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/pre-shipments/:id/reserve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/pre-shipments/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/price-locks"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/prints"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/deliveries"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/deliveries/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/deliveries/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/deliveries/:id/ship"
+    "path": "/api/v1/sales/outbound-settles/:id/reopen"
   },
   {
     "method": "POST",
@@ -2085,11 +2069,71 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/sales/inquiries/:id/submit"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/inquiries/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/inquiries/:id/withdraw"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/deliveries"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/deliveries/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/deliveries/:id/resubmit"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/deliveries/:id/receive"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/deliveries/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/deliveries/:id/ship"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/sales/contracts"
   },
   {
     "method": "POST",
+    "path": "/api/v1/sales/contracts/:id/activate"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/sales/cost-budgets"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/cost-budgets/:id/recalc"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/sales-boms"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/sales-boms/:id/deactivate"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/self-orders"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/sales/self-order-rules"
   },
   {
     "method": "POST",
@@ -2098,14 +2142,6 @@
   {
     "method": "POST",
     "path": "/api/v1/sales/quote-calculator/calc"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/sales-boms"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/sales/self-orders"
   },
   {
     "method": "POST",
@@ -2825,10 +2861,6 @@
   },
   {
     "method": "POST",
-    "path": "/api/v1/workflow/tasks/:id/assign"
-  },
-  {
-    "method": "POST",
     "path": "/api/v1/mqtt/auth"
   },
   {
@@ -2854,62 +2886,6 @@
   {
     "method": "POST",
     "path": "/api/v1/notify/inbox/:id/read"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/boms/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/drawing-links/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/flow-graphs/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/processes/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/routings/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/workshops/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/shifts/:id/members/:memberId"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/product/products/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/product/specs/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/purchase/farmers/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/purchase/suppliers/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/purchase/weigh-varieties/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/payroll/commission-rules/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/payroll/wage-rates/:id"
   },
   {
     "method": "DELETE",
@@ -2962,6 +2938,58 @@
   {
     "method": "DELETE",
     "path": "/api/v1/sales/price-locks/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/production/boms/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/production/drawing-links/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/production/flow-graphs/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/production/processes/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/production/routings/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/production/shifts/:id/members/:memberId"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/product/products/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/product/specs/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/purchase/farmers/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/purchase/suppliers/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/purchase/weigh-varieties/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/payroll/commission-rules/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/payroll/wage-rates/:id"
   },
   {
     "method": "DELETE",
@@ -3114,10 +3142,6 @@
   {
     "method": "PUT",
     "path": "/api/v1/production/qc-orders/:id"
-  },
-  {
-    "method": "PUT",
-    "path": "/api/v1/production/workshops/:id"
   },
   {
     "method": "PUT",
@@ -3301,19 +3325,23 @@
   },
   {
     "method": "PUT",
-    "path": "/api/v1/sales/pre-shipments/:id"
-  },
-  {
-    "method": "PUT",
-    "path": "/api/v1/sales/price-locks/:id"
-  },
-  {
-    "method": "PUT",
     "path": "/api/v1/sales/sales-boms/:id"
   },
   {
     "method": "PUT",
     "path": "/api/v1/sales/sales-boms/:id/lines"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/sales/self-order-rules/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/sales/pre-shipments/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/sales/price-locks/:id"
   },
   {
     "method": "PUT",

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { StyleValue } from 'vue'
 import RefSelect from './RefSelect.vue'
 import { loadProdTasks, taskLabel } from './entitySelects'
 
@@ -7,7 +8,7 @@ withDefaults(
     modelValue?: number | number[] | null
     placeholder?: string
     clearable?: boolean
-    style?: string
+    style?: StyleValue
     multiple?: boolean
   }>(),
   {

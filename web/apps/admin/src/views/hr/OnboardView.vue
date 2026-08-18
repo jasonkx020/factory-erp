@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { DEFAULT_EMP_TYPE, EMP_TYPE_OPTIONS, empTypeLabel, hrApi, iamApi } from '@erp/shared'
-import { DeptSelect, TeamSelect, WorkshopSelect } from '../../components/select'
+import { TeamSelect } from '../../components/select'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
@@ -15,7 +15,6 @@ const onboardCols: MobileCardColumn[] = [
   { prop: 'emp_no', label: '工号' },
   { prop: 'emp_type', label: '类型' },
   { prop: 'job_title', label: '岗位' },
-  { prop: 'workshop_id', label: '车间' },
   { prop: 'mobile', label: '手机' },
   { prop: 'id_card_no', label: '身份证号' },
   { prop: 'status', label: '状态' },
@@ -28,6 +27,8 @@ const summary = reactive({ draft: 0, confirmed: 0, cancelled: 0 })
 const statusFilter = ref('')
 const empTypeFilter = ref('')
 const roles = ref<Row[]>([])
+const deptMap = ref<Record<number, string>>({})
+const deptTypeMap = ref<Record<number, string>>({})
 
 const dialog = ref(false)
 const editingId = ref<number | null>(null)
@@ -37,7 +38,8 @@ const form = reactive({
   emp_type: DEFAULT_EMP_TYPE,
   org_id: 1,
   dept_id: 1,
-  workshop_id: 1,
+  dept_ids: [] as number[],
+  primary_dept_id: 1,
   team_id: 0,
   job_title: '',
   mobile: '',
@@ -57,6 +59,20 @@ const statusLabel: Record<string, string> = {
   confirmed: '已入职',
   cancelled: '已取消',
 }
+const deptOptions = computed(() =>
+  Object.entries(deptMap.value).map(([id, name]) => ({
+    value: Number(id),
+    label: deptTypeMap.value[Number(id)] === 'workshop' ? `${name}（车间）` : name,
+  })),
+)
+
+const formWorkshopDeptId = computed(() => {
+  for (const id of form.dept_ids) {
+    if (deptTypeMap.value[id] === 'workshop') return id
+  }
+  return 0
+})
+
 const isEdit = computed(() => editingId.value != null)
 
 const visibleList = computed(() => {
@@ -76,7 +92,8 @@ function resetForm() {
     emp_type: DEFAULT_EMP_TYPE,
     org_id: 1,
     dept_id: 1,
-    workshop_id: 1,
+    dept_ids: [1],
+    primary_dept_id: 1,
     team_id: 0,
     job_title: '',
     mobile: '',
@@ -96,8 +113,20 @@ async function load() {
   loading.value = true
   try {
     const qs = statusFilter.value ? `status=${encodeURIComponent(statusFilter.value)}` : ''
-    const [ob, r] = await Promise.all([hrApi.onboards(qs), iamApi.roles()])
+    const [ob, r, d] = await Promise.all([hrApi.onboards(qs), iamApi.roles(), hrApi.departments()])
     if (ob.code !== 1) return ElMessage.error(ob.msg)
+    const depts = ((d.data as { list?: Row[] })?.list) || []
+    const dm: Record<number, string> = {}
+    const tm: Record<number, string> = {}
+    for (const x of depts) {
+      const id = Number(x.id) || 0
+      if (id > 0) {
+        dm[id] = String(x.path || x.name || x.code || id)
+        tm[id] = String(x.dept_type || 'normal')
+      }
+    }
+    deptMap.value = dm
+    deptTypeMap.value = tm
     const data = ob.data as { list?: Row[]; summary?: Row }
     list.value = data?.list || []
     const s = data?.summary || {}
@@ -123,13 +152,16 @@ async function openEdit(row: Row) {
   if (res.code !== 1) return ElMessage.error(res.msg)
   const d = res.data as Row
   const emp = (d.employee as Row) || {}
+  const deptIds = ((emp.dept_ids as number[]) || []).map(Number)
+  const primary = Number(emp.dept_id) || deptIds[0] || 1
   Object.assign(form, {
     emp_no: String(emp.emp_no || d.emp_no || ''),
     name: String(emp.name || d.name || ''),
     emp_type: String(emp.emp_type || DEFAULT_EMP_TYPE),
     org_id: Number(emp.org_id) || 1,
-    dept_id: Number(emp.dept_id) || 1,
-    workshop_id: Number(emp.workshop_id) || 0,
+    dept_id: primary,
+    dept_ids: deptIds.length ? deptIds : primary ? [primary] : [1],
+    primary_dept_id: primary,
     team_id: Number(emp.team_id) || 0,
     job_title: String(emp.job_title || ''),
     mobile: String(emp.mobile || ''),
@@ -148,7 +180,12 @@ async function openEdit(row: Row) {
 
 async function save() {
   if (!form.emp_no || !form.name) return ElMessage.warning('请填写工号与姓名')
-  const body: Record<string, unknown> = { ...form }
+  const body: Record<string, unknown> = {
+    ...form,
+    dept_ids: form.dept_ids,
+    primary_dept_id: form.primary_dept_id || form.dept_ids[0] || form.dept_id,
+    dept_id: form.primary_dept_id || form.dept_ids[0] || form.dept_id,
+  }
   delete body.badge_code // 工牌由建档时后端自动生成
   if (!form.login_name) body.login_name = form.emp_no
   let res
@@ -162,6 +199,22 @@ async function save() {
   dialog.value = false
   await load()
 }
+
+watch(
+  () => form.dept_ids.slice(),
+  (ids) => {
+    if (ids.length === 1) {
+      form.primary_dept_id = ids[0]
+      form.dept_id = ids[0]
+    } else if (ids.length > 1 && !ids.includes(form.primary_dept_id)) {
+      form.primary_dept_id = ids[0]
+      form.dept_id = ids[0]
+    } else if (ids.length === 0) {
+      form.primary_dept_id = 0
+      form.dept_id = 0
+    }
+  },
+)
 
 async function confirm(row: Row) {
   await ElMessageBox.confirm(
@@ -242,7 +295,7 @@ onMounted(load)
           </template>
         </el-table-column>
         <el-table-column prop="job_title" label="岗位" width="100" />
-        <el-table-column prop="workshop_id" label="车间" width="70" />
+        <el-table-column prop="job_title" label="岗位" />
         <el-table-column prop="mobile" label="手机" width="120" />
         <el-table-column prop="id_card_no" label="身份证号" width="160" show-overflow-tooltip />
         <el-table-column label="开户" width="80">
@@ -333,21 +386,39 @@ onMounted(load)
               <el-input v-model="form.tax_no" placeholder="可选" maxlength="64" />
             </el-form-item>
           </el-col>
-          <el-col :span="8" :xs="24">
-            <el-form-item label="部门">
-              <DeptSelect v-model="form.dept_id" allow-zero zero-label="未设置" style="width:100%" />
+          <el-col :span="24" :xs="24">
+            <el-form-item label="所属部门">
+              <el-select
+                v-model="form.dept_ids"
+                multiple
+                filterable
+                collapse-tags
+                collapse-tags-tooltip
+                placeholder="可选择多个部门"
+                style="width:100%"
+              >
+                <el-option v-for="opt in deptOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+              </el-select>
+              <p class="hint">可同时归属多个部门，权限为全部所属部门有效权限的并集。</p>
             </el-form-item>
           </el-col>
-          <el-col :span="8" :xs="24">
-            <el-form-item label="车间">
-              <WorkshopSelect v-model="form.workshop_id" allow-zero zero-label="未设置" style="width:100%" />
+          <el-col v-if="form.dept_ids.length > 1" :span="12" :xs="24">
+            <el-form-item label="主部门">
+              <el-select v-model="form.primary_dept_id" placeholder="报表/调动默认部门" style="width:100%">
+                <el-option
+                  v-for="id in form.dept_ids"
+                  :key="id"
+                  :label="deptMap[id] || `#${id}`"
+                  :value="id"
+                />
+              </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="8" :xs="24">
             <el-form-item label="班组">
               <TeamSelect
                 v-model="form.team_id"
-                :workshop-id="form.workshop_id"
+                :dept-id="formWorkshopDeptId"
                 allow-zero
                 zero-label="未设置"
                 style="width:100%"

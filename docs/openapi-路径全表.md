@@ -32,6 +32,11 @@
 | 1 | 人事管理 | 考勤管理 | DELETE | `/api/v1/hr/attendance/rules/{id}` | 考勤规则-删除 |
 | 1 | 人事管理 | 考勤管理 | GET | `/api/v1/hr/attendance/rules/{id}` | 考勤规则-详情 |
 | 1 | 人事管理 | 考勤管理 | PUT | `/api/v1/hr/attendance/rules/{id}` | 考勤规则-更新 |
+| 1 | 人事管理 | 公司架构 | GET | `/api/v1/hr/departments` | 公司架构-列表 |
+| 1 | 人事管理 | 公司架构 | POST | `/api/v1/hr/departments` | 公司架构-新建 |
+| 1 | 人事管理 | 公司架构 | DELETE | `/api/v1/hr/departments/{id}` | 公司架构-删除 |
+| 1 | 人事管理 | 公司架构 | GET | `/api/v1/hr/departments/{id}` | 公司架构-详情 |
+| 1 | 人事管理 | 公司架构 | PUT | `/api/v1/hr/departments/{id}` | 公司架构-更新 |
 | 1 | 人事管理 | 员工 | POST | `/api/v1/hr/employee-imports` | 员工-批量导入 |
 | 1 | 人事管理 | 员工日志 | GET | `/api/v1/hr/employee-journals` | 员工日志-列表 |
 | 1 | 人事管理 | 员工日志 | POST | `/api/v1/hr/employee-journals` | 员工日志-新建 |
@@ -79,10 +84,11 @@
 | 1 | 人事管理 | 班次管理 | DELETE | `/api/v1/hr/shifts/{id}` | 班次-删除 |
 | 1 | 人事管理 | 班次管理 | GET | `/api/v1/hr/shifts/{id}` | 班次-详情 |
 | 1 | 人事管理 | 班次管理 | PUT | `/api/v1/hr/shifts/{id}` | 班次-更新 |
-| 1 | 人事管理 | 权限分配 | GET | `/api/v1/iam/hr-perm-overview` | 人事权限工作台-总览 |
-| 1 | 人事管理 | 权限分配 | DELETE | `/api/v1/iam/users/{id}/bind-employee` | 用户-解绑员工 |
-| 1 | 人事管理 | 权限分配 | PUT | `/api/v1/iam/users/{id}/bind-employee` | 用户-绑定员工 |
-| 1 | 人事管理 | 权限分配 | GET | `/api/v1/iam/users/{id}/data-scope` | 用户数据范围-查询 |
+| 1 | 人事管理 | 公司架构 | GET | `/api/v1/hr/work-teams` | 班组-列表 |
+| 1 | 人事管理 | 角色管理 | GET | `/api/v1/iam/hr-perm-overview` | 人事权限工作台-总览 |
+| 1 | 人事管理 | 角色管理 | DELETE | `/api/v1/iam/users/{id}/bind-employee` | 用户-解绑员工 |
+| 1 | 人事管理 | 角色管理 | PUT | `/api/v1/iam/users/{id}/bind-employee` | 用户-绑定员工 |
+| 1 | 人事管理 | 角色管理 | GET | `/api/v1/iam/users/{id}/data-scope` | 用户数据范围-查询 |
 | 1 | 健康检查 | 健康检查 | GET | `/api/v1/health` | 健康检查 |
 | 1 | 审批管理 | 考勤审批 | GET | `/api/v1/approval/attendance` | 考勤审批-列表 |
 | 1 | 审批管理 | 考勤审批 | POST | `/api/v1/approval/attendance/{id}/approve` | 考勤审批-通过 |
@@ -291,11 +297,6 @@
 | 1 | 生产管理 | 一单多商品 | PUT | `/api/v1/production/tasks/{id}/items` | 一单多商品-保存行 |
 | 1 | 生产管理 | 车间工作台 | GET | `/api/v1/production/workshop-workbench/overview` | 车间工作台-总览 |
 | 1 | 生产管理 | 车间工作台 | GET | `/api/v1/production/workshop-workbench/today-tasks` | 车间工作台-今日任务 |
-| 1 | 生产管理 | 车间管理 | GET | `/api/v1/production/workshops` | 车间档案-列表 |
-| 1 | 生产管理 | 车间管理 | POST | `/api/v1/production/workshops` | 车间档案-新建 |
-| 1 | 生产管理 | 车间管理 | DELETE | `/api/v1/production/workshops/{id}` | 车间档案-删除 |
-| 1 | 生产管理 | 车间管理 | GET | `/api/v1/production/workshops/{id}` | 车间档案-详情 |
-| 1 | 生产管理 | 车间管理 | PUT | `/api/v1/production/workshops/{id}` | 车间档案-更新 |
 | 1 | 系统管理 | 登录控制 | GET | `/api/v1/iam/login-policy` | 登录控制-查询(见权限中心) |
 | 1 | 系统管理 | 登录控制 | PUT | `/api/v1/iam/login-policy` | 登录控制-保存(见权限中心) |
 | 1 | 系统管理 | 自定义菜单 | GET | `/api/v1/iam/menus` | 自定义菜单-查询(见权限中心) |
@@ -753,7 +754,7 @@
 
 ## 说明
 
-- 权限分配 / 自定义权限 / 自定义菜单 / 登录控制 / 账户冻结：以 `/api/v1/iam/*` 与 `/api/v1/auth/*` 为准（完整 schema）。
+- 角色管理 / 自定义权限 / 自定义菜单 / 登录控制 / 账户冻结：以 `/api/v1/iam/*` 与 `/api/v1/auth/*` 为准（完整 schema）。
 - 一期部分资源保留 v1 富 schema；其余与二/三期为契约骨架（requestBody 自由 object），实现时再收紧。
 - 路径表随契约维护：直接编辑 [openapi3.0-加工厂ERP.yaml](./openapi3.0-加工厂ERP.yaml)；改完后 `go run ./cmd/erp-tools gen-routes`，必要时同步本表。原 `gen_openapi_paths.py` 已退役。
 - `x-erp-phase` / `x-erp-module` 须与核心功能表一致。

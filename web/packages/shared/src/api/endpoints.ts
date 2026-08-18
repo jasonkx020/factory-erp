@@ -7,6 +7,8 @@ export const authApi = {
   refresh: (refresh_token: string) =>
     api.post<LoginData>('/auth/refresh', { refresh_token }),
   me: () => api.get<MeData>('/auth/me'),
+  changePassword: (old_password: string, new_password: string) =>
+    api.post('/auth/password/change', { old_password, new_password }),
 }
 
 export const productApi = {
@@ -187,9 +189,6 @@ export const productionApi = {
   createFlowGraph: (body: Record<string, unknown>) => api.post('/production/flow-graphs', body),
   updateFlowGraph: (id: number, body: Record<string, unknown>) => api.put(`/production/flow-graphs/${id}`, body),
   removeFlowGraph: (id: number) => api.del(`/production/flow-graphs/${id}`),
-  workshops: () => api.get<PageData>('/production/workshops'),
-  createWorkshop: (body: Record<string, unknown>) => api.post('/production/workshops', body),
-  updateWorkshop: (id: number, body: Record<string, unknown>) => api.put(`/production/workshops/${id}`, body),
   workbenchOverview: () => api.get('/production/workshop-workbench/overview'),
   workbenchToday: () => api.get('/production/workshop-workbench/today-tasks'),
   processWip: (params?: string) =>
@@ -321,15 +320,15 @@ export const hrApi = {
   getEmployee: (id: number) => api.get(`/hr/employees/${id}`),
   createEmployee: (body: Record<string, unknown>) => api.post('/hr/employees', body),
   updateEmployee: (id: number, body: Record<string, unknown>) => api.put(`/hr/employees/${id}`, body),
-  departments: () => api.get<PageData>('/hr/departments'),
+  departments: (params?: string) =>
+    api.get<PageData>(params ? `/hr/departments?${params}` : '/hr/departments'),
+  getDepartment: (id: number) => api.get(`/hr/departments/${id}`),
   createDepartment: (body: Record<string, unknown>) => api.post('/hr/departments', body),
   updateDepartment: (id: number, body: Record<string, unknown>) => api.put(`/hr/departments/${id}`, body),
   removeDepartment: (id: number) => api.del(`/hr/departments/${id}`),
-  workTeams: (workshopId?: number) =>
+  workTeams: (deptId?: number) =>
     api.get<PageData>(
-      workshopId && workshopId > 0
-        ? `/hr/work-teams?workshop_id=${workshopId}`
-        : '/hr/work-teams',
+      deptId && deptId > 0 ? `/hr/work-teams?dept_id=${deptId}` : '/hr/work-teams',
     ),
   batchImportEmployees: (body: Record<string, unknown>) => api.post('/hr/employee-imports', body),
   setBadge: (id: number, badge_code?: string, opts?: { regenerate?: boolean }) =>
@@ -425,6 +424,7 @@ export const payrollApi = {
   commissionCalcs: () => api.get<PageData>('/payroll/commission-calcs'),
   createCommissionCalc: (body: Record<string, unknown>) => api.post('/payroll/commission-calcs', body),
   runCommission: (body?: Record<string, unknown>) => api.post('/payroll/commission-calcs/run', body || {}),
+  workRecords: (params: string) => api.get(`/payroll/work-records?${params}`),
 }
 
 export const approvalApi = {
@@ -553,37 +553,61 @@ export const salesApi = {
   cancelOrder: (id: number) => api.post(`/sales/orders/${id}/cancel`, {}),
   rebuyOrder: (id: number) => api.post(`/sales/orders/${id}/rebuy`, {}),
   orderChanges: (id: number) => api.get(`/sales/orders/${id}/changes`),
-  inquiries: () => api.get<PageData>('/sales/inquiries'),
+  inquiries: (params?: string) => api.get<PageData>(`/sales/inquiries${params ? `?${params}` : ''}`),
   createInquiry: (body: Record<string, unknown>) => api.post('/sales/inquiries', body),
   getInquiry: (id: number) => api.get(`/sales/inquiries/${id}`),
-  approveInquiry: (id: number) => api.post(`/sales/inquiries/${id}/approve`, {}),
+  updateInquiry: (id: number, body: Record<string, unknown>) => api.put(`/sales/inquiries/${id}`, body),
+  submitInquiry: (id: number) => api.post(`/sales/inquiries/${id}/submit`, {}),
+  approveInquiry: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/sales/inquiries/${id}/approve`, body || {}),
+  rejectInquiry: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/sales/inquiries/${id}/reject`, body || {}),
+  withdrawInquiry: (id: number) => api.post(`/sales/inquiries/${id}/withdraw`, {}),
   inquiryToOrder: (id: number) => api.post(`/sales/inquiries/${id}/to-order`, {}),
-  myOrders: () => api.get<PageData>('/sales/my-orders'),
-  preShipments: () => api.get<PageData>('/sales/pre-shipments'),
+  myOrders: (params?: string) => api.get<PageData>(`/sales/my-orders${params ? `?${params}` : ''}`),
+  preShipments: (params?: string) =>
+    api.get<PageData>(`/sales/pre-shipments${params ? `?${params}` : ''}`),
+  getPreShip: (id: number) => api.get(`/sales/pre-shipments/${id}`),
   createPreShip: (body: Record<string, unknown>) => api.post('/sales/pre-shipments', body),
   reservePreShip: (id: number) => api.post(`/sales/pre-shipments/${id}/reserve`, {}),
   releasePreShip: (id: number) => api.post(`/sales/pre-shipments/${id}/release`, {}),
+  cancelPreShip: (id: number) => api.post(`/sales/pre-shipments/${id}/cancel`, {}),
   confirmPreShip: (id: number, body?: Record<string, unknown>) =>
     api.post(`/sales/pre-shipments/${id}/confirm`, body || {}),
-  deliveries: () => api.get<PageData>('/sales/deliveries'),
+  deliveries: (params?: string) => api.get<PageData>(`/sales/deliveries${params ? `?${params}` : ''}`),
+  getDelivery: (id: number) => api.get(`/sales/deliveries/${id}`),
   createDelivery: (body: Record<string, unknown>) => api.post('/sales/deliveries', body),
   approveDelivery: (id: number) => api.post(`/sales/deliveries/${id}/approve`, {}),
-  rejectDelivery: (id: number) => api.post(`/sales/deliveries/${id}/reject`, {}),
+  rejectDelivery: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/sales/deliveries/${id}/reject`, body || {}),
+  resubmitDelivery: (id: number) => api.post(`/sales/deliveries/${id}/resubmit`, {}),
+  receiveDelivery: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/sales/deliveries/${id}/receive`, body || {}),
   shipDelivery: (id: number, body?: Record<string, unknown>) =>
     api.post(`/sales/deliveries/${id}/ship`, body || {}),
-  priceLocks: () => api.get<PageData>('/sales/price-locks'),
+  priceLocks: (params?: string) => api.get<PageData>(`/sales/price-locks${params ? `?${params}` : ''}`),
   createPriceLock: (body: Record<string, unknown>) => api.post('/sales/price-locks', body),
-  contracts: () => api.get<PageData>('/sales/contracts'),
+  updatePriceLock: (id: number, body: Record<string, unknown>) => api.put(`/sales/price-locks/${id}`, body),
+  activatePriceLock: (id: number) => api.post(`/sales/price-locks/${id}/activate`, {}),
+  deactivatePriceLock: (id: number) => api.post(`/sales/price-locks/${id}/deactivate`, {}),
+  contracts: (params?: string) => api.get<PageData>(`/sales/contracts${params ? `?${params}` : ''}`),
+  getContract: (id: number) => api.get(`/sales/contracts/${id}`),
   createContract: (body: Record<string, unknown>) => api.post('/sales/contracts', body),
+  updateContract: (id: number, body: Record<string, unknown>) => api.put(`/sales/contracts/${id}`, body),
+  activateContract: (id: number) => api.post(`/sales/contracts/${id}/activate`, {}),
   quoteHistories: (params?: string) =>
     api.get<PageData>(`/sales/quote-histories${params ? `?${params}` : ''}`),
-  rankings: () => api.get('/sales/rankings'),
+  rankings: (params?: string) => api.get(`/sales/rankings${params ? `?${params}` : ''}`),
   salesBoms: () => api.get<PageData>('/sales/sales-boms'),
+  getSalesBom: (id: number) => api.get(`/sales/sales-boms/${id}`),
   createSalesBom: (body: Record<string, unknown>) => api.post('/sales/sales-boms', body),
   saveSalesBomLines: (id: number, body: Record<string, unknown>) =>
     api.put(`/sales/sales-boms/${id}/lines`, body),
+  deactivateSalesBom: (id: number) => api.post(`/sales/sales-boms/${id}/deactivate`, {}),
   costBudgets: () => api.get<PageData>('/sales/cost-budgets'),
   createCostBudget: (body: Record<string, unknown>) => api.post('/sales/cost-budgets', body),
+  recalcCostBudget: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/sales/cost-budgets/${id}/recalc`, body || {}),
   quoteCalculator: () => api.get('/sales/quote-calculator'),
   calcQuote: (body: Record<string, unknown>) => api.post('/sales/quote-calculator/calc', body),
   applyQuote: (body: Record<string, unknown>) => api.post('/sales/quote-calculator/apply', body),
@@ -591,11 +615,17 @@ export const salesApi = {
   createPrint: (body: Record<string, unknown>) => api.post('/sales/prints', body),
   selfOrders: () => api.get('/sales/self-orders'),
   submitSelfOrder: (body: Record<string, unknown>) => api.post('/sales/self-orders', body),
+  saveSelfOrderRule: (body: Record<string, unknown>, id?: number) =>
+    id
+      ? api.put(`/sales/self-order-rules/${id}`, body)
+      : api.post('/sales/self-order-rules', body),
   outboundSettles: () => api.get<PageData>('/sales/outbound-settles'),
+  getOutboundSettle: (id: number) => api.get(`/sales/outbound-settles/${id}`),
   createOutboundSettle: (body: Record<string, unknown>) => api.post('/sales/outbound-settles', body),
   updateOutboundSettle: (id: number, body: Record<string, unknown>) =>
     api.put(`/sales/outbound-settles/${id}`, body),
   closeOutboundSettle: (id: number) => api.post(`/sales/outbound-settles/${id}/close`, {}),
+  reopenOutboundSettle: (id: number) => api.post(`/sales/outbound-settles/${id}/reopen`, {}),
 }
 
 export const crmApi = {

@@ -18,7 +18,12 @@ export interface LoginUser {
   login_name: string
   user_type: string
   employee_id?: number
+  customer_id?: number
+  customer_name?: string
   name?: string
+  emp_no?: string
+  employee_name?: string
+  badge_code?: string
   status?: string
 }
 
@@ -32,7 +37,7 @@ export interface LoginData {
 }
 
 export interface MeData {
-  user: { id: number; login_name: string; user_type: string }
+  user: LoginUser
   roles: string[]
   permissions: string[]
   menus: Array<{

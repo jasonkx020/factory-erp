@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch, type StyleValue } from 'vue'
 import { loadWorkTeams } from './entitySelects'
 
 type Row = Record<string, unknown>
@@ -7,10 +7,10 @@ type Row = Record<string, unknown>
 const props = withDefaults(
   defineProps<{
     modelValue?: number | null
-    workshopId?: number | null
+    deptId?: number | null
     placeholder?: string
     clearable?: boolean
-    style?: string
+    style?: StyleValue
     allowZero?: boolean
     zeroLabel?: string
   }>(),
@@ -31,7 +31,7 @@ const loading = ref(false)
 async function refresh() {
   loading.value = true
   try {
-    const ws = Number(props.workshopId) || 0
+    const ws = Number(props.deptId) || 0
     options.value = (await loadWorkTeams(ws > 0 ? ws : undefined)) || []
     const cur = Number(props.modelValue) || 0
     if (cur > 0 && !options.value.some((r) => Number(r.id) === cur)) {
@@ -43,7 +43,7 @@ async function refresh() {
 }
 
 onMounted(refresh)
-watch(() => props.workshopId, refresh)
+watch(() => props.deptId, refresh)
 
 const inner = computed({
   get: () => props.modelValue ?? (props.allowZero ? 0 : null),

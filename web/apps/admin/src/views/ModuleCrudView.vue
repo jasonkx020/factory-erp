@@ -22,6 +22,7 @@ import EmployeeView from './hr/EmployeeView.vue'
 import DeptView from './hr/DeptView.vue'
 import SystemAdminView from './system/SystemAdminView.vue'
 import PayrollView from './payroll/PayrollView.vue'
+import WorkRecordView from './payroll/WorkRecordView.vue'
 import {
   WarehouseSelect,
   WorkshopSelect,
@@ -50,7 +51,7 @@ function fieldKind(key: string): { kind: FieldKind; ref?: RefKind } {
     warehouse_id: 'warehouse',
     from_warehouse_id: 'warehouse',
     to_warehouse_id: 'warehouse',
-    workshop_id: 'workshop',
+    workshop_dept_id: 'workshop',
     employee_id: 'employee',
     worker_id: 'employee',
     user_id: 'user',
@@ -249,6 +250,7 @@ watch(() => route.fullPath, load)
     :list-path="meta?.list || ''"
     :meta="meta"
   />
+  <WorkRecordView v-else-if="moduleName === '员工工作台账'" />
   <PayrollView v-else-if="perm.isPayrollModule(moduleName)" :module="moduleName" />
   <div v-else class="panel">
     <h2 class="title">{{ moduleName }}</h2>
