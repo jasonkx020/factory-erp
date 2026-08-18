@@ -175,3 +175,15 @@ func (s *Services) resolveWeighVariety(body map[string]interface{}, variety *str
 		*productID = defPID
 	}
 }
+
+// inferColdStoreFromVariety maps 木薯过磅品种名到三仓：保鲜 / 半成品 / 成品。
+func inferColdStoreFromVariety(variety string) string {
+	v := strings.ToLower(strings.TrimSpace(variety))
+	if strings.Contains(v, "半成品") || strings.Contains(v, "semi") {
+		return "semi"
+	}
+	if strings.Contains(v, "成品") || strings.Contains(v, "fg") {
+		return "fg"
+	}
+	return "fresh"
+}

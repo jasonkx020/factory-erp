@@ -2178,6 +2178,10 @@ CREATE TABLE IF NOT EXISTS pur_farmer_settlement (
   biz_date TEXT NOT NULL,
   net_weight DOUBLE PRECISION NOT NULL DEFAULT 0,
   unit_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+  goods_amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+  freight_fee DOUBLE PRECISION NOT NULL DEFAULT 0,
+  loading_fee DOUBLE PRECISION NOT NULL DEFAULT 0,
+  weigh_fee DOUBLE PRECISION NOT NULL DEFAULT 0,
   amount DOUBLE PRECISION NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'open',
   remark TEXT,
@@ -2298,6 +2302,24 @@ CREATE TABLE IF NOT EXISTS pur_weigh_variety (
   updated_at TEXT NOT NULL DEFAULT NOW(),
   is_deleted INTEGER NOT NULL DEFAULT 0
 );
+
+-- 木薯粗加工厂默认过磅品种（新装即有，可在后台改）
+INSERT INTO pur_weigh_variety(code, name, sort_no, status, remark)
+VALUES
+ ('WV-FRESH', '鲜木薯', 10, 'active', '农户鲜薯过磅入厂，入保鲜库'),
+ ('WV-SEMI', '半成品（去芯薯肉）', 20, 'active', '外购或厂内半成品过磅入厂，入半成品库'),
+ ('WV-FG', '成品入库（袋装木薯丁）', 30, 'active', '成品过磅入库，入成品冷库')
+ON CONFLICT (code) DO NOTHING;
+
+UPDATE pur_weigh_variety v
+SET default_product_id = p.id, updated_at = NOW()
+FROM prd_product p
+WHERE v.default_product_id IS NULL AND COALESCE(v.is_deleted,0)=0
+  AND (
+    (v.code = 'WV-FRESH' AND p.code = 'RM-CASSAVA')
+    OR (v.code = 'WV-SEMI' AND p.code = 'SF-COREOUT')
+    OR (v.code = 'WV-FG' AND p.code = 'FG-DICED')
+  );
 
 CREATE TABLE IF NOT EXISTS rpt_dashboard_widget (
   id BIGSERIAL PRIMARY KEY,
@@ -2818,6 +2840,7 @@ ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS trace_code TEXT NOT NULL DEFAU
 ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS origin TEXT;
 ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS receive_date TEXT;
 ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS source_type TEXT;
+ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS image_url TEXT NOT NULL DEFAULT '';
 ALTER TABLE pd_process ADD COLUMN IF NOT EXISTS pay_mode TEXT NOT NULL DEFAULT 'none';
 ALTER TABLE pd_process_issue ADD COLUMN IF NOT EXISTS wage_settled_kg DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE appr_task ADD COLUMN IF NOT EXISTS title TEXT;
@@ -2845,6 +2868,10 @@ ALTER TABLE pur_farmer ADD COLUMN IF NOT EXISTS default_unit_price DOUBLE PRECIS
 ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS paid_at TEXT;
 ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS pay_evidence_url TEXT;
 ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS transfer_no TEXT;
+ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS goods_amount DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS freight_fee DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS loading_fee DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS weigh_fee DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE pur_inbound_arrival ADD COLUMN IF NOT EXISTS pass_rate DOUBLE PRECISION DEFAULT 0;
 ALTER TABLE pur_inbound_arrival ADD COLUMN IF NOT EXISTS receive_address TEXT;
 ALTER TABLE pur_inbound_arrival ADD COLUMN IF NOT EXISTS reject_weight DOUBLE PRECISION DEFAULT 0;

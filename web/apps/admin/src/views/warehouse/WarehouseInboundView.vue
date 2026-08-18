@@ -40,7 +40,13 @@ function phaseOf(row: Row): 'gate' | 'stockin' {
   const p = payloadOf(row)
   const status = String(p.status || row.status || '').toLowerCase()
   const kind = String(p.receive_kind || row.receive_kind || 'gate').toLowerCase()
-  if (status === 'gate_accepted' || p.box_stockin_ready === true || kind === 'stockin') {
+  const eventKey = String(row.event_key || p.event_key || '')
+  if (
+    eventKey === 'purchase.await_stockin' ||
+    status === 'gate_accepted' ||
+    p.box_stockin_ready === true ||
+    kind === 'stockin'
+  ) {
     return 'stockin'
   }
   return 'gate'
@@ -48,6 +54,20 @@ function phaseOf(row: Row): 'gate' | 'stockin' {
 
 function phaseLabel(row: Row) {
   return phaseOf(row) === 'stockin' ? '待入库' : '待入厂'
+}
+
+function weighTicketStatusLabel(m: Row) {
+  const st = String(m.status || '').toLowerCase()
+  const kind = String(m.receive_kind || 'gate').toLowerCase()
+  const phase = String(m.process_phase || '')
+  if (phase === 'await_gate' || (st === 'weighed' && kind !== 'stockin')) return '待入厂'
+  if (phase === 'await_stockin' || st === 'gate_accepted') return '待入库'
+  if (phase === 'await_warehouse' || st === 'weighed') return '待仓管确认'
+  if (phase === 'await_finance') return '已入仓·待结算'
+  if (phase === 'settled') return '已结清'
+  if (phase === 'stocked_done' || st === 'stocked') return kind === 'gate' ? '已入仓·待结算' : '已入库'
+  if (st === 'returned') return '仓管已退回'
+  return st || '-'
 }
 
 function rowClassName({ row }: { row: Row }) {
@@ -142,7 +162,7 @@ const detailKvs = computed(() => {
     : null
   return [
     kv('单号', m.doc_no),
-    kv('状态', m.status),
+    kv('状态', weighTicketStatusLabel(m)),
     kv('模式', String(m.receive_kind || '').toLowerCase() === 'stockin' ? '入库' : '入厂'),
     kv('溯源码', m.trace_code),
     kv('批号', m.batch_no),
@@ -174,7 +194,10 @@ async function refresh() {
     if (res.code !== 1) return ElMessage.error(res.msg)
     const list = ((res.data as { list?: Row[] })?.list) || []
     tasks.value = list.filter(
-      (t) => t.event_key === 'purchase.weigh_confirmed' || t.to_role === 'warehouse',
+      (t) =>
+        t.event_key === 'purchase.weigh_confirmed' ||
+        t.event_key === 'purchase.await_stockin' ||
+        t.to_role === 'warehouse',
     )
   } finally {
     loading.value = false
@@ -183,7 +206,8 @@ async function refresh() {
 
 function bizIdOf(row: Row) {
   const p = payloadOf(row)
-  return Number(p.weigh_ticket_id || row.biz_id || p.biz_id || 0)
+  // 同溯源码可对应多张过磅单，必须以待办上的 biz_id 为准，不能用溯源码反查。
+  return Number(row.biz_id || p.weigh_ticket_id || p.biz_id || 0)
 }
 
 async function openDetail(row: Row) {

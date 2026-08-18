@@ -144,7 +144,7 @@ class _MinePageState extends State<MinePage> {
           _entry(Icons.menu_book_outlined, '资料中心', '知识库 / 图纸 / 公告', () {
             Navigator.of(context).pushNamed('/knowledge');
           }),
-          _entry(Icons.manage_accounts_outlined, '账户中心', '改密 / 第三方绑定', () {
+          _entry(Icons.manage_accounts_outlined, '账户中心', '改密 / 缓存与备份', () {
             Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccountCenterPage()));
           }),
         ],

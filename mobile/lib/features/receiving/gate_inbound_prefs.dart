@@ -42,4 +42,14 @@ class GateInboundPrefs {
       await p.setString(keyNextRole, nextRole);
     }
   }
+
+  static Future<void> clear() async {
+    final p = await SharedPreferences.getInstance();
+    await p.remove(keyUnitPrice);
+    await p.remove(keyDeductRate);
+    await p.remove(keyFreight);
+    await p.remove(keyLoading);
+    await p.remove(keyWeighFee);
+    await p.remove(keyNextRole);
+  }
 }

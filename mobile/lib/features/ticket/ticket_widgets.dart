@@ -49,6 +49,12 @@ List<String> _weighVerifyImages(Map<String, dynamic> payload, {String Function(S
   }
 
   add(payload['image_url']);
+  final photos = payload['photos'];
+  if (photos is Map) {
+    add(photos['material']);
+    add(photos['scale_display']);
+    add(photos['closeup']);
+  }
   for (final key in ['verify_images', 'site_photos', 'image_urls']) {
     final raw = payload[key];
     if (raw is List) {
@@ -167,6 +173,9 @@ Future<void> openTicketDetail(
         payload['image_url'] = imgs.first;
         payload['image_urls'] = imgs;
         payload['verify_images'] = imgs;
+      }
+      if (w['photos'] is Map) {
+        payload['photos'] = w['photos'];
       }
     }
   }

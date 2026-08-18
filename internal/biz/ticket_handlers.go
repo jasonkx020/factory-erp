@@ -16,61 +16,10 @@ import (
 	"erp/internal/persistence/sqlutil"
 )
 
-// EnsureTicketSchema is a no-op: schema owned by migrations/erp (seed categories remain below if needed).
+// EnsureTicketSchema seeds ticket categories and handler roles (schema is owned by migrations).
 func EnsureTicketSchema(db *sql.DB) {
 	if db == nil {
 		return
-	}
-	// Keep lightweight category seed only (no DDL).
-	_, _ = db.Exec(`INSERT INTO wf_ticket_category(code, name, status) VALUES('tool','工具','active') ON CONFLICT DO NOTHING`)
-	return
-	stmts := []string{
-		`CREATE TABLE IF NOT EXISTS wf_ticket_category (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  code TEXT NOT NULL UNIQUE,
-  name TEXT NOT NULL,
-  enabled INTEGER NOT NULL DEFAULT 1,
-  remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (NOW())
-)`,
-		`CREATE TABLE IF NOT EXISTS wf_ticket_category_handler (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  category_id INTEGER NOT NULL,
-  handler_type TEXT NOT NULL,
-  handler_ref INTEGER NOT NULL,
-  UNIQUE(category_id, handler_type, handler_ref)
-)`,
-		`CREATE TABLE IF NOT EXISTS wf_ticket (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  doc_no TEXT NOT NULL UNIQUE,
-  category_id INTEGER NOT NULL,
-  title TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'open',
-  applicant_user_id INTEGER NOT NULL,
-  current_assignee_user_id INTEGER,
-  biz_type TEXT,
-  biz_id INTEGER,
-  payload_json TEXT,
-  created_at TEXT NOT NULL DEFAULT (NOW()),
-  updated_at TEXT NOT NULL DEFAULT (NOW()),
-  closed_at TEXT
-)`,
-		`CREATE TABLE IF NOT EXISTS wf_ticket_log (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  ticket_id INTEGER NOT NULL,
-  action TEXT NOT NULL,
-  from_user_id INTEGER,
-  to_user_id INTEGER,
-  comment TEXT,
-  created_at TEXT NOT NULL DEFAULT (NOW())
-)`,
-		`ALTER TABLE hr_tool_issue ADD COLUMN pending_return_qty REAL NOT NULL DEFAULT 0`,
-		`ALTER TABLE hr_tool_issue ADD COLUMN ticket_id INTEGER`,
-		`ALTER TABLE wf_ticket_category ADD COLUMN form_schema_json TEXT`,
-		`ALTER TABLE wf_ticket_category ADD COLUMN biz_hint TEXT`,
-	}
-	for _, q := range stmts {
-		_, _ = db.Exec(q)
 	}
 	seedTicketCategories(db)
 }
@@ -80,11 +29,9 @@ func seedTicketCategories(db *sql.DB) {
 		schema := marshalFormSchema(seed.Fields)
 		_, _ = db.Exec(`INSERT INTO wf_ticket_category(code, name, remark, form_schema_json, biz_hint) VALUES(?,?,?,?,?)`,
 			seed.Code, seed.Name, seed.Remark, schema, seed.BizHint)
-		// backfill schema if empty on existing row
 		_, _ = db.Exec(`UPDATE wf_ticket_category SET form_schema_json=?, biz_hint=COALESCE(NULLIF(biz_hint,''), ?), name=?, remark=?
 			WHERE code=? AND (form_schema_json IS NULL OR form_schema_json='' OR form_schema_json='[]' OR form_schema_json='null')`,
 			schema, seed.BizHint, seed.Name, seed.Remark, seed.Code)
-		// force-refresh display names / schemas for app-facing create kinds & tools
 		if seed.Code == "tool_issue" || seed.Code == "tool_return" || seed.Code == "farm_inbound" || seed.Code == "stock_inbound" {
 			_, _ = db.Exec(`UPDATE wf_ticket_category SET form_schema_json=?, biz_hint=?, name=?, remark=? WHERE code=?`,
 				schema, seed.BizHint, seed.Name, seed.Remark, seed.Code)
@@ -94,26 +41,24 @@ func seedTicketCategories(db *sql.DB) {
 		if catID <= 0 {
 			continue
 		}
-		for _, roleCode := range []string{"hr", "sys_admin"} {
-			var roleID int64
-			_ = db.QueryRow(`SELECT id FROM iam_role WHERE code=? LIMIT 1`, roleCode).Scan(&roleID)
-			if roleID > 0 {
-				_, _ = db.Exec(`INSERT INTO wf_ticket_category_handler(category_id, handler_type, handler_ref) VALUES(?,'role',?)`, catID, roleID)
-			}
+		var handlerN int
+		_ = db.QueryRow(`SELECT COUNT(1) FROM wf_ticket_category_handler WHERE category_id=?`, catID).Scan(&handlerN)
+		if handlerN > 0 {
+			continue
 		}
-		// 过磅入厂 → 采购/仓管可处理；过磅入库 → 仓管
-		extraRoles := []string{}
+		roleCodes := []string{"hr", "sys_admin"}
 		switch seed.Code {
 		case "farm_inbound":
-			extraRoles = []string{"purchase", "warehouse", "qc"}
+			roleCodes = append(roleCodes, "purchase", "warehouse", "qc")
 		case "stock_inbound":
-			extraRoles = []string{"warehouse", "purchase"}
+			roleCodes = append(roleCodes, "warehouse", "purchase")
 		}
-		for _, roleCode := range extraRoles {
+		for _, roleCode := range roleCodes {
 			var roleID int64
 			_ = db.QueryRow(`SELECT id FROM iam_role WHERE code=? LIMIT 1`, roleCode).Scan(&roleID)
 			if roleID > 0 {
-				_, _ = db.Exec(`INSERT INTO wf_ticket_category_handler(category_id, handler_type, handler_ref) VALUES(?,'role',?)`, catID, roleID)
+				_, _ = db.Exec(`INSERT INTO wf_ticket_category_handler(category_id, handler_type, handler_ref) VALUES(?,'role',?)
+					ON CONFLICT DO NOTHING`, catID, roleID)
 			}
 		}
 	}
@@ -166,10 +111,12 @@ func (s *Services) handleTicketCategories(c *gin.Context, method, action string)
 			var code, name, remark, created, schema, hint string
 			var enabled int
 			_ = rows.Scan(&id, &code, &name, &enabled, &remark, &created, &schema, &hint)
-			list = append(list, gin.H{
+			item := gin.H{
 				"id": id, "code": code, "name": name, "enabled": enabled == 1, "remark": remark, "created_at": created,
 				"form_schema": parseFormSchema(schema), "form_schema_json": schema, "biz_hint": hint,
-			})
+			}
+			s.attachCategoryPoolSummary(item, id)
+			list = append(list, item)
 		}
 		api.OK(c, gin.H{"list": list, "total": len(list)})
 		return true
@@ -310,13 +257,34 @@ func (s *Services) listCategoryHandlers(catID int64) []gin.H {
 		_ = rows.Scan(&id, &ht, &ref)
 		label := ""
 		if ht == "user" {
-			_ = s.DB.QueryRow(`SELECT login_name FROM iam_user WHERE id=?`, ref).Scan(&label)
+			_ = s.DB.QueryRow(`SELECT COALESCE(NULLIF(COALESCE(e.name,''),''), u.login_name) FROM iam_user u
+				LEFT JOIN hr_employee e ON e.id=u.employee_id WHERE u.id=?`, ref).Scan(&label)
 		} else {
-			_ = s.DB.QueryRow(`SELECT code FROM iam_role WHERE id=?`, ref).Scan(&label)
+			_ = s.DB.QueryRow(`SELECT COALESCE(NULLIF(name,''), code) FROM iam_role WHERE id=?`, ref).Scan(&label)
 		}
 		out = append(out, gin.H{"id": id, "handler_type": ht, "handler_ref": ref, "label": label})
 	}
 	return out
+}
+
+func (s *Services) attachCategoryPoolSummary(item gin.H, catID int64) {
+	handlers := s.listCategoryHandlers(catID)
+	labels := []string{}
+	for _, h := range handlers {
+		if lab := strOr(h["label"]); lab != "" {
+			labels = append(labels, lab)
+		}
+	}
+	pool := s.resolveHandlerPool(catID)
+	preview := pool
+	if len(preview) > 5 {
+		preview = preview[:5]
+	}
+	item["handlers"] = handlers
+	item["handler_count"] = len(handlers)
+	item["handler_labels"] = labels
+	item["pool"] = preview
+	item["pool_count"] = len(pool)
 }
 
 // resolveHandlerPool expands role handlers to users + direct users.

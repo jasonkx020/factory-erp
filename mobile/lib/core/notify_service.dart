@@ -362,6 +362,7 @@ class NotifyService extends ChangeNotifier {
     final k = (eventKey ?? '').trim();
     switch (k) {
       case 'purchase.weigh_confirmed':
+      case 'purchase.await_stockin':
         return '/warehouse';
       case 'production.report_confirmed':
         return '/workshop';

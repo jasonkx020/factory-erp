@@ -181,6 +181,7 @@ func maskTaskPayloadForWarehouse(src map[string]interface{}) map[string]interfac
 		"warehouse_id": true, "receive_kind": true, "status": true, "bag_qty": true, "channel": true,
 		"biz_date": true, "box_code": true, "qc_result": true, "grade": true,
 		"image_urls": true, "verify_images": true, "site_photos": true,
+		"weigh_ticket_id": true, "biz_id": true, "box_stockin_ready": true,
 	}
 	out := map[string]interface{}{}
 	for k, v := range src {

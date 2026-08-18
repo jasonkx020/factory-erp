@@ -1,35 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/api_client.dart';
 import '../core/auth_state.dart';
 import '../core/employee_modules.dart';
+import '../features/hr/ticket_create_page.dart';
 import '../features/receiving/batch_code_scanner_page.dart';
 import '../features/receiving/receiving_page.dart';
 import '../features/ticket/ticket_widgets.dart';
 import '../widgets/trace_code_field.dart';
 
-/// App「+」可创建的工单种类（按权限过滤）
-/// 表单与过磅收货页同源：确认后进入 ReceivingPage，不走独立 TicketCreate 表单
+/// 这些类型有独立业务向导，不走通用动态表单
+const dedicatedReceiveKinds = <String, String>{
+  'farm_inbound': 'gate',
+};
+
+/// App「+」可创建的工单种类
 class CreatableTicketKind {
   const CreatableTicketKind({
     required this.code,
     required this.title,
     required this.subtitle,
-    required this.receiveKind,
+    this.receiveKind,
   });
 
   final String code;
   final String title;
   final String subtitle;
-  /// 过磅收货 `gate` | `stockin`
-  final String receiveKind;
+  /// 非空则打开过磅收货向导（`gate` | `stockin`）；空则按管理端 form_schema 动态填表
+  final String? receiveKind;
+
+  bool get isWeighFlow => receiveKind != null && receiveKind!.isNotEmpty;
 }
 
-const creatableTicketKinds = [
+const weighTicketKinds = [
   CreatableTicketKind(
     code: 'farm_inbound',
     title: '过磅入厂',
-    subtitle: '与「过磅收货·入厂」同一套表单',
+    subtitle: '与「过磅收货·入厂」同一套向导',
     receiveKind: 'gate',
   ),
 ];
@@ -44,8 +52,42 @@ bool canCreateTicketKind(String code, List<String> permissions, List<String> rol
     case 'farm_inbound':
       return canAccessEmployeeModule(EmployeeModule.receiving, permissions, roles);
     default:
-      return false;
+      return true;
   }
+}
+
+/// 过磅走专用向导；其余启用中的类型拉管理端配置（名称 + 填报字段）
+Future<List<CreatableTicketKind>> loadCreatableTicketKinds(AuthState auth) async {
+  final perms = auth.permissions;
+  final roles = auth.roles;
+  final out = <CreatableTicketKind>[];
+  final seen = <String>{};
+
+  for (final k in weighTicketKinds) {
+    if (canCreateTicketKind(k.code, perms, roles)) {
+      out.add(k);
+      seen.add(k.code);
+    }
+  }
+
+  final r = await auth.api.get('/workflow/ticket-categories');
+  for (final raw in ApiClient.listOf(r.data)) {
+    if (raw is! Map) continue;
+    final m = Map<String, dynamic>.from(raw);
+    if (m['enabled'] == false) continue;
+    final code = '${m['code'] ?? ''}'.trim();
+    if (code.isEmpty || seen.contains(code)) continue;
+    if (dedicatedReceiveKinds.containsKey(code)) continue;
+    final name = '${m['name'] ?? code}'.trim();
+    final remark = '${m['remark'] ?? ''}'.trim();
+    out.add(CreatableTicketKind(
+      code: code,
+      title: name.isEmpty ? code : name,
+      subtitle: remark.isEmpty ? '按管理端配置的字段填报' : remark,
+    ));
+    seen.add(code);
+  }
+  return out;
 }
 
 bool canScanTraceOpenTicket(List<String> permissions, List<String> roles) {
@@ -58,20 +100,15 @@ bool canScanTraceOpenTicket(List<String> permissions, List<String> roles) {
       canAccessEmployeeModule(EmployeeModule.receiving, permissions, roles);
 }
 
-List<CreatableTicketKind> visibleCreatableTicketKinds(
-  List<String> permissions,
-  List<String> roles,
-) =>
-    creatableTicketKinds.where((k) => canCreateTicketKind(k.code, permissions, roles)).toList();
-
 /// 弹出可选种类 / 快捷扫码 → 创建或打开关联工单。返回是否有业务成功（创建或打开）。
 Future<bool> pickAndCreateTicket(BuildContext context) async {
   final auth = context.read<AuthState>();
-  final kinds = visibleCreatableTicketKinds(auth.permissions, auth.roles);
   final canScan = canScanTraceOpenTicket(auth.permissions, auth.roles);
+  final kinds = await loadCreatableTicketKinds(auth);
+  if (!context.mounted) return false;
   if (kinds.isEmpty && !canScan) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('当前账号无权限创建过磅工单')),
+      const SnackBar(content: Text('没有可创建的工单。过磅请确认有收货权限；自定义类型请到管理端「工单中心」新建并启用')),
     );
     return false;
   }
@@ -107,19 +144,32 @@ Future<bool> pickAndCreateTicket(BuildContext context) async {
                   if (canScan) const Divider(),
                   const Text('创建工单', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
-                  const Text('将打开与过磅收货相同的填报表单', style: TextStyle(color: Colors.black54, fontSize: 13)),
+                  const Text(
+                    '过磅入厂走收货向导；其它类型按管理端配置的字段填报',
+                    style: TextStyle(color: Colors.black54, fontSize: 13),
+                  ),
                   const SizedBox(height: 8),
-                  for (final k in kinds)
-                    ListTile(
-                      leading: Icon(
-                        selected?.code == k.code ? Icons.radio_button_checked : Icons.radio_button_off,
-                        color: Theme.of(ctx).colorScheme.primary,
-                      ),
-                      title: Text(k.title),
-                      subtitle: Text(k.subtitle),
-                      selected: selected?.code == k.code,
-                      onTap: () => setLocal(() => selected = k),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(ctx).size.height * 0.42,
                     ),
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final k in kinds)
+                          ListTile(
+                            leading: Icon(
+                              selected?.code == k.code ? Icons.radio_button_checked : Icons.radio_button_off,
+                              color: Theme.of(ctx).colorScheme.primary,
+                            ),
+                            title: Text(k.title),
+                            subtitle: Text(k.subtitle),
+                            selected: selected?.code == k.code,
+                            onTap: () => setLocal(() => selected = k),
+                          ),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   FilledButton(
                     onPressed: selected == null
@@ -147,15 +197,27 @@ Future<bool> pickAndCreateTicket(BuildContext context) async {
   }
 
   final confirmed = action.kind!;
-  final ok = await Navigator.of(context).push<bool>(
-    MaterialPageRoute(
-      builder: (_) => ReceivingPage(
-        initialReceiveKind: confirmed.receiveKind,
-        lockKind: true,
-        popOnCreated: true,
+  final bool? ok;
+  if (confirmed.isWeighFlow) {
+    ok = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ReceivingPage(
+          initialReceiveKind: confirmed.receiveKind!,
+          lockKind: true,
+          popOnCreated: true,
+        ),
       ),
-    ),
-  );
+    );
+  } else {
+    ok = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => TicketCreatePage(
+          lockedCategoryCode: confirmed.code,
+          lockedCategoryTitle: confirmed.title,
+        ),
+      ),
+    );
+  }
   if (ok == true && context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('${confirmed.title}已提交成功')),

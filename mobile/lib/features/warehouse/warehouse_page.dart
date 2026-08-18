@@ -96,7 +96,19 @@ class _WarehousePageState extends State<WarehousePage> {
     return k == 'stockin' ? 'stockin' : 'gate';
   }
 
-  String _kindChipLabel(String kind) => kind == 'stockin' ? '入库' : '入厂';
+  String _taskPhaseLabel(Map t) {
+    final p = NotifyService.parsePayload(t['payload'] ?? t['payload_json']);
+    final ek = (t['event_key'] ?? '').toString();
+    final status = (p['status'] ?? '').toString().toLowerCase();
+    final kind = _taskReceiveKind(t);
+    if (ek == 'purchase.await_stockin' ||
+        status == 'gate_accepted' ||
+        p['box_stockin_ready'] == true ||
+        kind == 'stockin') {
+      return '待入库';
+    }
+    return '待入厂';
+  }
 
   String _productName(int? id) {
     if (id == null) return '-';
@@ -230,7 +242,11 @@ class _WarehousePageState extends State<WarehousePage> {
       }
       final list = ApiClient.listOf(res.data);
       _tasks = list
-          .where((t) => t is Map && (t['event_key'] == 'purchase.weigh_confirmed' || t['to_role'] == 'warehouse'))
+          .where((t) =>
+              t is Map &&
+              (t['event_key'] == 'purchase.weigh_confirmed' ||
+                  t['event_key'] == 'purchase.await_stockin' ||
+                  t['to_role'] == 'warehouse'))
           .toList();
     });
   }
@@ -314,6 +330,11 @@ class _WarehousePageState extends State<WarehousePage> {
   }
 
   Future<void> _openVerifyFromTask(Map t) async {
+    final id = _weighTicketIdOfTask(t);
+    if (id > 0) {
+      await _openVerifyByTicketId(id);
+      return;
+    }
     final p = NotifyService.parsePayload(t['payload'] ?? t['payload_json']);
     final code = (t['trace_code'] ?? p['trace_code'] ?? p['batch_no'] ?? '').toString().trim();
     if (code.isEmpty) {
@@ -322,6 +343,31 @@ class _WarehousePageState extends State<WarehousePage> {
     }
     _verify.text = code;
     await _scanLocate();
+  }
+
+  int _weighTicketIdOfTask(Map t) {
+    final p = NotifyService.parsePayload(t['payload'] ?? t['payload_json']);
+    for (final v in [t['biz_id'], p['weigh_ticket_id'], p['biz_id']]) {
+      if (v is num) {
+        final n = v.toInt();
+        if (n > 0) return n;
+      }
+      final n = int.tryParse('${v ?? ''}'.trim());
+      if (n != null && n > 0) return n;
+    }
+    return 0;
+  }
+
+  Future<void> _openVerifyByTicketId(int id) async {
+    setState(() => _busy = true);
+    final res = await context.read<AuthState>().api.get('/purchase/weigh-tickets/$id');
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (!res.ok || res.data is! Map) {
+      _prompt(res.msg);
+      return;
+    }
+    await _openVerifyPage(Map<String, dynamic>.from(res.data as Map));
   }
 
   Future<void> _scanLocate() async {
@@ -760,7 +806,7 @@ class _WarehousePageState extends State<WarehousePage> {
           ..._tasks.map((e) {
             final t = Map<String, dynamic>.from(e as Map);
             final p = NotifyService.parsePayload(t['payload'] ?? t['payload_json']);
-            final kind = _taskReceiveKind(t);
+            final phase = _taskPhaseLabel(t);
             final trace = (t['trace_code'] ?? p['trace_code'] ?? p['batch_no'] ?? '').toString();
             return Card(
               child: ListTile(
@@ -769,10 +815,10 @@ class _WarehousePageState extends State<WarehousePage> {
                     Expanded(child: Text('${t['doc_no'] ?? ''}')),
                     Chip(
                       label: Text(
-                        _kindChipLabel(kind),
+                        phase,
                         style: const TextStyle(fontSize: 12, color: Colors.white),
                       ),
-                      backgroundColor: kind == 'stockin' ? Colors.teal : Colors.indigo,
+                      backgroundColor: phase == '待入库' ? Colors.teal : Colors.indigo,
                       visualDensity: VisualDensity.compact,
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       padding: EdgeInsets.zero,

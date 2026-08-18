@@ -94,6 +94,10 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
   Object? get _bizId => _ticket['weigh_ticket_id'] ?? _ticket['biz_id'] ?? _ticket['id'];
 
   String get _draftKey {
+    final id = _bizId;
+    if (id != null && '$id'.trim().isNotEmpty && '$id' != '0') {
+      return 'wt-$id';
+    }
     final trace = (_ticket['trace_code'] ?? '').toString().trim();
     if (trace.isNotEmpty) return trace;
     return '${_bizId ?? ''}';

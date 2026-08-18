@@ -15,9 +15,11 @@ class TraceCodeField extends StatelessWidget {
     this.onChanged,
     this.onEditingComplete,
     this.onScanned,
+    this.onTapManual,
     this.scannerTitle = '扫描溯源号',
     /// 现场默认紧凑（左标签右输入，对齐过磅入厂）；管理向可传 false。
     this.compact = true,
+    this.requiredMark = true,
   });
 
   final TextEditingController controller;
@@ -29,8 +31,11 @@ class TraceCodeField extends StatelessWidget {
   final VoidCallback? onEditingComplete;
   /// Called after a successful camera scan (text already written to [controller]).
   final ValueChanged<String>? onScanned;
+  /// 点文字区准备手输（扫码不触发）。
+  final VoidCallback? onTapManual;
   final String scannerTitle;
   final bool compact;
+  final bool requiredMark;
 
   Future<void> _openScan(BuildContext context) async {
     final code = await Navigator.of(context).push<String>(
@@ -59,7 +64,7 @@ class TraceCodeField extends StatelessWidget {
     if (compact) {
       return FormRow(
         label: label,
-        requiredMark: true,
+        requiredMark: requiredMark,
         child: TextField(
           controller: controller,
           textCapitalization: textCapitalization,
@@ -67,7 +72,10 @@ class TraceCodeField extends StatelessWidget {
           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
           decoration: FormRow.fieldDecoration(hint: hint, suffixIcon: scanIcon),
           textInputAction: TextInputAction.done,
-          onTap: () => FormRow.moveCursorToEnd(controller),
+          onTap: () {
+            FormRow.moveCursorToEnd(controller);
+            onTapManual?.call();
+          },
           onChanged: onChanged,
           onEditingComplete: () {
             onEditingComplete?.call();
@@ -93,6 +101,7 @@ class TraceCodeField extends StatelessWidget {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         suffixIcon: scanIcon,
       ),
+      onTap: () => onTapManual?.call(),
       onChanged: onChanged,
       onEditingComplete: () {
         onEditingComplete?.call();

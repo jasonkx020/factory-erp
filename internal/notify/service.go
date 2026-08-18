@@ -123,7 +123,11 @@ func (s *Service) renderTemplate(eventKey, docNo, traceCode string) (title, body
 	title = eventKey
 	switch eventKey {
 	case "purchase.weigh_confirmed":
-		title = "待仓管入库"
+		title = "待入厂"
+	case "purchase.await_stockin":
+		title = "待入库"
+	case "purchase.gate_accepted":
+		title = "已入厂·待入库"
 	case "purchase.weigh_returned":
 		title = "仓管退回过磅单"
 	case "purchase.stocked":

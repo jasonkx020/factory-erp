@@ -50,7 +50,7 @@ typedef GateSubmitFn = Future<bool> Function({
   int? nextAssigneeUserId,
 });
 
-/// 过磅入厂三步向导（仅 gate）：农户+溯源码 → 过磅照片 → 预览确认。
+/// 过磅入厂四步向导（仅 gate）：农户 → 溯源码 → 过磅照片 → 预览确认。
 class GateInboundWizard extends StatefulWidget {
   const GateInboundWizard({
     super.key,
@@ -64,13 +64,14 @@ class GateInboundWizard extends StatefulWidget {
     required this.plate,
     required this.recvAddr,
     required this.remark,
-    required this.farmerSearch,
     required this.partyName,
     required this.partyMobile,
     required this.origin,
     required this.batchOk,
     this.bindingLocked = false,
-    required this.photoUrls,
+    required this.photoMaterial,
+    required this.photoScale,
+    required this.photoCloseup,
     required this.varieties,
     required this.varietyId,
     required this.channel,
@@ -79,20 +80,17 @@ class GateInboundWizard extends StatefulWidget {
     required this.farmerId,
     required this.farmerHits,
     required this.searchingFarmer,
-    required this.farmerCodes,
-    required this.loadingFarmerCodes,
     required this.msg,
     this.msgIsError = false,
     required this.onBatchChanged,
     required this.onValidateBatch,
-    required this.onFarmerSearchChanged,
-    required this.onSearchFarmers,
+    required this.onNameChanged,
+    required this.onMobileChanged,
     required this.onApplyFarmer,
     required this.onClearFarmer,
-    required this.onShowOnsiteFarmer,
-    required this.onRefreshFarmerCodes,
-    required this.onPickFarmerCode,
+    required this.onTapManualTrace,
     required this.onGenerateTraceCode,
+    required this.onShowGeneratedQr,
     required this.onApplyVariety,
     required this.onChannelChanged,
     required this.onColdStoreChanged,
@@ -113,7 +111,6 @@ class GateInboundWizard extends StatefulWidget {
   final TextEditingController plate;
   final TextEditingController recvAddr;
   final TextEditingController remark;
-  final TextEditingController farmerSearch;
   final TextEditingController partyName;
   final TextEditingController partyMobile;
   final TextEditingController origin;
@@ -121,7 +118,9 @@ class GateInboundWizard extends StatefulWidget {
   final bool batchOk;
   /// 溯源码已过站中：农户/品种锁定为首单关联信息
   final bool bindingLocked;
-  final List<String> photoUrls;
+  final String? photoMaterial;
+  final String? photoScale;
+  final String? photoCloseup;
   final List<dynamic> varieties;
   final int? varietyId;
   final String channel;
@@ -130,27 +129,24 @@ class GateInboundWizard extends StatefulWidget {
   final int? farmerId;
   final List<dynamic> farmerHits;
   final bool searchingFarmer;
-  final List<dynamic> farmerCodes;
-  final bool loadingFarmerCodes;
   final String msg;
   final bool msgIsError;
 
   final ValueChanged<String> onBatchChanged;
-  final Future<void> Function() onValidateBatch;
-  final ValueChanged<String> onFarmerSearchChanged;
-  final Future<void> Function(String) onSearchFarmers;
+  final Future<bool> Function() onValidateBatch;
+  final ValueChanged<String> onNameChanged;
+  final ValueChanged<String> onMobileChanged;
   final Future<void> Function(Map<String, dynamic>) onApplyFarmer;
   final VoidCallback onClearFarmer;
-  final Future<void> Function() onShowOnsiteFarmer;
-  final Future<void> Function() onRefreshFarmerCodes;
-  final Future<void> Function(Map<String, dynamic>) onPickFarmerCode;
-  final Future<void> Function() onGenerateTraceCode;
+  final Future<void> Function() onTapManualTrace;
+  final Future<bool> Function() onGenerateTraceCode;
+  final Future<void> Function() onShowGeneratedQr;
   final ValueChanged<Map<String, dynamic>> onApplyVariety;
   final ValueChanged<String> onChannelChanged;
   final ValueChanged<String> onColdStoreChanged;
   final ValueChanged<String> onGradeChanged;
-  final Future<void> Function() onTakePhoto;
-  final ValueChanged<int> onRemovePhoto;
+  final Future<void> Function(String slot) onTakePhoto;
+  final ValueChanged<String> onRemovePhoto;
   final GateSubmitFn onSubmit;
   final ValueChanged<String> onMsg;
 
@@ -170,7 +166,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
   int? _nextAssignee;
   bool _loadingOptions = false;
 
-  static const _titles = ['农户与溯源码', '照片与过磅', '预览确认'];
+  static const _titles = ['农户', '溯源码', '照片与过磅', '预览确认'];
 
   @override
   void initState() {
@@ -298,19 +294,19 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
   String? _validateStep(int step) {
     switch (step) {
       case 0:
-        if ((widget.farmerId == null || widget.farmerId! <= 0) && widget.partyName.text.trim().isEmpty) {
-          return '请先关联农户或填写农户姓名';
-        }
-        if (widget.batchNo.text.trim().isEmpty) return '请选择、生成或扫码绑定溯源批号';
-        if (!widget.batchOk) return '请先校验溯源批号（点选列表码、生成后或扫码后会自动校验）';
+        if (widget.partyName.text.trim().isEmpty) return '请填写农户姓名';
+        return null;
+      case 1:
         if (widget.varieties.isEmpty) return '暂无过磅品种，请先在后台配置';
         if (widget.varietyId == null) return '请选择品种';
         return null;
-      case 1:
-        if ((double.tryParse(widget.gross.text) ?? 0) <= 0) return '请填写入场重量（kg）';
-        if (widget.photoUrls.isEmpty) return '请拍摄现场照片';
-        return null;
       case 2:
+        if ((widget.photoMaterial ?? '').isEmpty) return '请拍摄材料过磅照片';
+        if ((widget.photoScale ?? '').isEmpty) return '请拍摄磅显数据特写';
+        if ((widget.photoCloseup ?? '').isEmpty) return '请拍摄近距离照片';
+        if ((double.tryParse(widget.gross.text) ?? 0) <= 0) return '请填写入场重量（kg）';
+        return null;
+      case 3:
         if (_nextRole == null || _nextRole!.isEmpty) return '请选择下一处理部门';
         final myId = _myUserId();
         if (_nextAssignee != null && myId > 0 && _nextAssignee == myId) {
@@ -345,8 +341,28 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
       widget.onMsg(err);
       return;
     }
-    if (_step < 2) {
-      if (_step + 1 == 2) await _loadNextOptions();
+    if (_step == 1 && widget.batchNo.text.trim().isEmpty) {
+      final generate = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('生成溯源码'),
+          content: const Text('未填溯源码，是否新生成？'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('否')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('是')),
+          ],
+        ),
+      );
+      if (generate != true) return;
+      final ok = await widget.onGenerateTraceCode();
+      if (!ok) return;
+      await widget.onShowGeneratedQr();
+    } else if (_step == 1 && !widget.batchOk) {
+      final ok = await widget.onValidateBatch();
+      if (!ok) return;
+    }
+    if (_step < 3) {
+      if (_step + 1 == 3) await _loadNextOptions();
       setState(() => _step++);
       await _pages.animateToPage(_step, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
       return;
@@ -381,7 +397,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
   }
 
   Future<void> _jumpToStep(int step) async {
-    if (step < 0 || step > 2 || step == _step) return;
+    if (step < 0 || step > 3 || step == _step) return;
     setState(() => _step = step);
     await _pages.animateToPage(_step, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
   }
@@ -427,15 +443,15 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('步骤 ${_step + 1}/3 · ${_titles[_step]}', style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text('步骤 ${_step + 1}/4 · ${_titles[_step]}', style: const TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               Row(
-                children: List.generate(3, (i) {
+                children: List.generate(4, (i) {
                   final active = i <= _step;
                   return Expanded(
                     child: Container(
                       height: 4,
-                      margin: EdgeInsets.only(right: i < 2 ? 4 : 0),
+                      margin: EdgeInsets.only(right: i < 3 ? 4 : 0),
                       decoration: BoxDecoration(
                         color: active ? Theme.of(context).colorScheme.primary : Colors.black12,
                         borderRadius: BorderRadius.circular(2),
@@ -452,7 +468,8 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
             controller: _pages,
             physics: const NeverScrollableScrollPhysics(),
             children: [
-              _stepScanPrefs(),
+              _stepFarmer(),
+              _stepTrace(),
               _stepWeighPhotos(),
               _stepNextDept(),
             ],
@@ -484,7 +501,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
                 Expanded(
                   child: FilledButton(
                     onPressed: _busy ? null : _goNext,
-                    child: Text(_busy ? '提交中…' : (_step < 2 ? '下一步' : '确认创建并绑定')),
+                    child: Text(_busy ? '提交中…' : (_step < 3 ? '下一步' : '确认创建并绑定')),
                   ),
                 ),
               ],
@@ -511,100 +528,57 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
     );
   }
 
-  Widget _stepScanPrefs() {
-    final hasFarmer = (widget.farmerId != null && widget.farmerId! > 0) || widget.partyName.text.trim().isNotEmpty;
-    final usableCodes = widget.farmerCodes
-        .cast<dynamic>()
-        .map((e) => Map<String, dynamic>.from(e as Map))
-        .where((m) => m['can_append'] == true || m['selectable'] == true || m['status'] == 'in_progress' || m['status'] == 'used')
-        .toList();
+  Widget _stepFarmer() {
     return ListView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
       children: [
         const Padding(
           padding: EdgeInsets.fromLTRB(4, 0, 4, 6),
-          child: Text('1. 先选择农户', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          child: Text('填写农户，输入姓名或手机号将自动搜索档案', style: TextStyle(fontSize: 13, color: Colors.black54)),
         ),
         ..._farmerFields(),
+      ],
+    );
+  }
+
+  Widget _stepTrace() {
+    return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+      children: [
         const Padding(
-          padding: EdgeInsets.fromLTRB(4, 14, 4, 6),
-          child: Text('2. 选择或绑定溯源码', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          padding: EdgeInsets.fromLTRB(4, 0, 4, 6),
+          child: Text('扫码绑定，或点输入框手输；可不填，下一步将询问是否新生成', style: TextStyle(fontSize: 13, color: Colors.black54)),
         ),
-        if (!hasFarmer)
-          const Padding(
-            padding: EdgeInsets.only(bottom: 8),
-            child: Text('请先关联农户，再倒查该农户可用的溯源码', style: TextStyle(color: Colors.orange, fontSize: 13)),
-          )
-        else ...[
-          if (widget.loadingFarmerCodes)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))),
-            )
-          else if (widget.farmerCodes.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                '该农户暂无关联溯源码。请生成新码或扫码绑定未启用码。',
-                style: TextStyle(fontSize: 13, color: Colors.orange.shade800),
-              ),
-            )
-          else ...[
-            if (usableCodes.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  '该农户暂无「过站中」可追加的码（可能均已结束）。请生成新码或扫码绑定。',
-                  style: TextStyle(fontSize: 13, color: Colors.orange.shade800),
-                ),
-              ),
-            for (final m in widget.farmerCodes.take(12))
-              _farmerCodeTile(Map<String, dynamic>.from(m as Map)),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: widget.onRefreshFarmerCodes,
-                icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('刷新列表'),
-              ),
+        TraceCodeField(
+          controller: widget.batchNo,
+          label: '溯源码',
+          hint: '扫码或点击手输，可空',
+          validated: widget.batchOk,
+          scannerTitle: '扫描溯源批号',
+          compact: true,
+          requiredMark: false,
+          onChanged: widget.onBatchChanged,
+          onEditingComplete: () {
+            widget.onValidateBatch();
+          },
+          onTapManual: () {
+            widget.onTapManualTrace();
+          },
+          onScanned: (_) async {
+            widget.onBatchChanged(widget.batchNo.text);
+            await widget.onValidateBatch();
+          },
+        ),
+        if (widget.bindingLocked)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              '已选过站中码：农户与品种锁定为首单信息，本单可追加重量等',
+              style: TextStyle(fontSize: 12, color: Colors.blue.shade800),
             ),
-          ],
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton.tonalIcon(
-                onPressed: widget.onGenerateTraceCode,
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('生成新溯源码'),
-              ),
-            ],
           ),
-          const SizedBox(height: 8),
-          TraceCodeField(
-            controller: widget.batchNo,
-            label: '扫码/手输绑定',
-            hint: '扫未启用码或已选中的码',
-            validated: widget.batchOk,
-            scannerTitle: '扫描溯源批号',
-            compact: true,
-            onChanged: widget.onBatchChanged,
-            onEditingComplete: widget.onValidateBatch,
-            onScanned: (_) async {
-              widget.onBatchChanged(widget.batchNo.text);
-              await widget.onValidateBatch();
-            },
-          ),
-          if (widget.bindingLocked)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                '已选过站中码：农户与品种锁定为首单信息，本单可追加重量等',
-                style: TextStyle(fontSize: 12, color: Colors.blue.shade800),
-              ),
-            ),
-        ],
         if (widget.varieties.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
@@ -654,54 +628,6 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
     );
   }
 
-  Widget _farmerCodeTile(Map<String, dynamic> m) {
-    final code = (m['code'] ?? '').toString();
-    final st = (m['status'] ?? '').toString();
-    final label = (m['status_label'] ?? st).toString();
-    final selectable = m['can_append'] == true || m['selectable'] == true || st == 'in_progress' || st == 'used';
-    final selected = widget.batchOk && widget.batchNo.text.trim().toUpperCase() == code.toUpperCase();
-    final variety = (m['variety'] ?? m['product_name'] ?? '').toString();
-    Color tagColor;
-    switch (st) {
-      case 'in_progress':
-      case 'used':
-        tagColor = Colors.blue;
-        break;
-      case 'ended':
-        tagColor = Colors.grey;
-        break;
-      case 'available':
-        tagColor = Colors.green;
-        break;
-      default:
-        tagColor = Colors.orange;
-    }
-    return Card(
-      margin: const EdgeInsets.only(bottom: 6),
-      color: selected ? Colors.blue.shade50 : null,
-      child: ListTile(
-        dense: true,
-        enabled: selectable,
-        title: Text(code, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: selectable ? null : Colors.black45)),
-        subtitle: Text(
-          [
-            label,
-            if (variety.isNotEmpty) variety,
-            if (!selectable && st == 'ended') '不可追加',
-          ].join(' · '),
-          style: TextStyle(fontSize: 12, color: selectable ? Colors.black54 : Colors.black38),
-        ),
-        trailing: Chip(
-          label: Text(label, style: const TextStyle(fontSize: 11, color: Colors.white)),
-          backgroundColor: tagColor,
-          visualDensity: VisualDensity.compact,
-          padding: EdgeInsets.zero,
-        ),
-        onTap: selectable ? () => widget.onPickFarmerCode(m) : null,
-      ),
-    );
-  }
-
   List<Widget> _farmerFields() {
     if (widget.bindingLocked) {
       return [
@@ -721,30 +647,27 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
         _previewRow('产地', widget.origin.text.trim().isEmpty ? '-' : widget.origin.text.trim()),
       ];
     }
+    final typed = widget.partyName.text.trim().isNotEmpty || widget.partyMobile.text.trim().isNotEmpty;
     return [
-      FormRow(
-        label: '搜索农户',
-        child: TextField(
-          controller: widget.farmerSearch,
-          textAlign: TextAlign.right,
-          style: const TextStyle(fontSize: 15),
-          decoration: FormRow.fieldDecoration(
-            hint: '手机号/姓名',
-            suffixIcon: widget.searchingFarmer
-                ? const Padding(
-                    padding: EdgeInsets.all(10),
-                    child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                  )
-                : IconButton(
-                    icon: const Icon(Icons.search, size: 20),
-                    onPressed: () => widget.onSearchFarmers(widget.farmerSearch.text),
-                  ),
-          ),
-          onTap: () => FormRow.moveCursorToEnd(widget.farmerSearch),
-          onChanged: widget.onFarmerSearchChanged,
-          onSubmitted: widget.onSearchFarmers,
-        ),
+      FormRow.text(
+        label: '姓名',
+        controller: widget.partyName,
+        hint: '输入后自动搜索',
+        requiredMark: true,
+        onChanged: widget.onNameChanged,
       ),
+      FormRow.text(
+        label: '手机号',
+        controller: widget.partyMobile,
+        hint: '选填，输入后自动搜索',
+        keyboardType: TextInputType.phone,
+        onChanged: widget.onMobileChanged,
+      ),
+      if (widget.searchingFarmer)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))),
+        ),
       if (widget.farmerHits.isNotEmpty)
         Card(
           margin: const EdgeInsets.only(top: 6, bottom: 6),
@@ -761,15 +684,10 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
             ],
           ),
         ),
-      if (widget.farmerSearch.text.trim().isNotEmpty && !widget.searchingFarmer && widget.farmerHits.isEmpty && widget.farmerId == null)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Row(
-            children: [
-              const Expanded(child: Text('未找到匹配农户', style: TextStyle(color: Colors.orange))),
-              FilledButton.tonal(onPressed: widget.onShowOnsiteFarmer, child: const Text('现场录入')),
-            ],
-          ),
+      if (typed && !widget.searchingFarmer && widget.farmerHits.isEmpty && widget.farmerId == null)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 6),
+          child: Text('未找到档案，提交入厂单时将自动建档', style: TextStyle(color: Colors.black45, fontSize: 13)),
         ),
       if (widget.farmerId != null)
         FormRow(
@@ -783,17 +701,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
             ),
           ),
         ),
-      _textRow('姓名', widget.partyName, hint: '可改快照', requiredMark: true),
-      _textRow('电话', widget.partyMobile, hint: '选填', keyboardType: TextInputType.phone),
       _textRow('产地', widget.origin, hint: '选填'),
-      Align(
-        alignment: Alignment.centerRight,
-        child: TextButton.icon(
-          onPressed: widget.onShowOnsiteFarmer,
-          icon: const Icon(Icons.person_add_alt),
-          label: const Text('现场新建农户'),
-        ),
-      ),
     ];
   }
 
@@ -802,6 +710,27 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
       children: [
+        const Text('先拍三张照片，再填写重量', style: TextStyle(fontSize: 12, color: Colors.black54)),
+        const SizedBox(height: 8),
+        _photoSlot(
+          slot: 'material',
+          title: '1. 材料过磅照片',
+          hint: '拍物料上磅的全景',
+          url: widget.photoMaterial,
+        ),
+        _photoSlot(
+          slot: 'scale_display',
+          title: '2. 磅显数据特写',
+          hint: '拍秤上数字，清晰可读（后续用于识别重量）',
+          url: widget.photoScale,
+        ),
+        _photoSlot(
+          slot: 'closeup',
+          title: '3. 近距离照片',
+          hint: '拍物料近景',
+          url: widget.photoCloseup,
+        ),
+        const SizedBox(height: 8),
         FormRow(
           label: '过磅方式',
           child: Align(
@@ -820,7 +749,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
         _textRow(
           '入场重量（kg）',
           widget.gross,
-          hint: '0',
+          hint: '对照磅显特写填写',
           requiredMark: true,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
         ),
@@ -857,82 +786,92 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
             ),
           ),
         ),
-        FormRow(
-          label: '现场照片',
-          requiredMark: true,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              Text('已拍 ${widget.photoUrls.length}/3', style: const TextStyle(color: Colors.black54, fontSize: 13)),
-              const SizedBox(width: 8),
-              TextButton.icon(
-                onPressed: widget.onTakePhoto,
-                icon: const Icon(Icons.photo_camera, size: 18),
-                label: const Text('拍照'),
-              ),
-            ],
-          ),
-        ),
-        if (widget.photoUrls.isNotEmpty) _photoThumbRow(),
         _textRow('备注', widget.remark, hint: '选填'),
       ],
     );
   }
 
-  Widget _photoThumbRow() {
+  Widget _photoSlot({
+    required String slot,
+    required String title,
+    required String hint,
+    required String? url,
+  }) {
     final api = context.read<AuthState>().api;
-    return Padding(
-      padding: const EdgeInsets.only(top: 8, bottom: 4),
-      child: SizedBox(
-        height: 96,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: widget.photoUrls.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
-          itemBuilder: (_, i) {
-            final url = api.resolveMediaUrl(widget.photoUrls[i]);
-            return Stack(
-              clipBehavior: Clip.none,
+    final resolved = (url ?? '').isEmpty ? '' : api.resolveMediaUrl(url!);
+    final taken = resolved.isNotEmpty;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+      decoration: BoxDecoration(
+        border: Border.all(color: taken ? const Color(0xFFB7D8C8) : const Color(0xFFE2E8F0)),
+        borderRadius: BorderRadius.circular(10),
+        color: taken ? const Color(0xFFF3FAF6) : const Color(0xFFFAFBFC),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Material(
-                  color: Colors.black12,
-                  borderRadius: BorderRadius.circular(8),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    onTap: url.isEmpty ? null : () => _showPhotoPreview(context, url),
-                    child: Image.network(
-                      url,
-                      width: 96,
-                      height: 96,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const SizedBox(
-                        width: 96,
-                        height: 96,
-                        child: Center(child: Icon(Icons.broken_image_outlined)),
-                      ),
-                    ),
+                Text.rich(
+                  TextSpan(
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    children: [
+                      TextSpan(text: title),
+                      const TextSpan(text: ' *', style: TextStyle(color: Colors.redAccent)),
+                    ],
                   ),
                 ),
-                Positioned(
-                  top: -6,
-                  right: -6,
-                  child: Material(
-                    color: Colors.black54,
-                    shape: const CircleBorder(),
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: () => widget.onRemovePhoto(i),
-                      child: const Padding(
-                        padding: EdgeInsets.all(4),
-                        child: Icon(Icons.close, size: 14, color: Colors.white),
-                      ),
+                const SizedBox(height: 2),
+                Text(hint, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () => widget.onTakePhoto(slot),
+                      icon: Icon(taken ? Icons.cameraswitch_outlined : Icons.photo_camera, size: 18),
+                      label: Text(taken ? '重拍' : '拍照'),
                     ),
-                  ),
+                    if (taken)
+                      TextButton(
+                        onPressed: () => widget.onRemovePhoto(slot),
+                        child: const Text('删除'),
+                      ),
+                  ],
                 ),
               ],
-            );
-          },
-        ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Material(
+            color: Colors.black12,
+            borderRadius: BorderRadius.circular(8),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: taken ? () => _showPhotoPreview(context, resolved) : () => widget.onTakePhoto(slot),
+              child: taken
+                  ? Image.network(
+                      resolved,
+                      width: 84,
+                      height: 84,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox(
+                        width: 84,
+                        height: 84,
+                        child: Center(child: Icon(Icons.broken_image_outlined)),
+                      ),
+                    )
+                  : const SizedBox(
+                      width: 84,
+                      height: 84,
+                      child: Center(child: Icon(Icons.add_a_photo_outlined, color: Colors.black38)),
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -991,19 +930,24 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
       children: [
         const Text('请核对单据，有误请点「修改」或底栏「上一步」', style: TextStyle(fontSize: 12, color: Colors.black54)),
         const SizedBox(height: 8),
-        _previewSection('农户与溯源码', 0, [
-          _previewRow('农户ID', widget.farmerId == null ? '-' : '#${widget.farmerId}'),
+        _previewSection('农户', 0, [
+          _previewRow('农户ID', widget.farmerId == null ? '提交时自动建档' : '#${widget.farmerId}'),
           _previewRow('姓名', widget.partyName.text.trim().isEmpty ? '-' : widget.partyName.text.trim()),
           _previewRow('电话', widget.partyMobile.text.trim().isEmpty ? '-' : widget.partyMobile.text.trim()),
           _previewRow('产地', widget.origin.text.trim().isEmpty ? '-' : widget.origin.text.trim()),
+        ]),
+        _previewSection('溯源码与品种', 1, [
           _previewRow('溯源批号', widget.batchNo.text.trim().toUpperCase()),
           _previewRow('品种', _varietyLabel()),
           _previewRow('扣损率(%)', widget.deductRate.text),
           _previewRow('单价', unit.toString()),
           _previewRow('运/装/磅费', '$freight / $loading / $weigh'),
-          _previewRow('渠道', widget.channel == 'external' ? '外磅' : '厂内'),
         ]),
-        _previewSection('照片与过磅', 1, [
+        _previewSection('照片与过磅', 2, [
+          _previewRow('渠道', widget.channel == 'external' ? '外磅' : '厂内'),
+          _previewRow('材料过磅照', (widget.photoMaterial ?? '').isEmpty ? '未拍' : '已拍'),
+          _previewRow('磅显特写', (widget.photoScale ?? '').isEmpty ? '未拍' : '已拍'),
+          _previewRow('近距离照片', (widget.photoCloseup ?? '').isEmpty ? '未拍' : '已拍'),
           _previewRow('入场重量(kg)', gross.toString()),
           _previewRow('预估净重(kg)', net.toStringAsFixed(2)),
           _previewRow('预估结算', settle.toStringAsFixed(2)),
@@ -1011,7 +955,6 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
           _previewRow('收货地址', widget.recvAddr.text.trim().isEmpty ? '-' : widget.recvAddr.text.trim()),
           _previewRow('目标库', _coldLabel(widget.coldStore)),
           _previewRow('等级', widget.grade),
-          _previewRow('现场照片', '${widget.photoUrls.length} 张'),
           _previewRow('备注', widget.remark.text.trim().isEmpty ? '-' : widget.remark.text.trim()),
         ]),
         Text.rich(

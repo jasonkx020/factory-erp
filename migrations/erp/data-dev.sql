@@ -209,6 +209,24 @@ INSERT INTO prd_product(id, code, name, product_type, cost_price, sale_price, st
  (3, 'FG-DICED', '袋装木薯丁', 'finished', 4.0, 7.0, 'active')
 ON CONFLICT DO NOTHING;
 
+-- 过磅品种（与产品绑定；新装 schema 已写入时此处幂等）
+INSERT INTO pur_weigh_variety(code, name, sort_no, status, remark)
+VALUES
+ ('WV-FRESH', '鲜木薯', 10, 'active', '农户鲜薯过磅入厂，入保鲜库'),
+ ('WV-SEMI', '半成品（去芯薯肉）', 20, 'active', '外购或厂内半成品过磅入厂，入半成品库'),
+ ('WV-FG', '成品入库（袋装木薯丁）', 30, 'active', '成品过磅入库，入成品冷库')
+ON CONFLICT (code) DO NOTHING;
+
+UPDATE pur_weigh_variety v
+SET default_product_id = p.id, updated_at = NOW()
+FROM prd_product p
+WHERE v.default_product_id IS NULL AND COALESCE(v.is_deleted,0)=0
+  AND (
+    (v.code = 'WV-FRESH' AND p.code = 'RM-CASSAVA')
+    OR (v.code = 'WV-SEMI' AND p.code = 'SF-COREOUT')
+    OR (v.code = 'WV-FG' AND p.code = 'FG-DICED')
+  );
+
 INSERT INTO prd_product_unit(product_id, unit_name, is_base, factor_to_base) VALUES
  (1, 'kg', 1, 1), (2, 'kg', 1, 1), (3, 'kg', 1, 1)
 ON CONFLICT DO NOTHING;

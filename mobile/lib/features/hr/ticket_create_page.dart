@@ -54,7 +54,13 @@ class _TicketCreatePageState extends State<TicketCreatePage> {
   Future<void> _loadCats() async {
     final r = await context.read<AuthState>().api.get('/workflow/ticket-categories');
     if (!mounted) return;
-    final list = ApiClient.listOf(r.data);
+    final list = ApiClient.listOf(r.data).where((raw) {
+      if (raw is! Map) return false;
+      if (raw['enabled'] == false) return false;
+      final code = '${raw['code'] ?? ''}';
+      if (!_locked && code == 'farm_inbound') return false;
+      return true;
+    }).toList();
     setState(() {
       _categories = list;
       _loading = false;
@@ -179,7 +185,7 @@ class _TicketCreatePageState extends State<TicketCreatePage> {
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.assignment_outlined),
                     title: Text(_categoryName ?? widget.lockedCategoryTitle ?? ''),
-                    subtitle: const Text('工单种类已选定'),
+                    subtitle: const Text('字段来自管理端「工单中心」该类型配置，改字段后重新打开即可'),
                   )
                 else
                   DropdownButtonFormField<int>(
@@ -195,6 +201,11 @@ class _TicketCreatePageState extends State<TicketCreatePage> {
                     onChanged: (v) {
                       if (v != null) _onCat(v);
                     },
+                  ),
+                if (_schema.isEmpty && !_loading)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8),
+                    child: Text('该类型还没有填报字段，请到管理端工单中心编辑字段后再建单', style: TextStyle(color: Colors.black54)),
                   ),
                 const SizedBox(height: 8),
                 TextField(
@@ -234,7 +245,11 @@ class _TicketCreatePageState extends State<TicketCreatePage> {
                 }),
                 DropdownButtonFormField<int>(
                   initialValue: _assignee,
-                  decoration: const InputDecoration(labelText: '下一手处理人', border: OutlineInputBorder()),
+                  decoration: InputDecoration(
+                    labelText: '下一手处理人',
+                    border: const OutlineInputBorder(),
+                    helperText: _pool.isEmpty ? '池为空：请管理员在工单中心为该类型配置处理人' : null,
+                  ),
                   items: [
                     for (final raw in _pool)
                       DropdownMenuItem(

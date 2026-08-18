@@ -143,6 +143,40 @@ func (s *Services) createFarmer(c *gin.Context) bool {
 	return true
 }
 
+// ensureFarmerForWeigh 入厂建单时：无 farmer_id 则按手机号唯一匹配复用，否则新建档案。
+func (s *Services) ensureFarmerForWeigh(name, mobile, origin string) (int64, error) {
+	name = strings.TrimSpace(name)
+	mobile = strings.TrimSpace(mobile)
+	origin = strings.TrimSpace(origin)
+	if name == "" {
+		return 0, fmt.Errorf("name required")
+	}
+	if mobile != "" {
+		var n int
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pur_farmer WHERE COALESCE(is_deleted,0)=0 AND status='active' AND mobile=?`, mobile).Scan(&n)
+		if n == 1 {
+			var id int64
+			_ = s.DB.QueryRow(`SELECT id FROM pur_farmer WHERE COALESCE(is_deleted,0)=0 AND status='active' AND mobile=? ORDER BY id LIMIT 1`, mobile).Scan(&id)
+			if id > 0 {
+				return id, nil
+			}
+		}
+	}
+	code := fmt.Sprintf("F%s", time.Now().Format("060102150405"))
+	prefix := "TR"
+	trace := fmt.Sprintf("%s-%s-%d", prefix, time.Now().Format("20060102"), time.Now().UnixNano()%1e6)
+	res, err := s.DB.Exec(`INSERT INTO pur_farmer(code, name, mobile, origin, trace_code, trace_code_prefix, status, remark)
+		VALUES(?,?,?,?,?,?,'active','')`, code, name, mobile, origin, trace, prefix)
+	if err != nil {
+		return 0, err
+	}
+	id, _ := res.LastInsertId()
+	if id == 0 {
+		_ = s.DB.QueryRow(`SELECT id FROM pur_farmer WHERE code=?`, code).Scan(&id)
+	}
+	return id, nil
+}
+
 func (s *Services) getFarmer(c *gin.Context) bool {
 	m := s.loadFarmer(paramID(c))
 	if m["id"] == nil {
@@ -197,9 +231,17 @@ func (s *Services) loadFarmer(id int64) gin.H {
 	}
 }
 
+func (s *Services) ensureInvBoxCodeImageColumn() {
+	if s == nil || s.DB == nil {
+		return
+	}
+	_, _ = s.DB.Exec(`ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS image_url TEXT NOT NULL DEFAULT ''`)
+}
+
 // ---------- weigh tickets ----------
 
 func (s *Services) handleWeighTickets(c *gin.Context, method, action string) bool {
+	s.ensureInvBoxCodeImageColumn()
 	path := c.Request.URL.Path
 	switch {
 	case strings.Contains(path, "/by-trace") || action == "by-trace":
@@ -219,9 +261,11 @@ func (s *Services) handleWeighTickets(c *gin.Context, method, action string) boo
 		s.attachWeighProcessTrail(m, id)
 		s.attachWeighVerifyMedia(m, id, strOr(m["image_url"]))
 		s.attachWeighBoxProgress(m, id)
+		s.attachWarehouseVerifyState(m, id)
 		if claimsIsWarehouseOnly(middleware.Claims(c)) {
 			m = maskWeighTicketForWarehouse(m)
 			s.attachWeighBoxProgress(m, id) // mask 可能丢掉 boxes，再挂一次允许字段
+			s.attachWarehouseVerifyState(m, id)
 		}
 		api.OK(c, m)
 		return true
@@ -337,23 +381,28 @@ func (s *Services) listWeighTickets(c *gin.Context) bool {
 }
 
 // weighProcessPhase maps ticket+settlement into a UI-facing phase code.
+// 入厂单：weighed=待入厂，gate_accepted=待入库，stocked=待结算。
 func weighProcessPhase(kind, status, settleStatus string) string {
 	st := strings.ToLower(strings.TrimSpace(status))
 	kind = strings.ToLower(strings.TrimSpace(kind))
 	settleStatus = strings.ToLower(strings.TrimSpace(settleStatus))
+	paid := settleStatus == "settle_paid" || settleStatus == "paid"
 	switch st {
 	case "weighed":
-		return "await_warehouse"
+		if kind == "stockin" {
+			return "await_warehouse"
+		}
+		return "await_gate"
 	case "returned":
 		return "returned_by_warehouse"
 	case "gate_accepted":
-		if settleStatus == "settle_paid" || settleStatus == "paid" {
+		if paid {
 			return "settled"
 		}
-		return "await_finance"
+		return "await_stockin"
 	case "stocked", "posted":
 		if kind == "gate" {
-			if settleStatus == "settle_paid" || settleStatus == "paid" {
+			if paid {
 				return "settled"
 			}
 			return "await_finance"
@@ -364,6 +413,92 @@ func weighProcessPhase(kind, status, settleStatus string) string {
 	default:
 		return st
 	}
+}
+
+// gateWeighPhoto is one of the three required inbound photos.
+type gateWeighPhoto struct {
+	Key          string
+	EvidenceType string
+	URL          string
+}
+
+func photoMapString(m map[string]interface{}, keys ...string) string {
+	for _, k := range keys {
+		if u := strings.TrimSpace(strOr(m[k])); u != "" {
+			return u
+		}
+	}
+	return ""
+}
+
+func orderedImageURLs(body map[string]interface{}) []string {
+	out := []string{}
+	if arr, ok := body["image_urls"].([]interface{}); ok {
+		for _, v := range arr {
+			u := strings.TrimSpace(fmt.Sprint(v))
+			if u != "" && u != "<nil>" {
+				out = append(out, u)
+			}
+		}
+	}
+	if len(out) == 0 {
+		if u := strings.TrimSpace(strOr(body["image_url"])); u != "" {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
+// parseGateWeighPhotos 入厂三张：材料过磅、磅显特写、近距离。
+// App 传 photos 对象；管理端补单仍可只传 image_url(s)。
+func parseGateWeighPhotos(body map[string]interface{}) ([]gateWeighPhoto, string) {
+	byKey := map[string]string{}
+	_, hasPhotosObj := body["photos"].(map[string]interface{})
+	if raw, ok := body["photos"].(map[string]interface{}); ok {
+		byKey["material"] = photoMapString(raw, "material", "weigh_material", "material_photo")
+		byKey["scale_display"] = photoMapString(raw, "scale_display", "scale", "ocr", "ocr_scale")
+		byKey["closeup"] = photoMapString(raw, "closeup", "site_photo", "near")
+	}
+	ordered := orderedImageURLs(body)
+	fill := []string{"material", "scale_display", "closeup"}
+	for i, k := range fill {
+		if byKey[k] == "" && i < len(ordered) {
+			byKey[k] = ordered[i]
+		}
+	}
+	complete := byKey["material"] != "" && byKey["scale_display"] != "" && byKey["closeup"] != ""
+	if complete {
+		slots := []gateWeighPhoto{
+			{Key: "material", EvidenceType: "weigh_material", URL: byKey["material"]},
+			{Key: "scale_display", EvidenceType: "scale_display", URL: byKey["scale_display"]},
+			{Key: "closeup", EvidenceType: "site_photo", URL: byKey["closeup"]},
+		}
+		for _, p := range slots {
+			if !isValidSitePhotoURL(p.URL) {
+				return nil, "EVIDENCE_INVALID:" + p.Key
+			}
+		}
+		return slots, ""
+	}
+	if hasPhotosObj {
+		for _, k := range fill {
+			if byKey[k] == "" {
+				return nil, "EVIDENCE_INCOMPLETE:" + k
+			}
+		}
+	}
+	urls := collectImageURLs(body)
+	if len(urls) == 0 {
+		return nil, "EVIDENCE_INCOMPLETE:site_photo"
+	}
+	out := make([]gateWeighPhoto, 0, len(urls))
+	for _, u := range urls {
+		if !isValidSitePhotoURL(u) {
+			return nil, "EVIDENCE_INVALID:site_photo"
+		}
+		out = append(out, gateWeighPhoto{Key: "closeup", EvidenceType: "site_photo", URL: u})
+	}
+	return out, ""
 }
 
 func (s *Services) createWeighTicket(c *gin.Context) bool {
@@ -404,18 +539,19 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 			return true
 		}
 	}
-	imgs := collectImageURLs(body)
-	if len(imgs) == 0 {
-		api.FailJSON(c, "EVIDENCE_INCOMPLETE:site_photo")
+	photos, photoErr := parseGateWeighPhotos(body)
+	if photoErr != "" {
+		api.FailJSON(c, photoErr)
 		return true
 	}
-	for _, u := range imgs {
-		if !isValidSitePhotoURL(u) {
-			api.FailJSON(c, "EVIDENCE_INVALID:site_photo")
-			return true
+	imgs := make([]string, 0, len(photos))
+	imageURL := ""
+	for _, p := range photos {
+		imgs = append(imgs, p.URL)
+		if p.Key == "closeup" || imageURL == "" {
+			imageURL = p.URL
 		}
 	}
-	imageURL := imgs[0]
 
 	arrivalID, _ := asInt64(body["arrival_id"])
 	var farmerID int64
@@ -450,6 +586,18 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 		bizDate = strOrDef(body["biz_date"], time.Now().Format("2006-01-02"))
 	}
 
+	if farmerID <= 0 {
+		if strings.TrimSpace(partyName) == "" {
+			api.FailJSON(c, "PARTY_REQUIRED")
+			return true
+		}
+		id, err := s.ensureFarmerForWeigh(partyName, partyMobile, origin)
+		if err != nil || id <= 0 {
+			api.FailJSON(c, "FARMER_CREATE_FAILED")
+			return true
+		}
+		farmerID = id
+	}
 	if farmerID > 0 {
 		var farmerName, farmerOrigin, farmerMobile string
 		err := s.DB.QueryRow(`SELECT name, COALESCE(origin,''), COALESCE(mobile,'') FROM pur_farmer WHERE id=? AND status='active' AND COALESCE(is_deleted,0)=0`, farmerID).
@@ -558,15 +706,10 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 		if sa, ok := asFloat(body["settle_amount"]); ok && sa > 0 {
 			settle = sa
 		}
-		// 鲜木薯→保鲜库；半成品→半成品库（可显式传 cold_store_type）
+		// 鲜木薯→保鲜库；半成品→半成品库；成品→成品库（可显式传 cold_store_type）
 		coldStore = strings.ToLower(strOr(body["cold_store_type"]))
 		if coldStore == "" {
-			v := strings.ToLower(variety)
-			if strings.Contains(v, "半成品") || strings.Contains(v, "semi") {
-				coldStore = "semi"
-			} else {
-				coldStore = "fresh"
-			}
+			coldStore = inferColdStoreFromVariety(variety)
 		}
 		warehouseID = ColdStoreWarehouse(coldStore)
 		if wid, ok := asInt64(body["warehouse_id"]); ok && wid > 0 {
@@ -642,8 +785,8 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 			return true
 		}
 	}
-	for _, u := range imgs {
-		_, _ = s.addEvidence(c, "weigh_ticket", id, "site_photo", u, nil)
+	for _, p := range photos {
+		_, _ = s.addEvidence(c, "weigh_ticket", id, p.EvidenceType, p.URL, gin.H{"slot": p.Key})
 	}
 	s.writeAuditCtx(c, "weigh_ticket", id, "create", "weigh_draft", nil, gin.H{"net_weight": net, "receive_kind": kind, "batch_no": batchNo})
 
@@ -668,6 +811,13 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 		"freight_fee": freight, "loading_fee": loading, "weigh_fee": weighFee, "grade": grade,
 		"net_weight": net, "bag_qty": bagQty, "cold_store_type": coldLabel, "remark": strOr(body["remark"]),
 		"doc_no": docNo, "receive_kind": kind, "image_url": imageURL, "image_urls": imgs, "verify_images": imgs,
+	}
+	photoByKey := gin.H{}
+	for _, p := range photos {
+		photoByKey[p.Key] = p.URL
+	}
+	if strOr(photoByKey["material"]) != "" && strOr(photoByKey["scale_display"]) != "" {
+		ticketPayload["photos"] = photoByKey
 	}
 	nextRole, _ := s.nextRoleAfterAction(kind, "submit", strOr(body["next_role"]), strOr(body["next_node_id"]))
 	nextAssignee, _ := asInt64(body["next_assignee_user_id"])
@@ -722,7 +872,10 @@ func (s *Services) notifyWeighConfirmed(c *gin.Context, id int64, out gin.H) {
 		return
 	}
 	// 退回后再推：清掉旧待办，避免 dedupe 挡住新任务
-	_, _ = s.DB.Exec(`DELETE FROM wf_task WHERE biz_type='weigh_ticket' AND biz_id=? AND event_key IN ('purchase.weigh_confirmed','purchase.weigh_returned')`, id)
+	_, _ = s.DB.Exec(`DELETE FROM wf_task WHERE biz_type='weigh_ticket' AND biz_id=? AND (
+		event_key IN ('purchase.weigh_confirmed','purchase.weigh_returned')
+		OR (event_key='purchase.await_stockin' AND to_role='warehouse')
+	)`, id)
 	s.Notify.NotifyNext(c, notify.Event{
 		Key: "purchase.weigh_confirmed", BizType: "weigh_ticket", BizID: id,
 		DocNo: strOr(out["doc_no"]), TraceCode: strOr(out["trace_code"]),
@@ -733,12 +886,51 @@ func (s *Services) notifyWeighConfirmed(c *gin.Context, id int64, out gin.H) {
 			"reject_weight": out["reject_weight"], "gross_weight": out["gross_weight"],
 			"deduct_weight": out["deduct_weight"], "trace_code": out["trace_code"],
 			"cold_store_type": out["cold_store_type"], "receive_kind": out["receive_kind"],
+			"status": "weighed", "weigh_ticket_id": id,
 			"image_url": out["image_url"], "verify_images": func() []string {
 				urls, _ := s.collectWeighVerifyMedia(id, strOr(out["image_url"]))
 				return urls
 			}(),
 		},
 	})
+}
+
+// notifyWarehouseAwaitStockin 入厂接收后生成仓管「待入库」待办。
+func (s *Services) notifyWarehouseAwaitStockin(c *gin.Context, id int64, m gin.H) {
+	if s.Notify == nil {
+		return
+	}
+	var assignee int64
+	_ = s.DB.QueryRow(`SELECT COALESCE(assignee_user_id,0) FROM wf_task
+		WHERE biz_type='weigh_ticket' AND biz_id=? AND event_key='purchase.weigh_confirmed'
+		ORDER BY id DESC LIMIT 1`, id).Scan(&assignee)
+	if assignee <= 0 {
+		if cl := middleware.Claims(c); cl != nil {
+			assignee = cl.UserID
+		}
+	}
+	payload := gin.H{
+		"net_weight": m["net_weight"], "batch_no": m["batch_no"], "biz_date": m["biz_date"],
+		"variety": m["variety"], "product_name": m["product_name"], "plate_no": m["plate_no"],
+		"gross_weight": m["gross_weight"], "deduct_weight": m["deduct_weight"],
+		"trace_code": m["trace_code"], "receive_kind": m["receive_kind"],
+		"status": "gate_accepted", "box_stockin_ready": true, "weigh_ticket_id": id,
+		"image_url": m["image_url"],
+	}
+	if assignee > 0 {
+		payload["notify_user_ids"] = []int64{assignee}
+	}
+	s.Notify.NotifyNext(c, notify.Event{
+		Key: "purchase.await_stockin", BizType: "weigh_ticket", BizID: id,
+		DocNo: strOr(m["doc_no"]), TraceCode: strOr(m["trace_code"]),
+		FromRole: "warehouse", ToRoles: []string{"warehouse"}, CreateTask: true,
+		Title: "待入库", Body: "已接收入厂 " + strOr(m["doc_no"]) + "，请扫溯源分板入库",
+		Payload: payload,
+	})
+	if assignee > 0 {
+		_, _ = s.DB.Exec(`UPDATE wf_task SET assignee_user_id=? WHERE biz_type='weigh_ticket' AND biz_id=? AND event_key='purchase.await_stockin' AND status='pending'`,
+			assignee, id)
+	}
 }
 
 func (s *Services) updateWeighTicket(c *gin.Context) bool {
@@ -955,11 +1147,12 @@ func (s *Services) applyVerifiedWeighStockIn(c *gin.Context, id int64, body map[
 	if s.Notify != nil {
 		s.Notify.CompleteTask("weigh_ticket", id, "purchase.weigh_confirmed")
 		if kind == "gate" {
+			s.notifyWarehouseAwaitStockin(c, id, m)
 			s.Notify.NotifyNext(c, notify.Event{
 				Key: "purchase.gate_accepted", BizType: "weigh_ticket", BizID: id,
 				DocNo: strOr(m["doc_no"]), TraceCode: strOr(m["trace_code"]),
 				FromRole: "warehouse", ToRoles: []string{"purchase"}, CreateTask: false,
-				Title: "入厂完成", Body: "仓管已确认入厂 " + strOr(m["doc_no"]) + "，可扫溯源分板入库",
+				Title: "已入厂·待入库", Body: "仓管已确认入厂 " + strOr(m["doc_no"]) + "，待分板入库",
 				Payload: gin.H{"trace_code": m["trace_code"], "status": "gate_accepted"},
 			})
 			if settleID > 0 {
@@ -1161,6 +1354,7 @@ func (s *Services) completeBoxStockInWeighTicket(c *gin.Context) bool {
 
 	if s.Notify != nil {
 		s.Notify.CompleteTask("weigh_ticket", id, "purchase.weigh_confirmed")
+		s.Notify.CompleteTask("weigh_ticket", id, "purchase.await_stockin")
 		s.Notify.NotifyNext(c, notify.Event{
 			Key: "purchase.stocked", BizType: "weigh_ticket", BizID: id,
 			DocNo: strOr(m["doc_no"]), TraceCode: strOr(m["trace_code"]),
@@ -1277,6 +1471,7 @@ func (s *Services) warehouseReturnWeighTicket(c *gin.Context) bool {
 	}
 	if s.Notify != nil {
 		s.Notify.CompleteTask("weigh_ticket", id, "purchase.weigh_confirmed")
+		s.Notify.CompleteTask("weigh_ticket", id, "purchase.await_stockin")
 		s.Notify.NotifyNext(c, notify.Event{
 			Key: "purchase.weigh_returned", BizType: "weigh_ticket", BizID: id,
 			DocNo: strOr(m["doc_no"]), TraceCode: strOr(m["trace_code"]),
@@ -1449,14 +1644,14 @@ func (s *Services) labelWeighTicket(c *gin.Context) bool {
 func (s *Services) buildLabel(m gin.H) gin.H {
 	code := strOr(m["trace_code"])
 	return gin.H{
-		"trace_code": code,
-		"qr_content": code,
+		"trace_code":  code,
+		"qr_content":  code,
 		"farmer_name": m["farmer_name"],
-		"origin": m["origin"],
-		"grade": m["grade"],
-		"net_weight": m["net_weight"],
-		"biz_date": m["biz_date"],
-		"batch_no": m["batch_no"],
+		"origin":      m["origin"],
+		"grade":       m["grade"],
+		"net_weight":  m["net_weight"],
+		"biz_date":    m["biz_date"],
+		"batch_no":    m["batch_no"],
 		"print_lines": []string{
 			fmt.Sprintf("溯源码 %s", code),
 			fmt.Sprintf("农户 %v  等级 %v", m["farmer_name"], m["grade"]),
@@ -1948,6 +2143,7 @@ func (s *Services) attachWeighProcessTrail(m gin.H, weighID int64) {
 		m["settlement_doc_no"] = settleDoc
 		m["settlement_amount"] = settleAmt
 	}
+	m["process_phase"] = weighProcessPhase(strOr(m["receive_kind"]), strOr(m["status"]), settleStatus)
 	m["process_logs"] = logs
 	m["currency"] = "CNY"
 	m["currency_label"] = "元人民币"
@@ -2017,6 +2213,7 @@ func boolOr(v interface{}, def bool) bool {
 }
 
 func (s *Services) handleFarmerSettlements(c *gin.Context, method, action string) bool {
+	s.ensureFinanceCashColumns()
 	path := c.Request.URL.Path
 	if strings.Contains(path, "/pay") || strings.HasSuffix(action, "pay") {
 		return s.payFarmerSettlement(c)

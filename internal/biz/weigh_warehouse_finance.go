@@ -92,7 +92,7 @@ func maskWeighTicketForWarehouse(m gin.H) gin.H {
 	return out
 }
 
-// collectWeighVerifyMedia 现场核对用图片（主图 + site_photo 凭证）。
+// collectWeighVerifyMedia 现场核对用图片。入厂三张顺序：材料过磅 → 磅显特写 → 近距离。
 func (s *Services) collectWeighVerifyMedia(weighID int64, imageURL string) (urls []string, evidences []gin.H) {
 	seen := map[string]bool{}
 	add := func(u string) {
@@ -103,14 +103,20 @@ func (s *Services) collectWeighVerifyMedia(weighID int64, imageURL string) (urls
 		seen[u] = true
 		urls = append(urls, u)
 	}
-	add(imageURL)
-	for _, e := range s.listEvidence("weigh_ticket", weighID) {
-		if strOr(e["voided_at"]) != "" {
-			continue
+	evs := s.listEvidence("weigh_ticket", weighID)
+	pick := func(types ...string) {
+		want := map[string]bool{}
+		for _, t := range types {
+			want[t] = true
 		}
-		et := strings.ToLower(strOr(e["evidence_type"]))
-		switch et {
-		case "site_photo", "weigh_photo", "image", "photo", "":
+		for _, e := range evs {
+			if strOr(e["voided_at"]) != "" {
+				continue
+			}
+			et := strings.ToLower(strOr(e["evidence_type"]))
+			if !want[et] {
+				continue
+			}
 			u := strOr(e["file_url"])
 			add(u)
 			if u != "" {
@@ -120,6 +126,10 @@ func (s *Services) collectWeighVerifyMedia(weighID int64, imageURL string) (urls
 			}
 		}
 	}
+	pick("weigh_material")
+	pick("scale_display")
+	pick("site_photo", "weigh_photo", "image", "photo", "")
+	add(imageURL)
 	return urls, evidences
 }
 
@@ -135,10 +145,34 @@ func (s *Services) attachWeighVerifyMedia(out gin.H, weighID int64, imageURL str
 	if len(evs) > 0 {
 		out["evidences"] = evs
 	}
+	photos := gin.H{}
+	for _, e := range s.listEvidence("weigh_ticket", weighID) {
+		if strOr(e["voided_at"]) != "" {
+			continue
+		}
+		u := strOr(e["file_url"])
+		if u == "" {
+			continue
+		}
+		switch strings.ToLower(strOr(e["evidence_type"])) {
+		case "weigh_material":
+			photos["material"] = u
+		case "scale_display":
+			photos["scale_display"] = u
+		case "site_photo":
+			if strOr(photos["closeup"]) == "" {
+				photos["closeup"] = u
+			}
+		}
+	}
+	if len(photos) > 0 {
+		out["photos"] = photos
+	}
 }
 
 // ensureGateSettlement creates farmer settlement once. settleNetOverride when non-nil uses that weight (分箱合计).
 func (s *Services) ensureGateSettlement(weighID int64, m gin.H, settleNetOverride *float64) (int64, gin.H, string) {
+	s.ensureFinanceCashColumns()
 	kind := strings.ToLower(strOr(m["receive_kind"]))
 	if kind == "stockin" {
 		return 0, nil, ""
@@ -236,25 +270,77 @@ func (s *Services) closeWeighTicketByBiz(weighID int64, fromUID int64, comment s
 
 func (s *Services) resolveWeighByTraceCode(c *gin.Context) bool {
 	code := strings.ToUpper(strings.TrimSpace(c.Query("code")))
+	body := bindBody(c)
 	if code == "" {
-		body := bindBody(c)
 		code = strings.ToUpper(strings.TrimSpace(strOr(body["code"])))
 	}
-	if code == "" {
-		api.FailJSON(c, "CODE_REQUIRED")
+	pinID := int64(0)
+	for _, v := range []interface{}{c.Query("weigh_ticket_id"), c.Query("id"), body["weigh_ticket_id"], body["id"]} {
+		if id, ok := asInt64(v); ok && id > 0 {
+			pinID = id
+			break
+		}
+	}
+	id, errCode := s.findWeighTicketIDForWarehouse(code, pinID)
+	if errCode != "" {
+		api.FailJSON(c, errCode)
 		return true
+	}
+	out, errCode := s.loadWeighTicketForWarehouseVerify(id)
+	if errCode != "" {
+		api.FailJSON(c, errCode)
+		return true
+	}
+	api.OK(c, out)
+	return true
+}
+
+// findWeighTicketIDForWarehouse 仓管定位过磅单：有 pinID 时必须命中该单（同码多单不能串单）；
+// 仅扫码时取该溯源码下尚未入库的最新一单。
+func (s *Services) findWeighTicketIDForWarehouse(code string, pinID int64) (int64, string) {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if pinID > 0 {
+		var got int64
+		var trace, batch string
+		err := s.DB.QueryRow(`SELECT id, UPPER(COALESCE(trace_code,'')), UPPER(COALESCE(batch_no,''))
+			FROM pur_weigh_ticket WHERE id=? AND COALESCE(is_deleted,0)=0`, pinID).Scan(&got, &trace, &batch)
+		if err != nil || got <= 0 {
+			return 0, "NOT_FOUND"
+		}
+		if code != "" && code != trace && code != batch {
+			return 0, "TRACE_MISMATCH"
+		}
+		return got, ""
+	}
+	if code == "" {
+		return 0, "CODE_REQUIRED"
 	}
 	var id int64
-	err := s.DB.QueryRow(`SELECT id FROM pur_weigh_ticket WHERE COALESCE(is_deleted,0)=0 AND (UPPER(COALESCE(trace_code,''))=? OR UPPER(COALESCE(batch_no,''))=?) ORDER BY id DESC LIMIT 1`, code, code).Scan(&id)
-	if err != nil || id <= 0 {
-		api.FailJSON(c, "NOT_FOUND")
-		return true
+	err := s.DB.QueryRow(`SELECT id FROM pur_weigh_ticket
+		WHERE COALESCE(is_deleted,0)=0
+		AND (UPPER(COALESCE(trace_code,''))=? OR UPPER(COALESCE(batch_no,''))=?)
+		AND LOWER(COALESCE(status,'')) NOT IN ('stocked','posted','void')
+		ORDER BY id DESC LIMIT 1`, code, code).Scan(&id)
+	if err == nil && id > 0 {
+		return id, ""
 	}
+	_ = s.DB.QueryRow(`SELECT id FROM pur_weigh_ticket
+		WHERE COALESCE(is_deleted,0)=0 AND (UPPER(COALESCE(trace_code,''))=? OR UPPER(COALESCE(batch_no,''))=?)
+		ORDER BY id DESC LIMIT 1`, code, code).Scan(&id)
+	if id <= 0 {
+		return 0, "NOT_FOUND"
+	}
+	return id, ""
+}
+
+func (s *Services) loadWeighTicketForWarehouseVerify(id int64) (gin.H, string) {
 	m := s.loadWeighTicket(id)
+	if m["id"] == nil {
+		return nil, "NOT_FOUND"
+	}
 	st := strOr(m["status"])
 	if st == "stocked" {
-		api.FailJSON(c, "ALREADY_STOCKED")
-		return true
+		return nil, "ALREADY_STOCKED"
 	}
 	var ticketID int64
 	_ = s.DB.QueryRow(`SELECT id FROM wf_ticket WHERE biz_type='weigh_ticket' AND biz_id=? AND status IN ('open','in_progress') ORDER BY id DESC LIMIT 1`, id).Scan(&ticketID)
@@ -262,33 +348,39 @@ func (s *Services) resolveWeighByTraceCode(c *gin.Context) bool {
 	out["ticket_id"] = ticketID
 	out["weigh_ticket_id"] = id
 	s.attachWeighVerifyMedia(out, id, strOr(m["image_url"]))
+	s.attachWarehouseVerifyState(out, id)
+	return out, ""
+}
+
+// attachWarehouseVerifyState 仓管核对页所需就绪标记；同码多单时必须按过磅单 id 调用。
+func (s *Services) attachWarehouseVerifyState(out gin.H, id int64) {
+	if out == nil || id <= 0 {
+		return
+	}
+	st := strings.ToLower(strOr(out["status"]))
+	out["weigh_ticket_id"] = id
 	out["box_stockin_ready"] = false
 	out["stockin_ready"] = false
-
-	// 已入厂：仓管扫溯源分板入库
+	if st == "stocked" || st == "posted" {
+		return
+	}
 	if st == "gate_accepted" {
 		out["box_stockin_ready"] = true
 		out["reason"] = "AWAIT_BOX_STOCKIN"
 		s.attachWeighBoxProgress(out, id)
-		api.OK(c, out)
-		return true
+		return
 	}
-
-	// weighed 可入厂接收；pending_confirm/qc_pass 允许仓管一键出码+接收
 	ready := st == "weighed" || st == "pending_confirm" || st == "qc_pass"
-	if st == "draft" && strings.ToLower(strOr(m["receive_kind"])) == "gate" {
+	if st == "draft" && strings.ToLower(strOr(out["receive_kind"])) == "gate" {
 		ready = true
 	}
 	if !ready {
-		if strOr(m["trace_code"]) == "" && st != "weighed" {
+		if strOr(out["trace_code"]) == "" && st != "weighed" {
 			out["reason"] = "WEIGH_CONFIRM_REQUIRED"
 		} else {
 			out["reason"] = "TRACE_NOT_READY"
 		}
-		api.OK(c, out)
-		return true
+		return
 	}
 	out["stockin_ready"] = true
-	api.OK(c, out)
-	return true
 }

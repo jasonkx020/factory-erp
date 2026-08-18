@@ -41,7 +41,7 @@ const ticketCols = computed<MobileCardColumn[]>(() => [
   { prop: 'net_weight', label: '净重' },
   { prop: 'settle_amount', label: '结算' },
   { prop: 'cold_store_type', label: '冷库' },
-  { prop: 'status', label: '状态' },
+  { prop: 'status_label', label: '状态' },
   { prop: 'trace_code', label: '溯源码' },
   { prop: 'box_code', label: codeLabel.value },
 ])
@@ -170,7 +170,7 @@ const traceTicketCols: MobileCardColumn[] = [
   { prop: 'trace_code', label: '溯源码' },
   { prop: 'farmer_name', label: '农户' },
   { prop: 'net_weight', label: '净重' },
-  { prop: 'status', label: '状态' },
+  { prop: 'status_label', label: '状态' },
 ]
 
 const ticketsWithTrace = computed(() => {
@@ -179,12 +179,34 @@ const ticketsWithTrace = computed(() => {
     const code = String(t.trace_code || '').trim()
     if (!code && !String(t.batch_no || '').trim() && !String(t.doc_no || '').trim()) return false
     if (!kw) return Boolean(code || t.batch_no || t.doc_no)
-    const hay = [t.doc_no, t.trace_code, t.batch_no, t.farmer_name, t.party_name, t.status]
+    const hay = [t.doc_no, t.trace_code, t.batch_no, t.farmer_name, t.party_name, t.status, weighTicketStatusLabel(t)]
       .map((x) => String(x || '').toLowerCase())
       .join(' ')
     return hay.includes(kw)
-  })
+  }).map(withWeighStatusLabel)
 })
+
+function weighTicketStatusLabel(row: Row) {
+  const st = String(row.status || '').toLowerCase()
+  const kind = String(row.receive_kind || 'gate').toLowerCase()
+  const phase = String(row.process_phase || '')
+  if (phase === 'await_gate' || (st === 'weighed' && kind !== 'stockin')) return '待入厂'
+  if (phase === 'await_stockin' || st === 'gate_accepted') return '待入库'
+  if (phase === 'await_warehouse' || st === 'weighed') return '待仓管确认'
+  if (phase === 'await_finance') return '已入仓·待结算'
+  if (phase === 'settled') return '已结清'
+  if (phase === 'stocked_done' || st === 'stocked') return kind === 'gate' ? '已入仓·待结算' : '已入库'
+  if (st === 'returned') return '仓管已退回'
+  if (st === 'draft') return '草稿'
+  if (st === 'pending_confirm' || st === 'qc_pass') return '待绑定'
+  return st || '-'
+}
+
+function withWeighStatusLabel(row: Row): Row {
+  return { ...row, status_label: weighTicketStatusLabel(row) }
+}
+
+const ticketsView = computed(() => tickets.value.map(withWeighStatusLabel))
 
 const labelPreviewFields = computed(() => {
   const m = labelPreview.value
@@ -838,8 +860,8 @@ watch(
         </div>
       </template>
       <p class="hint">确认出码后系统将溯源码与单号推送给仓管；仓管确认后方为采购完成。</p>
-      <TableOrCards :data="tickets" :loading="loading" :columns="ticketCols">
-        <el-table :data="tickets" size="small">
+      <TableOrCards :data="ticketsView" :loading="loading" :columns="ticketCols">
+        <el-table :data="ticketsView" size="small">
           <el-table-column prop="doc_no" label="单号" width="150" />
           <el-table-column prop="receive_kind" label="模式" width="70">
             <template #default="{ row }">{{ row.receive_kind === 'stockin' ? '入库' : '入厂' }}</template>
@@ -856,14 +878,16 @@ watch(
               <el-image v-if="row.image_url" :src="String(row.image_url)" style="width:36px;height:36px" fit="cover" :preview-src-list="[String(row.image_url)]" />
             </template>
           </el-table-column>
-          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }">{{ weighTicketStatusLabel(row) }}</template>
+          </el-table-column>
           <el-table-column prop="trace_code" label="溯源码" min-width="160" />
           <el-table-column prop="box_code" :label="codeLabel" min-width="120" />
           <el-table-column label="操作" width="280" fixed="right">
             <template #default="{ row }">
               <el-button v-if="row.status==='draft' || row.status==='qc_pass'" link type="primary" @click="openConfirm(row)">对照确认出码</el-button>
-              <el-button v-if="row.status==='weighed'" link type="info" disabled>等待仓管入厂接收</el-button>
-              <el-button v-if="row.status==='gate_accepted'" link type="warning" disabled>待仓管分板</el-button>
+              <el-button v-if="row.status==='weighed'" link type="info" disabled>{{ row.receive_kind === 'stockin' ? '等待仓管确认入库' : '待入厂' }}</el-button>
+              <el-button v-if="row.status==='gate_accepted'" link type="warning" disabled>待入库</el-button>
               <el-button v-if="row.status==='stocked'" link type="success" disabled>已分板入库</el-button>
               <el-button link type="warning" @click="openCorrect(row, 'weigh_ticket')">纠错</el-button>
             </template>
@@ -871,8 +895,8 @@ watch(
         </el-table>
         <template #actions="{ row }">
           <el-button v-if="row.status==='draft' || row.status==='qc_pass'" link type="primary" @click="openConfirm(row)">对照确认出码</el-button>
-          <el-button v-if="row.status==='weighed'" link type="info" disabled>等待仓管入厂接收</el-button>
-          <el-button v-if="row.status==='gate_accepted'" link type="warning" disabled>待仓管分板</el-button>
+          <el-button v-if="row.status==='weighed'" link type="info" disabled>{{ row.receive_kind === 'stockin' ? '等待仓管确认入库' : '待入厂' }}</el-button>
+          <el-button v-if="row.status==='gate_accepted'" link type="warning" disabled>待入库</el-button>
           <el-button v-if="row.status==='stocked'" link type="success" disabled>已分板入库</el-button>
           <el-button link type="warning" @click="openCorrect(row, 'weigh_ticket')">纠错</el-button>
         </template>
@@ -918,8 +942,9 @@ watch(
                 <template #default="{ row }">{{ row.farmer_name || row.party_name || '-' }}</template>
               </el-table-column>
               <el-table-column prop="net_weight" label="净重" width="70" />
-              <el-table-column prop="status" label="状态" width="90" />
-              <el-table-column label="操作" width="70" fixed="right">
+              <el-table-column label="状态" width="90">
+                <template #default="{ row }">{{ weighTicketStatusLabel(row) }}</template>
+              </el-table-column>
                 <template #default="{ row }">
                   <el-button link type="primary" @click.stop="selectTraceTicket(row)">倒查</el-button>
                 </template>

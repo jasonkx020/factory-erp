@@ -15,6 +15,8 @@ import '../../widgets/hub_entry_tile.dart';
 import '../../widgets/trace_code_field.dart';
 import '../warehouse/warehouse_page.dart';
 import 'gate_inbound_wizard.dart';
+import 'trace_code_qr_sheet.dart';
+import 'weigh_ticket_local_store.dart';
 
 /// 现场过磅收货：选类型 → 填表预览 → 确认创建（批号即溯源码，绑定农户并推仓管）
 /// [initialReceiveKind] / [lockKind]：供主壳「+」快捷入口锁定过磅入厂或入库表单
@@ -65,7 +67,6 @@ class _ReceivingPageState extends State<ReceivingPage> {
   int _formEpoch = 0;
   bool _canRecv = true;
   bool _canWh = true;
-  final _farmerSearch = TextEditingController();
   final _gross = TextEditingController();
   final _deductRate = TextEditingController(text: '5');
   final _unitPrice = TextEditingController(text: '1.2');
@@ -82,6 +83,9 @@ class _ReceivingPageState extends State<ReceivingPage> {
   final _loadingFee = TextEditingController(text: '0');
   final _weighFee = TextEditingController(text: '0');
   final List<String> _photoUrls = [];
+  String? _photoMaterial;
+  String? _photoScale;
+  String? _photoCloseup;
   String _msg = '';
   /// 底部提示是否为错误（必填未填、校验失败等）
   bool _msgIsError = false;
@@ -92,8 +96,11 @@ class _ReceivingPageState extends State<ReceivingPage> {
   bool _bindingLocked = false;
   String _boundFarmerName = '';
   List<dynamic> _farmerCodes = [];
-  bool _loadingFarmerCodes = false;
   Timer? _searchDebounce;
+  bool _applyingFarmer = false;
+  bool _generatedTraceThisTicket = false;
+  bool _reusePrompted = false;
+  bool _ticketsFromLocal = false;
   /// 单据列表日期范围（默认近 3 日：今天-2 ～ 今天）
   late DateTime _ticketDateFrom;
   late DateTime _ticketDateTo;
@@ -196,8 +203,8 @@ class _ReceivingPageState extends State<ReceivingPage> {
   }
 
   Future<void> _toggleTicketExpand(Map<String, dynamic> row) async {
-    final id = (row['id'] as num?)?.toInt();
-    if (id == null) return;
+    final id = _ticketExpandId(row);
+    if (id == 0) return;
     final expanding = !_expandedTicketIds.contains(id);
     setState(() {
       if (expanding) {
@@ -207,16 +214,28 @@ class _ReceivingPageState extends State<ReceivingPage> {
       }
     });
     if (!expanding || _ticketDetails.containsKey(id) || _ticketDetailLoading.contains(id)) return;
+    final serverId = (row['id'] as num?)?.toInt() ?? 0;
+    final localOnly = row['local_backup'] == true;
+    if (localOnly && serverId <= 0) {
+      setState(() => _ticketDetails[id] = Map<String, dynamic>.from(row));
+      return;
+    }
+    if (localOnly) {
+      setState(() => _ticketDetails[id] = Map<String, dynamic>.from(row));
+    }
+    if (serverId <= 0) return;
     setState(() => _ticketDetailLoading.add(id));
-    final r = await context.read<AuthState>().api.get('/purchase/weigh-tickets/$id');
+    final r = await context.read<AuthState>().api.get('/purchase/weigh-tickets/$serverId');
     if (!mounted) return;
     setState(() {
       _ticketDetailLoading.remove(id);
       if (r.ok && r.data is Map) {
         _ticketDetails[id] = Map<String, dynamic>.from(r.data as Map);
+      } else if (localOnly && !_ticketDetails.containsKey(id)) {
+        _ticketDetails[id] = Map<String, dynamic>.from(row);
       }
     });
-    if (!r.ok && mounted) {
+    if (!r.ok && !localOnly && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_batchErrorMessage(r.msg))));
     }
   }
@@ -252,6 +271,8 @@ class _ReceivingPageState extends State<ReceivingPage> {
         return '查询跨度不能超过 31 天';
       case 'DATE_RANGE_INVALID':
         return '日期范围无效';
+      case 'FARMER_CREATE_FAILED':
+        return '自动建农户档案失败，请检查姓名后重试';
       default:
         return c.isEmpty ? '操作失败' : c;
     }
@@ -283,7 +304,6 @@ class _ReceivingPageState extends State<ReceivingPage> {
   @override
   void dispose() {
     _searchDebounce?.cancel();
-    _farmerSearch.dispose();
     _gross.dispose();
     _deductRate.dispose();
     _unitPrice.dispose();
@@ -346,14 +366,17 @@ class _ReceivingPageState extends State<ReceivingPage> {
     if (!mounted) return;
     final varietyRes = results[2];
     final ticketRes = results[0];
+    final local = await _loadLocalTickets();
     setState(() {
       _loading = false;
       if (ticketRes.ok) {
-        _tickets = ApiClient.listOf(ticketRes.data);
-        // 列表刷新后详情按需重拉，避免处理流水过期
+        _ticketsFromLocal = false;
+        _tickets = _mergeTicketsWithLocal(ApiClient.listOf(ticketRes.data), local);
         _ticketDetails.clear();
       } else {
-        _tickets = [];
+        _ticketsFromLocal = true;
+        _tickets = local;
+        _ticketDetails.clear();
       }
       _purTasks = ApiClient.listOf(results[1].data);
       _varieties = varietyRes.ok ? ApiClient.listOf(varietyRes.data) : [];
@@ -364,12 +387,67 @@ class _ReceivingPageState extends State<ReceivingPage> {
         _applyVariety(Map<String, dynamic>.from(_varieties.first as Map));
       }
     });
-    // 单据列表失败仅提示，不写入首页/建单表单的 _msg（日期筛选只在「单据」页）
     if (!ticketRes.ok && ticketRes.msg.isNotEmpty && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_batchErrorMessage(ticketRes.msg))),
+        SnackBar(
+          content: Text(
+            _ticketsFromLocal
+                ? '服务端刷新失败，当前为手机本地备份'
+                : _batchErrorMessage(ticketRes.msg),
+          ),
+        ),
       );
     }
+  }
+
+  int _localUserId() {
+    final auth = context.read<AuthState>();
+    if (auth.userId <= 0) auth.syncUserIdFromToken();
+    return auth.userId;
+  }
+
+  Future<List<Map<String, dynamic>>> _loadLocalTickets() async {
+    return WeighTicketLocalStore.load(_localUserId());
+  }
+
+  bool _localInDateRange(Map<String, dynamic> m) {
+    final raw = (m['biz_date'] ?? m['saved_at'] ?? m['created_at'] ?? '').toString();
+    final t = DateTime.tryParse(raw);
+    if (t == null) return true;
+    final d = DateTime(t.year, t.month, t.day);
+    return !d.isBefore(_ticketDateFrom) && !d.isAfter(_ticketDateTo);
+  }
+
+  List<dynamic> _mergeTicketsWithLocal(List<dynamic> server, List<Map<String, dynamic>> local) {
+    final seenIds = <int>{};
+    final seenDocs = <String>{};
+    final out = <dynamic>[];
+    for (final e in server) {
+      final m = Map<String, dynamic>.from(e as Map);
+      final id = (m['id'] as num?)?.toInt() ?? 0;
+      final doc = (m['doc_no'] ?? '').toString().trim();
+      if (id > 0) seenIds.add(id);
+      if (doc.isNotEmpty) seenDocs.add(doc);
+      out.add(m);
+    }
+    for (final loc in local) {
+      if (!_localInDateRange(loc)) continue;
+      final id = (loc['id'] as num?)?.toInt() ?? 0;
+      final doc = (loc['doc_no'] ?? '').toString().trim();
+      if (id > 0 && seenIds.contains(id)) continue;
+      if (doc.isNotEmpty && seenDocs.contains(doc)) continue;
+      final row = Map<String, dynamic>.from(loc);
+      row['local_backup'] = true;
+      out.add(row);
+    }
+    return out;
+  }
+
+  int _ticketExpandId(Map<String, dynamic> m) {
+    final id = (m['id'] as num?)?.toInt() ?? 0;
+    if (id > 0) return id;
+    final key = '${m['doc_no'] ?? ''}|${m['saved_at'] ?? ''}';
+    return -(key.hashCode.abs() % 0x7fffffff);
   }
 
   Future<void> _pickTicketDateRange() async {
@@ -397,6 +475,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
   }
 
   void _applyFarmer(Map<String, dynamic> m) {
+    _applyingFarmer = true;
     _farmerId = (m['id'] as num?)?.toInt();
     _partyName.text = m['name']?.toString() ?? '';
     _partyMobile.text = m['mobile']?.toString() ?? '';
@@ -405,23 +484,23 @@ class _ReceivingPageState extends State<ReceivingPage> {
     if (price != null && price > 0) {
       _unitPrice.text = price.toString();
     }
-    _farmerSearch.text = '${m['name'] ?? ''} ${m['mobile'] ?? ''}'.trim();
-    // 换农户后需重新选码
     _batchOk = false;
     _bindingLocked = false;
     _boundFarmerName = '';
     _batchNo.clear();
+    _reusePrompted = false;
+    _applyingFarmer = false;
   }
 
   void _clearFarmerLink() {
     _farmerId = null;
-    _farmerSearch.clear();
     _farmerHits = [];
     _farmerCodes = [];
     _batchOk = false;
     _bindingLocked = false;
     _boundFarmerName = '';
     _batchNo.clear();
+    _reusePrompted = false;
   }
 
   Future<void> _loadFarmerCodes() async {
@@ -430,14 +509,12 @@ class _ReceivingPageState extends State<ReceivingPage> {
       setState(() => _farmerCodes = []);
       return;
     }
-    setState(() => _loadingFarmerCodes = true);
     final r = await context.read<AuthState>().api.get(
           '/purchase/trace-batch-codes?farmer_id=$fid&page_size=50',
         );
     if (!mounted) return;
     final list = r.ok && r.data is Map ? ApiClient.listOf((r.data as Map)['list']) : <dynamic>[];
     setState(() {
-      _loadingFarmerCodes = false;
       _farmerCodes = list;
       if (!r.ok) {
         _msgIsError = true;
@@ -459,20 +536,16 @@ class _ReceivingPageState extends State<ReceivingPage> {
     await _validateBatch();
   }
 
-  Future<void> _generateTraceCodeForGate() async {
-    if (_farmerId == null || _farmerId! <= 0) {
-      _promptRequired('请先关联农户再生成溯源码');
-      return;
-    }
+  Future<bool> _generateTraceCodeForGate() async {
     final r = await context.read<AuthState>().api.post('/purchase/trace-batch-codes/generate', {
       'biz_date': DateTime.now().toIso8601String().substring(0, 10),
       'lot_no': '01',
       'qty': 1,
     });
-    if (!mounted) return;
+    if (!mounted) return false;
     if (!r.ok || r.data is! Map) {
       _promptRequired(_batchErrorMessage(r.msg.isNotEmpty ? r.msg : '生成溯源码失败'));
-      return;
+      return false;
     }
     final data = Map<String, dynamic>.from(r.data as Map);
     final list = ApiClient.listOf(data['list']);
@@ -482,15 +555,61 @@ class _ReceivingPageState extends State<ReceivingPage> {
     }
     if (code.isEmpty) {
       _promptRequired('生成成功但未返回批号');
-      return;
+      return false;
     }
     _batchNo.text = code.toUpperCase();
     setState(() {
+      _generatedTraceThisTicket = true;
       _msgIsError = false;
       _msg = '已生成新溯源码 $code，校验中…';
     });
-    await _validateBatch();
+    return _validateBatch();
+  }
+
+  Future<void> _showGeneratedQr() async {
+    if (!mounted) return;
+    await showTraceCodeQrSheet(
+      context,
+      code: _batchNo.text,
+      farmerName: _partyName.text,
+    );
+  }
+
+  Future<void> _onTapManualTrace() async {
+    if (_batchNo.text.trim().isNotEmpty) return;
+    if (_reusePrompted) return;
+    final fid = _farmerId;
+    if (fid == null || fid <= 0) return;
+    _reusePrompted = true;
     await _loadFarmerCodes();
+    if (!mounted) return;
+    final usable = _farmerCodes
+        .cast<dynamic>()
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .where((m) =>
+            m['can_append'] == true ||
+            m['selectable'] == true ||
+            m['status'] == 'in_progress' ||
+            m['status'] == 'used')
+        .toList();
+    if (usable.isEmpty) return;
+    final first = usable.first;
+    final code = (first['code'] ?? '').toString();
+    if (code.isEmpty) return;
+    final reuse = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('复用溯源码'),
+        content: Text('该农户有可用溯源码 $code，是否继续使用？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('否')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('是')),
+        ],
+      ),
+    );
+    if (reuse == true) {
+      await _pickFarmerCode(first);
+    }
   }
 
   void _applyVariety(Map<String, dynamic> m) {
@@ -505,12 +624,17 @@ class _ReceivingPageState extends State<ReceivingPage> {
     }
   }
 
-  void _onFarmerSearchChanged(String q) {
+  void _onPartyFieldChanged(String q, {required bool byMobile}) {
+    if (_applyingFarmer || _bindingLocked) return;
+    setState(() {
+      if (_farmerId != null) _farmerId = null;
+      _farmerHits = [];
+    });
     _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 350), () => _searchFarmers(q));
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () => _searchFarmers(q, byMobile: byMobile));
   }
 
-  Future<void> _searchFarmers(String raw) async {
+  Future<void> _searchFarmers(String raw, {bool byMobile = false}) async {
     final q = raw.trim();
     if (q.isEmpty) {
       setState(() {
@@ -521,13 +645,10 @@ class _ReceivingPageState extends State<ReceivingPage> {
     }
     setState(() => _searchingFarmer = true);
     final api = context.read<AuthState>().api;
-    // 仅手机号 / 姓名模糊；不再按农户 ID 搜索
-    final String path;
-    if (RegExp(r'\d').hasMatch(q)) {
-      path = '/purchase/farmers?mobile=${Uri.encodeQueryComponent(q)}&page_size=20';
-    } else {
-      path = '/purchase/farmers?name=${Uri.encodeQueryComponent(q)}&page_size=20';
-    }
+    final useMobile = byMobile || RegExp(r'\d').hasMatch(q);
+    final path = useMobile
+        ? '/purchase/farmers?mobile=${Uri.encodeQueryComponent(q)}&page_size=20'
+        : '/purchase/farmers?name=${Uri.encodeQueryComponent(q)}&page_size=20';
     final r = await api.get(path);
     if (!mounted) return;
     setState(() {
@@ -537,66 +658,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
     });
   }
 
-  Future<void> _showOnsiteFarmerDialog() async {
-    final name = TextEditingController(text: _partyName.text);
-    final mobile = TextEditingController(text: _partyMobile.text.isNotEmpty ? _partyMobile.text : _farmerSearch.text);
-    final origin = TextEditingController(text: _origin.text);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('现场录入农户'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: name, decoration: const InputDecoration(labelText: '姓名 *')),
-              TextField(controller: mobile, decoration: const InputDecoration(labelText: '手机号'), keyboardType: TextInputType.phone),
-              TextField(controller: origin, decoration: const InputDecoration(labelText: '产地地址')),
-              const SizedBox(height: 8),
-              const Text('将写入平台共享农户档案，供全员复用', style: TextStyle(fontSize: 12, color: Colors.black54)),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存并关联')),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) {
-      name.dispose();
-      mobile.dispose();
-      origin.dispose();
-      return;
-    }
-    if (name.text.trim().isEmpty) {
-      _promptRequired('请填写农户姓名');
-      name.dispose();
-      mobile.dispose();
-      origin.dispose();
-      return;
-    }
-    final r = await context.read<AuthState>().api.post('/purchase/farmers', {
-      'name': name.text.trim(),
-      'mobile': mobile.text.trim(),
-      'origin': origin.text.trim(),
-    });
-    name.dispose();
-    mobile.dispose();
-    origin.dispose();
-    if (!mounted) return;
-    if (!r.ok || r.data is! Map) {
-      setState(() => _msg = '建档失败：${r.msg}');
-      return;
-    }
-    setState(() {
-      _applyFarmer(Map<String, dynamic>.from(r.data as Map));
-      _farmerHits = [];
-      _msg = '已现场建档并关联 #$_farmerId';
-    });
-  }
-
-  Future<void> _validateBatch() async {
+  Future<bool> _validateBatch() async {
     final code = _batchNo.text.trim().toUpperCase();
     _batchNo.text = code;
     if (code.isEmpty) {
@@ -606,13 +668,13 @@ class _ReceivingPageState extends State<ReceivingPage> {
         _boundFarmerName = '';
       });
       _promptRequired('请填写溯源批号');
-      return;
+      return false;
     }
     final r = await context.read<AuthState>().api.post('/purchase/trace-batch-codes/validate', {
       'code': code,
       'receive_kind': _receiveKind,
     });
-    if (!mounted) return;
+    if (!mounted) return false;
     if (!r.ok || r.data is! Map) {
       setState(() {
         _batchOk = false;
@@ -620,7 +682,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
         _boundFarmerName = '';
       });
       _promptRequired(_batchErrorMessage(r.msg.isNotEmpty ? r.msg : '溯源批号校验失败'));
-      return;
+      return false;
     }
     final m = Map<String, dynamic>.from(r.data as Map);
     final lockedFid = (m['farmer_id'] as num?)?.toInt() ?? 0;
@@ -635,7 +697,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
         _bindingLocked = false;
       });
       _promptRequired('该溯源码已绑定其他农户，请换码或改选农户');
-      return;
+      return false;
     }
     setState(() {
       _batchOk = true;
@@ -655,6 +717,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
         _msg = bound.isEmpty ? '批号校验通过（可入厂占用）' : '批号校验通过 · 已同步 $bound';
       }
     });
+    return true;
   }
 
   /// 校验通过后把入厂绑定的农户/产地/品种等写入表单
@@ -669,7 +732,6 @@ class _ReceivingPageState extends State<ReceivingPage> {
 
     if (fid > 0) {
       _farmerId = fid;
-      _farmerSearch.text = '$name ${mobile.isNotEmpty ? mobile : ''}'.trim();
     }
     if (name.isNotEmpty) _partyName.text = name;
     if (mobile.isNotEmpty) _partyMobile.text = mobile;
@@ -722,7 +784,6 @@ class _ReceivingPageState extends State<ReceivingPage> {
       _stockinStep = 0;
       if (kind == 'stockin') {
         _farmerId = null;
-        _farmerSearch.clear();
         _farmerHits = [];
       }
     });
@@ -781,13 +842,15 @@ class _ReceivingPageState extends State<ReceivingPage> {
     _netWeight.clear();
     _batchNo.clear();
     _photoUrls.clear();
+    _photoMaterial = null;
+    _photoScale = null;
+    _photoCloseup = null;
     _batchOk = false;
     _bindingLocked = false;
     _boundFarmerName = '';
     _farmerId = null;
     _farmerHits = [];
     _farmerCodes = [];
-    _farmerSearch.clear();
     _bagQty.clear();
     _remark.clear();
     _plate.clear();
@@ -796,6 +859,8 @@ class _ReceivingPageState extends State<ReceivingPage> {
     _partyMobile.clear();
     _origin.clear();
     _stockinStep = 0;
+    _generatedTraceThisTicket = false;
+    _reusePrompted = false;
   }
 
   String _varietyName() {
@@ -829,8 +894,8 @@ class _ReceivingPageState extends State<ReceivingPage> {
     return null;
   }
 
-  Future<void> _takePhoto() async {
-    if (_photoUrls.length >= 3) {
+  Future<void> _takePhoto({String? slot}) async {
+    if (slot == null && _photoUrls.length >= 3) {
       setState(() => _msg = '最多 3 张现场照片');
       return;
     }
@@ -856,12 +921,32 @@ class _ReceivingPageState extends State<ReceivingPage> {
         return;
       }
       setState(() {
-        _photoUrls.add(url);
-        _msg = '已上传 ${_photoUrls.length} 张';
+        if (slot == 'material') {
+          _photoMaterial = url;
+          _msg = '已拍材料过磅照片';
+        } else if (slot == 'scale_display') {
+          _photoScale = url;
+          _msg = '已拍磅显数据特写';
+        } else if (slot == 'closeup') {
+          _photoCloseup = url;
+          _msg = '已拍近距离照片';
+        } else {
+          _photoUrls.add(url);
+          _msg = '已上传 ${_photoUrls.length} 张';
+        }
+        _msgIsError = false;
       });
     } catch (e) {
       setState(() => _msg = '拍照失败：$e');
     }
+  }
+
+  void _removeGatePhoto(String slot) {
+    setState(() {
+      if (slot == 'material') _photoMaterial = null;
+      if (slot == 'scale_display') _photoScale = null;
+      if (slot == 'closeup') _photoCloseup = null;
+    });
   }
 
   Future<bool> _create({
@@ -873,7 +958,20 @@ class _ReceivingPageState extends State<ReceivingPage> {
       await _validateBatch();
       if (!_batchOk) return false;
     }
-    if (_photoUrls.isEmpty) {
+    if (_receiveKind == 'gate') {
+      if ((_photoMaterial ?? '').isEmpty) {
+        _promptRequired('请拍摄材料过磅照片');
+        return false;
+      }
+      if ((_photoScale ?? '').isEmpty) {
+        _promptRequired('请拍摄磅显数据特写');
+        return false;
+      }
+      if ((_photoCloseup ?? '').isEmpty) {
+        _promptRequired('请拍摄近距离照片');
+        return false;
+      }
+    } else if (_photoUrls.isEmpty) {
       _promptRequired('请拍摄现场照片');
       return false;
     }
@@ -882,6 +980,16 @@ class _ReceivingPageState extends State<ReceivingPage> {
       return false;
     }
     final varietyName = _varietyName() == '-' ? '鲜木薯' : _varietyName();
+    final gatePhotos = _receiveKind == 'gate'
+        ? <String, String>{
+            'material': _photoMaterial!,
+            'scale_display': _photoScale!,
+            'closeup': _photoCloseup!,
+          }
+        : null;
+    final imageUrls = _receiveKind == 'gate'
+        ? <String>[_photoMaterial!, _photoScale!, _photoCloseup!]
+        : List<String>.from(_photoUrls);
     final body = <String, dynamic>{
       'receive_kind': _receiveKind,
       'batch_no': _batchNo.text.trim().toUpperCase(),
@@ -892,8 +1000,9 @@ class _ReceivingPageState extends State<ReceivingPage> {
       'grade': _grade,
       'biz_date': DateTime.now().toIso8601String().substring(0, 10),
       'source_type': 'self',
-      'image_url': _photoUrls.first,
-      'image_urls': _photoUrls,
+      'image_url': _receiveKind == 'gate' ? _photoCloseup! : imageUrls.first,
+      'image_urls': imageUrls,
+      if (gatePhotos != null) 'photos': gatePhotos,
       'remark': _remark.text.trim(),
       'activate': true,
     };
@@ -955,8 +1064,40 @@ class _ReceivingPageState extends State<ReceivingPage> {
     final docNo = data['doc_no']?.toString() ?? '';
     final trace = data['trace_code']?.toString() ?? '';
     final okMsg = trace.isNotEmpty ? '已创建并绑定 · $docNo · 溯源码 $trace' : '已创建并绑定 · $docNo';
+    if (_receiveKind == 'gate') {
+      await WeighTicketLocalStore.save(_localUserId(), {
+        ...data,
+        'doc_no': docNo.isNotEmpty ? docNo : data['doc_no'],
+        'trace_code': trace.isNotEmpty ? trace : _batchNo.text.trim().toUpperCase(),
+        'batch_no': _batchNo.text.trim().toUpperCase(),
+        'farmer_id': data['farmer_id'] ?? _farmerId,
+        'party_name': data['party_name'] ?? _partyName.text.trim(),
+        'party_mobile': data['party_mobile'] ?? _partyMobile.text.trim(),
+        'origin': data['origin'] ?? _origin.text.trim(),
+        'variety': data['variety'] ?? varietyName,
+        'gross_weight': data['gross_weight'] ?? body['gross_weight'],
+        'net_weight': data['net_weight'],
+        'status': data['status'],
+        'created_at': data['created_at'],
+        'biz_date': data['biz_date'] ?? body['biz_date'],
+        'photo_urls': imageUrls,
+        'image_urls': imageUrls,
+        'photos': gatePhotos,
+        'receive_kind': 'gate',
+        'unit_price': body['unit_price'],
+        'deduct_rate': body['deduct_rate'],
+        'plate_no': body['plate_no'],
+      });
+    }
+    final showQr = _generatedTraceThisTicket && _receiveKind == 'gate';
+    final qrCode = _batchNo.text.trim().toUpperCase();
+    final farmerName = _partyName.text.trim();
     if (widget.popOnCreated || _isSubPage) {
       if (mounted) {
+        if (showQr) {
+          await showTraceCodeQrSheet(context, code: qrCode, farmerName: farmerName);
+        }
+        if (!mounted) return true;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(okMsg)));
         Navigator.of(context).pop(true);
       }
@@ -972,7 +1113,12 @@ class _ReceivingPageState extends State<ReceivingPage> {
     });
     await _refresh();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(okMsg)));
+      if (showQr) {
+        await showTraceCodeQrSheet(context, code: qrCode, farmerName: farmerName);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(okMsg)));
+      }
     }
     return true;
   }
@@ -990,13 +1136,14 @@ class _ReceivingPageState extends State<ReceivingPage> {
       plate: _plate,
       recvAddr: _recvAddr,
       remark: _remark,
-      farmerSearch: _farmerSearch,
       partyName: _partyName,
       partyMobile: _partyMobile,
       origin: _origin,
       batchOk: _batchOk,
       bindingLocked: _bindingLocked,
-      photoUrls: _photoUrls,
+      photoMaterial: _photoMaterial,
+      photoScale: _photoScale,
+      photoCloseup: _photoCloseup,
       varieties: _varieties,
       varietyId: _varietyId,
       channel: _channel,
@@ -1005,8 +1152,6 @@ class _ReceivingPageState extends State<ReceivingPage> {
       farmerId: _farmerId,
       farmerHits: _farmerHits,
       searchingFarmer: _searchingFarmer,
-      farmerCodes: _farmerCodes,
-      loadingFarmerCodes: _loadingFarmerCodes,
       msg: _msg,
       msgIsError: _msgIsError,
       onBatchChanged: (_) => setState(() {
@@ -1015,35 +1160,22 @@ class _ReceivingPageState extends State<ReceivingPage> {
         _boundFarmerName = '';
       }),
       onValidateBatch: _validateBatch,
-      onFarmerSearchChanged: (v) {
-        if (_bindingLocked) return;
-        if (_farmerId != null) setState(() => _farmerId = null);
-        _onFarmerSearchChanged(v);
-      },
-      onSearchFarmers: _searchFarmers,
+      onNameChanged: (v) => _onPartyFieldChanged(v, byMobile: false),
+      onMobileChanged: (v) => _onPartyFieldChanged(v, byMobile: true),
       onApplyFarmer: (m) async {
         if (_bindingLocked) return;
         setState(() {
           _applyFarmer(m);
           _farmerHits = [];
         });
-        await _loadFarmerCodes();
       },
       onClearFarmer: () {
         if (_bindingLocked) return;
         setState(_clearFarmerLink);
       },
-      onShowOnsiteFarmer: () async {
-        if (_bindingLocked) {
-          _promptRequired('该溯源码已锁定农户，不可更换');
-          return;
-        }
-        await _showOnsiteFarmerDialog();
-        if (_farmerId != null) await _loadFarmerCodes();
-      },
-      onRefreshFarmerCodes: _loadFarmerCodes,
-      onPickFarmerCode: _pickFarmerCode,
+      onTapManualTrace: _onTapManualTrace,
       onGenerateTraceCode: _generateTraceCodeForGate,
+      onShowGeneratedQr: _showGeneratedQr,
       onApplyVariety: (m) {
         if (_bindingLocked) {
           _promptRequired('该溯源码已锁定品种，不可更换');
@@ -1054,8 +1186,8 @@ class _ReceivingPageState extends State<ReceivingPage> {
       onChannelChanged: (v) => setState(() => _channel = v),
       onColdStoreChanged: (v) => setState(() => _coldStore = v),
       onGradeChanged: (v) => setState(() => _grade = v),
-      onTakePhoto: _takePhoto,
-      onRemovePhoto: (i) => setState(() => _photoUrls.removeAt(i)),
+      onTakePhoto: (slot) => _takePhoto(slot: slot),
+      onRemovePhoto: _removeGatePhoto,
       onMsg: _promptRequired,
       onSubmit: ({required nextRole, nextNodeId, nextAssigneeUserId}) => _create(
         nextRole: nextRole,
@@ -1085,6 +1217,10 @@ class _ReceivingPageState extends State<ReceivingPage> {
 
   Color _phaseColor(String phase, String st) {
     switch (phase) {
+      case 'await_gate':
+        return Colors.orange.shade700;
+      case 'await_stockin':
+        return Colors.indigo.shade700;
       case 'await_warehouse':
         return Colors.orange.shade700;
       case 'await_finance':
@@ -1107,6 +1243,8 @@ class _ReceivingPageState extends State<ReceivingPage> {
         return Colors.blue;
       case 'weighed':
         return Colors.orange.shade700;
+      case 'gate_accepted':
+        return Colors.indigo.shade700;
       case 'returned':
         return Colors.red.shade700;
       case 'stocked':
@@ -1124,8 +1262,12 @@ class _ReceivingPageState extends State<ReceivingPage> {
     final phase = m['process_phase']?.toString() ?? '';
     final kind = m['receive_kind']?.toString() ?? '';
     switch (phase) {
+      case 'await_gate':
+        return '待入厂';
+      case 'await_stockin':
+        return '待入库';
       case 'await_warehouse':
-        return kind == 'stockin' ? '待仓管确认' : '待仓管入库';
+        return kind == 'stockin' ? '待仓管确认' : '待入厂';
       case 'await_finance':
         return '已入仓·待结算';
       case 'settled':
@@ -1150,7 +1292,9 @@ class _ReceivingPageState extends State<ReceivingPage> {
       case 'pending_confirm':
         return '待绑定';
       case 'weighed':
-        return kind == 'stockin' ? '待仓管确认' : '待仓管入库';
+        return kind == 'stockin' ? '待仓管确认' : '待入厂';
+      case 'gate_accepted':
+        return '待入库';
       case 'returned':
         return '仓管已退回';
       case 'stocked':
@@ -1172,8 +1316,16 @@ class _ReceivingPageState extends State<ReceivingPage> {
       final base = remark.isEmpty ? '请核对修正后重新推仓管' : '退回原因：$remark';
       return assignee.isEmpty ? base : '$base · 处理人 $assignee';
     }
+    if (phase == 'await_gate' || (st == 'weighed' && kind != 'stockin')) {
+      final base = '等待仓管接收入厂';
+      return assignee.isEmpty ? base : '$base · 处理人 $assignee';
+    }
+    if (phase == 'await_stockin' || st == 'gate_accepted') {
+      final base = '已入厂，待仓管分板入库';
+      return assignee.isEmpty ? base : '$base · 处理人 $assignee';
+    }
     if (phase == 'await_warehouse' || st == 'weighed') {
-      final base = kind == 'gate' ? '仓管确认入仓后，财务才可给农户结单' : '等待仓管确认入库';
+      final base = '等待仓管确认入库';
       return assignee.isEmpty ? base : '$base · 处理人 $assignee';
     }
     if (phase == 'await_finance') {
@@ -1208,7 +1360,9 @@ class _ReceivingPageState extends State<ReceivingPage> {
           _bindingLocked = false;
           _boundFarmerName = '';
         }),
-        onEditingComplete: _validateBatch,
+        onEditingComplete: () {
+          _validateBatch();
+        },
         onScanned: (_) async {
           setState(() {
             _batchOk = false;
@@ -1303,7 +1457,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
             Text('已拍 ${_photoUrls.length}/3', style: const TextStyle(fontSize: 13, color: Colors.black54)),
             const SizedBox(width: 8),
             FilledButton.tonalIcon(
-              onPressed: _takePhoto,
+              onPressed: () => _takePhoto(),
               icon: const Icon(Icons.photo_camera, size: 18),
               label: const Text('拍照'),
             ),
@@ -1509,7 +1663,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
     );
   }
 
-  Widget _ticketDetailPanel(Map<String, dynamic> d) {
+  Widget _ticketDetailPanel(Map<String, dynamic> d, {bool localBackup = false}) {
     final kind = d['receive_kind']?.toString() ?? '';
     final currency = (d['currency_label'] ?? '元人民币').toString();
     final logs = d['process_logs'] is List ? d['process_logs'] as List : const [];
@@ -1522,7 +1676,19 @@ class _ReceivingPageState extends State<ReceivingPage> {
       if (s.isNotEmpty && !imgs.contains(s)) imgs.add(s);
     }
     addImg(d['image_url']);
-    for (final k in ['verify_images', 'image_urls', 'site_photos']) {
+    final photos = d['photos'];
+    final labeledPhotos = <(String, String)>[];
+    void addLabeled(String key, String label) {
+      if (photos is! Map) return;
+      final s = api.resolveMediaUrl((photos[key] ?? '').toString());
+      if (s.isEmpty) return;
+      labeledPhotos.add((label, s));
+      addImg(s);
+    }
+    addLabeled('material', '材料过磅');
+    addLabeled('scale_display', '磅显特写');
+    addLabeled('closeup', '近距离');
+    for (final k in ['verify_images', 'image_urls', 'site_photos', 'photo_urls']) {
       final raw = d[k];
       if (raw is List) {
         for (final e in raw) {
@@ -1551,6 +1717,14 @@ class _ReceivingPageState extends State<ReceivingPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (localBackup)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              '本机备份：仅可查看文字快照，不可改单。照片为当时上传的链接，服务端丢失后可能无法打开。',
+              style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
+            ),
+          ),
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1591,7 +1765,42 @@ class _ReceivingPageState extends State<ReceivingPage> {
           kv('结算单', '${d['settlement_doc_no']} · ${d['settlement_status'] ?? ''}'),
         if ((d['box_code'] ?? '').toString().isNotEmpty) kv('板码', '${d['box_code']}'),
         if ((d['applicant_name'] ?? '').toString().isNotEmpty) kv('建单人', '${d['applicant_name']}'),
-        if (imgs.isNotEmpty) ...[
+        if (labeledPhotos.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          const Text('现场照片', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 98,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: labeledPhotos.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (_, i) {
+                final p = labeledPhotos[i];
+                return Column(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: Image.network(
+                        p.$2,
+                        width: 72,
+                        height: 72,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 72,
+                          height: 72,
+                          color: Colors.black12,
+                          child: const Icon(Icons.broken_image, size: 18),
+                        ),
+                      ),
+                    ),
+                    Text(p.$1, style: const TextStyle(fontSize: 10, color: Colors.black54)),
+                  ],
+                );
+              },
+            ),
+          ),
+        ] else if (imgs.isNotEmpty) ...[
           const SizedBox(height: 8),
           const Text('现场照片', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
           const SizedBox(height: 6),
@@ -1712,6 +1921,14 @@ class _ReceivingPageState extends State<ReceivingPage> {
             ],
           ),
         ),
+        if (_ticketsFromLocal)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Text(
+              '当前为手机本地备份（近 3 个月），服务端暂时不可用',
+              style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
+            ),
+          ),
         Expanded(
           child: RefreshIndicator(
             onRefresh: _refresh,
@@ -1728,18 +1945,19 @@ class _ReceivingPageState extends State<ReceivingPage> {
                     itemCount: _tickets.length,
                     itemBuilder: (context, i) {
                       final m = Map<String, dynamic>.from(_tickets[i] as Map);
-                      final id = (m['id'] as num?)?.toInt();
+                      final id = _ticketExpandId(m);
                       final st = m['status']?.toString() ?? '';
                       final phase = m['process_phase']?.toString() ?? '';
                       final kind = m['receive_kind']?.toString() ?? '';
                       final hint = _phaseHint(m);
-                      final expanded = id != null && _expandedTicketIds.contains(id);
-                      final detail = id != null ? _ticketDetails[id] : null;
-                      final loadingDetail = id != null && _ticketDetailLoading.contains(id);
+                      final expanded = _expandedTicketIds.contains(id);
+                      final detail = _ticketDetails[id];
+                      final loadingDetail = _ticketDetailLoading.contains(id);
                       final batch = (m['batch_no']?.toString() ?? '').toUpperCase();
                       final trace = (m['trace_code']?.toString() ?? '').toUpperCase();
                       final code = trace.isNotEmpty ? trace : batch;
                       final settleText = _fmtSettleMoney(m['settle_amount']);
+                      final localBackup = m['local_backup'] == true;
                       return Card(
                         child: InkWell(
                           onTap: () => _toggleTicketExpand(m),
@@ -1751,7 +1969,13 @@ class _ReceivingPageState extends State<ReceivingPage> {
                               children: [
                                 Row(
                                   children: [
-                                    Expanded(child: Text('${m['doc_no']}', style: const TextStyle(fontWeight: FontWeight.bold))),
+                                    Expanded(child: Text('${m['doc_no'] ?? '-'}', style: const TextStyle(fontWeight: FontWeight.bold))),
+                                    if (localBackup)
+                                      Chip(
+                                        label: const Text('本机备份', style: TextStyle(fontSize: 11)),
+                                        visualDensity: VisualDensity.compact,
+                                        backgroundColor: Colors.orange.shade50,
+                                      ),
                                     Chip(label: Text(_kindLabel(kind), style: const TextStyle(fontSize: 11)), visualDensity: VisualDensity.compact),
                                     Chip(
                                       label: Text(_phaseLabel(m), style: const TextStyle(fontSize: 11, color: Colors.white)),
@@ -1804,7 +2028,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
                                   else if (detail == null)
                                     const Text('详情加载失败，请再点一次重试', style: TextStyle(color: Colors.black54, fontSize: 12))
                                   else
-                                    _ticketDetailPanel(detail),
+                                    _ticketDetailPanel(detail, localBackup: localBackup || detail['local_backup'] == true),
                                 ],
                               ],
                             ),

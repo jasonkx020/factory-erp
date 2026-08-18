@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/auth_state.dart';
+import '../receiving/gate_inbound_prefs.dart';
+import '../receiving/weigh_ticket_local_store.dart';
+import '../warehouse/box_stockin_draft.dart';
 
 /// 个人账户：改密 + 第三方绑定占位
 class AccountCenterPage extends StatefulWidget {
@@ -96,6 +99,46 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
     await _loadBindings();
   }
 
+  Future<bool> _confirm(String title, String body) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确定')),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  Future<void> _clearCache() async {
+    final ok = await _confirm(
+      '清理缓存',
+      '将清除入厂向导记住的单价/扣损/运费等，以及仓管分板未提交草稿。过磅单本机备份不受影响。',
+    );
+    if (!ok || !mounted) return;
+    await GateInboundPrefs.clear();
+    await BoxStockinDraftStore.clearAll();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('缓存已清理')));
+  }
+
+  Future<void> _clearLocalBackup() async {
+    final ok = await _confirm(
+      '清除备份数据',
+      '将删除本机近 3 个月过磅备份，不可恢复；服务端单据不受影响。',
+    );
+    if (!ok || !mounted) return;
+    final auth = context.read<AuthState>();
+    if (auth.userId <= 0) auth.syncUserIdFromToken();
+    await WeighTicketLocalStore.clear(auth.userId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('本机过磅备份已清除')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
@@ -137,6 +180,23 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
           FilledButton(
             onPressed: _busy ? null : _changePassword,
             child: Text(_busy ? '提交中…' : '保存新密码'),
+          ),
+          const Divider(height: 32),
+          const Text('缓存与备份', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 4),
+          const Text('仅清理本机数据，不影响服务端单据', style: TextStyle(color: Colors.black54, fontSize: 12)),
+          const SizedBox(height: 8),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('清理缓存'),
+            subtitle: const Text('入厂常用单价/扣损/运费，以及仓管分板草稿'),
+            trailing: TextButton(onPressed: _clearCache, child: const Text('清理')),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('清除备份数据'),
+            subtitle: const Text('删除本机近 3 个月过磅备份，不可恢复'),
+            trailing: TextButton(onPressed: _clearLocalBackup, child: const Text('清除')),
           ),
           const Divider(height: 32),
           const Text('第三方账号', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),

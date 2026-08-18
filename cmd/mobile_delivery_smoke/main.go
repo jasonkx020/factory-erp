@@ -139,6 +139,9 @@ func main() {
 			"gross_weight": 1000, "deduct_rate": 5, "unit_price": 1.2, "grade": "A",
 			"image_url": imgURL, "biz_date": bizDate, "source_type": "self",
 			"activate": true,
+			"photos": map[string]any{
+				"material": imgURL, "scale_display": imgURL, "closeup": imgURL,
+			},
 		}, &created); err != nil {
 			fail("weigh_create_gate", err)
 			failed++

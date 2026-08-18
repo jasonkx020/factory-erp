@@ -1,7 +1,7 @@
 /** Map workflow notify event_key → employee app path (relative). */
 export function employeeRouteForEvent(eventKey: string | undefined | null): string | null {
   const k = String(eventKey || '')
-  if (k === 'purchase.weigh_confirmed') return '/m/warehouse'
+  if (k === 'purchase.weigh_confirmed' || k === 'purchase.await_stockin') return '/m/warehouse'
   if (k === 'production.report_confirmed') return '/m/workshop'
   if (k === 'payroll.labor_paid') return '/m/worker'
   if (k === 'purchase.stocked' || k === 'purchase.settle_paid') return '/'
@@ -12,7 +12,7 @@ export function employeeRouteForEvent(eventKey: string | undefined | null): stri
 /** Admin app path for inbox deep-link. */
 export function adminRouteForEvent(eventKey: string | undefined | null): string | null {
   const k = String(eventKey || '')
-  if (k === 'purchase.weigh_confirmed') return '/warehouse/inbound'
+  if (k === 'purchase.weigh_confirmed' || k === 'purchase.await_stockin') return '/warehouse/inbound'
   if (k.startsWith('workflow.ticket')) return '/workflow/tickets'
   return null
 }

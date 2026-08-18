@@ -32,4 +32,12 @@ class BoxStockinDraftStore {
     final p = await SharedPreferences.getInstance();
     await p.remove(_key(id.trim()));
   }
+
+  static Future<void> clearAll() async {
+    final p = await SharedPreferences.getInstance();
+    final keys = p.getKeys().where((k) => k.startsWith('erp.warehouse.box_draft.')).toList();
+    for (final k in keys) {
+      await p.remove(k);
+    }
+  }
 }
