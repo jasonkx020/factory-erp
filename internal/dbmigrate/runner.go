@@ -322,7 +322,33 @@ func execStatements(tx *sqlx.Tx, sqlText string, tolerateExists bool) error {
 	return nil
 }
 
-// InitDevDatabase runs baseline, all upgrades, and optional seed for local development.
+// DropAllTables removes all tables in the current PostgreSQL schema (dev reset).
+func (r *Runner) DropAllTables(ctx context.Context) error {
+	if r.opts.DryRun {
+		fmt.Println("dry-run: would drop all tables in current schema")
+		return nil
+	}
+	return r.withLock(ctx, func(tx *sqlx.Tx) error {
+		return dropAllTablesTx(tx)
+	})
+}
+
+func dropAllTablesTx(tx *sqlx.Tx) error {
+	_, err := tx.Exec(`
+DO $drop$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN (
+    SELECT tablename FROM pg_tables
+    WHERE schemaname = current_schema()
+  ) LOOP
+    EXECUTE format('DROP TABLE IF EXISTS %I.%I CASCADE', current_schema(), r.tablename);
+  END LOOP;
+END $drop$`)
+	return err
+}
+
+// InitDevDatabase drops existing tables, then runs baseline, all upgrades, and optional seed.
 func InitDevDatabase(ctx context.Context, dsn, migrationsRoot, seedPath string) error {
 	opts := Options{Role: RoleERP, DSN: dsn, MigrationsRoot: migrationsRoot}
 	runner, err := NewRunner(opts)
@@ -330,6 +356,11 @@ func InitDevDatabase(ctx context.Context, dsn, migrationsRoot, seedPath string) 
 		return err
 	}
 	defer runner.Close()
+
+	fmt.Println("init_schema: dropping all tables in current schema")
+	if err := runner.DropAllTables(ctx); err != nil {
+		return fmt.Errorf("drop tables: %w", err)
+	}
 
 	if err := runner.Baseline(ctx); err != nil {
 		return fmt.Errorf("baseline: %w", err)
