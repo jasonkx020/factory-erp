@@ -43,6 +43,8 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
   final List<_BoxLine> _boxes = [];
   Timer? _draftTimer;
   List<Map<String, dynamic>> _doneBoxes = [];
+  List<Map<String, dynamic>> _traceTickets = [];
+  bool _traceTicketsLoading = false;
 
   static const _errLabel = {
     'BOXES_REQUIRED': '请至少录入一板复磅重量',
@@ -50,7 +52,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
     'BOX_PHOTO_REQUIRED': '每板须拍摄至少一张复磅照片',
     'PRODUCT_REQUIRED': '请选择入库产品',
     'ROUTING_REQUIRED': '该产品未配置入厂工艺，请先在工艺流程绑定',
-    'WEIGHT_MISMATCH': '分板合计超过票净重过多（允许超重 ±3% 或 5kg）',
+    'WEIGHT_MISMATCH': '分板合计超过合单净重过多（允许超重 ±3% 或 5kg）',
     'TRACE_CODE_REQUIRED': '缺少溯源码，无法建板',
     'VERIFY_REQUIRED': '请确认核对相符',
     'GATE_ACCEPT_REQUIRED': '请先完成入厂接收后再分板',
@@ -67,10 +69,10 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
     _productId = pid > 0 ? pid : null;
     _syncDoneBoxesFromTicket();
     if (_isBoxMode) {
-      _boxes.add(_BoxLine());
       _loadProducts();
       _restoreDraft();
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureTraceTickets());
   }
 
   @override
@@ -94,16 +96,23 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
   Object? get _bizId => _ticket['weigh_ticket_id'] ?? _ticket['biz_id'] ?? _ticket['id'];
 
   String get _draftKey {
+    final trace = (_ticket['trace_code'] ?? '').toString().trim();
+    if (_isBoxMode && trace.isNotEmpty) return 'trace-$trace';
     final id = _bizId;
     if (id != null && '$id'.trim().isNotEmpty && '$id' != '0') {
       return 'wt-$id';
     }
-    final trace = (_ticket['trace_code'] ?? '').toString().trim();
     if (trace.isNotEmpty) return trace;
     return '${_bizId ?? ''}';
   }
 
-  double get _ticketNet => (_ticket['net_weight'] as num?)?.toDouble() ?? 0;
+  double get _ticketNet {
+    final lot = (_ticket['trace_net_weight'] as num?)?.toDouble();
+    if (lot != null && lot > 0) return lot;
+    return (_ticket['net_weight'] as num?)?.toDouble() ?? 0;
+  }
+
+  int get _ticketCount => (_ticket['trace_ticket_count'] as num?)?.toInt() ?? 1;
 
   double get _boxedWeight => (_ticket['boxed_weight'] as num?)?.toDouble() ??
       _doneBoxes.fold<double>(0, (s, e) => s + ((e['weight'] as num?)?.toDouble() ?? 0));
@@ -174,7 +183,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
         if (_boxes[i].imageUrls.isEmpty) return '第 ${i + 1} 板须拍摄至少一张复磅照片';
       }
     }
-    if (!_weightOk) return '分板合计超过票净重过多（允许超重 ±3% 或 5kg）';
+    if (!_weightOk) return '分板合计超过合单净重过多（允许超重 ±3% 或 5kg）';
     return null;
   }
 
@@ -221,7 +230,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
       b.dispose();
     }
     _boxes.clear();
-    for (final e in rawBoxes) {
+    for (final e in rawBoxes.take(1)) {
       if (e is! Map) continue;
       final line = _BoxLine();
       line.weight.text = '${e['weight'] ?? ''}';
@@ -234,7 +243,6 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
       }
       _boxes.add(line);
     }
-    if (_boxes.isEmpty) _boxes.add(_BoxLine());
     setState(() {
       if (pid != null && pid > 0) _productId = pid;
     });
@@ -249,7 +257,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
   Future<void> _saveDraft() async {
     if (!_isBoxMode) return;
     final boxes = <Map<String, dynamic>>[];
-    for (final b in _boxes) {
+    for (final b in _boxes.take(1)) {
       boxes.add({
         'weight': b.weight.text.trim(),
         'image_urls': List<String>.from(b.imageUrls),
@@ -289,6 +297,14 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
   }
 
   void _addBox() {
+    if (_remaining <= 0) {
+      _prompt('剩余可分板重量为 0，无法继续分板');
+      return;
+    }
+    if (_boxes.isNotEmpty) {
+      _prompt('一次只分一板：请先提交本板入库后再继续');
+      return;
+    }
     setState(() => _boxes.add(_BoxLine()));
     _scheduleSaveDraft();
   }
@@ -408,16 +424,19 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
       return;
     }
     if (res.data is Map) await _mergeTicketFromResponse(res.data as Map);
+
+    final canContinue = _remaining > 0;
     for (final b in _boxes) {
       b.dispose();
     }
-    _boxes
-      ..clear()
-      ..add(_BoxLine());
+    _boxes.clear();
+    if (canContinue) _boxes.add(_BoxLine());
     await BoxStockinDraftStore.clear(_draftKey);
     setState(() {
       _step = 0;
-      _msg = '本批已入库 ${_ticket['batch_box_codes'] is List ? (res.data as Map)['batch_box_codes'] : ''}；可继续加板或完成本批';
+      _msg = canContinue
+          ? '本批已入库；可继续加板或完成本批'
+          : '本批已入库；剩余为 0，可完成本批分板';
       _msgIsError = false;
     });
     ScaffoldMessenger.of(context).showSnackBar(
@@ -426,8 +445,22 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
   }
 
   Future<void> _completeBatch() async {
-    final hasDraft = _boxes.any((b) =>
-        (double.tryParse(b.weight.text.trim()) ?? 0) > 0 || b.imageUrls.isNotEmpty);
+    if (_remaining > 0.00001) {
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('仍有未分板重量'),
+          content: Text('溯源码还有剩余可分重量 ${_remaining.toStringAsFixed(2)} kg。是否归入损耗并结束本批？'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, 'continue'), child: const Text('继续分板')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, 'loss'), child: const Text('归入损耗并结束')),
+          ],
+        ),
+      );
+      if (choice == null || choice != 'loss' || !mounted) return;
+    }
+
+    final hasDraft = _boxes.any((b) => (double.tryParse(b.weight.text.trim()) ?? 0) > 0 || b.imageUrls.isNotEmpty);
     if (hasDraft) {
       final choice = await showDialog<String>(
         context: context,
@@ -761,6 +794,32 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
     );
   }
 
+  Future<void> _ensureTraceTickets() async {
+    final trace = (_ticket['trace_code'] ?? '').toString().trim();
+    if (_ticketCount <= 1 || trace.isEmpty) return;
+    final raw = _ticket['trace_tickets'];
+    if (raw is List && raw.isNotEmpty) {
+      setState(() {
+        _traceTickets = raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      });
+      return;
+    }
+    setState(() => _traceTicketsLoading = true);
+    final res = await context.read<AuthState>().api.get(
+          '/purchase/weigh-tickets/by-trace?code=${Uri.encodeComponent(trace)}',
+        );
+    if (!mounted) return;
+    setState(() => _traceTicketsLoading = false);
+    if (!res.ok || res.data is! Map) return;
+    final data = res.data as Map;
+    final list = data['trace_tickets'];
+    if (list is List) {
+      setState(() {
+        _traceTickets = list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final imgs = _sitePhotos();
@@ -804,7 +863,40 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                       const SizedBox(height: 8),
                       _kv('单号', '${_ticket['doc_no'] ?? '-'}'),
                       _kv('溯源码', '${_ticket['trace_code'] ?? '-'}'),
-                      _kv('票净重', '${net.toStringAsFixed(2)} kg'),
+                      if (_ticketCount > 1) ...[
+                        const SizedBox(height: 10),
+                        const FormSectionHeader('合单明细'),
+                        if (_traceTicketsLoading)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 6),
+                            child: Text('加载中…', style: TextStyle(fontSize: 13, color: Colors.black54)),
+                          )
+                        else if (_traceTickets.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 6),
+                            child: Text('暂无合单明细', style: TextStyle(fontSize: 13, color: Colors.black54)),
+                          )
+                        else
+                          ..._traceTickets.map((t) {
+                            final docNo = t['doc_no'] ?? '-';
+                            final farmer = t['farmer_name'] ?? '-';
+                            final product = t['product_name'] ?? t['variety'] ?? '-';
+                            final net = t['net_weight'];
+                            final status = t['status'] ?? '-';
+                            return Card(
+                              margin: const EdgeInsets.only(top: 8),
+                              child: ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                title: Text('$docNo', style: const TextStyle(fontWeight: FontWeight.w600)),
+                                subtitle: Text('$farmer · $product\n净重 ${net ?? '-'} kg'),
+                                trailing: Text(status.toString()),
+                              ),
+                            );
+                          }),
+                      ],
+                      _kv(_ticketCount > 1 ? '合单净重' : '票净重', '${net.toStringAsFixed(2)} kg'),
+                      if (_ticketCount > 1) _kv('过磅车数', '$_ticketCount 车'),
                       _kv('已入库', '${boxed.toStringAsFixed(2)} kg（$_boxedQty 板）'),
                       _kv('本批草稿', '${draft.toStringAsFixed(2)} kg（${_boxes.length} 板）'),
                       _kv('入库产品', _productLabel),
@@ -848,6 +940,38 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                       if ((_ticket['product_name'] ?? _ticket['variety'] ?? '').toString().isNotEmpty)
                         _kv('品种', '${_ticket['product_name'] ?? _ticket['variety']}'),
                       _kv('溯源码', '${_ticket['trace_code'] ?? '-'}'),
+                      if (_ticketCount > 1) ...[
+                        const SizedBox(height: 8),
+                        const FormSectionHeader('合单明细'),
+                        if (_traceTicketsLoading)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 6),
+                            child: Text('加载中…', style: TextStyle(fontSize: 13, color: Colors.black54)),
+                          )
+                        else if (_traceTickets.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 6),
+                            child: Text('暂无合单明细', style: TextStyle(fontSize: 13, color: Colors.black54)),
+                          )
+                        else
+                          ..._traceTickets.map((t) {
+                            final docNo = t['doc_no'] ?? '-';
+                            final farmer = t['farmer_name'] ?? '-';
+                            final product = t['product_name'] ?? t['variety'] ?? '-';
+                            final net = t['net_weight'];
+                            final status = t['status'] ?? '-';
+                            return Card(
+                              margin: const EdgeInsets.only(top: 8),
+                              child: ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                title: Text('$docNo', style: const TextStyle(fontWeight: FontWeight.w600)),
+                                subtitle: Text('$farmer · $product\n净重 ${net ?? '-'} kg'),
+                                trailing: Text(status.toString()),
+                              ),
+                            );
+                          }),
+                      ],
                       _kv('批号', '${_ticket['batch_no'] ?? '-'}'),
                       if (_ticket['gross_weight'] != null) _kv('毛重', '${_ticket['gross_weight']} kg'),
                       _kv(
@@ -857,7 +981,8 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                             : '${_ticket['deduct_weight']} kg'
                                 '${_ticket['deduct_rate'] != null && '${_ticket['deduct_rate']}' != '' ? '（${_ticket['deduct_rate']}%）' : ''}',
                       ),
-                      _kv('票净重', '${_ticket['net_weight'] ?? '-'} kg'),
+                      _kv(_ticketCount > 1 ? '合单净重' : '票净重', '${_ticket['net_weight'] == null && net <= 0 ? '-' : '${net.toStringAsFixed(2)} kg'}'),
+                      if (_ticketCount > 1) _kv('过磅车数', '$_ticketCount 车'),
                       if ((_ticket['plate_no'] ?? '').toString().isNotEmpty) _kv('车牌', '${_ticket['plate_no']}'),
                       if (!_ready)
                         Padding(
@@ -869,6 +994,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                         ),
                       if (_isBoxMode) ...[
                         const FormSectionHeader('分板进度'),
+                        if (_ticketCount > 1) _kv('过磅车数', '$_ticketCount 车'),
                         _kv('已入库', '${boxed.toStringAsFixed(2)} kg / $_boxedQty 板'),
                         _kv('剩余可分', '${_remaining.toStringAsFixed(2)} kg'),
                         if (_doneBoxes.isNotEmpty) ...[
@@ -919,11 +1045,15 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                               value: _productId,
                               alignment: Alignment.centerRight,
                               hint: const Text('必选', textAlign: TextAlign.right),
-                              items: [
+                                items: [
                                 for (final p in _products)
                                   DropdownMenuItem(
                                     value: (p['id'] as num?)?.toInt(),
-                                    child: Text('${p['name'] ?? p['code'] ?? p['id']}', textAlign: TextAlign.right),
+                                    child: Text(
+                                      '${p['name'] ?? p['code'] ?? p['id']}'
+                                      '${p['category'] != null && '${p['category']}' != '' ? ' · ${p['category']}' : ''}',
+                                      textAlign: TextAlign.right,
+                                    ),
                                   ),
                               ],
                               onChanged: (v) {
@@ -936,7 +1066,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton.icon(
-                            onPressed: _addBox,
+                            onPressed: _busy ? null : (_remaining > 0 && _boxes.isEmpty ? _addBox : null),
                             icon: const Icon(Icons.add, size: 18),
                             label: const Text('加板'),
                           ),
@@ -1035,7 +1165,9 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
           else if (_step == 0)
             FormStickyActions(
               primaryLabel: '下一步',
-              onPrimary: _busy ? null : _goPreview,
+              onPrimary: (_busy || _boxes.isEmpty) ? null : _goPreview,
+              secondaryLabel: _boxedWeight > 0 ? '完成本批分板' : null,
+              onSecondary: _busy ? null : _completeBatch,
             )
           else
             SafeArea(

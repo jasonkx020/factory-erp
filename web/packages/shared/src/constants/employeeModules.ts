@@ -11,8 +11,8 @@ export const EMPLOYEE_MODULES: Array<{
   title: string
   desc: string
 }> = [
-  { key: 'station', title: '工序过站', desc: '扫工牌+板码，按 kg 领取/退库/进下道' },
-  { key: 'receiving', title: '过磅收货', desc: '农户过磅、质检、出码推仓' },
+  { key: 'station', title: '生产', desc: '扫工牌+板码，按 kg 领取/退库/进下道' },
+  { key: 'receiving', title: '采购', desc: '农户过磅、质检、出码推仓' },
   { key: 'warehouse', title: '仓管作业', desc: '待入库、库存、板码、盘点' },
   { key: 'workshop', title: '班组管理', desc: '班次、异常、返工派岗' },
   { key: 'mine', title: '我的', desc: '今日核对、假勤、工具与消息' },

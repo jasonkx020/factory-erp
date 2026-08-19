@@ -227,6 +227,19 @@ WHERE v.default_product_id IS NULL AND COALESCE(v.is_deleted,0)=0
     OR (v.code = 'WV-FG' AND p.code = 'FG-DICED')
   );
 
+-- 农户档案（过磅入厂搜索姓名/手机号）
+INSERT INTO pur_farmer(code, name, mobile, origin, trace_code, trace_code_prefix, status, remark, default_unit_price)
+VALUES
+ ('FM01', '黄桂生', '13807710001', '南宁武鸣', 'FM01', 'FM01', 'active', '开发种子·鲜薯入厂', 1.20),
+ ('FM02', '李秀兰', '13807710002', '南宁横州', 'FM02', 'FM02', 'active', '开发种子·鲜薯入厂', 1.18),
+ ('FM03', '韦建国', '13907710003', '南宁宾阳', 'FM03', 'FM03', 'active', '开发种子·鲜薯入厂', 1.22),
+ ('FM04', '覃金莲', '13707710004', '钦州灵山', 'FM04', 'FM04', 'active', '开发种子·鲜薯入厂', 1.15),
+ ('FM05', '陈木生', '13607710005', '北海合浦', 'FM05', 'FM05', 'active', '开发种子·鲜薯入厂', 1.25),
+ ('FM06', '农福田', '13507710006', '崇左扶绥', 'FM06', 'FM06', 'active', '开发种子·鲜薯入厂', 1.16),
+ ('FM07', '陆阿婆', '13407710007', '贵港桂平', 'FM07', 'FM07', 'active', '开发种子·鲜薯入厂', 1.10),
+ ('FM08', '门口过磅点', '13307710008', '厂区地磅', 'FM08', 'FM08', 'active', '开发种子·现场临时户', 1.20)
+ON CONFLICT (code) DO NOTHING;
+
 INSERT INTO prd_product_unit(product_id, unit_name, is_base, factor_to_base) VALUES
  (1, 'kg', 1, 1), (2, 'kg', 1, 1), (3, 'kg', 1, 1)
 ON CONFLICT DO NOTHING;
@@ -373,6 +386,7 @@ SELECT setval(pg_get_serial_sequence('pd_process', 'id'), COALESCE((SELECT MAX(i
 SELECT setval(pg_get_serial_sequence('pd_routing', 'id'), COALESCE((SELECT MAX(id) FROM pd_routing), 1));
 SELECT setval(pg_get_serial_sequence('pd_work_team', 'id'), COALESCE((SELECT MAX(id) FROM pd_work_team), 1));
 SELECT setval(pg_get_serial_sequence('prd_product', 'id'), COALESCE((SELECT MAX(id) FROM prd_product), 1));
+SELECT setval(pg_get_serial_sequence('pur_farmer', 'id'), COALESCE((SELECT MAX(id) FROM pur_farmer), 1));
 SELECT setval(pg_get_serial_sequence('pur_supplier', 'id'), COALESCE((SELECT MAX(id) FROM pur_supplier), 1));
 SELECT setval(pg_get_serial_sequence('pur_supplier_license', 'id'), COALESCE((SELECT MAX(id) FROM pur_supplier_license), 1));
 SELECT setval(pg_get_serial_sequence('pur_supplier_supply_item', 'id'), COALESCE((SELECT MAX(id) FROM pur_supplier_supply_item), 1));

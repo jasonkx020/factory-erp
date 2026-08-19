@@ -2,6 +2,7 @@ package biz
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -19,7 +20,7 @@ func (s *Services) stockInNewBoardFrom(old *boardState, warehouseID, processID, 
 	}
 	productID := old.ProductID
 	if productID <= 0 {
-		productID = 1
+		return "", 0, fmt.Errorf("PRODUCT_REQUIRED")
 	}
 	var farmerID int64
 	var trace, origin, receiveDate, sourceType string
@@ -27,6 +28,9 @@ func (s *Services) stockInNewBoardFrom(old *boardState, warehouseID, processID, 
 		FROM inv_box_code WHERE id=?`, old.ID).Scan(&farmerID, &trace, &origin, &receiveDate, &sourceType)
 	if trace == "" {
 		trace = old.Trace
+	}
+	if strings.TrimSpace(trace) == "" {
+		return "", 0, fmt.Errorf("TRACE_CODE_REQUIRED")
 	}
 	newCode = fmt.Sprintf("BX%d", time.Now().UnixNano()%1e12)
 	res, err := s.DB.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, parent_box_id,

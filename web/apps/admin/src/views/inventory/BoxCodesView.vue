@@ -19,8 +19,12 @@ const boxCols = computed<MobileCardColumn[]>(() => [
   { prop: 'status', label: '状态' },
   { prop: 'weight', label: '重量' },
   { prop: 'trace_code', label: '溯源码' },
-  { prop: 'product_id', label: '物料' },
+  { prop: 'product_name', label: '物料' },
+  { prop: 'product_category', label: '品类' },
 ])
+
+const productStock = ref<Row[]>([])
+const traceProgress = ref<Row[]>([])
 
 const loading = ref(false)
 const exporting = ref(false)
@@ -128,9 +132,11 @@ async function refresh() {
       ElMessage.error(res.msg)
       return
     }
-    const data = res.data as { list?: Row[]; total?: number }
+    const data = res.data as { list?: Row[]; total?: number; product_stock?: Row[]; trace_progress?: Row[] }
     list.value = data?.list || []
     total.value = Number(data?.total || list.value.length)
+    productStock.value = data?.product_stock || []
+    traceProgress.value = data?.trace_progress || []
     selected.value = []
     tableRef.value?.clearSelection()
     await buildAllQr()
@@ -139,9 +145,16 @@ async function refresh() {
   }
 }
 
+function productCategory(pid: unknown) {
+  const id = Number(pid)
+  const p = products.value.find((x) => Number(x.id) === id)
+  return p ? String(p.category || '-') : '-'
+}
+
 async function createBox() {
   if (!boxForm.code) return ElMessage.warning(`填写${codeLabel.value}`)
   if (!String(boxForm.trace_code || '').trim()) return ElMessage.warning(`${codeLabel.value}须绑定溯源码`)
+  if (!boxForm.product_id || boxForm.product_id <= 0) return ElMessage.warning('请选择物料品类')
   const res = await inventoryApi.createBox({ ...boxForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success(`${codeLabel.value}已建`)
@@ -313,13 +326,51 @@ onMounted(async () => {
 
 <template>
   <div v-loading="loading || exporting" :element-loading-text="exporting ? '正在生成 PDF…' : ''">
+    <el-card header="物料余量（按板码汇总）" class="mb">
+      <el-table :data="productStock" size="small" stripe empty-text="暂无板码库存">
+        <el-table-column prop="product_name" label="物料" min-width="120" />
+        <el-table-column prop="product_category" label="品类" width="100" />
+        <el-table-column prop="box_count" label="板数" width="80" />
+        <el-table-column label="剩余 kg" width="100">
+          <template #default="{ row }">{{ Number(row.remain_kg || 0).toFixed(2) }}</template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <el-card header="溯源分板进度" class="mb">
+      <el-table :data="traceProgress" size="small" stripe empty-text="暂无待分板溯源">
+        <el-table-column prop="trace_code" label="溯源码" min-width="140" />
+        <el-table-column prop="product_name" label="物料" width="100" />
+        <el-table-column prop="product_category" label="品类" width="90" />
+        <el-table-column prop="boxed_qty" label="已分板" width="80" />
+        <el-table-column label="合单净重" width="100">
+          <template #default="{ row }">{{ Number(row.lot_net_weight || 0).toFixed(2) }}</template>
+        </el-table-column>
+        <el-table-column label="剩余 kg" width="90">
+          <template #default="{ row }">{{ Number(row.remaining_weight || 0).toFixed(2) }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="90">
+          <template #default="{ row }">
+            <el-tag :type="row.complete ? 'success' : 'warning'" size="small">
+              {{ row.complete ? '已完成' : '进行中' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
     <el-card :header="`新建${codeLabel}`" class="mb">
       <el-form inline size="small">
         <el-form-item :label="codeLabel"><el-input v-model="boxForm.code" style="width:160px" /></el-form-item>
-        <el-form-item label="溯源码"><el-input v-model="boxForm.trace_code" style="width:160px" placeholder="必填" /></el-form-item>
-        <el-form-item label="物料">
-          <el-select v-model="boxForm.product_id" style="width:160px" filterable>
-            <el-option v-for="p in products" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
+        <el-form-item label="溯源码" required><el-input v-model="boxForm.trace_code" style="width:160px" placeholder="必填" /></el-form-item>
+        <el-form-item label="物料品类" required>
+          <el-select v-model="boxForm.product_id" style="width:200px" filterable placeholder="必选">
+            <el-option
+              v-for="p in products"
+              :key="String(p.id)"
+              :label="`${p.name}${p.category ? ' · ' + p.category : ''}`"
+              :value="Number(p.id)"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="仓库"><WarehouseSelect v-model="boxForm.warehouse_id" /></el-form-item>
@@ -413,7 +464,10 @@ onMounted(async () => {
             </template>
           </el-table-column>
           <el-table-column label="物料" min-width="120">
-            <template #default="{ row }">{{ productName(row.product_id) }}</template>
+            <template #default="{ row }">{{ row.product_name || productName(row.product_id) }}</template>
+          </el-table-column>
+          <el-table-column label="品类" width="100">
+            <template #default="{ row }">{{ row.product_category || productCategory(row.product_id) }}</template>
           </el-table-column>
           <el-table-column prop="warehouse_id" label="仓" width="70" />
           <el-table-column prop="weight" label="重量" width="80" />

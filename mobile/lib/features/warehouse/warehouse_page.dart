@@ -38,6 +38,7 @@ class _WarehousePageState extends State<WarehousePage> {
   late WarehouseSection _section;
   List<dynamic> _tasks = [];
   List<dynamic> _balances = [];
+  List<dynamic> _balanceByProduct = [];
   List<dynamic> _boxes = [];
   List<dynamic> _stocktakes = [];
   List<dynamic> _products = [];
@@ -241,20 +242,45 @@ class _WarehousePageState extends State<WarehousePage> {
         return;
       }
       final list = ApiClient.listOf(res.data);
-      _tasks = list
+      _tasks = _dedupeWarehouseTasks(list
           .where((t) =>
               t is Map &&
               (t['event_key'] == 'purchase.weigh_confirmed' ||
                   t['event_key'] == 'purchase.await_stockin' ||
                   t['to_role'] == 'warehouse'))
-          .toList();
+          .toList());
     });
+  }
+
+  List<dynamic> _dedupeWarehouseTasks(List<dynamic> list) {
+    final seen = <String>{};
+    final out = <dynamic>[];
+    for (final e in list) {
+      if (e is! Map) continue;
+      final p = NotifyService.parsePayload(e['payload'] ?? e['payload_json']);
+      final ek = (e['event_key'] ?? '').toString();
+      if (ek == 'purchase.await_stockin') {
+        final trace = (e['trace_code'] ?? p['trace_code'] ?? '').toString().trim().toUpperCase();
+        if (trace.isNotEmpty) {
+          if (seen.contains(trace)) continue;
+          seen.add(trace);
+        }
+      }
+      out.add(e);
+    }
+    return out;
   }
 
   Future<void> _loadBalances() async {
     final res = await context.read<AuthState>().api.get('/inventory/balances?page_size=100');
     if (!mounted) return;
-    if (res.ok) setState(() => _balances = ApiClient.listOf(res.data));
+    if (res.ok && res.data is Map) {
+      final m = Map<String, dynamic>.from(res.data as Map);
+      setState(() {
+        _balances = ApiClient.listOf(m);
+        _balanceByProduct = m['by_product'] is List ? List<dynamic>.from(m['by_product'] as List) : [];
+      });
+    }
     await _loadAlerts();
   }
 
@@ -827,8 +853,17 @@ class _WarehousePageState extends State<WarehousePage> {
                   ],
                 ),
                 subtitle: Text(
-                  '溯源 $trace · 净重 ${p['net_weight'] ?? '-'}kg'
-                  '${(p['variety'] ?? p['product_name']) != null ? ' · ${p['variety'] ?? p['product_name']}' : ''}',
+                  () {
+                    final net = p['trace_net_weight'] ?? p['net_weight'] ?? '-';
+                    final n = p['ticket_count'] ?? p['trace_ticket_count'];
+                    final boxes = p['boxed_qty'];
+                    final buf = StringBuffer('溯源 $trace · 净重 ${net}kg');
+                    if (n is num && n > 1) buf.write(' · ${n.toInt()} 车');
+                    if (boxes is num) buf.write(' · 已分 ${boxes.toInt()} 板');
+                    final v = p['variety'] ?? p['product_name'];
+                    if (v != null) buf.write(' · $v');
+                    return buf.toString();
+                  }(),
                 ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => _openVerifyFromTask(t),
@@ -866,7 +901,9 @@ class _WarehousePageState extends State<WarehousePage> {
                 _boxTrace!['error'] != null
                     ? '${_boxTrace!['error']}'
                     : '码 ${_boxTrace!['code'] ?? _boxQuery.text}\n'
-                        '品 ${_boxTrace!['product_name'] ?? _boxTrace!['product_id'] ?? ''}\n'
+                        '溯源 ${_boxTrace!['trace_code'] ?? '-'}\n'
+                        '品 ${_boxTrace!['product_name'] ?? _boxTrace!['product_id'] ?? ''}'
+                        '${_boxTrace!['product_category'] != null && '${_boxTrace!['product_category']}' != '' ? ' · ${_boxTrace!['product_category']}' : ''}\n'
                         '状态 ${_boxTrace!['status'] ?? ''}\n'
                         '重量 ${_boxTrace!['weight'] ?? _boxTrace!['qty'] ?? ''}',
               ),
@@ -927,6 +964,21 @@ class _WarehousePageState extends State<WarehousePage> {
                   typ == 'shortage' ? '下限 ${m['min_qty']}' : '上限 ${m['max_qty']}',
                   style: const TextStyle(fontSize: 12),
                 ),
+              ),
+            );
+          }),
+          const Divider(height: 24),
+          const Text('物料汇总（按品类）', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          if (_balanceByProduct.isEmpty) const Text('暂无汇总', style: TextStyle(color: Colors.black54)),
+          ..._balanceByProduct.map((e) {
+            final m = Map<String, dynamic>.from(e as Map);
+            return Card(
+              color: Colors.blue.shade50,
+              child: ListTile(
+                title: Text('${m['product_name'] ?? m['product_id'] ?? ''}'),
+                subtitle: Text('${m['warehouse_count'] ?? '-'} 个仓'),
+                trailing: Text('${m['qty'] ?? 0} kg', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               ),
             );
           }),

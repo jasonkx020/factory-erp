@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/auth_state.dart';
+import '../../core/notify_service.dart';
 import '../receiving/gate_inbound_prefs.dart';
 import '../receiving/weigh_ticket_local_store.dart';
 import '../warehouse/box_stockin_draft.dart';
 
-/// 个人账户：改密 + 第三方绑定占位
+/// 设置：改密、缓存与备份、退出登录
 class AccountCenterPage extends StatefulWidget {
   const AccountCenterPage({super.key});
 
@@ -21,6 +22,109 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
   String _msg = '';
   bool _busy = false;
   List<dynamic> _providers = [];
+
+  Future<void> _openChangePasswordDialog() async {
+    _oldPwd.clear();
+    _newPwd.clear();
+    _confirmPwd.clear();
+
+    String dialogMsg = '';
+    bool dialogBusy = false;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('修改密码'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (dialogMsg.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      dialogMsg,
+                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    ),
+                  ),
+                TextField(
+                  controller: _oldPwd,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: '旧密码', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _newPwd,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: '新密码', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _confirmPwd,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: '确认新密码', border: OutlineInputBorder()),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: dialogBusy ? null : () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: dialogBusy
+                  ? null
+                  : () async {
+                      final oldP = _oldPwd.text;
+                      final newP = _newPwd.text;
+                      final conf = _confirmPwd.text;
+
+                      if (oldP.isEmpty || newP.isEmpty) {
+                        setDialogState(() => dialogMsg = '请填写旧密码与新密码');
+                        return;
+                      }
+                      if (newP != conf) {
+                        setDialogState(() => dialogMsg = '两次新密码不一致');
+                        return;
+                      }
+
+                      setDialogState(() {
+                        dialogBusy = true;
+                        dialogMsg = '';
+                      });
+
+                      final r = await context.read<AuthState>().api.post('/auth/password/change', {
+                        'old_password': oldP,
+                        'new_password': newP,
+                      });
+                      if (!mounted) return;
+
+                      setDialogState(() => dialogBusy = false);
+                      if (!r.ok) {
+                        setDialogState(() => dialogMsg = r.msg);
+                        return;
+                      }
+
+                      _oldPwd.clear();
+                      _newPwd.clear();
+                      _confirmPwd.clear();
+                      if (!mounted) return;
+                      Navigator.pop(ctx, true);
+                    },
+              child: Text(dialogBusy ? '处理中…' : '保存新密码'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (ok == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('密码已修改，请使用新密码登录')));
+    }
+  }
 
   @override
   void initState() {
@@ -139,13 +243,29 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('本机过磅备份已清除')));
   }
 
+  Future<void> _logout() async {
+    final ok = await _confirm('退出登录', '确定要退出当前账号吗？');
+    if (!ok || !mounted) return;
+    final notify = context.read<NotifyService>();
+    final auth = context.read<AuthState>();
+    await notify.stop();
+    await auth.logout();
+    if (!mounted) return;
+    // 退出后把路由栈弹回到根路由（MaterialApp 的 home Consumer 会接管重绘到登录/主壳）。
+    // 这样可以避免“手动 push 了 LoginPage 后，再次登录切不到主壳”的问题。
+    while (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('账户')),
+      appBar: AppBar(title: const Text('设置')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
           Card(
             child: ListTile(
@@ -157,29 +277,13 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
             ),
           ),
           const SizedBox(height: 16),
-          const Text('修改密码', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _oldPwd,
-            obscureText: true,
-            decoration: const InputDecoration(labelText: '旧密码', border: OutlineInputBorder()),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _newPwd,
-            obscureText: true,
-            decoration: const InputDecoration(labelText: '新密码', border: OutlineInputBorder()),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _confirmPwd,
-            obscureText: true,
-            decoration: const InputDecoration(labelText: '确认新密码', border: OutlineInputBorder()),
-          ),
-          const SizedBox(height: 12),
-          FilledButton(
-            onPressed: _busy ? null : _changePassword,
-            child: Text(_busy ? '提交中…' : '保存新密码'),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.lock_outline),
+            title: const Text('修改密码'),
+            subtitle: const Text('在弹窗中输入旧/新密码'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _openChangePasswordDialog,
           ),
           const Divider(height: 32),
           const Text('缓存与备份', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
@@ -228,6 +332,16 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
               padding: const EdgeInsets.only(top: 12),
               child: Text(_msg, style: TextStyle(color: _msg.contains('已') || _msg.contains('成功') ? Colors.teal : Colors.orange.shade800)),
             ),
+          const Divider(height: 32),
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: scheme.error,
+              side: BorderSide(color: scheme.error),
+              minimumSize: const Size.fromHeight(48),
+            ),
+            onPressed: _logout,
+            child: const Text('退出登录'),
+          ),
         ],
       ),
     );

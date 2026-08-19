@@ -37,7 +37,7 @@ const weighTicketKinds = [
   CreatableTicketKind(
     code: 'farm_inbound',
     title: '过磅入厂',
-    subtitle: '与「过磅收货·入厂」同一套向导',
+    subtitle: '与「采购·入厂」同一套向导',
     receiveKind: 'gate',
   ),
 ];

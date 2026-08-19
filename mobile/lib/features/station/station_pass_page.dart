@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
 import '../../core/carrier_code_labels.dart';
 import '../../core/notify_service.dart';
@@ -15,7 +16,7 @@ enum StationPassMode { home, self, proxy, close }
 
 enum StationBoardAction { issue, ret, stockIn }
 
-/// 工序过站：指定工序后扫工牌+载体码，按 kg 领取 / 退库 / 入库换码。
+/// 生产：指定工序后扫工牌+载体码，按 kg 领取 / 退库 / 入库换码。
 class StationPassPage extends StatefulWidget {
   const StationPassPage({
     super.key,
@@ -44,11 +45,14 @@ class _StationPassPageState extends State<StationPassPage> {
   Map<String, dynamic>? _preview;
   List<Map<String, dynamic>> _processes = [];
   int? _processId;
+  int? _stockInProductId;
+  List<Map<String, dynamic>> _products = [];
 
   String get _codeLabel => context.read<CarrierCodeLabels>().code;
 
   Map<String, String> get _errLabel => {
     'TRACE_CODE_REQUIRED': '该$_codeLabel缺少溯源码，无法领取',
+    'PRODUCT_REQUIRED': '请选择物料品类',
     'BOARD_FINISHED': '该$_codeLabel已完工，不能再操作',
     'QTY_EXCEEDS_AVAILABLE': '领取重量超过$_codeLabel可领',
     'QTY_EXCEEDS_OCCUPANCY': '退库重量超过本人占用',
@@ -150,6 +154,34 @@ class _StationPassPageState extends State<StationPassPage> {
         break;
       }
     }
+  }
+
+  Future<void> _loadProducts() async {
+    final res = await context.read<AuthState>().api.get('/product/products?page_size=200');
+    if (!mounted || !res.ok) return;
+    final list = ApiClient.listOf(res.data);
+    final maps = <Map<String, dynamic>>[];
+    for (final e in list) {
+      if (e is Map) maps.add(Map<String, dynamic>.from(e));
+    }
+    setState(() {
+      _products = maps;
+      if (_stockInProductId == null && maps.isNotEmpty) {
+        _stockInProductId = (maps.first['id'] as num?)?.toInt();
+      }
+    });
+  }
+
+  String _productLabel(int? id) {
+    if (id == null) return '-';
+    for (final p in _products) {
+      if ((p['id'] as num?)?.toInt() == id) {
+        final cat = p['category'];
+        final name = '${p['name'] ?? p['code'] ?? id}';
+        return cat != null && '$cat'.isNotEmpty ? '$name · $cat' : name;
+      }
+    }
+    return '$id';
   }
 
   void _fillSelfBadgeIfNeeded() {
@@ -291,7 +323,10 @@ class _StationPassPageState extends State<StationPassPage> {
       _step = 1;
       _msg = '';
       _msgIsError = false;
+      final pid = (data['product_id'] as num?)?.toInt();
+      _stockInProductId = pid != null && pid > 0 ? pid : _stockInProductId;
     });
+    if (_products.isEmpty) _loadProducts();
   }
 
   String get _actionPath {
@@ -316,6 +351,9 @@ class _StationPassPageState extends State<StationPassPage> {
     final body = _baseBody();
     if (_action == StationBoardAction.stockIn) {
       body['move_kind'] = 'stock_in';
+      if (_stockInProductId != null && _stockInProductId! > 0) {
+        body['product_id'] = _stockInProductId;
+      }
     }
     return body;
   }
@@ -442,12 +480,12 @@ class _StationPassPageState extends State<StationPassPage> {
 
   String get _pageTitle {
     final base = _mode == StationPassMode.self
-        ? '本人过站'
+        ? '本人领料'
         : _mode == StationPassMode.proxy
-            ? '代人过站'
+            ? '代人领料'
             : _mode == StationPassMode.close
                 ? '板结束'
-                : '工序过站';
+                : '生产';
     if (_mode != StationPassMode.home && _step == 1) {
       return _isClose ? '$base · 核对余量' : '$base · 领料';
     }
@@ -497,7 +535,7 @@ class _StationPassPageState extends State<StationPassPage> {
     return ListView(
       padding: EdgeInsets.fromLTRB(16, widget.asTab ? 40 : 16, 16, 16),
       children: [
-        const Text('工序过站', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+        const Text('生产', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
         const SizedBox(height: 4),
         Text('先选工序，扫$code后按 kg 领取、退库或入库换码', style: const TextStyle(fontSize: 13, color: Colors.black54)),
         if (_msg.isNotEmpty) ...[
@@ -516,13 +554,13 @@ class _StationPassPageState extends State<StationPassPage> {
         const SizedBox(height: 8),
         HubEntryTile(
           icon: Icons.person_outline,
-          title: '本人过站',
+          title: '本人领料',
           subtitle: '锁定本人工牌，指定工序后扫$code领取/退库/入库',
           onTap: () => _openMode(StationPassMode.self),
         ),
         HubEntryTile(
           icon: Icons.group_outlined,
-          title: '代人过站',
+          title: '代人领料',
           subtitle: '指定工序，手输或扫描他人工牌后再扫$code',
           onTap: () => _openMode(StationPassMode.proxy),
         ),
@@ -638,12 +676,12 @@ class _StationPassPageState extends State<StationPassPage> {
           onChanged: (v) => setState(() => _processId = v),
         ),
       ),
-      const FormSectionHeader('过站人'),
+      const FormSectionHeader('领料人'),
       if (_mode == StationPassMode.self)
         FormRow.text(
           label: '工牌',
           controller: _badge,
-          hint: (context.read<AuthState>().badgeCode ?? '').trim().isEmpty ? '未绑定工牌（将按当前用户过站）' : '本人工牌（不可改）',
+          hint: (context.read<AuthState>().badgeCode ?? '').trim().isEmpty ? '未绑定工牌（将按当前用户领料）' : '本人工牌（不可改）',
           readOnly: true,
         )
       else
@@ -696,7 +734,9 @@ class _StationPassPageState extends State<StationPassPage> {
         const FormSectionHeader('材料'),
         _previewRow(code, _box.text.trim().isEmpty ? '${p['board_code'] ?? '-'}' : _box.text.trim(), emphasize: true),
         _previewRow('溯源码', '${p['trace_code'] ?? '-'}', emphasize: true),
-        _previewRow('模式', forOther ? '代人过站' : '本人过站'),
+        if ((p['product_name'] ?? '').toString().isNotEmpty)
+          _previewRow('物料', '${p['product_name']}${p['product_category'] != null && '${p['product_category']}' != '' ? ' · ${p['product_category']}' : ''}'),
+        _previewRow('模式', forOther ? '代人领料' : '本人领料'),
         _previewRow('工牌', passerText.isEmpty ? '当前用户（未填工牌）' : passerText),
         _previewRow('指定工序', stepName),
         _previewRow('$code可领(kg)', _fmtKg(p['available_kg'])),
@@ -731,6 +771,33 @@ class _StationPassPageState extends State<StationPassPage> {
           ],
         ),
         const SizedBox(height: 8),
+        if (_action == StationBoardAction.stockIn) ...[
+          FormRow(
+            label: '入库物料',
+            requiredMark: true,
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<int>(
+                isExpanded: true,
+                value: _stockInProductId,
+                alignment: Alignment.centerRight,
+                hint: const Text('必选', textAlign: TextAlign.right),
+                items: [
+                  for (final p in _products)
+                    DropdownMenuItem(
+                      value: (p['id'] as num?)?.toInt(),
+                      child: Text(
+                        '${p['name'] ?? p['code'] ?? p['id']}'
+                        '${p['category'] != null && '${p['category']}' != '' ? ' · ${p['category']}' : ''}',
+                        textAlign: TextAlign.right,
+                      ),
+                    ),
+                ],
+                onChanged: (v) => setState(() => _stockInProductId = v),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
         FormRow.text(
           label: '重量(kg)',
           controller: _kg,

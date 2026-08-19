@@ -15,6 +15,7 @@ func EnsureDemoData(db *sql.DB) {
 	if db == nil {
 		return
 	}
+	ensureDemoFarmers(db)
 	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT)`)
 	var ver string
 	_ = db.QueryRow(`SELECT value FROM schema_meta WHERE key='demo_showcase_version'`).Scan(&ver)
@@ -344,23 +345,28 @@ func seedDemoPurchase(db *sql.DB, today, now string) {
 	_, _ = db.Exec(`INSERT INTO pur_supplier_price_history(supplier_id, product_id, price, biz_date)
 		SELECT 1, 1, 1.78, date('now','-30 day') WHERE NOT EXISTS (SELECT 1 FROM pur_supplier_price_history WHERE supplier_id=1 AND product_id=1 AND price=1.78)`)
 
+	farmerID := demoID(db, `SELECT id FROM pur_farmer WHERE code='FM01'`)
+	if farmerID == 0 {
+		farmerID = 1
+	}
+
 	// 清理旧流程演示单（draft/待确认出码等），新流程仅保留已生效演示
 	_, _ = db.Exec(`DELETE FROM pur_trace_lot WHERE weigh_ticket_id IN (SELECT id FROM pur_weigh_ticket WHERE doc_no IN ('DEMO-WT-002') OR (doc_no LIKE 'DEMO-%' AND status IN ('draft','pending_confirm','qc_pending','qc_pass')))`)
 	_, _ = db.Exec(`DELETE FROM pur_farmer_settlement WHERE weigh_ticket_id IN (SELECT id FROM pur_weigh_ticket WHERE doc_no='DEMO-WT-002')`)
 	_, _ = db.Exec(`DELETE FROM pur_weigh_ticket WHERE doc_no='DEMO-WT-002' OR (doc_no LIKE 'DEMO-%' AND status IN ('draft','pending_confirm','qc_pending','qc_pass'))`)
 	_, _ = db.Exec(`INSERT INTO pur_weigh_ticket(doc_no, farmer_id, product_id, gross_weight, deduct_weight, net_weight, qc_result, status, biz_date, remark, receive_kind, batch_no, trace_code) VALUES
- ('DEMO-WT-001', 1, 1, 12500, 2500, 10000, 'pass', 'weighed', ?, '过磅收货演示（批号即溯源码已绑定）', 'gate', 'DEMO-B001', 'DEMO-B001')`, today)
+ ('DEMO-WT-001', ?, 1, 12500, 2500, 10000, 'pass', 'weighed', ?, '过磅收货演示（批号即溯源码已绑定）', 'gate', 'DEMO-B001', 'DEMO-B001')`, farmerID, today)
 	wt1 := demoID(db, `SELECT id FROM pur_weigh_ticket WHERE doc_no='DEMO-WT-001'`)
 
 	_, _ = db.Exec(`INSERT INTO pur_farmer_settlement(doc_no, farmer_id, weigh_ticket_id, biz_date, net_weight, unit_price, amount, status, remark) VALUES
- ('DEMO-FS-001', 1, ?, ?, 10000, 1.85, 18500, 'paid', '农户结算演示')`, nullIf0(wt1), today)
+ ('DEMO-FS-001', ?, ?, ?, 10000, 1.85, 18500, 'paid', '农户结算演示')`, farmerID, nullIf0(wt1), today)
 
 	_, _ = db.Exec(`INSERT INTO pur_inbound_arrival(doc_no, farmer_id, origin, variety, estimate_weight, status, biz_date, remark) VALUES
- ('DEMO-ARR-001', 1, '广西武鸣', '鲜木薯', 10000, 'confirmed', ?, '到货登记演示')`, today)
+ ('DEMO-ARR-001', ?, '广西武鸣', '鲜木薯', 10000, 'confirmed', ?, '到货登记演示')`, farmerID, today)
 
 	_, _ = db.Exec(`DELETE FROM pur_trace_lot WHERE trace_code IN ('LOT-DEMO-001','DEMO-B001')`)
 	_, _ = db.Exec(`INSERT INTO pur_trace_lot(trace_code, biz_date, batch_no, farmer_id, grade, weigh_ticket_id, net_weight, payload_canonical, signature, status) VALUES
- ('DEMO-B001', ?, 'DEMO-B001', 1, 'A', ?, 10000, '{"demo":true,"bind":"batch_as_trace"}', 'demo-sig', 'open')`, today, nullIf0(wt1))
+ ('DEMO-B001', ?, 'DEMO-B001', ?, 'A', ?, 10000, '{"demo":true,"bind":"batch_as_trace"}', 'demo-sig', 'open')`, today, farmerID, nullIf0(wt1))
 }
 
 func seedDemoProduction(db *sql.DB, today, now string) {
@@ -841,4 +847,34 @@ func seedDemoReport(db *sql.DB, today, now string) {
  ('daily', ?, ?)`, today, payload)
 	_, _ = db.Exec(`INSERT INTO rpt_report_snapshot(report_code, biz_date, payload_json) VALUES
  ('enterprise_overview', ?, ?)`, today, fmt.Sprintf(`{"sales_orders":3,"generated_at":%q}`, now))
+}
+
+func ensureDemoFarmers(db *sql.DB) {
+	if db == nil {
+		return
+	}
+	_, err := db.Exec(`INSERT INTO pur_farmer(code, name, mobile, origin, trace_code, trace_code_prefix, status, remark, default_unit_price)
+VALUES
+ ('FM01', '黄桂生', '13807710001', '南宁武鸣', 'FM01', 'FM01', 'active', '开发种子·鲜薯入厂', 1.20),
+ ('FM02', '李秀兰', '13807710002', '南宁横州', 'FM02', 'FM02', 'active', '开发种子·鲜薯入厂', 1.18),
+ ('FM03', '韦建国', '13907710003', '南宁宾阳', 'FM03', 'FM03', 'active', '开发种子·鲜薯入厂', 1.22),
+ ('FM04', '覃金莲', '13707710004', '钦州灵山', 'FM04', 'FM04', 'active', '开发种子·鲜薯入厂', 1.15),
+ ('FM05', '陈木生', '13607710005', '北海合浦', 'FM05', 'FM05', 'active', '开发种子·鲜薯入厂', 1.25),
+ ('FM06', '农福田', '13507710006', '崇左扶绥', 'FM06', 'FM06', 'active', '开发种子·鲜薯入厂', 1.16),
+ ('FM07', '陆阿婆', '13407710007', '贵港桂平', 'FM07', 'FM07', 'active', '开发种子·鲜薯入厂', 1.10),
+ ('FM08', '门口过磅点', '13307710008', '厂区地磅', 'FM08', 'FM08', 'active', '开发种子·现场临时户', 1.20)
+ON CONFLICT (code) DO NOTHING`)
+	if err != nil {
+		_, _ = db.Exec(`INSERT INTO pur_farmer(code, name, mobile, origin, trace_code, trace_code_prefix, status, remark)
+VALUES
+ ('FM01', '黄桂生', '13807710001', '南宁武鸣', 'FM01', 'FM01', 'active', '开发种子·鲜薯入厂'),
+ ('FM02', '李秀兰', '13807710002', '南宁横州', 'FM02', 'FM02', 'active', '开发种子·鲜薯入厂'),
+ ('FM03', '韦建国', '13907710003', '南宁宾阳', 'FM03', 'FM03', 'active', '开发种子·鲜薯入厂'),
+ ('FM04', '覃金莲', '13707710004', '钦州灵山', 'FM04', 'FM04', 'active', '开发种子·鲜薯入厂'),
+ ('FM05', '陈木生', '13607710005', '北海合浦', 'FM05', 'FM05', 'active', '开发种子·鲜薯入厂'),
+ ('FM06', '农福田', '13507710006', '崇左扶绥', 'FM06', 'FM06', 'active', '开发种子·鲜薯入厂'),
+ ('FM07', '陆阿婆', '13407710007', '贵港桂平', 'FM07', 'FM07', 'active', '开发种子·鲜薯入厂'),
+ ('FM08', '门口过磅点', '13307710008', '厂区地磅', 'FM08', 'FM08', 'active', '开发种子·现场临时户')
+ON CONFLICT (code) DO NOTHING`)
+	}
 }

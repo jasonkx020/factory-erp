@@ -37,11 +37,11 @@ enum WorkbenchRole {
 String workbenchRoleLabel(WorkbenchRole r) {
   switch (r) {
     case WorkbenchRole.receiving:
-      return '过磅收货';
+      return '采购';
     case WorkbenchRole.warehouse:
       return '仓管作业';
     case WorkbenchRole.worker:
-      return '工序过站';
+      return '生产';
     case WorkbenchRole.workshop:
       return '班组管理';
     case WorkbenchRole.sales:

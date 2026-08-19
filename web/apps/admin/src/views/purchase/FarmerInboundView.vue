@@ -945,6 +945,7 @@ watch(
               <el-table-column label="状态" width="90">
                 <template #default="{ row }">{{ weighTicketStatusLabel(row) }}</template>
               </el-table-column>
+              <el-table-column label="操作" width="80" fixed="right">
                 <template #default="{ row }">
                   <el-button link type="primary" @click.stop="selectTraceTicket(row)">倒查</el-button>
                 </template>

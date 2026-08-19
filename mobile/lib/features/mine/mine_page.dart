@@ -5,7 +5,6 @@ import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
 import '../../core/carrier_code_labels.dart';
 import '../../core/employee_modules.dart';
-import '../../core/notify_service.dart';
 import '../hr/hr_onboard_page.dart';
 import 'account_center_page.dart';
 import 'badge_show_page.dart';
@@ -39,129 +38,238 @@ class _MinePageState extends State<MinePage> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final displayName = auth.name?.isNotEmpty == true ? auth.name! : (auth.loginName ?? '-');
+    final roleText = auth.roles.isEmpty ? '未分配角色' : auth.roles.join(' / ');
     return Scaffold(
       appBar: widget.asTab
-          ? null
+          ? AppBar(toolbarHeight: 0, elevation: 0, scrolledUnderElevation: 0)
           : AppBar(
               title: Text('我的 · ${auth.name ?? auth.loginName ?? ''}'),
               actions: [
                 IconButton(
-                  tooltip: '账户',
+                  tooltip: '设置',
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const AccountCenterPage()),
                   ),
-                  icon: const Icon(Icons.manage_accounts_outlined),
-                ),
-                TextButton(
-                  onPressed: () async {
-                    await context.read<NotifyService>().stop();
-                    await auth.logout();
-                  },
-                  child: const Text('退出'),
+                  icon: const Icon(Icons.settings_outlined),
                 ),
               ],
             ),
       body: ListView(
-        padding: EdgeInsets.fromLTRB(16, widget.asTab ? 40 : 16, 16, 16),
+        padding: EdgeInsets.fromLTRB(16, widget.asTab ? 40 : 16, 16, 24),
         children: [
-          if (widget.asTab)
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () async {
-                  await context.read<NotifyService>().stop();
-                  await auth.logout();
-                },
-                child: const Text('退出'),
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              gradient: LinearGradient(
+                colors: [
+                  scheme.primaryContainer,
+                  scheme.primaryContainer.withValues(alpha: 0.78),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
             ),
-          Card(
-            color: Colors.teal.shade50,
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('今日产量与工钱', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 8),
-                  Text('¥${_dailyWage?['total_amount'] ?? 0}', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
-                  Text('完工 ${_dailyWage?['total_output_weight'] ?? _dailyWage?['total_qty'] ?? 0} kg'),
-                  const SizedBox(height: 8),
-                  OutlinedButton(onPressed: _loadDailyWage, child: const Text('刷新核对')),
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 28,
+                        backgroundColor: scheme.onPrimaryContainer.withValues(alpha: 0.12),
+                        child: Icon(Icons.person, size: 30, color: scheme.onPrimaryContainer),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              displayName,
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: scheme.onPrimaryContainer,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              auth.loginName?.isNotEmpty == true ? auth.loginName! : '未绑定登录名',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: scheme.onPrimaryContainer.withValues(alpha: 0.78),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      FilledButton.tonalIcon(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const AccountCenterPage()),
+                        ),
+                        icon: const Icon(Icons.settings_outlined, size: 18),
+                        label: const Text('设置'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _infoChip(Icons.badge_outlined, '员工ID ${auth.employeeId > 0 ? auth.employeeId : '-'}', scheme),
+                      _infoChip(Icons.verified_user_outlined, roleText, scheme),
+                    ],
+                  ),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 12),
           Card(
-            child: ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.person)),
-              title: Text(auth.name?.isNotEmpty == true ? auth.name! : (auth.loginName ?? '-')),
-              subtitle: Text('员工ID ${auth.employeeId} · 角色 ${auth.roles.join(', ')}'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AccountCenterPage()),
+            color: Colors.teal.shade50,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.payments_outlined, color: scheme.primary),
+                      const SizedBox(width: 8),
+                      const Text('今日产量与工钱', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    '¥${_dailyWage?['total_amount'] ?? 0}',
+                    style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '完工 ${_dailyWage?['total_output_weight'] ?? _dailyWage?['total_qty'] ?? 0} kg',
+                    style: theme.textTheme.bodyMedium?.copyWith(color: Colors.black87),
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      onPressed: _loadDailyWage,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('刷新核对'),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
           const SizedBox(height: 12),
-          const Text('常用', style: TextStyle(fontWeight: FontWeight.bold)),
+          _sectionTitle('常用功能'),
           const SizedBox(height: 8),
-          _entry(Icons.badge_outlined, '我的工牌', '出示工牌二维码供过站扫码', () {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BadgeShowPage()));
-          }),
-          _entry(Icons.menu_book_outlined, '资料中心', '知识库 / 图纸 / 公告', () {
-            Navigator.of(context).pushNamed('/knowledge');
-          }),
-          _entry(Icons.fingerprint, '打卡', '上下班打卡 / 今日计件核对', () {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const _PunchPage()));
-          }),
-          _entry(Icons.event_busy, '假勤', '请假 / 加班补卡', () {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const _LeaveOtPage()));
-          }),
-          _entry(Icons.fact_check, '审批', '审批待办', () {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const _ApprovalPage()));
-          }),
-          _entry(Icons.account_balance_wallet, '工资', '计件 / 工资单 / 提成（只读）', () {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const _PayPage()));
-          }),
-          _entry(Icons.edit_note, '日志备忘', '员工日志与个人备忘录', () {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const _NotesPage()));
-          }),
-          _entry(Icons.handyman_outlined, '物料工具', '申请领取 / 归还', () {
-            Navigator.of(context).pushNamed('/tools');
-          }),
-          if (auth.canHrOnboard)
-            _entry(Icons.person_add_alt_1, '人事开户', '新建员工档案并开登录账号', () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HrOnboardPage()));
+          _sectionCard([
+            _entry(Icons.badge_outlined, '我的工牌', '出示工牌二维码供过站扫码', () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BadgeShowPage()));
             }),
+            _entry(Icons.fingerprint, '打卡', '上下班打卡 / 今日计件核对', () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const _PunchPage()));
+            }),
+            _entry(Icons.event_busy, '假勤', '请假 / 加班补卡', () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const _LeaveOtPage()));
+            }),
+            _entry(Icons.fact_check, '审批', '审批待办', () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const _ApprovalPage()));
+            }),
+            _entry(Icons.account_balance_wallet, '工资', '计件 / 工资单 / 提成（只读）', () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const _PayPage()));
+            }),
+            _entry(Icons.edit_note, '日志备忘', '员工日志与个人备忘录', () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const _NotesPage()));
+            }),
+          ]),
           const SizedBox(height: 16),
-          const Text('更多业务', style: TextStyle(fontWeight: FontWeight.bold)),
+          _sectionTitle('业务与工具'),
           const SizedBox(height: 8),
-          _entry(Icons.apps_outlined, '业务模块', '车间 / 仓管 / 收货等（按权限）', () {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const _ModulesPage()));
-          }),
-          _entry(Icons.menu_book_outlined, '资料中心', '知识库 / 图纸 / 公告', () {
-            Navigator.of(context).pushNamed('/knowledge');
-          }),
-          _entry(Icons.manage_accounts_outlined, '账户中心', '改密 / 缓存与备份', () {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccountCenterPage()));
-          }),
+          _sectionCard([
+            _entry(Icons.apps_outlined, '业务模块', '车间 / 仓管 / 收货等（按权限）', () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const _ModulesPage()));
+            }),
+            _entry(Icons.menu_book_outlined, '资料中心', '知识库 / 图纸 / 公告', () {
+              Navigator.of(context).pushNamed('/knowledge');
+            }),
+            _entry(Icons.handyman_outlined, '物料工具', '申请领取 / 归还', () {
+              Navigator.of(context).pushNamed('/tools');
+            }),
+            if (auth.canHrOnboard)
+              _entry(Icons.person_add_alt_1, '人事开户', '新建员工档案并开登录账号', () {
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HrOnboardPage()));
+              }),
+          ]),
+          const SizedBox(height: 16),
+          _sectionTitle('账号与设置'),
+          const SizedBox(height: 8),
+          _sectionCard([
+            _entry(Icons.settings_outlined, '设置', '改密 / 缓存与备份 / 退出登录', () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccountCenterPage()));
+            }),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionTitle(String title) {
+    return Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16));
+  }
+
+  Widget _sectionCard(List<Widget> children) {
+    return Card(
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Column(children: children),
+    );
+  }
+
+  Widget _infoChip(IconData icon, String text, ColorScheme scheme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: scheme.onPrimaryContainer.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: scheme.onPrimaryContainer),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: scheme.onPrimaryContainer,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _entry(IconData icon, String title, String subtitle, VoidCallback onTap) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Icon(icon),
-        title: Text(title),
-        subtitle: Text(subtitle),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onTap,
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+        child: Icon(icon, color: Theme.of(context).colorScheme.primary),
       ),
+      title: Text(title),
+      subtitle: Text(subtitle),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: onTap,
     );
   }
 }
@@ -639,9 +747,9 @@ class _ModulesPage extends StatelessWidget {
   IconData _icon(EmployeeModule m) {
     switch (m) {
       case EmployeeModule.station:
-        return Icons.qr_code_scanner;
-      case EmployeeModule.workshop:
         return Icons.precision_manufacturing;
+      case EmployeeModule.workshop:
+        return Icons.groups;
       case EmployeeModule.worker:
         return Icons.badge;
       case EmployeeModule.receiving:

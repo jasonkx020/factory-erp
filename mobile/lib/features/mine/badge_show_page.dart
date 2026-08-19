@@ -134,7 +134,7 @@ class _BadgeShowPageState extends State<BadgeShowPage> {
                         ),
                         const Spacer(),
                         Text(
-                          '请将二维码对准扫码枪/摄像头，供工序过站识别',
+                          '请将二维码对准扫码枪/摄像头，供生产领料识别',
                           textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                         ),

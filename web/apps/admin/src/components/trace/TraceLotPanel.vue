@@ -138,6 +138,8 @@ function eventFields(ev: Row): Field[] {
       { key: 'batch_no', label: '批号' },
       { key: 'biz_date', label: '业务日' },
       { key: 'net_weight', label: '净重', fmt: fmtKg },
+      { key: 'ticket_count', label: '过磅车数', fmt: (v) => `${v} 车` },
+      { key: 'boxed_qty', label: '板数', fmt: (v) => `${v} 板` },
       { key: 'grade', label: '等级' },
       { key: 'status', label: '状态' },
       { key: 'farmer_id', label: '农户ID' },
@@ -185,10 +187,11 @@ function eventFields(ev: Row): Field[] {
   }
   if (step === 'boxes') {
     const boxes = (ev.boxes as Row[]) || (data.boxes as Row[]) || []
-    if (!boxes.length) return [{ label: `${short.value}数`, value: '0' }]
+    const qty = ev.boxed_qty != null ? Number(ev.boxed_qty) : boxes.length
+    if (!boxes.length) return [{ label: `${short.value}数`, value: String(qty || 0) }]
     const totalW = boxes.reduce((s, b) => s + (Number(b.weight) || 0), 0)
     return [
-      { label: `${short.value}数`, value: String(boxes.length) },
+      { label: `${short.value}数`, value: String(qty) },
       { label: '合计重量', value: fmtKg(totalW) },
     ]
   }
@@ -264,6 +267,12 @@ const summaryFields = computed(() => {
       ...src,
       trace_code: src.trace_code || result.value?.trace_code || weigh.trace_code,
       farmer_name: weigh.farmer_name || weigh.party_name || src.farmer_name,
+      boxed_qty: src.boxed_qty ?? result.value?.boxed_qty ?? (result.value?.box_completion as Row)?.boxed_qty,
+      boxed_weight: src.boxed_weight ?? result.value?.boxed_weight ?? (result.value?.box_completion as Row)?.boxed_weight,
+      ticket_count: src.ticket_count ?? result.value?.ticket_count,
+      product_name: (result.value?.box_completion as Row)?.product_name ?? weigh.product_name,
+      product_category: (result.value?.box_completion as Row)?.product_category,
+      remaining_weight: (result.value?.box_completion as Row)?.remaining_weight,
     },
     [
       { key: 'trace_code', label: '溯源码' },
@@ -271,7 +280,12 @@ const summaryFields = computed(() => {
       { key: 'biz_date', label: '业务日' },
       { key: 'farmer_name', label: '农户' },
       { key: 'party_name', label: '姓名' },
+      { key: 'product_name', label: '物料' },
+      { key: 'product_category', label: '品类' },
       { key: 'net_weight', label: '净重', fmt: fmtKg },
+      { key: 'ticket_count', label: '过磅车数', fmt: (v) => `${v} 车` },
+      { key: 'boxed_qty', label: '板数', fmt: (v) => `${v} 板` },
+      { key: 'remaining_weight', label: '待分 kg', fmt: fmtKg },
       { key: 'doc_no', label: '过磅单' },
       { key: 'status', label: '状态' },
     ],
@@ -358,6 +372,22 @@ onMounted(() => {
         v-else-if="signatureValid === true"
         type="success"
         title="溯源签名校验通过"
+        show-icon
+        :closable="false"
+        class="mb"
+      />
+      <el-alert
+        v-if="(result?.box_completion as Row)?.complete === true"
+        type="success"
+        title="该溯源分板已全部完成"
+        show-icon
+        :closable="false"
+        class="mb"
+      />
+      <el-alert
+        v-else-if="(result?.box_completion as Row)?.trace_code"
+        type="info"
+        :title="`分板进行中：已 ${(result?.box_completion as Row)?.boxed_qty ?? 0} 板，剩余 ${Number((result?.box_completion as Row)?.remaining_weight || 0).toFixed(2)} kg`"
         show-icon
         :closable="false"
         class="mb"

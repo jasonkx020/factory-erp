@@ -427,7 +427,27 @@ ORDER BY b.id`)
 			"batch_no": batch, "qty": onHand, "qty_on_hand": onHand,
 		})
 	}
-	api.OK(c, gin.H{"list": list, "total": len(list)})
+	byProduct := map[int64]gin.H{}
+	order := []int64{}
+	for _, row := range list {
+		pid := asInt64Or0(row["product_id"])
+		agg, ok := byProduct[pid]
+		if !ok {
+			agg = gin.H{
+				"product_id": pid, "product_code": row["product_code"], "product_name": row["product_name"],
+				"qty": 0.0, "warehouse_count": 0,
+			}
+			byProduct[pid] = agg
+			order = append(order, pid)
+		}
+		agg["qty"] = asFloatOr0(agg["qty"]) + asFloatOr0(row["qty"])
+		agg["warehouse_count"] = asInt64Or0(agg["warehouse_count"]) + 1
+	}
+	summary := make([]gin.H, 0, len(order))
+	for _, pid := range order {
+		summary = append(summary, byProduct[pid])
+	}
+	api.OK(c, gin.H{"list": list, "total": len(list), "by_product": summary})
 }
 
 func (s *Services) listAvailability(c *gin.Context) {

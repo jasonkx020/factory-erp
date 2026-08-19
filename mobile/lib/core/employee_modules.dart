@@ -24,8 +24,8 @@ class EmployeeModuleInfo {
 }
 
 const employeeModules = [
-  EmployeeModuleInfo(EmployeeModule.station, '工序过站', '指定工序后扫工牌+板码，按 kg 领取/退库/入库', '/station', 'qr_code_scanner'),
-  EmployeeModuleInfo(EmployeeModule.receiving, '过磅收货', '农户过磅、质检、出码推仓', '/receiving', 'scale'),
+  EmployeeModuleInfo(EmployeeModule.station, '生产', '指定工序后扫工牌+板码，按 kg 领取/退库/入库', '/station', 'precision_manufacturing'),
+  EmployeeModuleInfo(EmployeeModule.receiving, '采购', '农户过磅、质检、出码推仓', '/receiving', 'scale'),
   EmployeeModuleInfo(EmployeeModule.warehouse, '仓管作业', '待入库、库存、板码、盘点', '/warehouse', 'warehouse'),
   EmployeeModuleInfo(EmployeeModule.workshop, '班组管理', '班次、异常、返工派岗', '/workshop', 'groups'),
   EmployeeModuleInfo(EmployeeModule.mine, '我的', '今日核对、假勤、工具与消息', '/mine', 'person'),
@@ -33,8 +33,8 @@ const employeeModules = [
 
 /// Copy of [employeeModules] with carrier code label substituted (板码/箱码).
 List<EmployeeModuleInfo> employeeModulesWithLabel(String codeLabel) => [
-      EmployeeModuleInfo(EmployeeModule.station, '工序过站', '指定工序后扫工牌+$codeLabel，按 kg 领取/退库/入库', '/station', 'qr_code_scanner'),
-      const EmployeeModuleInfo(EmployeeModule.receiving, '过磅收货', '农户过磅、质检、出码推仓', '/receiving', 'scale'),
+      EmployeeModuleInfo(EmployeeModule.station, '生产', '指定工序后扫工牌+$codeLabel，按 kg 领取/退库/入库', '/station', 'precision_manufacturing'),
+      const EmployeeModuleInfo(EmployeeModule.receiving, '采购', '农户过磅、质检、出码推仓', '/receiving', 'scale'),
       EmployeeModuleInfo(EmployeeModule.warehouse, '仓管作业', '待入库、库存、$codeLabel、盘点', '/warehouse', 'warehouse'),
       ...employeeModules.where((m) => m.key != EmployeeModule.station && m.key != EmployeeModule.receiving && m.key != EmployeeModule.warehouse),
     ];

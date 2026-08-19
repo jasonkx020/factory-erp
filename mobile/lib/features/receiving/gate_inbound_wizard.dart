@@ -166,7 +166,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
   int? _nextAssignee;
   bool _loadingOptions = false;
 
-  static const _titles = ['农户', '溯源码', '照片与过磅', '预览确认'];
+  static const _titles = ['农户/溯源码', '溯源码', '照片与过磅', '预览确认'];
 
   @override
   void initState() {
@@ -193,7 +193,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
     }
 
     apply(widget.unitPrice, 'unit_price', '1.2');
-    apply(widget.deductRate, 'deduct_rate', '5');
+    apply(widget.deductRate, 'deduct_rate', '0');
     apply(widget.freight, 'freight_fee', '0');
     apply(widget.loadingFee, 'loading_fee', '0');
     apply(widget.weighFee, 'weigh_fee', '0');
@@ -294,7 +294,10 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
   String? _validateStep(int step) {
     switch (step) {
       case 0:
-        if (widget.partyName.text.trim().isEmpty) return '请填写农户姓名';
+        // 溯源码与农户/品种强关联：如果溯源码已校验通过，则允许跳过手工填写农户姓名
+        if (widget.partyName.text.trim().isEmpty && !widget.batchOk) return '请填写农户姓名';
+        if (widget.varieties.isEmpty) return '暂无过磅品种，请先在后台配置';
+        if (widget.varietyId == null) return '请选择品种';
         return null;
       case 1:
         if (widget.varieties.isEmpty) return '暂无过磅品种，请先在后台配置';
@@ -336,6 +339,16 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
 
   Future<void> _goNext() async {
     FormRow.dismissKeyboard();
+    // 第 1 步：用户可能已经在溯源码输入框里填了值，但尚未触发校验完成
+    // 这里兜底：如果溯源码不为空但 batchOk=false，则先校验后再走下一步校验
+    if (_step == 0) {
+      final code = widget.batchNo.text.trim().toUpperCase();
+      if (code.isNotEmpty && !widget.batchOk) {
+        final ok = await widget.onValidateBatch();
+        if (!ok) return;
+        await Future<void>.delayed(const Duration(milliseconds: 0));
+      }
+    }
     final err = _validateStep(_step);
     if (err != null) {
       widget.onMsg(err);
@@ -535,22 +548,12 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
       children: [
         const Padding(
           padding: EdgeInsets.fromLTRB(4, 0, 4, 6),
-          child: Text('填写农户，输入姓名或手机号将自动搜索档案', style: TextStyle(fontSize: 13, color: Colors.black54)),
+          child: Text(
+            '填写农户/溯源码：输入溯源码后可自动带出农户与品种信息',
+            style: TextStyle(fontSize: 13, color: Colors.black54),
+          ),
         ),
         ..._farmerFields(),
-      ],
-    );
-  }
-
-  Widget _stepTrace() {
-    return ListView(
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-      children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(4, 0, 4, 6),
-          child: Text('扫码绑定，或点输入框手输；可不填，下一步将询问是否新生成', style: TextStyle(fontSize: 13, color: Colors.black54)),
-        ),
         TraceCodeField(
           controller: widget.batchNo,
           label: '溯源码',
@@ -613,6 +616,101 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
                         if (hit.isNotEmpty) widget.onApplyVariety(hit.first);
                       },
               ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _stepTrace() {
+    return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+          child: widget.batchOk
+              ? Text(
+                  '溯源码已校验：如需更换请返回上一步修改',
+                  style: const TextStyle(fontSize: 13, color: Colors.black54),
+                )
+              : const Text(
+                  '扫码绑定，或点输入框手输；可不填，下一步将询问是否新生成',
+                  style: TextStyle(fontSize: 13, color: Colors.black54),
+                ),
+        ),
+        if (!widget.batchOk)
+          TraceCodeField(
+            controller: widget.batchNo,
+            label: '溯源码',
+            hint: '扫码或点击手输，可空',
+            validated: widget.batchOk,
+            scannerTitle: '扫描溯源批号',
+            compact: true,
+            requiredMark: false,
+            onChanged: widget.onBatchChanged,
+            onEditingComplete: () {
+              widget.onValidateBatch();
+            },
+            onTapManual: () {
+              widget.onTapManualTrace();
+            },
+            onScanned: (_) async {
+              widget.onBatchChanged(widget.batchNo.text);
+              await widget.onValidateBatch();
+            },
+          ),
+        if (widget.bindingLocked)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              '已选过站中码：农户与品种锁定为首单信息，本单可追加重量等',
+              style: TextStyle(fontSize: 12, color: Colors.blue.shade800),
+            ),
+          ),
+        if (!widget.batchOk) ...[
+          if (widget.varieties.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('暂无过磅品种，请先在后台配置', style: TextStyle(color: Colors.orange)),
+            )
+          else
+            FormRow(
+              label: '品种',
+              requiredMark: true,
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<int>(
+                  isExpanded: true,
+                  value: widget.varietyId,
+                  alignment: AlignmentDirectional.centerEnd,
+                  hint: const Text('请选择', textAlign: TextAlign.right),
+                  items: widget.varieties.map((e) {
+                    final m = Map<String, dynamic>.from(e as Map);
+                    return DropdownMenuItem(
+                      value: (m['id'] as num?)?.toInt(),
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: Text('${m['name'] ?? m['code']}', textAlign: TextAlign.right),
+                    );
+                  }).toList(),
+                  onChanged: widget.bindingLocked
+                      ? null
+                      : (v) {
+                          if (v == null) return;
+                          final hit = widget.varieties
+                              .cast<dynamic>()
+                              .map((e) => Map<String, dynamic>.from(e as Map))
+                              .where((m) => (m['id'] as num?)?.toInt() == v);
+                          if (hit.isNotEmpty) widget.onApplyVariety(hit.first);
+                        },
+                ),
+              ),
+            ),
+        ] else if (widget.varietyId != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(
+              '当前品种：${_varietyLabel()}',
+              style: const TextStyle(fontSize: 13, color: Colors.black54),
             ),
           ),
         const Padding(

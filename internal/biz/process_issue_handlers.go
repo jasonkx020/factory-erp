@@ -282,6 +282,9 @@ func (s *Services) handleBoardMoveHTTP(c *gin.Context) bool {
 		api.FailJSON(c, "SHIFT_NOT_AUTHORIZED")
 		return true
 	}
+	if pid := asInt64Or0(body["product_id"]); pid > 0 {
+		board.ProductID = pid
+	}
 	createdBy := claimsUserID(c)
 	out, fail := s.moveBoardKg(board, workerID, kg, kind, createdBy, processID, stepID)
 	if fail != "" {
@@ -390,9 +393,9 @@ func (s *Services) workerOpenKg(boardID, processID, workerID int64) float64 {
 func (s *Services) attachBoardPreview(dst gin.H, boardID int64, code string, processID, stepID, workerID int64) {
 	var weight float64
 	var trace string
-	var curProc, curStep int64
-	_ = s.DB.QueryRow(`SELECT COALESCE(weight, qty, 0), COALESCE(trace_code,''), COALESCE(current_process_id,0), COALESCE(current_step_id,0)
-		FROM inv_box_code WHERE id=?`, boardID).Scan(&weight, &trace, &curProc, &curStep)
+	var curProc, curStep, productID int64
+	_ = s.DB.QueryRow(`SELECT COALESCE(weight, qty, 0), COALESCE(trace_code,''), COALESCE(current_process_id,0), COALESCE(current_step_id,0), COALESCE(product_id,0)
+		FROM inv_box_code WHERE id=?`, boardID).Scan(&weight, &trace, &curProc, &curStep, &productID)
 	if processID <= 0 {
 		processID = curProc
 	}
@@ -408,6 +411,11 @@ func (s *Services) attachBoardPreview(dst gin.H, boardID int64, code string, pro
 	dst["board_code"] = code
 	dst["box_code"] = code
 	dst["trace_code"] = trace
+	dst["product_id"] = productID
+	pname, pcat, pcode := s.productMeta(productID)
+	dst["product_name"] = pname
+	dst["product_category"] = pcat
+	dst["product_code"] = pcode
 	dst["process_id"] = processID
 	dst["step_id"] = stepID
 	dst["board_process_id"] = curProc
@@ -812,9 +820,13 @@ func (s *Services) moveBoardKg(board *boardState, toWorkerID int64, kg float64, 
 		return nil, "DB_ERROR"
 	}
 	defer func() { _ = tx.Rollback() }()
+	productOverride := board.ProductID
 	b, fail := s.reloadBoardTx(tx, board.ID)
 	if fail != "" {
 		return nil, fail
+	}
+	if productOverride > 0 {
+		b.ProductID = productOverride
 	}
 	wip := 0.0
 	if b.ProcessID == fromProcess {
@@ -930,7 +942,11 @@ func (s *Services) moveBoardKg(board *boardState, toWorkerID int64, kg float64, 
 		TaskID: b.TaskID, WoID: b.WoID, Trace: b.Trace,
 	}, wh, fromProcess, fromStepID, kg)
 	if serr != nil {
-		return nil, "STOCK_IN_FAILED:" + serr.Error()
+		msg := serr.Error()
+		if msg == "PRODUCT_REQUIRED" || msg == "TRACE_CODE_REQUIRED" || msg == "INVALID_QTY" {
+			return nil, msg
+		}
+		return nil, "STOCK_IN_FAILED:" + msg
 	}
 	newBoardCode, newBoardID = code, nid
 

@@ -173,6 +173,7 @@ const detailKvs = computed(() => {
     kv('毛重', m.gross_weight != null ? `${m.gross_weight} kg` : null),
     kv('扣损', deduct),
     kv('净重', m.net_weight != null ? `${m.net_weight} kg` : null),
+    kv('合单车数', m.trace_ticket_count != null && Number(m.trace_ticket_count) > 1 ? `${m.trace_ticket_count} 车` : null),
     kv('已分板', m.boxed_qty != null ? `${m.boxed_qty} 板 / ${m.boxed_weight ?? '-'} kg` : null),
     kv('运费', m.freight_fee),
     kv('装车费', m.loading_fee),

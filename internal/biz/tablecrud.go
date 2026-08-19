@@ -50,6 +50,10 @@ func (s *Services) tableList(c *gin.Context, spec *tablespec.Spec) {
 			args = append(args, st)
 		}
 	}
+	if pid := strings.TrimSpace(c.Query("product_id")); pid != "" && hasCol(spec, "product_id") {
+		where += " AND product_id=?"
+		args = append(args, pid)
+	}
 	if spec.DocNo == "code" {
 		if q := strings.TrimSpace(c.Query("q")); q != "" {
 			where += " AND code LIKE ?"
@@ -78,6 +82,14 @@ func (s *Services) tableList(c *gin.Context, spec *tablespec.Spec) {
 	list, err := rowsToMaps(rows)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR")
+		return
+	}
+	if spec.Table == "inv_box_code" {
+		s.enrichBoxCodeRows(list)
+		api.OK(c, gin.H{
+			"list": list, "total": total, "page_num": pageNum, "page_size": pageSize,
+			"product_stock": s.productStockFromBoxes(), "trace_progress": s.summarizeTraceBoxProgress(),
+		})
 		return
 	}
 	api.PageOK(c, list, total, pageNum, pageSize)
@@ -124,9 +136,19 @@ func (s *Services) tableGet(c *gin.Context, spec *tablespec.Spec) {
 func (s *Services) tableCreate(c *gin.Context, spec *tablespec.Spec) {
 	body := bindBody(c)
 	if spec.Table == "inv_box_code" {
-		if strings.TrimSpace(strOr(body["trace_code"])) == "" {
+		if asInt64Or0(body["product_id"]) <= 0 {
+			api.FailJSON(c, "PRODUCT_REQUIRED")
+			return
+		}
+		trace := strings.ToUpper(strings.TrimSpace(strOr(body["trace_code"])))
+		if trace == "" {
 			api.FailJSON(c, "TRACE_CODE_REQUIRED")
 			return
+		}
+		body["trace_code"] = trace
+		w := asFloatOr0(body["weight"])
+		if asFloatOr0(body["qty"]) <= 0 && w > 0 {
+			body["qty"] = w
 		}
 	}
 	if spec.DocNo != "" {
@@ -174,6 +196,19 @@ func (s *Services) tableCreate(c *gin.Context, spec *tablespec.Spec) {
 		}
 	}
 	body["id"] = id
+	if spec.Table == "inv_box_code" {
+		w := asFloatOr0(body["weight"])
+		if w <= 0 {
+			w = asFloatOr0(body["qty"])
+		}
+		if w > 0 {
+			code := strOr(body["code"])
+			if code == "" {
+				_ = s.DB.QueryRow(`SELECT code FROM inv_box_code WHERE id=?`, id).Scan(&code)
+			}
+			_ = s.autoStockProduceInBox(code, id, asInt64Or0(body["warehouse_id"]), asInt64Or0(body["product_id"]), w)
+		}
+	}
 	api.OK(c, body)
 }
 

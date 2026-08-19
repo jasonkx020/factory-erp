@@ -63,7 +63,7 @@ func maskWeighPayloadForWarehouse(src map[string]interface{}) map[string]interfa
 		"settlement_doc_no": true, "settlement_amount": true, "wf_ticket_id": true, "wf_ticket_status": true,
 		"next_handler_name": true, "next_handler_hint": true,
 		"boxed_qty": true, "boxed_weight": true, "remaining_weight": true, "boxes": true,
-		"box_stockin_ready": true,
+		"box_stockin_ready": true, "trace_net_weight": true, "trace_ticket_count": true, "lot_ticket_ids": true,
 	}
 	out := map[string]interface{}{}
 	for k, v := range src {
@@ -290,6 +290,28 @@ func (s *Services) resolveWeighByTraceCode(c *gin.Context) bool {
 	if errCode != "" {
 		api.FailJSON(c, errCode)
 		return true
+	}
+	// 合单场景：同一溯源码下可能包含多张过磅单，前端需要在核对页展示明细。
+	// 使用 loadOpenTraceLot 取“待分板”的所有过磅单 id（gate_accepted）。
+	trace := strings.TrimSpace(strOr(out["trace_code"]))
+	if trace != "" {
+		lot := s.loadOpenTraceLot(trace)
+		traceTickets := make([]gin.H, 0, lot.Count)
+		if lot.Count > 0 {
+			for _, tid := range lot.TicketIDs {
+				m := s.loadWeighTicket(tid)
+				if m["id"] == nil {
+					continue
+				}
+				traceTickets = append(traceTickets, maskWeighTicketForWarehouse(m))
+			}
+		} else {
+			// fallback：至少返回当前这张过磅单，避免前端空列表
+			if m := s.loadWeighTicket(id); m["id"] != nil {
+				traceTickets = append(traceTickets, maskWeighTicketForWarehouse(m))
+			}
+		}
+		out["trace_tickets"] = traceTickets
 	}
 	api.OK(c, out)
 	return true

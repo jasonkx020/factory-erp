@@ -13,7 +13,6 @@ import '../../widgets/form_section_header.dart';
 import '../../widgets/form_sticky_actions.dart';
 import '../../widgets/hub_entry_tile.dart';
 import '../../widgets/trace_code_field.dart';
-import '../warehouse/warehouse_page.dart';
 import 'gate_inbound_wizard.dart';
 import 'trace_code_qr_sheet.dart';
 import 'weigh_ticket_local_store.dart';
@@ -44,7 +43,7 @@ class ReceivingPage extends StatefulWidget {
   State<ReceivingPage> createState() => _ReceivingPageState();
 }
 
-/// 收货首页四入口：入厂 / 入库 / 单据 / 任务（无顶栏 Tab）
+/// 收货首页三入口：入厂 / 单据 / 任务（无顶栏 Tab）
 enum RecvHubSection { home, gate, stockin, tickets, tasks }
 
 class _ReceivingPageState extends State<ReceivingPage> {
@@ -68,7 +67,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
   bool _canRecv = true;
   bool _canWh = true;
   final _gross = TextEditingController();
-  final _deductRate = TextEditingController(text: '5');
+  final _deductRate = TextEditingController(text: '0');
   final _unitPrice = TextEditingController(text: '1.2');
   final _netWeight = TextEditingController();
   final _bagQty = TextEditingController();
@@ -330,7 +329,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
     _canWh = canWh;
     if (!canRecv && !canWh) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无过磅收货权限')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无采购权限')));
         Navigator.of(context).pop();
       }
       return;
@@ -1483,7 +1482,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
     return ListView(
       padding: EdgeInsets.fromLTRB(16, widget.asTab ? 40 : 16, 16, 16),
       children: [
-        const Text('过磅收货', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+        const Text('采购', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
         const SizedBox(height: 4),
         const Text('选择业务入口；创建生效后回到本页', style: TextStyle(fontSize: 13, color: Colors.black54)),
         if (_msg.isNotEmpty) ...[
@@ -1506,19 +1505,6 @@ class _ReceivingPageState extends State<ReceivingPage> {
           title: '过磅入厂',
           subtitle: '扫溯源码过磅，建单即与农户绑定并推仓管',
           onTap: () => _chooseReceiveKind('gate'),
-        ),
-        HubEntryTile(
-          enabled: _canWh,
-          icon: Icons.qr_code_scanner,
-          title: '扫溯源分板',
-          subtitle: '入厂后由仓管扫溯源码分板入库',
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const WarehousePage(initialSection: WarehouseSection.scan),
-              ),
-            );
-          },
         ),
         HubEntryTile(
           icon: Icons.receipt_long_outlined,
@@ -2099,7 +2085,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
   String get _sectionTitle {
     switch (_section) {
       case RecvHubSection.home:
-        return '过磅收货';
+        return '采购';
       case RecvHubSection.gate:
         return '过磅入厂';
       case RecvHubSection.stockin:

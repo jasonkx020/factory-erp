@@ -10,7 +10,7 @@ import '../station/station_pass_page.dart';
 import '../warehouse/warehouse_page.dart';
 import '../workshop/workshop_page.dart';
 
-/// 木薯产线默认壳：按角色裁剪底部 Tab（过站 / 收货 / 仓管 / 班组 / 我的）。
+/// 木薯产线默认壳：按角色裁剪底部 Tab（生产 / 采购 / 仓管 / 班组 / 我的）。
 /// 无外层标题栏，小屏把高度留给业务表单。
 class FactoryShell extends StatefulWidget {
   const FactoryShell({super.key});
@@ -33,12 +33,12 @@ class _FactoryShellState extends State<FactoryShell> {
   List<_TabSpec> _tabsFor(WorkbenchRole role) {
     final tabs = <_TabSpec>[];
     void addStation() => tabs.add(_TabSpec(
-          label: '过站',
-          icon: Icons.qr_code_scanner,
+          label: '生产',
+          icon: Icons.precision_manufacturing,
           builder: () => const StationPassPage(asTab: true),
         ));
     void addReceiving() => tabs.add(_TabSpec(
-          label: '收货',
+          label: '采购',
           icon: Icons.scale,
           builder: () => const ReceivingPage(asTab: true),
         ));

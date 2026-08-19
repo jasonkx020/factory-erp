@@ -26,16 +26,16 @@ func New(db *sql.DB, cfg *config.Config, hub *erpmqtt.Hub) *Service {
 
 // Event workflow handoff notification.
 type Event struct {
-	Key       string
-	BizType   string
-	BizID     int64
-	DocNo     string
-	TraceCode string
-	FromRole  string
-	ToRoles   []string
-	Title     string
-	Body      string
-	Payload   map[string]interface{}
+	Key        string
+	BizType    string
+	BizID      int64
+	DocNo      string
+	TraceCode  string
+	FromRole   string
+	ToRoles    []string
+	Title      string
+	Body       string
+	Payload    map[string]interface{}
 	CreateTask bool
 }
 
@@ -110,6 +110,19 @@ func (s *Service) CompleteTask(bizType string, bizID int64, eventKeys ...string)
 		args = append(args, eventKeys[0])
 	}
 	_, _ = s.DB.Exec(q, args...)
+}
+
+func (s *Service) CompletePendingByTrace(eventKey, trace string) {
+	if s == nil || s.DB == nil {
+		return
+	}
+	eventKey = strings.TrimSpace(eventKey)
+	trace = strings.TrimSpace(trace)
+	if eventKey == "" || trace == "" {
+		return
+	}
+	_, _ = s.DB.Exec(`UPDATE wf_task SET status='done', done_at=NOW()
+		WHERE event_key=? AND status='pending' AND UPPER(COALESCE(trace_code,''))=UPPER(?)`, eventKey, trace)
 }
 
 func (s *Service) renderTemplate(eventKey, docNo, traceCode string) (title, body string) {
