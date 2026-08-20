@@ -54,7 +54,6 @@ var resourceDomainModule = map[string]domainModule{
 	"production/board-issues":    {"生产管理", "过站记录"},
 	"production/board-moves":     {"生产管理", "过站记录"},
 	"production/board-close":     {"生产管理", "过站记录"},
-	"production/material-dispatches": {"生产管理", "过站记录"},
 	"production/trace-productions":   {"生产管理", "过站记录"},
 	"production/process-yields":  {"生产管理", "工序扣损"},
 	"production/reworks":         {"生产管理", "返修单"}, "production/routings": {"生产管理", "工艺流程"},
@@ -196,7 +195,7 @@ func isProductionFieldAPI(resourceKey, action string) bool {
 	if strings.HasPrefix(resourceKey, "production/board-issues") || strings.HasPrefix(resourceKey, "production/board-moves") {
 		return true
 	}
-	if strings.HasPrefix(resourceKey, "production/material-dispatches") || strings.HasPrefix(resourceKey, "production/trace-productions") {
+	if strings.HasPrefix(resourceKey, "production/trace-productions") {
 		return true
 	}
 	if strings.Contains(resourceKey, "piecework-summaries/mine") {

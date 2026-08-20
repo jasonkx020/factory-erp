@@ -325,9 +325,16 @@ class _WorkerPageState extends State<WorkerPage> {
                     children: [
                       const Text('今日产量与工钱', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                       const SizedBox(height: 8),
-                      Text('预计工钱  ¥${_daily?['total_amount'] ?? 0}', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+                      Text('已日结  ¥${_daily?['total_amount'] ?? 0}', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
                       Text('完工重 ${_daily?['total_output_weight'] ?? _daily?['total_qty'] ?? 0} kg'),
                       Text('报工次数 ${_daily?['report_count'] ?? _daily?['count'] ?? '-'}'),
+                      if (((_daily?['pending_locked_kg'] as num?)?.toDouble() ?? 0) > 0.0005) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '预估待日结 ¥${((_daily?['pending_locked_amount'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)}'
+                          ' · ${((_daily?['pending_locked_kg'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)} kg',
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       OutlinedButton(onPressed: _loadWage, child: const Text('刷新核对')),
                     ],

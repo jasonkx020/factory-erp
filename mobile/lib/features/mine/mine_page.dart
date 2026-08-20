@@ -22,8 +22,6 @@ class MinePage extends StatefulWidget {
 
 class _MinePageState extends State<MinePage> {
   Map<String, dynamic>? _dailyWage;
-  double _dispatchWage = 0;
-  double _dispatchKg = 0;
 
   @override
   void initState() {
@@ -33,28 +31,10 @@ class _MinePageState extends State<MinePage> {
 
   Future<void> _loadDailyWage() async {
     final api = context.read<AuthState>().api;
-    final today = DateTime.now();
-    final d = '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-    final results = await Future.wait([
-      api.get('/production/piecework-summaries/mine'),
-      api.get('/production/material-dispatches?scope=mine_work&status=done&date_from=$d&date_to=$d'),
-    ]);
+    final r = await api.get('/production/piecework-summaries/mine');
     if (!mounted) return;
-    var dispatchWage = 0.0;
-    var dispatchKg = 0.0;
-    final dr = results[1];
-    if (dr.ok && dr.data is Map) {
-      final items = ApiClient.listOf((dr.data as Map)['items']);
-      for (final e in items) {
-        if (e is! Map) continue;
-        dispatchWage += (e['wage_amount'] as num?)?.toDouble() ?? 0;
-        dispatchKg += (e['weight_kg'] as num?)?.toDouble() ?? 0;
-      }
-    }
     setState(() {
-      _dailyWage = results[0].data is Map ? Map<String, dynamic>.from(results[0].data as Map) : null;
-      _dispatchWage = dispatchWage;
-      _dispatchKg = dispatchKg;
+      _dailyWage = r.data is Map ? Map<String, dynamic>.from(r.data as Map) : null;
     });
   }
 
@@ -169,15 +149,46 @@ class _MinePageState extends State<MinePage> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '¥${((_dailyWage?['total_amount'] as num?)?.toDouble() ?? 0) + _dispatchWage}',
+                    '已日结 ¥${(_dailyWage?['total_amount'] as num?)?.toDouble() ?? 0}',
                     style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '计件 ${_dailyWage?['total_output_weight'] ?? _dailyWage?['total_qty'] ?? 0} kg'
-                    '${_dispatchKg > 0 ? ' · 派料 ${_dispatchKg.toStringAsFixed(2)} kg / ¥${_dispatchWage.toStringAsFixed(2)}' : ''}',
+                    '产量 ${_dailyWage?['total_output_weight'] ?? _dailyWage?['total_qty'] ?? 0} kg',
                     style: theme.textTheme.bodyMedium?.copyWith(color: Colors.black87),
                   ),
+                  Builder(builder: (context) {
+                    final pendingKg = (_dailyWage?['pending_locked_kg'] as num?)?.toDouble() ?? 0;
+                    final pendingAmt = (_dailyWage?['pending_locked_amount'] as num?)?.toDouble() ?? 0;
+                    final locks = ApiClient.listOf(_dailyWage?['pending_locks']);
+                    if (pendingKg <= 0.0005 && pendingAmt <= 0.0005 && locks.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 12),
+                        Text(
+                          '预估待日结 ¥${pendingAmt.toStringAsFixed(2)} · ${pendingKg.toStringAsFixed(2)} kg',
+                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                        if (locks.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          for (final raw in locks)
+                            if (raw is Map)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 2),
+                                child: Text(
+                                  '${raw['process_name'] ?? raw['process_id'] ?? '-'} · '
+                                  '${((raw['locked_kg'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)} kg / '
+                                  '¥${((raw['locked_wage_amount'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)}',
+                                  style: theme.textTheme.bodySmall?.copyWith(color: Colors.black54),
+                                ),
+                              ),
+                        ],
+                      ],
+                    );
+                  }),
                   const SizedBox(height: 12),
                   Align(
                     alignment: Alignment.centerLeft,

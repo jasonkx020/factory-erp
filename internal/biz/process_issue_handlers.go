@@ -767,19 +767,19 @@ func boardProcessRemainKgTx(tx *sql.Tx, boardID, processID int64, curProc int64,
 
 // writeoffBoardProcessRemainTx closes all open occupancy at board+process without adding move output (loss, not piecework).
 func writeoffBoardProcessRemainTx(tx *sql.Tx, b *boardState, processID int64) (float64, string) {
-	rows, err := tx.Query(`SELECT id, issue_kg, returned_kg, completed_kg FROM pd_process_issue
+	rows, err := tx.Query(`SELECT id, issue_kg, returned_kg, completed_kg, COALESCE(wage_settled_kg,0) FROM pd_process_issue
 		WHERE board_id=? AND process_id=? AND status='open' ORDER BY created_at, id`, b.ID, processID)
 	if err != nil {
 		return 0, "DB_ERROR:" + err.Error()
 	}
 	type iss struct {
-		id                         int64
-		issue, returned, completed float64
+		id                                  int64
+		issue, returned, completed, settled float64
 	}
 	list := []iss{}
 	for rows.Next() {
 		var r iss
-		if err := rows.Scan(&r.id, &r.issue, &r.returned, &r.completed); err != nil {
+		if err := rows.Scan(&r.id, &r.issue, &r.returned, &r.completed, &r.settled); err != nil {
 			continue
 		}
 		list = append(list, r)
@@ -787,13 +787,22 @@ func writeoffBoardProcessRemainTx(tx *sql.Tx, b *boardState, processID int64) (f
 	rows.Close()
 	writeoff := 0.0
 	for _, r := range list {
+		digest := roundKg(r.issue - r.returned)
+		if digest < 0 {
+			digest = 0
+		}
+		wageSettled := r.settled
+		if digest > wageSettled {
+			wageSettled = digest
+		}
 		rem := issueRemain(r.issue, r.returned, r.completed)
 		if rem <= kgEps {
-			_, _ = tx.Exec(`UPDATE pd_process_issue SET status='closed', updated_at=NOW() WHERE id=?`, r.id)
+			_, _ = tx.Exec(`UPDATE pd_process_issue SET status='closed', wage_settled_kg=?, updated_at=NOW() WHERE id=?`, wageSettled, r.id)
 			continue
 		}
-		newDone := roundKg(r.issue - r.returned)
-		if _, err := tx.Exec(`UPDATE pd_process_issue SET completed_kg=?, status='closed', updated_at=NOW() WHERE id=?`, newDone, r.id); err != nil {
+		newDone := digest
+		if _, err := tx.Exec(`UPDATE pd_process_issue SET completed_kg=?, wage_settled_kg=?, status='closed', updated_at=NOW() WHERE id=?`,
+			newDone, wageSettled, r.id); err != nil {
 			return 0, "DB_ERROR:" + err.Error()
 		}
 		writeoff = roundKg(writeoff + rem)
@@ -1106,7 +1115,7 @@ func (s *Services) closeBoard(board *boardState, confirmLoss bool) (gin.H, strin
 	}
 	board.Weight = 0
 	board.Status = "finished"
-	s.snapshotBoardYield(board.ID)
+	s.snapshotTraceYield(board.Trace)
 	out := gin.H{
 		"action": "close", "board_id": board.ID, "board_code": board.Code, "trace_code": board.Trace,
 		"status": "finished", "writeoff_kg": writeoff, "confirm_loss": confirmLoss,

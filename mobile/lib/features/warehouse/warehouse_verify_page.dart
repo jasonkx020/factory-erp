@@ -1063,14 +1063,6 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                             ),
                           ),
                         ),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton.icon(
-                            onPressed: _busy ? null : (_remaining > 0 && _boxes.isEmpty ? _addBox : null),
-                            icon: const Icon(Icons.add, size: 18),
-                            label: const Text('加板'),
-                          ),
-                        ),
                         for (var i = 0; i < _boxes.length; i++) _boxEditor(i),
                         Container(
                           width: double.infinity,
@@ -1164,8 +1156,16 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
             )
           else if (_step == 0)
             FormStickyActions(
-              primaryLabel: '下一步',
-              onPrimary: (_busy || _boxes.isEmpty) ? null : _goPreview,
+              primaryLabel: '加板',
+              onPrimary: _busy
+                  ? null
+                  : () {
+                      if (_boxes.isEmpty) {
+                        _addBox();
+                      } else {
+                        _goPreview();
+                      }
+                    },
               secondaryLabel: _boxedWeight > 0 ? '完成本批分板' : null,
               onSecondary: _busy ? null : _completeBatch,
             )
@@ -1192,18 +1192,10 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                         Expanded(
                           child: FilledButton(
                             onPressed: _busy ? null : _submitBatch,
-                            child: Text(_busy ? '处理中…' : '提交本批入库'),
+                            child: Text(_busy ? '处理中…' : '确认提交'),
                           ),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        onPressed: _busy ? null : _completeBatch,
-                        child: const Text('完成本批分板'),
-                      ),
                     ),
                   ],
                 ),

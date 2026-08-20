@@ -154,15 +154,6 @@ const wipBoxCols: MobileCardColumn[] = [
   { prop: 'trace_code', label: '溯源' },
   { prop: 'status', label: '状态' },
 ]
-const yieldCols: MobileCardColumn[] = [
-  { prop: 'process_name', label: '工序', primary: true },
-  { prop: 'board_code', label: '板码' },
-  { prop: 'trace_code', label: '溯源' },
-  { prop: 'input_kg', label: '投料 kg' },
-  { prop: 'output_kg', label: '完工 kg' },
-  { prop: 'loss_kg', label: '扣损 kg' },
-  { prop: 'loss_rate', label: '扣损率' },
-]
 const yieldTraceCols: MobileCardColumn[] = [
   { prop: 'process_name', label: '工序', primary: true },
   { prop: 'trace_code', label: '溯源' },
@@ -356,9 +347,7 @@ const wipSummary = ref<Row | null>(null)
 const wipDrawer = ref(false)
 const wipBoxes = ref<Row[]>([])
 const wipDrawerTitle = ref('')
-const yieldScope = ref<'board' | 'trace'>('board')
 const yieldTraceCode = ref('')
-const yieldBoardCode = ref('')
 const shiftMembers = computed(() =>
   ((shiftDetail.value?.members as Row[]) || []).map((m) => ({
     ...m,
@@ -619,16 +608,10 @@ async function refresh() {
         return
       }
       case 'process-yield': {
-        const parts = [
-          yieldTraceCode.value.trim() ? `trace_code=${encodeURIComponent(yieldTraceCode.value.trim())}` : '',
-          yieldScope.value === 'board' && yieldBoardCode.value.trim()
-            ? `board_code=${encodeURIComponent(yieldBoardCode.value.trim())}`
-            : '',
-        ].filter(Boolean)
-        const qs = parts.join('&')
-        res = yieldScope.value === 'trace'
-          ? await productionApi.processYieldTraces(qs || undefined)
-          : await productionApi.processYields(qs || undefined)
+        const qs = yieldTraceCode.value.trim()
+          ? `trace_code=${encodeURIComponent(yieldTraceCode.value.trim())}`
+          : ''
+        res = await productionApi.processYieldTraces(qs || undefined)
         break
       }
       case 'outsources':
@@ -1166,9 +1149,6 @@ watch(active, () => {
 })
 watch(wipProductId, () => {
   if (active.value === 'process-wip') refresh()
-})
-watch(yieldScope, () => {
-  if (active.value === 'process-yield') refresh()
 })
 onMounted(async () => {
   await ensureCarrierLabel()
@@ -2046,24 +2026,18 @@ onMounted(async () => {
         </el-drawer>
       </template>
 
-      <!-- 工序扣损：仅已完工快照，不实时计算 -->
+      <!-- 工序扣损：按溯源批号汇总，整批板全部结束后才写入 -->
       <template v-else-if="active==='process-yield'">
         <div class="row mb">
-          <el-radio-group v-model="yieldScope" size="small">
-            <el-radio-button value="board">按板</el-radio-button>
-            <el-radio-button value="trace">按溯源</el-radio-button>
-          </el-radio-group>
           <el-input v-model="yieldTraceCode" clearable placeholder="溯源码" style="width:180px" @keyup.enter="refresh" />
-          <el-input v-if="yieldScope==='board'" v-model="yieldBoardCode" clearable placeholder="板码" style="width:180px" @keyup.enter="refresh" />
           <el-button @click="refresh">查询</el-button>
-          <span class="hint">整板走完所有工序后才写入；未完成不展示扣损率</span>
+          <span class="hint">同溯源批号下全部板结束后才写入；不对单板计算扣损</span>
         </div>
-        <TableOrCards :data="list" :loading="loading" :columns="yieldScope==='trace' ? yieldTraceCols : yieldCols">
+        <TableOrCards :data="list" :loading="loading" :columns="yieldTraceCols">
           <el-table :data="list" size="small" border stripe>
             <el-table-column prop="process_name" label="工序" width="120" />
-            <el-table-column v-if="yieldScope==='board'" prop="board_code" label="板码" min-width="140" />
             <el-table-column prop="trace_code" label="溯源" min-width="120" />
-            <el-table-column v-if="yieldScope==='trace'" prop="board_count" label="板数" width="80" />
+            <el-table-column prop="board_count" label="板数" width="80" />
             <el-table-column label="投料 kg" width="100">
               <template #default="{ row }">{{ Number(row.input_kg || 0).toFixed(2) }}</template>
             </el-table-column>

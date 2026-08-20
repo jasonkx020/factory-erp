@@ -193,7 +193,11 @@ func TestBoardIssueReturnMovePiecework(t *testing.T) {
 	var yieldN int
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_board_process_yield WHERE board_id=?`, board.ID).Scan(&yieldN)
 	if yieldN != 0 {
-		t.Fatalf("unfinished board must not snapshot yield, got %d", yieldN)
+		t.Fatalf("board-level yield must not be written, got %d", yieldN)
+	}
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_trace_process_yield WHERE trace_code='T-ISSUE'`).Scan(&yieldN)
+	if yieldN != 0 {
+		t.Fatalf("unfinished board must not snapshot trace yield, got %d", yieldN)
 	}
 }
 
@@ -228,11 +232,15 @@ func TestBoardYieldSnapshotOnceAndNoDoubleCount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert board2: %v", err)
 	}
-	s.snapshotBoardYield(board.ID)
+	s.snapshotTraceYield("T-ISSUE")
 	var n int
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_board_process_yield`).Scan(&n)
 	if n != 0 {
-		t.Fatalf("yield before close want 0 got %d", n)
+		t.Fatalf("board yield must stay empty, got %d", n)
+	}
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_trace_process_yield`).Scan(&n)
+	if n != 0 {
+		t.Fatalf("trace yield before all boards finished want 0 got %d", n)
 	}
 	board, _ = s.loadBoardByCode("BX-SMOKE")
 	out, fail := s.moveBoardKg(board, 7, 100, "finish_in", 1, 1, 10)
@@ -253,28 +261,10 @@ func TestBoardYieldSnapshotOnceAndNoDoubleCount(t *testing.T) {
 	if board.Status != "finished" {
 		t.Fatalf("board status want finished got %s", board.Status)
 	}
-	var input, output, loss float64
-	_ = s.DB.QueryRow(`SELECT input_kg, output_kg, loss_kg FROM pd_board_process_yield WHERE board_id=? AND process_id=1`, board.ID).
-		Scan(&input, &output, &loss)
-	if roundKg(input) != 100 {
-		t.Fatalf("snapshot input want 100 (30+20+50) got %v", input)
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_board_process_yield WHERE board_id=?`, board.ID).Scan(&n)
+	if n != 0 {
+		t.Fatalf("close must not write board yield, got %d", n)
 	}
-	if roundKg(output) != 100 {
-		t.Fatalf("snapshot output want 100 got %v", output)
-	}
-	if roundKg(loss) != 0 {
-		t.Fatalf("snapshot loss want 0 got %v", loss)
-	}
-	s.snapshotBoardYield(board.ID)
-	s.snapshotBoardYield(board.ID)
-	_ = s.DB.QueryRow(`SELECT COUNT(1), COALESCE(SUM(input_kg),0) FROM pd_board_process_yield WHERE board_id=? AND process_id=1`, board.ID).Scan(&n, &input)
-	if n != 1 {
-		t.Fatalf("snapshot must write once, rows=%d", n)
-	}
-	if roundKg(input) != 100 {
-		t.Fatalf("resnapshot must not double, input=%v", input)
-	}
-
 	var traceN int
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_trace_process_yield WHERE trace_code='T-ISSUE'`).Scan(&traceN)
 	if traceN != 0 {
@@ -373,7 +363,10 @@ func TestBoardCloseYieldSnapshot(t *testing.T) {
 	var yieldN int
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_board_process_yield WHERE board_id=? AND process_id=1`, board.ID).Scan(&yieldN)
 	if yieldN != 0 {
-		t.Fatalf("no snapshot before close, got %d", yieldN)
+		t.Fatalf("no board snapshot before close, got %d", yieldN)
+	}
+	if locked := s.workerLockedPieceworkKg(7, 1); roundKg(locked) != 90 {
+		t.Fatalf("locked before writeoff want 90 got %v", locked)
 	}
 
 	board, _ = s.loadBoardByCode("BX-SMOKE")
@@ -391,9 +384,6 @@ func TestBoardCloseYieldSnapshot(t *testing.T) {
 
 	var pwBefore float64
 	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(qty),0) FROM pd_piecework_summary WHERE process_id=1`).Scan(&pwBefore)
-	if roundKg(pwBefore) != 80 {
-		t.Fatalf("piecework after 80kg move want 80 got %v", pwBefore)
-	}
 
 	board, _ = s.loadBoardByCode("BX-SMOKE")
 	if _, fail := s.closeBoard(board, true); fail != "" {
@@ -403,9 +393,20 @@ func TestBoardCloseYieldSnapshot(t *testing.T) {
 	if board.Status != "finished" {
 		t.Fatalf("confirm_loss must finish board, got %s", board.Status)
 	}
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_board_process_yield WHERE board_id=?`, board.ID).Scan(&yieldN)
+	if yieldN != 0 {
+		t.Fatalf("close must not write board yield, got %d", yieldN)
+	}
+	if locked := s.workerLockedPieceworkKg(7, 1); roundKg(locked) != 0 {
+		t.Fatalf("writeoff must clear piecework lock, got %v", locked)
+	}
 	var input, output, loss float64
-	_ = s.DB.QueryRow(`SELECT input_kg, output_kg, loss_kg FROM pd_board_process_yield WHERE board_id=? AND process_id=1`, board.ID).
-		Scan(&input, &output, &loss)
+	var traceN int
+	_ = s.DB.QueryRow(`SELECT COUNT(1), COALESCE(SUM(input_kg),0), COALESCE(SUM(output_kg),0), COALESCE(SUM(loss_kg),0)
+		FROM pd_trace_process_yield WHERE trace_code='T-ISSUE' AND process_id=1`).Scan(&traceN, &input, &output, &loss)
+	if traceN != 1 {
+		t.Fatalf("single-board trace must snapshot after close, got %d", traceN)
+	}
 	if roundKg(input) != 90 {
 		t.Fatalf("input want 90 got %v", input)
 	}
@@ -417,8 +418,8 @@ func TestBoardCloseYieldSnapshot(t *testing.T) {
 	}
 	var pwAfter float64
 	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(qty),0) FROM pd_piecework_summary WHERE process_id=1`).Scan(&pwAfter)
-	if roundKg(pwAfter) != 80 {
-		t.Fatalf("writeoff must not add piecework, got %v", pwAfter)
+	if roundKg(pwAfter) != roundKg(pwBefore) {
+		t.Fatalf("writeoff must not add piecework, before=%v after=%v", pwBefore, pwAfter)
 	}
 
 	_, _ = s.DB.Exec(`DELETE FROM inv_box_code WHERE code='BX-LB-2'`)
@@ -442,16 +443,19 @@ func TestBoardCloseYieldSnapshot(t *testing.T) {
 	if _, fail := s.closeBoard(b2, true); fail != "" {
 		t.Fatalf("close b2: %s", fail)
 	}
-	_ = s.DB.QueryRow(`SELECT input_kg, output_kg, loss_kg FROM pd_board_process_yield WHERE board_id=? AND process_id=1`, b2.ID).
-		Scan(&input, &output, &loss)
-	if roundKg(input) != 100 || roundKg(output) != 80 || roundKg(loss) != 20 {
-		t.Fatalf("close want in100 out80 loss20 got in=%v out=%v loss=%v", input, output, loss)
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_board_process_yield WHERE board_id=?`, b2.ID).Scan(&yieldN)
+	if yieldN != 0 {
+		t.Fatalf("b2 must not write board yield, got %d", yieldN)
 	}
-	s.snapshotBoardYield(b2.ID)
-	var n int
-	_ = s.DB.QueryRow(`SELECT COUNT(1), COALESCE(SUM(input_kg),0) FROM pd_board_process_yield WHERE board_id=? AND process_id=1`, b2.ID).Scan(&n, &input)
-	if n != 1 || roundKg(input) != 100 {
-		t.Fatalf("resnapshot must not double, rows=%d input=%v", n, input)
+	_ = s.DB.QueryRow(`SELECT COUNT(1), COALESCE(SUM(input_kg),0), COALESCE(SUM(output_kg),0), COALESCE(SUM(loss_kg),0)
+		FROM pd_trace_process_yield WHERE trace_code='T-LB' AND process_id=1`).Scan(&traceN, &input, &output, &loss)
+	if traceN != 1 || roundKg(input) != 100 || roundKg(output) != 80 || roundKg(loss) != 20 {
+		t.Fatalf("trace T-LB want in100 out80 loss20 got n=%d in=%v out=%v loss=%v", traceN, input, output, loss)
+	}
+	s.snapshotTraceYield("T-LB")
+	_ = s.DB.QueryRow(`SELECT COUNT(1), COALESCE(SUM(input_kg),0) FROM pd_trace_process_yield WHERE trace_code='T-LB' AND process_id=1`).Scan(&traceN, &input)
+	if traceN != 1 || roundKg(input) != 100 {
+		t.Fatalf("resnapshot must not double, rows=%d input=%v", traceN, input)
 	}
 }
 

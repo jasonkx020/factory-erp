@@ -201,27 +201,19 @@
   },
   {
     "method": "GET",
-    "path": "/api/v1/production/mrp-runs"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/mrp-runs/:id/results"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/material-dispatches"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/material-dispatches/wage-summary"
-  },
-  {
-    "method": "GET",
     "path": "/api/v1/production/boms"
   },
   {
     "method": "GET",
     "path": "/api/v1/production/boms/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/mrp-runs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/mrp-runs/:id/results"
   },
   {
     "method": "GET",
@@ -1773,18 +1765,6 @@
   },
   {
     "method": "POST",
-    "path": "/api/v1/production/material-dispatches"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/material-dispatches/:id/complete"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/mrp-runs"
-  },
-  {
-    "method": "POST",
     "path": "/api/v1/production/outsources"
   },
   {
@@ -1798,6 +1778,10 @@
   {
     "method": "POST",
     "path": "/api/v1/production/qc-orders/:id/complete"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/mrp-runs"
   },
   {
     "method": "POST",

@@ -12,7 +12,7 @@ import '../../widgets/form_section_header.dart';
 import '../../widgets/form_sticky_actions.dart';
 import '../../widgets/hub_entry_tile.dart';
 import '../../widgets/trace_code_field.dart';
-import 'material_dispatch_page.dart';
+import 'trace_production_page.dart';
 
 enum StationPassMode { home, self, proxy, close }
 
@@ -66,7 +66,7 @@ class _StationPassPageState extends State<StationPassPage> {
     'AUTO_ROUTING_DISABLED': '已取消按工艺自动进下道，请指定工序后入库或再领取',
     'SHIFT_NOT_AUTHORIZED': '当前班次未授权该工序',
     'ROLE_FORBIDDEN': '仅生管可确认板结束',
-    'REMAIN_NEEDS_DECISION': '该$_codeLabel仍有物料，请确认为耗损或返回补工序',
+    'REMAIN_NEEDS_DECISION': '该$_codeLabel仍有物料，请清空余量结束或返回补工序',
     'REWEIGH_REQUIRED': '请填写复磅重量',
     'REWEIGH_PHOTO_REQUIRED': '请拍摄复磅照片',
     'ALREADY_IN_STOCK': '物料已在库，不可再入库',
@@ -590,7 +590,7 @@ class _StationPassPageState extends State<StationPassPage> {
       children: [
         const Text('生产', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
         const SizedBox(height: 4),
-        Text('先选工序，扫$code后按 kg 领取、退库或入库换码', style: const TextStyle(fontSize: 13, color: Colors.black54)),
+        Text('先选工序，扫$code按 kg 领取 / 退库 / 入库；计件以日结为准', style: const TextStyle(fontSize: 13, color: Colors.black54)),
         if (_msg.isNotEmpty) ...[
           const SizedBox(height: 12),
           Text(
@@ -621,34 +621,18 @@ class _StationPassPageState extends State<StationPassPage> {
           HubEntryTile(
             icon: Icons.flag_outlined,
             title: '板结束',
-            subtitle: '核对工序/仓库余量，确认为耗损后计算扣损',
+            subtitle: '清空余量并结束本板；整批板全部结束后按溯源批号汇总扣损',
             onTap: () => _openMode(StationPassMode.close),
-          ),
-          HubEntryTile(
-            icon: Icons.assignment_outlined,
-            title: '派料记录',
-            subtitle: '扫板码+工牌派料，完工拍照推财务',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const MaterialDispatchPage()),
-            ),
           ),
           HubEntryTile(
             icon: Icons.qr_code_2_outlined,
             title: '溯源生产',
-            subtitle: '扫溯源码开始/完成生产，查看工序日志与扣损',
+            subtitle: '扫溯源码开始/完成生产，查看工序日志与批扣损',
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const TraceProductionPage()),
             ),
           ),
         ],
-        HubEntryTile(
-          icon: Icons.receipt_long_outlined,
-          title: '我的派料',
-          subtitle: '查看本人名下进行中/已完成的派料与报酬',
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const MaterialDispatchPage(scope: 'mine_work')),
-          ),
-        ),
       ],
     );
   }
@@ -714,8 +698,8 @@ class _StationPassPageState extends State<StationPassPage> {
 
   String _closeSubmitLabel() {
     final remain = (_preview?['total_remain_kg'] as num?)?.toDouble() ?? 0;
-    if (remain > 0.0005) return '全部确认为耗损并结束';
-    return '确认结束';
+    if (remain > 0.0005) return '清空余量并结束本板';
+    return '确认结束本板';
   }
 
   List<Widget> _formFields() {
@@ -951,8 +935,8 @@ class _StationPassPageState extends State<StationPassPage> {
         const SizedBox(height: 8),
         Text(
           remain > 0.0005
-              ? '仍有物料在工序或仓库。选「补工序」继续生产；选「全部确认为耗损并结束」后才计算各工序扣损率。'
-              : '该$_codeLabel工序与仓库已无余量，确认结束后计算各工序扣损率。',
+              ? '仍有物料在工序或仓库。选「补工序」继续生产；选「清空余量并结束本板」仅关本板。整批板全部结束后才按溯源批号汇总扣损。'
+              : '该$_codeLabel工序与仓库已无余量，确认后结束本板。整批板全部结束后才按溯源批号汇总扣损。',
           style: const TextStyle(fontSize: 12, color: Colors.black54),
         ),
       ],
