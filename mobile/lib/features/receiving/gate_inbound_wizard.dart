@@ -166,7 +166,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
   int? _nextAssignee;
   bool _loadingOptions = false;
 
-  static const _titles = ['农户/溯源码', '溯源码', '照片与过磅', '预览确认'];
+  static const _titles = ['农户与溯源', '费用确认', '照片与过磅', '预览确认'];
 
   @override
   void initState() {
@@ -549,7 +549,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
         const Padding(
           padding: EdgeInsets.fromLTRB(4, 0, 4, 6),
           child: Text(
-            '填写农户/溯源码：输入溯源码后可自动带出农户与品种信息',
+            '先填农户与产地，再绑定或生成溯源码并选择品种；溯源与农户强绑定，输入已有码可自动带回档案',
             style: TextStyle(fontSize: 13, color: Colors.black54),
           ),
         ),
@@ -557,7 +557,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
         TraceCodeField(
           controller: widget.batchNo,
           label: '溯源码',
-          hint: '扫码或点击手输，可空',
+          hint: '扫码绑定；空则可下一步生成（现场无法打印时用）',
           validated: widget.batchOk,
           scannerTitle: '扫描溯源批号',
           compact: true,

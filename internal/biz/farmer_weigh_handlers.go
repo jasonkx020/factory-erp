@@ -1126,9 +1126,25 @@ func (s *Services) applyVerifiedWeighStockIn(c *gin.Context, id int64, body map[
 				Title: "已入厂·待入库", Body: "仓管已确认入厂 " + strOr(m["doc_no"]) + "，待分板入库",
 				Payload: gin.H{"trace_code": m["trace_code"], "status": "gate_accepted"},
 			})
+			// 入厂完成：始终知会财务（农户/重量/单价线索）；结算单按 settle_point 另行推送
+			s.Notify.NotifyNext(c, notify.Event{
+				Key: "purchase.gate_accepted", BizType: "weigh_ticket", BizID: id,
+				DocNo: strOr(m["doc_no"]), TraceCode: strOr(m["trace_code"]),
+				FromRole: "warehouse", ToRoles: []string{"finance"}, CreateTask: settleID <= 0,
+				Title: "入厂完成",
+				Body: fmt.Sprintf("%s 农户 %s 净重 %.2f 单价 %v",
+					m["doc_no"], strOr(m["farmer_name"]), asFloatOr0(m["net_weight"]), m["unit_price"]),
+				Payload: gin.H{
+					"farmer_id": m["farmer_id"], "farmer_name": m["farmer_name"],
+					"net_weight": m["net_weight"], "unit_price": m["unit_price"],
+					"trace_code": m["trace_code"], "doc_no": m["doc_no"],
+					"settlement_id": settleID, "settle_breakdown": breakdown,
+				},
+			})
 			if settleID > 0 {
 				payload := gin.H{
 					"net_weight": m["net_weight"], "doc_no": m["doc_no"], "trace_code": m["trace_code"],
+					"farmer_id": m["farmer_id"], "farmer_name": m["farmer_name"], "unit_price": m["unit_price"],
 					"settlement_id": settleID, "settle_breakdown": breakdown,
 				}
 				s.Notify.NotifyNext(c, notify.Event{
@@ -1342,8 +1358,14 @@ func (s *Services) completeBoxStockInWeighTicket(c *gin.Context) bool {
 					Key: "purchase.stocked", BizType: "weigh_ticket", BizID: tid,
 					DocNo: strOr(tm["doc_no"]), TraceCode: trace,
 					FromRole: "warehouse", ToRoles: []string{"finance"}, CreateTask: true,
-					Title: "待财务结算", Body: fmt.Sprintf("%s 分板净重 %.2f 应付 %v", tm["doc_no"], asFloatOr0(tm["net_weight"]), bd["amount"]),
-					Payload: gin.H{"settlement_id": sid, "settle_breakdown": bd, "box_sum_kg": boxSum},
+					Title: "待财务结算", Body: fmt.Sprintf("%s 分板净重 %.2f 应付 %v · 农户 %s",
+						tm["doc_no"], asFloatOr0(tm["net_weight"]), bd["amount"], strOr(tm["farmer_name"])),
+					Payload: gin.H{
+						"settlement_id": sid, "settle_breakdown": bd, "box_sum_kg": boxSum,
+						"farmer_id": tm["farmer_id"], "farmer_name": tm["farmer_name"],
+						"net_weight": tm["net_weight"], "unit_price": tm["unit_price"],
+						"trace_code": trace,
+					},
 				})
 			}
 		}
@@ -1373,6 +1395,23 @@ func (s *Services) completeBoxStockInWeighTicket(c *gin.Context) bool {
 				"box_sum_kg": boxSum, "ticket_count": len(lotIDs),
 			},
 		})
+		// 入库完成：无论 settle_point，均推送财务可结算线索（农户/重量/单价）
+		if settleID <= 0 {
+			s.Notify.NotifyNext(c, notify.Event{
+				Key: "purchase.stocked", BizType: "weigh_ticket", BizID: id,
+				DocNo: strOr(m["doc_no"]), TraceCode: trace,
+				FromRole: "warehouse", ToRoles: []string{"finance"}, CreateTask: true,
+				Title: "入库完成·待结算",
+				Body: fmt.Sprintf("%s 农户 %s 合单净重 %.2f 分板 %.2f",
+					m["doc_no"], strOr(m["farmer_name"]), ticketNet, boxSum),
+				Payload: gin.H{
+					"farmer_id": m["farmer_id"], "farmer_name": m["farmer_name"],
+					"net_weight": ticketNet, "unit_price": m["unit_price"],
+					"box_sum_kg": boxSum, "inbound_loss_kg": inboundLoss,
+					"trace_code": trace, "ticket_count": len(lotIDs),
+				},
+			})
+		}
 	}
 
 	out := s.loadWeighTicket(id)
@@ -2068,6 +2107,10 @@ func (s *Services) finalizeWeighBoxStockIn(id int64) (inboundLoss float64, errCo
 			firstBox, tid)
 		_, _ = s.DB.Exec(`UPDATE pur_trace_lot SET status='stocked' WHERE weigh_ticket_id=?`, tid)
 		_, _ = s.DB.Exec(`UPDATE pur_inbound_arrival SET status='stocked', updated_at=NOW() WHERE id=(SELECT arrival_id FROM pur_weigh_ticket WHERE id=?)`, tid)
+	}
+	// 入库完成后锁定溯源码，禁止再追加入厂
+	if trace != "" {
+		_, _ = s.endTraceBatchCodeInternal(trace, 0)
 	}
 	return inboundLoss, ""
 }

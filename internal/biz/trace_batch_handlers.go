@@ -574,6 +574,36 @@ func (s *Services) voidTraceBatchCode(c *gin.Context) bool {
 	return true
 }
 
+// endTraceBatchCodeInternal locks a trace after warehouse stock-in completes (or admin end).
+// Idempotent: already-ended codes return ok=true without error.
+func (s *Services) endTraceBatchCodeInternal(code string, userID int64) (ok bool, errCode string) {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if code == "" {
+		return false, "CODE_REQUIRED"
+	}
+	var st string
+	err := s.DB.QueryRow(`SELECT status FROM pur_trace_batch_code WHERE code=?`, code).Scan(&st)
+	if err != nil {
+		return false, "BATCH_CODE_NOT_FOUND"
+	}
+	if st == "ended" {
+		return true, ""
+	}
+	if st == "void" {
+		return false, "BATCH_CODE_VOID"
+	}
+	res, err := s.DB.Exec(`UPDATE pur_trace_batch_code SET status='ended', ended_at=NOW(), ended_by=?
+		WHERE code=? AND status IN ('in_progress','used')`, nullIf0(userID), code)
+	if err != nil {
+		return false, "DB_ERROR:" + err.Error()
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return false, "BATCH_CODE_NOT_IN_PROGRESS"
+	}
+	return true, ""
+}
+
 func (s *Services) endTraceBatchCode(c *gin.Context) bool {
 	body := bindBody(c)
 	code := strings.ToUpper(strings.TrimSpace(strOr(body["code"])))
@@ -585,15 +615,9 @@ func (s *Services) endTraceBatchCode(c *gin.Context) bool {
 	if cl := middleware.Claims(c); cl != nil {
 		uid = cl.UserID
 	}
-	res, err := s.DB.Exec(`UPDATE pur_trace_batch_code SET status='ended', ended_at=NOW(), ended_by=?
-		WHERE code=? AND status IN ('in_progress','used')`, nullIf0(uid), code)
-	if err != nil {
-		api.FailJSON(c, "DB_ERROR:"+err.Error())
-		return true
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		api.FailJSON(c, "BATCH_CODE_NOT_IN_PROGRESS")
+	ok, errCode := s.endTraceBatchCodeInternal(code, uid)
+	if !ok {
+		api.FailJSON(c, errCode)
 		return true
 	}
 	api.OK(c, gin.H{"code": code, "status": "ended", "status_label": "已结束"})

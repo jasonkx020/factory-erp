@@ -22,6 +22,8 @@ class MinePage extends StatefulWidget {
 
 class _MinePageState extends State<MinePage> {
   Map<String, dynamic>? _dailyWage;
+  double _dispatchWage = 0;
+  double _dispatchKg = 0;
 
   @override
   void initState() {
@@ -30,9 +32,30 @@ class _MinePageState extends State<MinePage> {
   }
 
   Future<void> _loadDailyWage() async {
-    final r = await context.read<AuthState>().api.get('/production/piecework-summaries/mine');
+    final api = context.read<AuthState>().api;
+    final today = DateTime.now();
+    final d = '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+    final results = await Future.wait([
+      api.get('/production/piecework-summaries/mine'),
+      api.get('/production/material-dispatches?scope=mine_work&status=done&date_from=$d&date_to=$d'),
+    ]);
     if (!mounted) return;
-    setState(() => _dailyWage = r.data is Map ? Map<String, dynamic>.from(r.data as Map) : null);
+    var dispatchWage = 0.0;
+    var dispatchKg = 0.0;
+    final dr = results[1];
+    if (dr.ok && dr.data is Map) {
+      final items = ApiClient.listOf((dr.data as Map)['items']);
+      for (final e in items) {
+        if (e is! Map) continue;
+        dispatchWage += (e['wage_amount'] as num?)?.toDouble() ?? 0;
+        dispatchKg += (e['weight_kg'] as num?)?.toDouble() ?? 0;
+      }
+    }
+    setState(() {
+      _dailyWage = results[0].data is Map ? Map<String, dynamic>.from(results[0].data as Map) : null;
+      _dispatchWage = dispatchWage;
+      _dispatchKg = dispatchKg;
+    });
   }
 
   @override
@@ -146,12 +169,13 @@ class _MinePageState extends State<MinePage> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '¥${_dailyWage?['total_amount'] ?? 0}',
+                    '¥${((_dailyWage?['total_amount'] as num?)?.toDouble() ?? 0) + _dispatchWage}',
                     style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '完工 ${_dailyWage?['total_output_weight'] ?? _dailyWage?['total_qty'] ?? 0} kg',
+                    '计件 ${_dailyWage?['total_output_weight'] ?? _dailyWage?['total_qty'] ?? 0} kg'
+                    '${_dispatchKg > 0 ? ' · 派料 ${_dispatchKg.toStringAsFixed(2)} kg / ¥${_dispatchWage.toStringAsFixed(2)}' : ''}',
                     style: theme.textTheme.bodyMedium?.copyWith(color: Colors.black87),
                   ),
                   const SizedBox(height: 12),

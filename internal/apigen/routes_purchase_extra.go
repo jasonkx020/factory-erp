@@ -18,5 +18,14 @@ func RegisterPurchaseExtra(r *gin.RouterGroup, h Handler) {
 
 	r.GET("/purchase/weigh-flow/next-options", h.Dispatch("GET", "/api/v1/purchase/weigh-flow/next-options", "/purchase/weigh-flow/next-options", "purchase/weigh-tickets", "list"))
 
+	// 完成本批分板（仓管）；须单独注册，Gin 不会把 /box-stock-in 匹配到 /box-stock-in/complete
+	r.POST("/purchase/weigh-tickets/:id/box-stock-in/complete", h.Dispatch(
+		"POST",
+		"/api/v1/purchase/weigh-tickets/{id}/box-stock-in/complete",
+		"/purchase/weigh-tickets/:id/box-stock-in/complete",
+		"purchase/weigh-tickets",
+		"action:box-stock-in-complete",
+	))
+
 	r.POST("/biz/uploads", h.Dispatch("POST", "/api/v1/biz/uploads", "/biz/uploads", "biz/uploads", "create"))
 }

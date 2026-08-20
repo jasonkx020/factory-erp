@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,6 +12,7 @@ import '../../widgets/form_section_header.dart';
 import '../../widgets/form_sticky_actions.dart';
 import '../../widgets/hub_entry_tile.dart';
 import '../../widgets/trace_code_field.dart';
+import 'material_dispatch_page.dart';
 
 enum StationPassMode { home, self, proxy, close }
 
@@ -47,6 +49,7 @@ class _StationPassPageState extends State<StationPassPage> {
   int? _processId;
   int? _stockInProductId;
   List<Map<String, dynamic>> _products = [];
+  String? _reweighPhotoUrl;
 
   String get _codeLabel => context.read<CarrierCodeLabels>().code;
 
@@ -64,6 +67,10 @@ class _StationPassPageState extends State<StationPassPage> {
     'SHIFT_NOT_AUTHORIZED': '当前班次未授权该工序',
     'ROLE_FORBIDDEN': '仅生管可确认板结束',
     'REMAIN_NEEDS_DECISION': '该$_codeLabel仍有物料，请确认为耗损或返回补工序',
+    'REWEIGH_REQUIRED': '请填写复磅重量',
+    'REWEIGH_PHOTO_REQUIRED': '请拍摄复磅照片',
+    'ALREADY_IN_STOCK': '物料已在库，不可再入库',
+    'SAME_PROCESS_FORBIDDEN': '同一工序不可相互流转',
     'APP_ONLY': '请在 App 操作',
   };
 
@@ -268,6 +275,9 @@ class _StationPassPageState extends State<StationPassPage> {
     if (_processId == null || _processId! <= 0) return '请先选择工序';
     final kg = double.tryParse(_kg.text) ?? 0;
     if (kg <= 0) return '请填写重量(kg)';
+    if (_action == StationBoardAction.issue || _action == StationBoardAction.stockIn) {
+      if ((_reweighPhotoUrl ?? '').isEmpty) return '请拍摄复磅照片';
+    }
     final p = _preview ?? const <String, dynamic>{};
     final avail = (p['available_kg'] as num?)?.toDouble() ?? 0;
     final mine = (p['my_open_kg'] as num?)?.toDouble() ?? 0;
@@ -281,6 +291,41 @@ class _StationPassPageState extends State<StationPassPage> {
         if (kg > wip + 0.0005) return '重量不能超过本工序在制 ${wip.toStringAsFixed(2)} kg';
     }
     return null;
+  }
+
+  Future<void> _takeReweighPhoto() async {
+    try {
+      final picker = ImagePicker();
+      final file = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      setState(() {
+        _msg = '上传复磅照片…';
+        _msgIsError = false;
+      });
+      final r = await context.read<AuthState>().api.postMultipart(
+            '/biz/uploads',
+            bytes,
+            filename: file.name.isEmpty ? 'reweigh.jpg' : file.name,
+          );
+      if (!mounted) return;
+      if (!r.ok || r.data is! Map) {
+        _prompt('上传失败：${r.msg}');
+        return;
+      }
+      final url = (r.data as Map)['url']?.toString() ?? (r.data as Map)['file_url']?.toString() ?? '';
+      if (url.isEmpty) {
+        _prompt('上传无返回 URL');
+        return;
+      }
+      setState(() {
+        _reweighPhotoUrl = url;
+        _msg = '复磅照片已上传';
+        _msgIsError = false;
+      });
+    } catch (e) {
+      _prompt('拍照失败：$e');
+    }
   }
 
   Future<void> _goPreview() async {
@@ -349,6 +394,14 @@ class _StationPassPageState extends State<StationPassPage> {
       };
     }
     final body = _baseBody();
+    final kg = double.tryParse(_kg.text) ?? 0;
+    if (_action == StationBoardAction.issue || _action == StationBoardAction.stockIn) {
+      body['reweigh_kg'] = kg;
+      if ((_reweighPhotoUrl ?? '').isNotEmpty) {
+        body['photo_url'] = _reweighPhotoUrl;
+        body['image_url'] = _reweighPhotoUrl;
+      }
+    }
     if (_action == StationBoardAction.stockIn) {
       body['move_kind'] = 'stock_in';
       if (_stockInProductId != null && _stockInProductId! > 0) {
@@ -564,13 +617,38 @@ class _StationPassPageState extends State<StationPassPage> {
           subtitle: '指定工序，手输或扫描他人工牌后再扫$code',
           onTap: () => _openMode(StationPassMode.proxy),
         ),
-        if (_canCloseBoard)
+        if (_canCloseBoard) ...[
           HubEntryTile(
             icon: Icons.flag_outlined,
             title: '板结束',
             subtitle: '核对工序/仓库余量，确认为耗损后计算扣损',
             onTap: () => _openMode(StationPassMode.close),
           ),
+          HubEntryTile(
+            icon: Icons.assignment_outlined,
+            title: '派料记录',
+            subtitle: '扫板码+工牌派料，完工拍照推财务',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const MaterialDispatchPage()),
+            ),
+          ),
+          HubEntryTile(
+            icon: Icons.qr_code_2_outlined,
+            title: '溯源生产',
+            subtitle: '扫溯源码开始/完成生产，查看工序日志与扣损',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const TraceProductionPage()),
+            ),
+          ),
+        ],
+        HubEntryTile(
+          icon: Icons.receipt_long_outlined,
+          title: '我的派料',
+          subtitle: '查看本人名下进行中/已完成的派料与报酬',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const MaterialDispatchPage(scope: 'mine_work')),
+          ),
+        ),
       ],
     );
   }
@@ -756,17 +834,26 @@ class _StationPassPageState extends State<StationPassPage> {
             ChoiceChip(
               label: const Text('领取'),
               selected: _action == StationBoardAction.issue,
-              onSelected: (_) => setState(() => _action = StationBoardAction.issue),
+              onSelected: (_) => setState(() {
+                _action = StationBoardAction.issue;
+                _reweighPhotoUrl = null;
+              }),
             ),
             ChoiceChip(
               label: const Text('退库'),
               selected: _action == StationBoardAction.ret,
-              onSelected: (_) => setState(() => _action = StationBoardAction.ret),
+              onSelected: (_) => setState(() {
+                _action = StationBoardAction.ret;
+                _reweighPhotoUrl = null;
+              }),
             ),
             ChoiceChip(
               label: const Text('入库'),
               selected: _action == StationBoardAction.stockIn,
-              onSelected: (_) => setState(() => _action = StationBoardAction.stockIn),
+              onSelected: (_) => setState(() {
+                _action = StationBoardAction.stockIn;
+                _reweighPhotoUrl = null;
+              }),
             ),
           ],
         ),
@@ -804,6 +891,18 @@ class _StationPassPageState extends State<StationPassPage> {
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           requiredMark: true,
         ),
+        if (_action == StationBoardAction.issue || _action == StationBoardAction.stockIn) ...[
+          const SizedBox(height: 8),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(
+              (_reweighPhotoUrl ?? '').isEmpty ? Icons.camera_alt_outlined : Icons.check_circle,
+              color: (_reweighPhotoUrl ?? '').isEmpty ? Colors.orange : Colors.teal,
+            ),
+            title: Text((_reweighPhotoUrl ?? '').isEmpty ? '拍摄复磅照片（必填）' : '复磅照片已上传'),
+            trailing: TextButton(onPressed: _busy ? null : _takeReweighPhoto, child: const Text('拍照')),
+          ),
+        ],
         const SizedBox(height: 8),
         Text(
           _actionHint(),

@@ -163,6 +163,10 @@ func (s *Services) handleProductionExt(c *gin.Context, method, openapiPath, acti
 		return s.handleBoardIssues(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/board-moves"):
 		return s.handleBoardMoves(c, method, openapiPath, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/production/material-dispatches"):
+		return s.handleMaterialDispatches(c, method, openapiPath, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/production/trace-productions"):
+		return s.handleTraceProduction(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/process-returns"):
 		return s.handleProcessReturns(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/task-merges"):

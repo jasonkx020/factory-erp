@@ -28,8 +28,14 @@ export const CUSTOMER_SOURCE_OPTIONS: FormOption[] = [
 ]
 
 export const PROCESS_TYPE_OPTIONS: FormOption[] = [
+  { value: 'gate', label: '入厂' },
   { value: 'wash', label: '清洗' },
-  { value: 'cut', label: '切割' },
+  { value: 'cut', label: '切断' },
+  { value: 'core', label: '去芯' },
+  { value: 'slice', label: '切片' },
+  { value: 'peel', label: '去皮' },
+  { value: 'dice', label: '切块' },
+  { value: 'bag', label: '装袋' },
   { value: 'pack', label: '包装' },
   { value: 'inbound', label: '入库' },
   { value: 'outbound', label: '出库' },

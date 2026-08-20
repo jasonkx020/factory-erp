@@ -249,7 +249,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
       case 'BATCH_CODE_USED':
         return '该溯源码状态异常，请刷新后重试';
       case 'BATCH_CODE_ENDED':
-        return '该溯源码已结束，不可再追加采购单';
+        return '该溯源已入库完成，不可再入厂';
       case 'BATCH_CODE_RESERVED':
         return '该溯源码正被他人占用，请换码或稍后再试';
       case 'BATCH_CODE_VOID':

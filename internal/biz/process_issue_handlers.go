@@ -178,6 +178,18 @@ func (s *Services) requireBodyProcessID(body map[string]interface{}) (processID,
 	return processID, stepID, ""
 }
 
+func (s *Services) requireReweighFields(body map[string]interface{}) string {
+	reweigh, _ := asFloat(body["reweigh_kg"])
+	if reweigh <= kgEps {
+		return "REWEIGH_REQUIRED"
+	}
+	photo := strings.TrimSpace(strOrDef(body["photo_url"], strOr(body["image_url"])))
+	if photo == "" {
+		return "REWEIGH_PHOTO_REQUIRED"
+	}
+	return ""
+}
+
 func (s *Services) handleBoardIssueHTTP(c *gin.Context) bool {
 	body, board, workerID, workerName, badge, kg, errMsg := s.parseBoardAction(c)
 	if errMsg != "" {
@@ -187,6 +199,14 @@ func (s *Services) handleBoardIssueHTTP(c *gin.Context) bool {
 	processID, stepID, errMsg := s.requireBodyProcessID(body)
 	if errMsg != "" {
 		api.FailJSON(c, errMsg)
+		return true
+	}
+	if fail := s.assertProcessTransitionAllowed(board, processID); fail != "" {
+		api.FailJSON(c, fail)
+		return true
+	}
+	if fail := s.requireReweighFields(body); fail != "" {
+		api.FailJSON(c, fail)
 		return true
 	}
 	if !s.workerShiftAuthorized(workerID, processID) {
@@ -276,6 +296,10 @@ func (s *Services) handleBoardMoveHTTP(c *gin.Context) bool {
 	processID, stepID, errMsg := s.requireBodyProcessID(body)
 	if errMsg != "" {
 		api.FailJSON(c, errMsg)
+		return true
+	}
+	if fail := s.requireReweighFields(body); fail != "" {
+		api.FailJSON(c, fail)
 		return true
 	}
 	if !s.workerShiftAuthorized(workerID, processID) {

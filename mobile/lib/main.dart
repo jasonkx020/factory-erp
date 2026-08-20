@@ -23,6 +23,7 @@ import 'features/sales/sales_page.dart';
 import 'features/shell/factory_shell.dart';
 import 'features/shell/main_shell.dart';
 import 'features/station/station_pass_page.dart';
+import 'features/station/material_dispatch_page.dart';
 import 'features/ticket/ticket_widgets.dart';
 import 'features/warehouse/warehouse_page.dart';
 import 'features/workshop/workshop_page.dart';
@@ -117,6 +118,8 @@ class ErpEmployeeApp extends StatelessWidget {
           '/workshop': (_) => const WorkshopPage(),
           '/worker': (_) => const StationPassPage(),
           '/station': (_) => const StationPassPage(),
+          '/material-dispatch': (_) => const MaterialDispatchPage(),
+          '/trace-production': (_) => const TraceProductionPage(),
           '/receiving': (_) => const ReceivingPage(),
           '/warehouse': (_) => const WarehousePage(),
           '/sales': (_) => const SalesPage(),

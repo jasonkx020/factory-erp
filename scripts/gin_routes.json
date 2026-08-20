@@ -141,6 +141,14 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/production/trace-productions"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/trace-productions/logs"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/production/scraps"
   },
   {
@@ -193,19 +201,27 @@
   },
   {
     "method": "GET",
-    "path": "/api/v1/production/boms"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/boms/:id"
-  },
-  {
-    "method": "GET",
     "path": "/api/v1/production/mrp-runs"
   },
   {
     "method": "GET",
     "path": "/api/v1/production/mrp-runs/:id/results"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/material-dispatches"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/material-dispatches/wage-summary"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/boms"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/boms/:id"
   },
   {
     "method": "GET",
@@ -1633,6 +1649,38 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/production/task-merges"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/task-merges/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/tasks"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/tasks/:id/close"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/trace-productions/process-start"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/trace-productions/process-stop"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/trace-productions/start"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/trace-productions/complete"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/production/board-issues"
   },
   {
@@ -1701,22 +1749,6 @@
   },
   {
     "method": "POST",
-    "path": "/api/v1/production/task-merges"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/task-merges/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/tasks"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/tasks/:id/close"
-  },
-  {
-    "method": "POST",
     "path": "/api/v1/production/dispatches"
   },
   {
@@ -1741,6 +1773,18 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/production/material-dispatches"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/material-dispatches/:id/complete"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/mrp-runs"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/production/outsources"
   },
   {
@@ -1754,10 +1798,6 @@
   {
     "method": "POST",
     "path": "/api/v1/production/qc-orders/:id/complete"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/mrp-runs"
   },
   {
     "method": "POST",
@@ -1785,6 +1825,14 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/box-stock-in"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/purchase/weigh-tickets/:id/box-stock-in/complete"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/purchase/weigh-tickets/:id/qc"
   },
   {
@@ -1798,10 +1846,6 @@
   {
     "method": "POST",
     "path": "/api/v1/purchase/weigh-tickets/:id/warehouse-confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/purchase/weigh-tickets/:id/box-stock-in"
   },
   {
     "method": "POST",
