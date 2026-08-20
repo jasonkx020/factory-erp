@@ -241,7 +241,7 @@ func (s *Services) listMaterialDispatches(c *gin.Context) bool {
 	rows, err := s.DB.Query(`SELECT id, board_id, board_code, trace_code, worker_id, worker_name, badge_code,
 		process_id, process_name, weight_kg, reweigh_kg, source_kind, status, unit_price, wage_amount, pay_mode,
 		issue_id, photo_url, confirm_photo_url, dispatched_by, confirmed_by, remark,
-		COALESCE(created_at,''), COALESCE(confirmed_at,''), COALESCE(updated_at,'')
+		COALESCE(CAST(created_at AS TEXT),''), COALESCE(CAST(confirmed_at AS TEXT),''), COALESCE(CAST(updated_at AS TEXT),'')
 		FROM pd_material_dispatch `+where+` ORDER BY id DESC LIMIT 200`, args...)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -323,7 +323,7 @@ func (s *Services) loadMaterialDispatch(id int64) gin.H {
 	err := s.DB.QueryRow(`SELECT id, board_id, board_code, trace_code, worker_id, worker_name, badge_code,
 		process_id, process_name, weight_kg, reweigh_kg, source_kind, status, unit_price, wage_amount, pay_mode,
 		issue_id, photo_url, confirm_photo_url, dispatched_by, confirmed_by, remark,
-		COALESCE(created_at,''), COALESCE(confirmed_at,''), COALESCE(updated_at,'')
+		COALESCE(CAST(created_at AS TEXT),''), COALESCE(CAST(confirmed_at AS TEXT),''), COALESCE(CAST(updated_at AS TEXT),'')
 		FROM pd_material_dispatch WHERE id=?`, id).
 		Scan(&id, &boardID, &boardCode, &trace, &workerID, &workerName, &badge,
 			&processID, &processName, &weight, &reweigh, &source, &st, &unitPrice, &wage, &payMode,
@@ -557,7 +557,7 @@ func (s *Services) listTraceProcessLogs(c *gin.Context) bool {
 		args = append(args, trace)
 	}
 	rows, err := s.DB.Query(`SELECT id, session_id, trace_code, process_id, process_name, event_type, actor_user_id,
-		input_kg, output_kg, loss_rate, remark, COALESCE(created_at,'')
+		input_kg, output_kg, loss_rate, remark, COALESCE(CAST(created_at AS TEXT),'')
 		FROM pd_trace_process_log `+where+` ORDER BY id DESC LIMIT 300`, args...)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -589,7 +589,7 @@ func (s *Services) loadTraceProduction(id int64) gin.H {
 	var startedBy, completedBy int64
 	var trace, status, remark, startedAt, completedAt string
 	var loss, inKg, outKg float64
-	err := s.DB.QueryRow(`SELECT id, trace_code, status, started_by, completed_by, COALESCE(started_at,''), COALESCE(completed_at,''),
+	err := s.DB.QueryRow(`SELECT id, trace_code, status, started_by, completed_by, COALESCE(CAST(started_at AS TEXT),''), COALESCE(CAST(completed_at AS TEXT),''),
 		COALESCE(remark,''), loss_rate, input_kg, output_kg FROM pd_trace_production WHERE id=?`, id).
 		Scan(&id, &trace, &status, &startedBy, &completedBy, &startedAt, &completedAt, &remark, &loss, &inKg, &outKg)
 	if err != nil {
