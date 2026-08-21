@@ -639,6 +639,16 @@ CREATE TABLE IF NOT EXISTS pd_process_issue (
   returned_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
   completed_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'open',
+  biz_status TEXT NOT NULL DEFAULT 'open',
+  issued_by_employee_id BIGINT NOT NULL DEFAULT 0,
+  work_done_at TIMESTAMPTZ,
+  work_done_by BIGINT NOT NULL DEFAULT 0,
+  pending_return_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+  pending_reweigh_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+  pending_photo_url TEXT NOT NULL DEFAULT '',
+  pending_return_by BIGINT NOT NULL DEFAULT 0,
+  pending_remark TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT pd_process_issue_kg_chk CHECK (returned_kg + completed_kg <= issue_kg + 0.0001)
@@ -646,6 +656,36 @@ CREATE TABLE IF NOT EXISTS pd_process_issue (
 
 CREATE INDEX IF NOT EXISTS idx_pd_process_issue_board ON pd_process_issue (board_id, process_id, status);
 CREATE INDEX IF NOT EXISTS idx_pd_process_issue_worker ON pd_process_issue (worker_id, status);
+CREATE INDEX IF NOT EXISTS idx_pd_process_issue_biz ON pd_process_issue (biz_status, worker_id);
+CREATE INDEX IF NOT EXISTS idx_pd_process_issue_issuer ON pd_process_issue (issued_by_employee_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_pd_process_issue_trace_proc ON pd_process_issue (trace_code, process_id, worker_id, status);
+CREATE INDEX IF NOT EXISTS idx_pd_process_issue_source ON pd_process_issue (source, created_at);
+
+CREATE TABLE IF NOT EXISTS pd_process_stock_in (
+  id BIGSERIAL PRIMARY KEY,
+  doc_no TEXT NOT NULL DEFAULT '',
+  trace_code TEXT NOT NULL DEFAULT '',
+  process_id BIGINT NOT NULL DEFAULT 0,
+  board_id BIGINT NOT NULL DEFAULT 0,
+  board_code TEXT NOT NULL DEFAULT '',
+  applicant_employee_id BIGINT NOT NULL DEFAULT 0,
+  worker_id BIGINT NOT NULL DEFAULT 0,
+  apply_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+  reweigh_kg DOUBLE PRECISION NOT NULL DEFAULT 0,
+  photo_url TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending_warehouse',
+  issue_ids TEXT NOT NULL DEFAULT '',
+  warehouse_id BIGINT NOT NULL DEFAULT 0,
+  approved_by BIGINT NOT NULL DEFAULT 0,
+  approved_at TIMESTAMPTZ,
+  remark TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pd_process_stock_in_status ON pd_process_stock_in (status, created_at);
+CREATE INDEX IF NOT EXISTS idx_pd_process_stock_in_trace ON pd_process_stock_in (trace_code, process_id);
+CREATE INDEX IF NOT EXISTS idx_pd_process_stock_in_applicant ON pd_process_stock_in (applicant_employee_id, created_at);
 
 CREATE TABLE IF NOT EXISTS pd_process_move (
   id BIGSERIAL PRIMARY KEY,
@@ -2843,6 +2883,8 @@ ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS source_type TEXT;
 ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS image_url TEXT NOT NULL DEFAULT '';
 ALTER TABLE pd_process ADD COLUMN IF NOT EXISTS pay_mode TEXT NOT NULL DEFAULT 'none';
 ALTER TABLE pd_process_issue ADD COLUMN IF NOT EXISTS wage_settled_kg DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE pd_process_issue ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_pd_process_issue_trace_proc ON pd_process_issue (trace_code, process_id, worker_id, status);
 ALTER TABLE appr_task ADD COLUMN IF NOT EXISTS title TEXT;
 ALTER TABLE appr_task ADD COLUMN IF NOT EXISTS doc_no TEXT;
 ALTER TABLE appr_task ADD COLUMN IF NOT EXISTS amount DOUBLE PRECISION NOT NULL DEFAULT 0;

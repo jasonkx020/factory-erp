@@ -79,20 +79,9 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 	case strings.HasPrefix(openapiPath, "/api/v1/production/dispatches"):
 		return s.handleDispatches(c, method, action, openapiPath)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/report-works"):
-		if strings.HasSuffix(openapiPath, "/confirm") && method == "POST" {
-			return s.confirmReportWork(c)
-		}
-		if strings.HasSuffix(openapiPath, "/void") && method == "POST" {
-			return s.voidReportWorkDraft(c)
-		}
-		if strings.HasSuffix(openapiPath, "/correct") && method == "POST" {
-			body := bindBody(c)
-			body["biz_type"] = "report_work"
-			body["biz_id"] = paramID(c)
-			body["action"] = strOrDef(body["action"], "correct")
-			return s.handleCorrectionsWithBody(c, body)
-		}
-		return s.handleReportWorks(c, method, action, openapiPath)
+		// 旧过站/报工已下线：现场以 board-issues 领料为准，台账查 station-flow-logs。
+		api.FailJSON(c, "FEATURE_REMOVED:report-works;use_board_issues_and_station_flow_logs")
+		return true
 	case openapiPath == "/api/v1/biz/uploads" || strings.HasPrefix(openapiPath, "/api/v1/biz/uploads"):
 		return s.handleUploads(c, method)
 	case openapiPath == "/api/v1/biz/evidences" || strings.HasPrefix(openapiPath, "/api/v1/biz/evidences"):
@@ -135,6 +124,8 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		}
 	case strings.Contains(openapiPath, "/inventory/box-codes/") && strings.HasSuffix(openapiPath, "/destroy") && method == "POST":
 		return s.destroyBoxCode(c)
+	case strings.Contains(openapiPath, "/inventory/box-codes/") && strings.HasSuffix(openapiPath, "/recycle") && method == "POST":
+		return s.recycleBoxCode(c)
 	case strings.Contains(openapiPath, "/inventory/box-codes/trace/"):
 		return s.handleBoxTrace(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/payroll/"):

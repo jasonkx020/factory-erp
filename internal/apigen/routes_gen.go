@@ -308,6 +308,7 @@ func RegisterGenerated(r *gin.RouterGroup, h Handler) {
 	r.GET("/inventory/box-codes/:id", h.Dispatch("GET", "/api/v1/inventory/box-codes/{id}", "/inventory/box-codes/:id", "inventory/box-codes", "get"))
 	r.POST("/inventory/box-codes/:id/bind", h.Dispatch("POST", "/api/v1/inventory/box-codes/{id}/bind", "/inventory/box-codes/:id/bind", "inventory/box-codes", "action:bind"))
 	r.POST("/inventory/box-codes/:id/destroy", h.Dispatch("POST", "/api/v1/inventory/box-codes/{id}/destroy", "/inventory/box-codes/:id/destroy", "inventory/box-codes", "action:destroy"))
+	r.POST("/inventory/box-codes/:id/recycle", h.Dispatch("POST", "/api/v1/inventory/box-codes/{id}/recycle", "/inventory/box-codes/:id/recycle", "inventory/box-codes", "action:recycle"))
 	r.GET("/inventory/consumes", h.Dispatch("GET", "/api/v1/inventory/consumes", "/inventory/consumes", "inventory/consumes", "list"))
 	r.POST("/inventory/consumes", h.Dispatch("POST", "/api/v1/inventory/consumes", "/inventory/consumes", "inventory/consumes", "create"))
 	r.GET("/inventory/consumes/:id", h.Dispatch("GET", "/api/v1/inventory/consumes/{id}", "/inventory/consumes/:id", "inventory/consumes", "get"))

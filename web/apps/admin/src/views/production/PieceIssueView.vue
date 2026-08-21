@@ -96,14 +96,6 @@ async function create() {
   await refresh()
 }
 
-async function generate() {
-  const res = await fieldLedgerApi.generatePieceIssue({ biz_date: genDate.value })
-  if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success('已从报工生成')
-  detail.value = (res.data as Row) || null
-  await refresh()
-}
-
 async function openSheet(id: number) {
   const res = await fieldLedgerApi.getPieceIssueSheet(id)
   if (res.code !== 1) return ElMessage.error(res.msg)
@@ -142,9 +134,8 @@ onMounted(async () => {
         <el-button type="primary" @click="create">保存</el-button>
       </el-form>
     </el-card>
-    <el-card header="从报工生成" style="margin-top:12px">
-      <el-date-picker v-model="genDate" type="date" value-format="YYYY-MM-DD" style="width:160px;margin-right:8px" />
-      <el-button @click="generate">生成草稿</el-button>
+    <el-card header="从报工生成（已下线）" style="margin-top:12px">
+      <p class="hint">旧报工链路已移除。产量请以 App 领料 + 计件日结为准。</p>
     </el-card>
     <TableOrCards :data="sheets" :loading="loading" :columns="sheetCols" style="margin-top:12px">
       <el-table :data="sheets" size="small" @row-click="(row: Row) => openSheet(Number(row.id))">

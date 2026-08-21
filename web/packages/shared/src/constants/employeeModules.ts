@@ -36,7 +36,7 @@ export function canAccessEmployeeModule(
   switch (module) {
     case 'station':
       return (
-        matchAny(permissions, ['生产管理', '过站记录', '扫码报工', 'production', '报工']) ||
+        matchAny(permissions, ['生产管理', '工序流水', '过站记录', '扫码报工', 'production', '报工', '领料']) ||
         roles.includes('piece') ||
         roles.includes('fixed') ||
         roles.includes('计件工') ||

@@ -70,6 +70,13 @@ func (s *Services) handleTraceProduction(c *gin.Context, method, openapiPath, ac
 	switch {
 	case method == "GET" && strings.Contains(openapiPath, "/logs"):
 		return s.listTraceProcessLogs(c)
+	case method == "GET" && (strings.Contains(openapiPath, "/wip") || strings.HasSuffix(openapiPath, "/wip")):
+		return s.getTraceProductionWip(c)
+	case method == "GET" && (action == "list" || openapiPath == "/api/v1/production/trace-productions"):
+		if strings.TrimSpace(c.Query("trace_code")) != "" || strings.TrimSpace(c.Query("code")) != "" || paramID(c) > 0 {
+			return s.getTraceProduction(c)
+		}
+		return s.listTraceProductionsConsole(c)
 	case method == "GET":
 		return s.getTraceProduction(c)
 	case method == "POST" && strings.Contains(openapiPath, "/start"):
@@ -87,7 +94,7 @@ func (s *Services) handleTraceProduction(c *gin.Context, method, openapiPath, ac
 }
 
 func (s *Services) startTraceProduction(c *gin.Context) bool {
-	if !s.requireAnyRole(c, "foreman", "planner", "sys_admin", "admin") {
+	if !s.requireAnyRole(c, "foreman") {
 		return true
 	}
 	body := bindBody(c)
@@ -117,7 +124,7 @@ func (s *Services) startTraceProduction(c *gin.Context) bool {
 }
 
 func (s *Services) completeTraceProduction(c *gin.Context) bool {
-	if !s.requireAnyRole(c, "foreman", "planner", "sys_admin", "admin") {
+	if !s.requireAnyRole(c, "foreman") {
 		return true
 	}
 	body := bindBody(c)
@@ -136,6 +143,10 @@ func (s *Services) completeTraceProduction(c *gin.Context) bool {
 		return true
 	}
 	trace = strOr(row["trace_code"])
+	if fail := s.assertTraceCanComplete(trace); fail != "" {
+		api.FailJSON(c, fail)
+		return true
+	}
 	inputKg, outputKg, lossRate := s.calcTraceSessionYield(trace)
 	uid := claimsUserID(c)
 	_, err := s.DB.Exec(`UPDATE pd_trace_production SET status='done', completed_by=?, completed_at=NOW(),
@@ -147,6 +158,7 @@ func (s *Services) completeTraceProduction(c *gin.Context) bool {
 	}
 	_, _ = s.DB.Exec(`INSERT INTO pd_trace_process_log(session_id, trace_code, event_type, actor_user_id, input_kg, output_kg, loss_rate, remark)
 		VALUES(?,?,?,?,?,?,?,?)`, id, trace, "session_complete", uid, inputKg, outputKg, lossRate, strOr(body["remark"]))
+	s.snapshotTraceYield(trace)
 	api.OK(c, s.loadTraceProduction(id))
 	return true
 }

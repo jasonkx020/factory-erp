@@ -59,21 +59,11 @@ func (s *Services) handleBoardMoves(c *gin.Context, method, openapiPath, action 
 }
 
 func (s *Services) handleBoardClose(c *gin.Context, method, openapiPath, action string) bool {
-	if !s.requireMobileClient(c) {
-		return true
-	}
-	if !s.requireAnyRole(c, "foreman") {
-		return true
-	}
-	if method != "POST" {
-		api.FailJSON(c, "METHOD_NOT_ALLOWED")
-		return true
-	}
+	_ = method
+	_ = openapiPath
 	_ = action
-	if strings.Contains(openapiPath, "/preview") {
-		return s.handleBoardClosePreviewHTTP(c)
-	}
-	return s.handleBoardCloseHTTP(c)
+	api.FailJSON(c, "FEATURE_REMOVED:board_close")
+	return true
 }
 
 func (s *Services) loadBoardForCloseFromBody(body map[string]interface{}) (*boardState, string) {
@@ -98,39 +88,12 @@ func (s *Services) loadBoardForCloseFromBody(body map[string]interface{}) (*boar
 }
 
 func (s *Services) handleBoardClosePreviewHTTP(c *gin.Context) bool {
-	board, errMsg := s.loadBoardForCloseFromBody(bindBody(c))
-	if errMsg != "" {
-		api.FailJSON(c, errMsg)
-		return true
-	}
-	api.OK(c, s.boardCloseRemain(board))
+	api.FailJSON(c, "FEATURE_REMOVED:board_close")
 	return true
 }
 
 func (s *Services) handleBoardCloseHTTP(c *gin.Context) bool {
-	body := bindBody(c)
-	board, errMsg := s.loadBoardForCloseFromBody(body)
-	if errMsg != "" {
-		api.FailJSON(c, errMsg)
-		return true
-	}
-	confirmLoss := boolOr(body["confirm_loss"], false)
-	out, fail := s.closeBoard(board, confirmLoss)
-	if fail == "REMAIN_NEEDS_DECISION" {
-		api.HandleBusiness(c, &api.BusinessError{Msg: fail, Data: out}, nil)
-		return true
-	}
-	if fail != "" {
-		api.FailJSON(c, fail)
-		return true
-	}
-	s.appendStationFlowLog(stationFlowEvent{
-		EventType: "board_close", BoardID: board.ID, BoardCode: board.Code, TraceCode: board.Trace,
-		ProcessID: board.ProcessID, StepID: board.StepID, ActorUserID: claimsUserID(c),
-		Payload: gin.H{"confirm_loss": confirmLoss, "writeoff_kg": out["writeoff_kg"]},
-		After:   out,
-	})
-	api.OK(c, out)
+	api.FailJSON(c, "FEATURE_REMOVED:board_close")
 	return true
 }
 
@@ -190,144 +153,15 @@ func (s *Services) requireReweighFields(body map[string]interface{}) string {
 	return ""
 }
 
-func (s *Services) handleBoardIssueHTTP(c *gin.Context) bool {
-	body, board, workerID, workerName, badge, kg, errMsg := s.parseBoardAction(c)
-	if errMsg != "" {
-		api.FailJSON(c, errMsg)
-		return true
-	}
-	processID, stepID, errMsg := s.requireBodyProcessID(body)
-	if errMsg != "" {
-		api.FailJSON(c, errMsg)
-		return true
-	}
-	if fail := s.assertProcessTransitionAllowed(board, processID); fail != "" {
-		api.FailJSON(c, fail)
-		return true
-	}
-	if fail := s.requireReweighFields(body); fail != "" {
-		api.FailJSON(c, fail)
-		return true
-	}
-	if !s.workerShiftAuthorized(workerID, processID) {
-		api.FailJSON(c, "SHIFT_NOT_AUTHORIZED")
-		return true
-	}
-	out, fail := s.issueBoardKg(board, workerID, processID, stepID, kg)
-	if fail != "" {
-		api.FailJSON(c, fail)
-		return true
-	}
-	out["worker_id"] = workerID
-	out["worker_name"] = workerName
-	out["badge_code"] = badge
-	s.attachBoardPreview(out, board.ID, board.Code, processID, stepID, workerID)
-	rate, _ := asFloat(out["rate"])
-	amt, _ := asFloat(out["issue_locked_wage_amount"])
-	s.appendStationFlowLog(stationFlowEvent{
-		EventType: "issue", BoardID: board.ID, BoardCode: board.Code, TraceCode: board.Trace,
-		ProcessID: processID, StepID: stepID, WorkerID: workerID, WorkerName: workerName, Badge: badge,
-		ActorUserID: claimsUserID(c), Kg: kg, PayMode: s.processPayMode(processID), EmpType: s.workerEmpType(workerID),
-		Rate: rate, Amount: amt, RefType: "pd_process_issue", RefID: asInt64Or0(out["id"]),
-		After: out,
-	})
-	api.OK(c, out)
-	return true
-}
+// handleBoardIssueHTTP lives in process_issue_source.go (warehouse|process sources).
 
 func (s *Services) handleBoardReturnHTTP(c *gin.Context) bool {
-	body, board, workerID, workerName, badge, kg, errMsg := s.parseBoardAction(c)
-	if errMsg != "" {
-		api.FailJSON(c, errMsg)
-		return true
-	}
-	processID, stepID, errMsg := s.requireBodyProcessID(body)
-	if errMsg != "" {
-		api.FailJSON(c, errMsg)
-		return true
-	}
-	if !s.workerShiftAuthorized(workerID, processID) {
-		api.FailJSON(c, "SHIFT_NOT_AUTHORIZED")
-		return true
-	}
-	out, fail := s.returnBoardKg(board, workerID, kg)
-	if fail != "" {
-		api.FailJSON(c, fail)
-		return true
-	}
-	out["worker_id"] = workerID
-	out["worker_name"] = workerName
-	out["badge_code"] = badge
-	s.attachBoardPreview(out, board.ID, board.Code, processID, stepID, workerID)
-	rate, _ := asFloat(out["rate"])
-	amt, _ := asFloat(out["released_locked_wage_amount"])
-	if amt > 0 {
-		amt = -amt
-	}
-	s.appendStationFlowLog(stationFlowEvent{
-		EventType: "return", BoardID: board.ID, BoardCode: board.Code, TraceCode: board.Trace,
-		ProcessID: processID, StepID: stepID, WorkerID: workerID, WorkerName: workerName, Badge: badge,
-		ActorUserID: claimsUserID(c), Kg: kg, PayMode: s.processPayMode(processID), EmpType: s.workerEmpType(workerID),
-		Rate: rate, Amount: amt, RefType: "pd_process_issue_return",
-		After: out,
-	})
-	api.OK(c, out)
+	api.FailJSON(c, "FEATURE_REMOVED:use return-apply")
 	return true
 }
 
 func (s *Services) handleBoardMoveHTTP(c *gin.Context) bool {
-	body, board, workerID, workerName, badge, kg, errMsg := s.parseBoardAction(c)
-	if errMsg != "" {
-		api.FailJSON(c, errMsg)
-		return true
-	}
-	kind := strings.TrimSpace(strOrDef(body["move_kind"], "stock_in"))
-	if kind == "finish" || kind == "finish_in" {
-		kind = "stock_in"
-	}
-	if kind == "next" {
-		api.FailJSON(c, "AUTO_ROUTING_DISABLED")
-		return true
-	}
-	if kind != "stock_in" {
-		api.FailJSON(c, "INVALID_MOVE_KIND")
-		return true
-	}
-	processID, stepID, errMsg := s.requireBodyProcessID(body)
-	if errMsg != "" {
-		api.FailJSON(c, errMsg)
-		return true
-	}
-	if fail := s.requireReweighFields(body); fail != "" {
-		api.FailJSON(c, fail)
-		return true
-	}
-	if !s.workerShiftAuthorized(workerID, processID) {
-		api.FailJSON(c, "SHIFT_NOT_AUTHORIZED")
-		return true
-	}
-	if pid := asInt64Or0(body["product_id"]); pid > 0 {
-		board.ProductID = pid
-	}
-	createdBy := claimsUserID(c)
-	out, fail := s.moveBoardKg(board, workerID, kg, kind, createdBy, processID, stepID)
-	if fail != "" {
-		api.FailJSON(c, fail)
-		return true
-	}
-	out["worker_id"] = workerID
-	out["worker_name"] = workerName
-	out["badge_code"] = badge
-	s.attachBoardPreview(out, board.ID, board.Code, processID, stepID, workerID)
-	s.appendStationFlowLog(stationFlowEvent{
-		EventType: "stock_in", BoardID: board.ID, BoardCode: board.Code, TraceCode: board.Trace,
-		ProcessID: processID, StepID: stepID, WorkerID: workerID, WorkerName: workerName, Badge: badge,
-		ActorUserID: createdBy, Kg: kg, PayMode: s.processPayMode(processID), EmpType: s.workerEmpType(workerID),
-		RefType: "pd_process_move", RefID: asInt64Or0(out["id"]),
-		Payload: gin.H{"new_board_code": out["new_board_code"], "new_board_id": out["new_board_id"]},
-		After:   out,
-	})
-	api.OK(c, out)
+	api.FailJSON(c, "FEATURE_REMOVED:use process-stock-ins")
 	return true
 }
 
@@ -479,7 +313,7 @@ func (s *Services) attachBoardPreview(dst gin.H, boardID int64, code string, pro
 	s.attachPieceworkLockPreview(dst, workerID, processID, stepID)
 }
 
-func (s *Services) issueBoardKg(board *boardState, workerID, processID, stepID int64, kg float64) (gin.H, string) {
+func (s *Services) issueBoardKg(board *boardState, workerID, processID, stepID int64, kg float64, issuedBy int64) (gin.H, string) {
 	if board == nil || workerID <= 0 || processID <= 0 || kg <= kgEps {
 		return nil, "INVALID_QTY"
 	}
@@ -488,6 +322,9 @@ func (s *Services) issueBoardKg(board *boardState, workerID, processID, stepID i
 	}
 	if board.Status == "finished" {
 		return nil, "BOARD_FINISHED"
+	}
+	if issuedBy <= 0 {
+		issuedBy = workerID
 	}
 	tx, err := s.DB.Begin()
 	if err != nil {
@@ -538,10 +375,35 @@ func (s *Services) issueBoardKg(board *boardState, workerID, processID, stepID i
 			return nil, fail
 		}
 	}
-	res, err := tx.Exec(`INSERT INTO pd_process_issue(board_id, board_code, trace_code, process_id, step_id, worker_id, issue_kg, returned_kg, completed_kg, status)
-		VALUES(?,?,?,?,?,?,?,0,0,'open')`, b.ID, b.Code, b.Trace, processID, stepID, workerID, kg)
+	res, err := tx.Exec(`INSERT INTO pd_process_issue(board_id, board_code, trace_code, process_id, step_id, worker_id, issue_kg, returned_kg, completed_kg, status, biz_status, issued_by_employee_id)
+		VALUES(?,?,?,?,?,?,?,0,0,'open','open',?)`, b.ID, b.Code, b.Trace, processID, stepID, workerID, kg, issuedBy)
 	if err != nil {
-		return nil, "DB_ERROR:" + err.Error()
+		// 兼容未升 v1.0.22 的库：先写旧列，再尽量补操作人
+		res, err = tx.Exec(`INSERT INTO pd_process_issue(board_id, board_code, trace_code, process_id, step_id, worker_id, issue_kg, returned_kg, completed_kg, status)
+			VALUES(?,?,?,?,?,?,?,0,0,'open')`, b.ID, b.Code, b.Trace, processID, stepID, workerID, kg)
+		if err != nil {
+			return nil, "DB_ERROR:" + err.Error()
+		}
+		iid, _ := res.LastInsertId()
+		_, _ = tx.Exec(`UPDATE pd_process_issue SET biz_status='open', issued_by_employee_id=? WHERE id=?`, issuedBy, iid)
+		if err := tx.Commit(); err != nil {
+			return nil, "DB_ERROR:" + err.Error()
+		}
+		board.Weight = b.Weight
+		board.ProcessID = b.ProcessID
+		board.StepID = b.StepID
+		out := gin.H{"id": iid, "issue_kg": kg, "action": "issue", "issued_by_employee_id": issuedBy}
+		if s.shouldLockYieldWage(processID, workerID) {
+			rate := s.processWageRate(processID)
+			out["piecework"] = true
+			out["pay_mode"] = s.processPayMode(processID)
+			out["rate"] = rate
+			out["issue_locked_kg"] = kg
+			out["issue_locked_wage_amount"] = roundMoney(kg * rate)
+			out["piecework_status"] = "locked"
+			out["piecework_hint"] = "预估工钱，确认结束后日结入账"
+		}
+		return out, ""
 	}
 	iid, _ := res.LastInsertId()
 	if err := tx.Commit(); err != nil {
@@ -550,7 +412,7 @@ func (s *Services) issueBoardKg(board *boardState, workerID, processID, stepID i
 	board.Weight = b.Weight
 	board.ProcessID = b.ProcessID
 	board.StepID = b.StepID
-	out := gin.H{"id": iid, "issue_kg": kg, "action": "issue"}
+	out := gin.H{"id": iid, "issue_kg": kg, "action": "issue", "issued_by_employee_id": issuedBy}
 	if s.shouldLockYieldWage(processID, workerID) {
 		rate := s.processWageRate(processID)
 		out["piecework"] = true
@@ -559,7 +421,7 @@ func (s *Services) issueBoardKg(board *boardState, workerID, processID, stepID i
 		out["issue_locked_kg"] = kg
 		out["issue_locked_wage_amount"] = roundMoney(kg * rate)
 		out["piecework_status"] = "locked"
-		out["piecework_hint"] = "预估工钱，当日日结入账"
+		out["piecework_hint"] = "预估工钱，确认结束后日结入账"
 	}
 	return out, ""
 }
@@ -1115,7 +977,7 @@ func (s *Services) closeBoard(board *boardState, confirmLoss bool) (gin.H, strin
 	}
 	board.Weight = 0
 	board.Status = "finished"
-	s.snapshotTraceYield(board.Trace)
+	// Deduct/yield snapshot is triggered by trace production complete, not board close.
 	out := gin.H{
 		"action": "close", "board_id": board.ID, "board_code": board.Code, "trace_code": board.Trace,
 		"status": "finished", "writeoff_kg": writeoff, "confirm_loss": confirmLoss,

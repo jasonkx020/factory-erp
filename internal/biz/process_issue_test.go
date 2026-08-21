@@ -15,7 +15,11 @@ func openIssueDB(t *testing.T) *Services {
 			process_id BIGINT, step_id BIGINT, worker_id BIGINT DEFAULT 0,
 			issue_kg DOUBLE PRECISION DEFAULT 0, returned_kg DOUBLE PRECISION DEFAULT 0, completed_kg DOUBLE PRECISION DEFAULT 0,
 			wage_settled_kg DOUBLE PRECISION DEFAULT 0,
-			status TEXT DEFAULT 'open', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
+			status TEXT DEFAULT 'open', biz_status TEXT DEFAULT 'open', issued_by_employee_id BIGINT DEFAULT 0,
+			work_done_at TIMESTAMPTZ, work_done_by BIGINT DEFAULT 0,
+			pending_return_kg DOUBLE PRECISION DEFAULT 0, pending_reweigh_kg DOUBLE PRECISION DEFAULT 0,
+			pending_photo_url TEXT DEFAULT '', pending_return_by BIGINT DEFAULT 0, pending_remark TEXT DEFAULT '',
+			created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
 		`CREATE TEMP TABLE IF NOT EXISTS pd_process_move(
 			id BIGSERIAL PRIMARY KEY, board_id BIGINT, board_code TEXT, trace_code TEXT,
 			from_process_id BIGINT, from_step_id BIGINT, to_process_id BIGINT, to_step_id BIGINT,
@@ -69,7 +73,7 @@ func TestBoardIssueReturnMovePiecework(t *testing.T) {
 	if errMsg != "" || board == nil {
 		t.Fatalf("load board: %s", errMsg)
 	}
-	if _, fail := s.issueBoardKg(board, 7, 1, 10, 30); fail != "" {
+	if _, fail := s.issueBoardKg(board, 7, 1, 10, 30, 7); fail != "" {
 		t.Fatalf("issue A: %s", fail)
 	}
 	var pwQty float64
@@ -84,7 +88,7 @@ func TestBoardIssueReturnMovePiecework(t *testing.T) {
 		t.Fatalf("after issue locked wage want 15 got %v", got)
 	}
 	board, _ = s.loadBoardByCode("BX-SMOKE")
-	if _, fail := s.issueBoardKg(board, 8, 1, 10, 20); fail != "" {
+	if _, fail := s.issueBoardKg(board, 8, 1, 10, 20, 8); fail != "" {
 		t.Fatalf("issue B: %s", fail)
 	}
 	board, _ = s.loadBoardByCode("BX-SMOKE")
@@ -139,7 +143,7 @@ func TestBoardIssueReturnMovePiecework(t *testing.T) {
 	if errMsg != "" || child == nil {
 		t.Fatalf("load new board: %s", errMsg)
 	}
-	if _, fail := s.issueBoardKg(child, 9, 2, 11, 30); fail != "" {
+	if _, fail := s.issueBoardKg(child, 9, 2, 11, 30, 9); fail != "" {
 		t.Fatalf("manual issue into process 2: %s", fail)
 	}
 	toOpen := s.processOpenKg(child.ID, 2)
@@ -208,11 +212,11 @@ func TestBoardYieldSnapshotOnceAndNoDoubleCount(t *testing.T) {
 	if errMsg != "" || board == nil {
 		t.Fatalf("load board: %s", errMsg)
 	}
-	if _, fail := s.issueBoardKg(board, 7, 1, 10, 30); fail != "" {
+	if _, fail := s.issueBoardKg(board, 7, 1, 10, 30, 7); fail != "" {
 		t.Fatalf("issue A: %s", fail)
 	}
 	board, _ = s.loadBoardByCode("BX-SMOKE")
-	if _, fail := s.issueBoardKg(board, 8, 1, 10, 20); fail != "" {
+	if _, fail := s.issueBoardKg(board, 8, 1, 10, 20, 8); fail != "" {
 		t.Fatalf("issue B: %s", fail)
 	}
 	var inKg float64
@@ -221,10 +225,10 @@ func TestBoardYieldSnapshotOnceAndNoDoubleCount(t *testing.T) {
 		t.Fatalf("two issues must sum kg=50, got %v", inKg)
 	}
 	board, _ = s.loadBoardByCode("BX-SMOKE")
-	if _, fail := s.issueBoardKg(board, 7, 1, 10, 60); fail != "QTY_EXCEEDS_AVAILABLE" {
+	if _, fail := s.issueBoardKg(board, 7, 1, 10, 60, 7); fail != "QTY_EXCEEDS_AVAILABLE" {
 		t.Fatalf("cannot re-issue beyond remaining, got %s", fail)
 	}
-	if _, fail := s.issueBoardKg(board, 7, 1, 10, 50); fail != "" {
+	if _, fail := s.issueBoardKg(board, 7, 1, 10, 50, 7); fail != "" {
 		t.Fatalf("issue rest: %s", fail)
 	}
 	_, err := s.DB.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, qty, weight, status, current_process_id, current_step_id, trace_code)
@@ -275,7 +279,7 @@ func TestBoardYieldSnapshotOnceAndNoDoubleCount(t *testing.T) {
 	if errMsg != "" {
 		t.Fatalf("load board2: %s", errMsg)
 	}
-	if _, fail := s.issueBoardKg(b2, 7, 1, 10, 80); fail != "" {
+	if _, fail := s.issueBoardKg(b2, 7, 1, 10, 80, 7); fail != "" {
 		t.Fatalf("issue board2: %s", fail)
 	}
 	b2, _ = s.loadBoardByCode("BX-SMOKE-2")
@@ -314,7 +318,7 @@ func TestBoardIssueRequiresTraceAndRejectsFinished(t *testing.T) {
 	if errMsg != "" || board == nil {
 		t.Fatalf("load board: %s", errMsg)
 	}
-	if _, fail := s.issueBoardKg(board, 7, 1, 10, 10); fail != "TRACE_CODE_REQUIRED" {
+	if _, fail := s.issueBoardKg(board, 7, 1, 10, 10, 7); fail != "TRACE_CODE_REQUIRED" {
 		t.Fatalf("issue without trace want TRACE_CODE_REQUIRED got %s", fail)
 	}
 	if _, fail := s.returnBoardKg(board, 7, 1); fail != "TRACE_CODE_REQUIRED" {
@@ -330,7 +334,7 @@ func TestBoardIssueRequiresTraceAndRejectsFinished(t *testing.T) {
 	if errMsg != "" {
 		t.Fatalf("reload: %s", errMsg)
 	}
-	if _, fail := s.issueBoardKg(board, 7, 1, 10, 10); fail != "BOARD_FINISHED" {
+	if _, fail := s.issueBoardKg(board, 7, 1, 10, 10, 7); fail != "BOARD_FINISHED" {
 		t.Fatalf("issue finished want BOARD_FINISHED got %s", fail)
 	}
 }
@@ -346,7 +350,7 @@ func TestBoardCloseYieldSnapshot(t *testing.T) {
 		t.Fatalf("set weight: %v", err)
 	}
 	board, _ = s.loadBoardByCode("BX-SMOKE")
-	if _, fail := s.issueBoardKg(board, 7, 1, 10, 90); fail != "" {
+	if _, fail := s.issueBoardKg(board, 7, 1, 10, 90, 7); fail != "" {
 		t.Fatalf("issue: %s", fail)
 	}
 	board, _ = s.loadBoardByCode("BX-SMOKE")
@@ -432,7 +436,7 @@ func TestBoardCloseYieldSnapshot(t *testing.T) {
 	if errMsg != "" {
 		t.Fatalf("load: %s", errMsg)
 	}
-	if _, fail := s.issueBoardKg(b2, 7, 1, 10, 100); fail != "" {
+	if _, fail := s.issueBoardKg(b2, 7, 1, 10, 100, 7); fail != "" {
 		t.Fatalf("issue b2: %s", fail)
 	}
 	b2, _ = s.loadBoardByCode("BX-LB-2")
@@ -466,7 +470,7 @@ func TestBoardStockInNewCodeAndReissue(t *testing.T) {
 	if errMsg != "" || board == nil {
 		t.Fatalf("load board: %s", errMsg)
 	}
-	if _, fail := s.issueBoardKg(board, 7, 1, 10, 40); fail != "" {
+	if _, fail := s.issueBoardKg(board, 7, 1, 10, 40, 7); fail != "" {
 		t.Fatalf("issue: %s", fail)
 	}
 	board, _ = s.loadBoardByCode("BX-SMOKE")
@@ -507,7 +511,7 @@ func TestBoardStockInNewCodeAndReissue(t *testing.T) {
 	}
 
 	// Re-issue into next process from warehouse buffer board (manual process choice).
-	if _, fail := s.issueBoardKg(child, 8, 2, 11, 40); fail != "" {
+	if _, fail := s.issueBoardKg(child, 8, 2, 11, 40, 8); fail != "" {
 		t.Fatalf("reissue next process: %s", fail)
 	}
 	child, _ = s.loadBoardByCode(newCode)

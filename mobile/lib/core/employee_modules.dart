@@ -51,7 +51,7 @@ bool canAccessEmployeeModule(EmployeeModule module, List<String> permissions, Li
   if (_isAdmin(permissions, roles)) return true;
   switch (module) {
     case EmployeeModule.station:
-      return _matchAny(permissions, ['生产管理', '过站记录', '扫码报工', 'production', '报工']) ||
+      return _matchAny(permissions, ['生产管理', '工序流水', '过站记录', '扫码报工', 'production', '报工', '领料']) ||
           roles.contains('piece') ||
           roles.contains('fixed') ||
           roles.contains('计件工') ||

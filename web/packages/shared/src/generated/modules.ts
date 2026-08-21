@@ -467,9 +467,9 @@ export const MODULES: ModuleMeta[] = [
   },
   {
     domain: '生产管理',
-    module: '过站记录',
+    module: '工序流水',
     phase: 1,
-    list: '/production/report-works',
+    list: '/production/station-flow-logs',
     actions: [],
   },
   {

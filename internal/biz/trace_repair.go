@@ -98,12 +98,12 @@ func (s *Services) handleBoxTrace(c *gin.Context) bool {
 	if len(codes) == 0 {
 		codes = []string{code}
 	}
-	var farmerID, productID int64
+	var boxID, farmerID, productID int64
 	var traceCode, origin, receiveDate, sourceType, status string
 	var weight float64
-	_ = s.DB.QueryRow(`SELECT COALESCE(farmer_id,0), COALESCE(product_id,0), COALESCE(trace_code,''), COALESCE(origin,''), COALESCE(receive_date,''), COALESCE(source_type,''),
+	_ = s.DB.QueryRow(`SELECT id, COALESCE(farmer_id,0), COALESCE(product_id,0), COALESCE(trace_code,''), COALESCE(origin,''), COALESCE(receive_date,''), COALESCE(source_type,''),
 		COALESCE(status,''), COALESCE(weight, qty, 0)
-		FROM inv_box_code WHERE code=?`, code).Scan(&farmerID, &productID, &traceCode, &origin, &receiveDate, &sourceType, &status, &weight)
+		FROM inv_box_code WHERE code=?`, code).Scan(&boxID, &farmerID, &productID, &traceCode, &origin, &receiveDate, &sourceType, &status, &weight)
 	pname, pcat, pcode := s.productMeta(productID)
 	farmer := gin.H{}
 	if farmerID > 0 {
@@ -154,7 +154,7 @@ func (s *Services) handleBoxTrace(c *gin.Context) bool {
 		logs.Close()
 	}
 	api.OK(c, gin.H{
-		"box_code": code, "code": code, "related_boxes": codes, "flow_events": events, "operation_logs": oplogs,
+		"id": boxID, "box_code": code, "code": code, "related_boxes": codes, "flow_events": events, "operation_logs": oplogs,
 		"farmer": farmer, "trace_code": traceCode, "origin": origin, "receive_date": receiveDate, "source_type": sourceType,
 		"product_id": productID, "product_name": pname, "product_category": pcat, "product_code": pcode,
 		"status": status, "weight": weight, "qty": weight,

@@ -76,7 +76,8 @@ try {
   foreach ($p in @(
     "/purchase/weigh-tickets",
     "/inventory/balances",
-    "/production/report-works",
+    "/production/station-flow-logs",
+    "/production/process-wip",
     "/production/dispatches",
     "/finance/vouchers",
     "/finance/account-subjects",
@@ -169,7 +170,7 @@ try {
     "| go test ./internal/biz | PASS |",
     "| /live /ready(db=up) /health /metrics | PASS |",
     "| login + weigh/inventory/report/finance lists | PASS |",
-    "| station_pass_smoke (App过站+Admin写拒绝) | PASS |",
+    "| station_pass_smoke (领料预览+旧报工拒绝) | PASS |",
     "| delivery_loop (mobile+station smoke) | PASS |",
     "| finance loop subject->fund/ledger->voucher post->writeoff->month close->statements | PASS |",
     "| unbalanced voucher post rejected | PASS |",

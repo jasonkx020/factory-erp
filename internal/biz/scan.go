@@ -1,9 +1,7 @@
 package biz
 
 import (
-	"fmt"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -166,88 +164,8 @@ func (s *Services) handleScan(c *gin.Context, resolveOnly bool) bool {
 		api.OK(c, preview)
 		return true
 	}
-	if qty <= 0 {
-		api.FailJSON(c, "INVALID_QTY")
-		return true
-	}
-
-	docNo := fmt.Sprintf("RW%d", time.Now().UnixNano()%1e12)
-	now := time.Now().Format("2006-01-02 15:04:05")
-	// 自动带出箱在库重作为投料默认值
-	if inputWeight <= 0 || inputWeight == outputWeight {
-		var boxW float64
-		_ = s.DB.QueryRow(`SELECT COALESCE(weight, qty, 0) FROM inv_box_code WHERE code=?`, box).Scan(&boxW)
-		if boxW > 0 {
-			inputWeight = boxW
-			if outputWeight <= 0 {
-				outputWeight = boxW
-			}
-			loss = inputWeight - outputWeight
-			if loss < 0 {
-				loss = 0
-			}
-			if inputWeight > 0 {
-				utilization = outputWeight / inputWeight
-			}
-		}
-	}
-	res, err := s.DB.Exec(`INSERT INTO pd_report_work(doc_no, dispatch_id, work_order_id, process_id, worker_id, qty, weight, qty_net,
-		input_weight, output_weight, loss, utilization, status, reported_at, scan_code,
-		operator_user_id, operator_employee_id, created_by)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'confirm_pending',?,?,?,?,?)`,
-		docNo, nullIf0(dispatchID), nullIf0(woID), processID, workerID, qty, outputWeight, outputWeight,
-		inputWeight, outputWeight, loss, utilization, now, box, nullIf0(opUserID), nullIf0(opEmpID), nullIf0(opUserID))
-	if err != nil {
-		api.FailJSON(c, "DB_ERROR:"+err.Error())
-		return true
-	}
-	rid, _ := res.LastInsertId()
-	var rate float64
-	_ = s.DB.QueryRow(`SELECT rate FROM pay_process_wage_rate WHERE process_id=? AND status='active' ORDER BY id DESC LIMIT 1`, processID).Scan(&rate)
-	amount := outputWeight * rate
-
-	autoConfirm := boolOr(body["auto_confirm"], false) || boolOr(body["direct_submit"], false)
-	if autoConfirm {
-		confirmBody := map[string]interface{}{
-			"input_weight":      inputWeight,
-			"output_weight":     outputWeight,
-			"process_qc_result": strOrDef(body["process_qc_result"], "pass"),
-			"bag_qty":           asFloatOr0(body["bag_qty"]),
-			"scrap_type":        strOr(body["scrap_type"]),
-			"qc_image_url":      strOrDef(body["qc_image_url"], strOr(body["image_url"])),
-		}
-		out, failCode := s.applyReportWorkConfirm(c, rid, confirmBody)
-		if failCode != "" {
-			// 提交失败时作废刚建草稿，避免遗留待确认单
-			_, _ = s.DB.Exec(`UPDATE pd_report_work SET status='void' WHERE id=? AND status='confirm_pending'`, rid)
-			api.FailJSON(c, failCode)
-			return true
-		}
-		out["wage_amount"] = amount
-		out["rate"] = rate
-		out["badge_code"] = badge
-		out["worker_name"] = workerName
-		out["operator_user_id"] = opUserID
-		out["operator_employee_id"] = opEmpID
-		out["operator_name"] = opName
-		out["pass_for_other"] = opEmpID > 0 && workerID != opEmpID
-		out["needs_confirm"] = false
-		api.OK(c, out)
-		return true
-	}
-
-	out := map[string]interface{}{
-		"id": rid, "doc_no": docNo, "dispatch_id": dispatchID, "work_order_id": woID,
-		"process_id": processID, "worker_id": workerID, "worker_name": workerName, "qty": qty, "qty_net": outputWeight,
-		"input_weight": inputWeight, "output_weight": outputWeight, "loss": loss, "utilization": utilization,
-		"wage_amount": amount, "rate": rate, "scan_code": box, "badge_code": badge,
-		"operator_user_id": opUserID, "operator_employee_id": opEmpID, "operator_name": opName,
-		"pass_for_other": opEmpID > 0 && workerID != opEmpID,
-		"status":         "confirm_pending", "needs_confirm": true,
-		"hint":     "请对照实物确认投料/完工/损耗后调用 confirm；未确认不过账出入库",
-		"trace_id": middleware.TraceID(c),
-	}
-	api.OK(c, out)
+	// 旧扫码写报工路径已下线；现场提交走 /production/board-issues。
+	api.FailJSON(c, "FEATURE_REMOVED:scan_submit;use_board_issues")
 	return true
 }
 

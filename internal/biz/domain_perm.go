@@ -41,20 +41,22 @@ var resourceDomainModule = map[string]domainModule{
 	// production
 	"production/tasks": {"生产管理", "生产任务单"}, "production/processes": {"生产管理", "工序定义"},
 	"production/shifts":     {"生产管理", "产线班次"},
-	"production/dispatches": {"生产管理", "例外派岗"}, "production/report-works": {"生产管理", "过站记录"},
+	"production/dispatches": {"生产管理", "例外派岗"}, "production/report-works": {"生产管理", "工序流水"},
 	"production/workshop-workbench":  {"生产管理", "车间工作台"},
 	"production/process-wip":         {"生产管理", "工序在制"},
-	"production/scan":                {"生产管理", "过站记录"},
-	"production/scan/resolve":        {"生产管理", "过站记录"},
+	"production/scan":                {"生产管理", "工序流水"},
+	"production/scan/resolve":        {"生产管理", "工序流水"},
 	"production/piecework-summaries": {"生产管理", "计件工资"}, "production/requisitions": {"生产管理", "联动式领料"},
-	"production/station-flow-logs": {"生产管理", "过站记录"},
+	"production/station-flow-logs": {"生产管理", "工序流水"},
 	"production/boms":              {"生产管理", "自动BOM"},
 	"production/qc":                {"生产管理", "质检管理"}, "production/scraps": {"生产管理", "废料管理"},
 	"production/process-returns": {"生产管理", "退库未用完还仓"},
-	"production/board-issues":    {"生产管理", "过站记录"},
-	"production/board-moves":     {"生产管理", "过站记录"},
-	"production/board-close":     {"生产管理", "过站记录"},
-	"production/trace-productions":   {"生产管理", "过站记录"},
+	"production/board-issues":    {"生产管理", "工序流水"},
+	"production/process-issues":  {"生产管理", "工序流水"},
+	"production/process-stock-ins": {"生产管理", "工序流水"},
+	"production/board-moves":     {"生产管理", "工序流水"},
+	"production/board-close":     {"生产管理", "工序流水"},
+	"production/trace-productions":   {"生产管理", "工序流水"},
 	"production/process-yields":  {"生产管理", "工序扣损"},
 	"production/reworks":         {"生产管理", "返修单"}, "production/routings": {"生产管理", "工艺流程"},
 	"production/flow-graphs": {"生产管理", "工艺流程"}, "production/flow-rules": {"生产管理", "工艺流程"},
@@ -97,7 +99,8 @@ var resourceDomainModule = map[string]domainModule{
 // modulePermAliases 模块重命名后兼容旧权限码
 var modulePermAliases = map[string][]string{
 	"公司架构": {"部门管理"},
-	"过站记录": {"扫码报工", "加工记录"},
+	"工序流水": {"过站记录", "扫码报工", "加工记录"},
+	"过站记录": {"扫码报工", "加工记录", "工序流水"},
 	"例外派岗": {"生产派工"},
 	"工序定义": {"工序设置", "工序管理"},
 	"角色管理": {"权限分配"},
@@ -120,7 +123,7 @@ var allDomainMenus = []struct {
 	{"销售管理", []string{"销售订单", "自助下单", "询价管理", "合同管理", "修改订单", "发货审批", "预发货管理", "单据打印", "订单复购", "数据排行榜", "销售锁价", "询价审批", "历史报价查询", "销售BOM", "我的订单", "成本预算", "报价计算器", "出厂结算"}},
 	{"客户管理", []string{"CRM客户管理", "商机管理", "客户档案", "客户跟进", "资源分配", "保护机制", "释放机制", "询价管理", "导入客户", "线索锁定", "线索隐藏", "任务提醒"}},
 	{"采购管理", []string{"供应商管理", "农户档案", "过磅收货", "过磅品种", "溯源批号", "农户结算", "原料溯源", "采购申请", "采购计划单", "采购入库", "来料质检", "采购退货", "采购分析", "历史价格查看", "采购任务管理"}},
-	{"生产管理", []string{"多单整合管理", "生产任务单", "图纸分发", "工序定义", "产线班次", "例外派岗", "灵活派发工单", "过站记录", "计件工资", "计件领料表", "自动BOM", "MRP物料分析", "联动式领料", "车间工作台", "工序在制", "委外加工", "受托加工生产流程管控", "成本隐藏", "一单多商品", "进度跟踪", "质检管理", "返修单", "废料管理", "退库未用完还仓"}},
+	{"生产管理", []string{"多单整合管理", "生产任务单", "图纸分发", "工序定义", "产线班次", "例外派岗", "灵活派发工单", "工序流水", "计件工资", "计件领料表", "自动BOM", "MRP物料分析", "联动式领料", "车间工作台", "工序在制", "委外加工", "受托加工生产流程管控", "成本隐藏", "一单多商品", "进度跟踪", "质检管理", "返修单", "废料管理", "退库未用完还仓"}},
 	{"库存管理", []string{"库存查询", "仓管待入库", "地磅台账", "亏料预警", "过量预警", "入库质检", "仓库盘点", "车间盘点", "仓库盘点记录", "销售退皮", "物料调拨耗用", "商品调价组装拆分", "物料转应付", "在途量统计", "待用量统计", "可用量分析", "期初入库", "出入库记录汇总", "采购退货", "箱码管理"}},
 	{"产品管理", []string{"产品档案", "产品单位管理", "APP产品排序", "生产规格绑定"}},
 	{"固定资产管理", []string{"固定资产类别", "固定资产项目", "固定资产内部转移", "固定资产统计"}},
@@ -192,7 +195,8 @@ func isProductionFieldAPI(resourceKey, action string) bool {
 	if strings.HasPrefix(resourceKey, "production/scan") {
 		return true
 	}
-	if strings.HasPrefix(resourceKey, "production/board-issues") || strings.HasPrefix(resourceKey, "production/board-moves") {
+	if strings.HasPrefix(resourceKey, "production/board-issues") || strings.HasPrefix(resourceKey, "production/board-moves") ||
+		strings.HasPrefix(resourceKey, "production/process-issues") || strings.HasPrefix(resourceKey, "production/process-stock-ins") {
 		return true
 	}
 	if strings.HasPrefix(resourceKey, "production/trace-productions") {

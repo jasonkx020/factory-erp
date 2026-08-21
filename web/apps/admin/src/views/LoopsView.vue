@@ -60,15 +60,12 @@ async function runPiecework() {
     await productionApi.postRequisition(reqId)
     push(`领料过账 #${reqId}`)
 
-    const rw = await productionApi.createReportWork({
-      dispatch_id: dispId, process_id: 1, worker_id: 1, qty: 10,
-    })
-    const amount = Number((rw.data as { wage_amount?: number })?.wage_amount || 0)
-    push(`报工完成 wage_amount=${amount}`)
+    const settle = await productionApi.daySettlePiecework({ biz_date: new Date().toISOString().slice(0, 10) })
+    push(`计件日结 ${settle.code === 1 ? 'OK' : settle.msg}`)
 
     const sheet = await payrollApi.calcSheet({ remark: 'piecework-loop' })
     push(`工资核算 ${sheet.code === 1 ? 'OK' : sheet.msg}`)
-    ElMessage.success('生产计件闭环完成')
+    ElMessage.success('生产计件闭环完成（领料日结，无旧报工）')
   } catch (e) {
     push(`ERROR ${e}`)
     ElMessage.error('计件闭环失败')

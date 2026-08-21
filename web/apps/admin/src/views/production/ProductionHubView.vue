@@ -6,7 +6,6 @@ import {
   productionApi,
   productApi,
   hrApi,
-  fieldLedgerApi,
   PROCESS_TYPE_OPTIONS,
   PROCESS_PAY_MODE_OPTIONS,
   STATUS_ACTIVE_OPTIONS,
@@ -71,28 +70,6 @@ const dispatchCols: MobileCardColumn[] = [
   { prop: 'worker_name', label: '工人' },
   { prop: 'qty', label: '数量' },
   { prop: 'status_label', label: '状态' },
-]
-const reportCols: MobileCardColumn[] = [
-  { prop: 'doc_no', label: '单号', primary: true },
-  { prop: 'process_id', label: '工序' },
-  { prop: 'worker_id', label: '工人' },
-  { prop: 'input_weight', label: '投料' },
-  { prop: 'output_weight', label: '完工' },
-  { prop: 'qty', label: '产量' },
-  { prop: 'status', label: '状态' },
-  { prop: 'reported_at', label: '时间' },
-]
-const processReportCols: MobileCardColumn[] = [
-  { prop: 'process_name', label: '工序', primary: true },
-  { prop: 'worker_name', label: '过站人' },
-  { prop: 'operator_name', label: '操作人' },
-  { prop: 'input_weight', label: '投料' },
-  { prop: 'output_weight', label: '完工' },
-  { prop: 'loss', label: '损耗' },
-  { prop: 'bag_qty', label: '袋数' },
-  { prop: 'scrap_type', label: '次品类型' },
-  { prop: 'status', label: '状态' },
-  { prop: 'reported_at', label: '时间' },
 ]
 const pieceworkCols: MobileCardColumn[] = [
   { prop: 'id', label: 'ID', primary: true },
@@ -240,8 +217,8 @@ const TITLE_MAP: Record<string, string> = {
   'multi-products': '一单多商品',
   dispatches: '例外派岗',
   flex: '灵活派发工单',
-  reports: '过站记录',
-  'process-reports': '过站记录',
+  reports: '工序流水',
+  'process-reports': '工序流水',
   piecework: '计件工资',
   'piece-issue': '计件领料表',
   boms: '自动BOM',
@@ -249,6 +226,7 @@ const TITLE_MAP: Record<string, string> = {
   requisitions: '联动式领料',
   workbench: '车间工作台',
   'process-wip': '工序在制',
+  'trace-production': '溯源生产',
   'process-yield': '工序扣损',
   outsources: '委外加工',
   consignments: '受托加工',
@@ -265,16 +243,13 @@ const TITLE_MAP: Record<string, string> = {
 const active = computed(() => String(route.params.section || 'tasks'))
 const title = computed(() => TITLE_MAP[active.value] || '生产管理')
 const useCustomHead = computed(() =>
-  ['shifts', 'tasks', 'dispatches', 'flex', 'workbench', 'process-wip'].includes(active.value),
+  ['shifts', 'tasks', 'dispatches', 'flex', 'workbench', 'process-wip', 'trace-production'].includes(active.value),
 )
 const embedRoutings = computed(() => active.value === 'routings')
 const embedPieceIssue = computed(() => active.value === 'piece-issue')
-const reportTab = ref('ledger')
 
-/** 默认 false：现场录入仅 App；管理员补单需 backfill_reason */
+/** 默认 false：现场录入仅 App；例外派岗创建受此开关影响 */
 const fieldInputOnAdmin = import.meta.env.VITE_FIELD_INPUT_ON_ADMIN === 'true'
-
-const backfillForm = reactive({ backfill_reason: '' })
 
 const loading = ref(false)
 const list = ref<Row[]>([])
@@ -339,15 +314,16 @@ const products = ref<Row[]>([])
 const processes = ref<Row[]>([])
 const workers = ref<Row[]>([])
 const overview = ref<Row | null>(null)
-const processReports = ref<Row[]>([])
 const shiftDetail = ref<Row | null>(null)
-const scrapTypeFilter = ref('')
 const wipProductId = ref<number | null>(null)
 const wipSummary = ref<Row | null>(null)
 const wipDrawer = ref(false)
 const wipBoxes = ref<Row[]>([])
 const wipDrawerTitle = ref('')
 const yieldTraceCode = ref('')
+const traceProdFilter = ref('')
+const traceProdWip = ref<Row | null>(null)
+const traceProdCode = ref('')
 const shiftMembers = computed(() =>
   ((shiftDetail.value?.members as Row[]) || []).map((m) => ({
     ...m,
@@ -484,7 +460,6 @@ const multiLines = ref<{ product_id: number; qty: number }[]>([{ product_id: 3, 
 const processEditDlg = ref(false)
 const processEditForm = reactive({ id: 0, code: '', name: '', process_type: 'other', pay_mode: 'none', status: 'active' })
 const dispatchForm = reactive({ task_id: null as number | null, process_id: null as number | null, worker_id: null as number | null, qty: 100 })
-const reportForm = reactive({ process_id: 1, worker_id: 2, qty: 100, dispatch_id: null as number | null })
 const reqForm = reactive({ product_id: 1, qty: 100, warehouse_id: 1 })
 const processForm = reactive({ code: '', name: '', process_type: 'other', pay_mode: 'none', status: 'active' })
 const processDlg = ref(false)
@@ -522,14 +497,10 @@ async function loadMeta() {
   if (processes.value[0]) {
     const id = Number(processes.value[0].id)
     dispatchForm.process_id = id
-    reportForm.process_id = id
     scrapForm.process_id = id
     qcForm.process_id = id
     reworkForm.process_id = id
     outForm.process_id = id
-  }
-  if (workers.value[0]) {
-    reportForm.worker_id = Number(workers.value[0].id)
   }
   if (products.value[0]) {
     const pid = Number(products.value[0].id)
@@ -567,18 +538,12 @@ async function refresh() {
         break
       case 'reports':
       case 'process-reports':
-        res = await productionApi.listReportWorks()
-        if (res && res.code !== 1) return ElMessage.error(res.msg)
-        list.value = ((res?.data as { list?: Row[] })?.list) || []
-        const q = scrapTypeFilter.value ? `scrap_type=${encodeURIComponent(scrapTypeFilter.value)}` : undefined
-        const pr = await fieldLedgerApi.processReports(q)
-        if (pr.code !== 1) return ElMessage.error(pr.msg)
-        processReports.value = ((pr.data as { list?: Row[] })?.list) || []
+        await loadStationFlow()
+        list.value = stationFlowList.value
         return
       case 'piecework': {
         const q = pieceBizDate.value ? `biz_date=${encodeURIComponent(pieceBizDate.value)}` : undefined
         res = await productionApi.pieceworkSummaries(q)
-        await loadStationFlow()
         break
       }
       case 'boms':
@@ -606,6 +571,15 @@ async function refresh() {
         wipSummary.value = (res.data as Row) || null
         list.value = ((res.data as { steps?: Row[] })?.steps) || []
         return
+      }
+      case 'trace-production': {
+        const qs = [
+          'page_size=200',
+          'page_num=1',
+          ...(traceProdFilter.value ? [`status=${encodeURIComponent(traceProdFilter.value)}`] : []),
+        ].join('&')
+        res = await productionApi.traceProductions(qs)
+        break
       }
       case 'process-yield': {
         const qs = yieldTraceCode.value.trim()
@@ -741,38 +715,20 @@ async function receiveDispatch(id: number) {
   await refresh()
 }
 
-async function createReport() {
-  const reason = String(backfillForm.backfill_reason || '').trim()
-  if (!reason) return ElMessage.warning('管理员补单须填写补单原因')
-  const body: Record<string, unknown> = { ...reportForm, backfill_reason: reason, remark: reason }
-  if (!reportForm.dispatch_id) delete body.dispatch_id
-  const res = await productionApi.createReportWork(body)
-  if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success('补单已提交')
-  backfillForm.backfill_reason = ''
-  await refresh()
-}
-
-async function confirmReport(id: number) {
-  const res = await productionApi.confirmReportWork(id)
-  if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success('已确认')
-  await refresh()
-}
-
-async function recalcPiece() {
-  const res = await productionApi.recalcPiecework({})
-  if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success('已重算')
-  await refresh()
-}
-
 async function daySettlePiece() {
   const res = await productionApi.daySettlePiecework({ biz_date: pieceBizDate.value })
   if (res.code !== 1) return ElMessage.error(res.msg)
   const d = (res.data || {}) as Row
   ElMessage.success(`日结完成：${d.settled_rows || 0} 笔 / ${d.settled_kg || 0} kg / ¥${d.settled_amount || 0}`)
   await refresh()
+}
+
+async function loadTraceProdWip() {
+  const code = String(traceProdCode.value || '').trim()
+  if (!code) return ElMessage.warning('请输入溯源码')
+  const res = await productionApi.traceProductionWip(code)
+  if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
+  traceProdWip.value = (res.data as Row) || null
 }
 
 async function loadStationFlow() {
@@ -1135,7 +1091,6 @@ async function removeShiftMember(memberId: number) {
 }
 
 watch(active, () => {
-  reportTab.value = 'ledger'
   shiftDetail.value = null
   shiftDrawer.value = false
   shiftKeyword.value = ''
@@ -1224,7 +1179,7 @@ onMounted(async () => {
         <header class="page-head">
           <div>
             <h2 class="title">产线班次</h2>
-            <p class="desc">工人须在当日开工班次成员中才能 App 过站。与人事「考勤班次」无关。</p>
+            <p class="desc">工人须在当日开工班次成员中才能 App 领料。与人事「考勤班次」无关。</p>
           </div>
           <div class="head-meta">
             <span class="meta-pill">筛选 {{ shiftFiltered.length }} / 全部 {{ list.length }}</span>
@@ -1618,88 +1573,47 @@ onMounted(async () => {
         </el-dialog>
       </template>
 
-      <!-- 过站记录：台账 + 加工明细 -->
+      <!-- 工序流水（领料/退库/入库事件） -->
       <template v-else-if="active==='reports' || active==='process-reports'">
-        <el-alert type="warning" show-icon :closable="false" class="mb"
-          title="现场过站请使用 App「工序过站」。本页仅查询；管理员补单需开启 VITE_FIELD_INPUT_ON_ADMIN 并填写补单原因。" />
-        <el-tabs v-model="reportTab" class="mb">
-          <el-tab-pane label="过站台账" name="ledger">
-            <el-card v-if="fieldInputOnAdmin" header="管理员补单（须填原因）" class="mb">
-              <el-form inline size="small">
-                <el-form-item label="工序">
-                  <el-select v-model="reportForm.process_id" style="width:140px">
-                    <el-option v-for="p in processes" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="工人">
-                  <el-select v-model="reportForm.worker_id" style="width:140px">
-                    <el-option v-for="w in workers" :key="String(w.id)" :label="String(w.name)" :value="Number(w.id)" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="产量"><el-input-number v-model="reportForm.qty" :min="0.01" /></el-form-item>
-                <el-form-item label="补单原因"><el-input v-model="backfillForm.backfill_reason" style="width:200px" placeholder="必填" /></el-form-item>
-                <el-button type="primary" @click="createReport">提交补单</el-button>
-              </el-form>
-            </el-card>
-            <TableOrCards :data="list" :loading="loading" :columns="reportCols">
-              <el-table :data="list" size="small">
-                <el-table-column prop="doc_no" label="单号" width="150" />
-                <el-table-column prop="process_id" label="工序" width="80" />
-                <el-table-column prop="worker_id" label="工人" width="80" />
-                <el-table-column prop="input_weight" label="投料" width="80" />
-                <el-table-column prop="output_weight" label="完工" width="80" />
-                <el-table-column prop="qty" label="产量" width="90" />
-                <el-table-column prop="status" label="状态" width="100" />
-                <el-table-column prop="reported_at" label="时间" min-width="160" />
-              </el-table>
-              <template #extra="{ row }">
-                <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
-              </template>
-            </TableOrCards>
-          </el-tab-pane>
-          <el-tab-pane label="加工明细" name="detail">
-            <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
-              <el-select v-model="scrapTypeFilter" clearable placeholder="次品类型" style="width:200px" @change="refresh">
-                <el-option label="切断次品" value="cut_defect" />
-                <el-option label="去芯次品" value="core_defect" />
-                <el-option label="切块次品" value="dice_defect" />
-                <el-option label="筛选装袋次品" value="sieve_bag_defect" />
-              </el-select>
-            </div>
-            <TableOrCards :data="processReports" :loading="loading" :columns="processReportCols">
-              <el-table :data="processReports" size="small">
-                <el-table-column prop="process_name" label="工序" width="120" />
-                <el-table-column prop="worker_name" label="过站人" width="100" />
-                <el-table-column prop="operator_name" label="操作人" width="100" />
-                <el-table-column prop="scan_code" :label="codeLabel" width="120" show-overflow-tooltip />
-                <el-table-column prop="input_weight" label="投料" width="80" />
-                <el-table-column prop="output_weight" label="完工" width="80" />
-                <el-table-column prop="loss" label="损耗" width="80" />
-                <el-table-column prop="bag_qty" label="袋数" width="70" />
-                <el-table-column prop="scrap_type" label="次品类型" width="120" />
-                <el-table-column prop="status" label="状态" width="100" />
-                <el-table-column prop="reported_at" label="时间" min-width="160" />
-              </el-table>
-              <template #extra="{ row }">
-                <el-tag v-if="row.status != null" size="small">{{ row.status }}</el-tag>
-              </template>
-            </TableOrCards>
-          </el-tab-pane>
-        </el-tabs>
+        <el-alert type="info" show-icon :closable="false" class="mb"
+          title="现场请用 App「生产」领料（须溯源已进入生产）。本页只读查询流水；金额相关以确认结束+日结为准。" />
+        <el-card class="mb">
+          <el-form inline size="small" class="mb">
+            <el-form-item label="日期"><el-date-picker v-model="stationFlowFilter.biz_date" type="date" value-format="YYYY-MM-DD" /></el-form-item>
+            <el-form-item :label="codeLabel"><el-input v-model="stationFlowFilter.board_code" clearable style="width:140px" /></el-form-item>
+            <el-form-item label="类型"><EnumSelect v-model="stationFlowFilter.event_type" :options="STATION_FLOW_EVENT_OPTIONS" clearable style="width:140px" /></el-form-item>
+            <el-form-item label="仅有金额"><el-switch v-model="stationFlowFilter.has_amount" /></el-form-item>
+            <el-button type="primary" @click="refresh">查询</el-button>
+          </el-form>
+          <TableOrCards :data="stationFlowList" :loading="loading" :columns="stationFlowCols">
+            <el-table :data="stationFlowList" size="small">
+              <el-table-column prop="created_at" label="时间" min-width="160" />
+              <el-table-column prop="event_type" label="类型" width="100" />
+              <el-table-column prop="board_code" :label="codeLabel" width="120" />
+              <el-table-column prop="process_name" label="工序" width="100" />
+              <el-table-column prop="worker_name" label="工人" width="90" />
+              <el-table-column prop="emp_type" label="工种" width="70" />
+              <el-table-column prop="kg" label="kg" width="80" />
+              <el-table-column prop="pay_mode" label="计费" width="70" />
+              <el-table-column prop="rate" label="单价" width="70" />
+              <el-table-column prop="amount" label="金额" width="90" />
+              <el-table-column prop="remark" label="备注" min-width="120" />
+            </el-table>
+          </TableOrCards>
+        </el-card>
       </template>
 
-      <!-- 计件 + 过站流水 -->
+      <!-- 计件日结 -->
       <template v-else-if="active==='piecework'">
         <el-card class="mb">
           <el-form inline size="small">
             <el-form-item label="业务日"><el-date-picker v-model="pieceBizDate" type="date" value-format="YYYY-MM-DD" /></el-form-item>
             <el-button type="warning" size="small" @click="daySettlePiece">日结</el-button>
-            <el-button type="primary" size="small" @click="recalcPiece">重算计件</el-button>
             <el-button size="small" @click="refresh">刷新</el-button>
             <el-form-item label="转账单号"><el-input v-model="payForm.transfer_no" /></el-form-item>
             <el-form-item label="回单"><el-input v-model="payForm.pay_evidence_url" /></el-form-item>
           </el-form>
-          <p class="mode-hint">日结：将「计件工 × 计重/计件工序」的净占用（领取−退库−已日结）写入产量汇总；入库换码不即时结工资。</p>
+          <p class="mode-hint">日结：仅纳入已「确认结束」(work_done) 的领料净占用；主任确认前不进财务汇总。入库过账与下道领取记工序产出，不即时结工资。</p>
         </el-card>
         <TableOrCards :data="list" :loading="loading" :columns="pieceworkCols">
           <el-table :data="list" size="small">
@@ -1724,30 +1638,6 @@ onMounted(async () => {
           </template>
         </TableOrCards>
 
-        <el-card header="过站流水" class="mb" style="margin-top:16px">
-          <el-form inline size="small" class="mb">
-            <el-form-item label="日期"><el-date-picker v-model="stationFlowFilter.biz_date" type="date" value-format="YYYY-MM-DD" /></el-form-item>
-            <el-form-item :label="codeLabel"><el-input v-model="stationFlowFilter.board_code" clearable style="width:140px" /></el-form-item>
-            <el-form-item label="类型"><EnumSelect v-model="stationFlowFilter.event_type" :options="STATION_FLOW_EVENT_OPTIONS" clearable style="width:140px" /></el-form-item>
-            <el-form-item label="仅有金额"><el-switch v-model="stationFlowFilter.has_amount" /></el-form-item>
-            <el-button type="primary" @click="loadStationFlow">查询</el-button>
-          </el-form>
-          <TableOrCards :data="stationFlowList" :columns="stationFlowCols">
-            <el-table :data="stationFlowList" size="small">
-              <el-table-column prop="created_at" label="时间" min-width="160" />
-              <el-table-column prop="event_type" label="类型" width="100" />
-              <el-table-column prop="board_code" :label="codeLabel" width="120" />
-              <el-table-column prop="process_name" label="工序" width="100" />
-              <el-table-column prop="worker_name" label="工人" width="90" />
-              <el-table-column prop="emp_type" label="工种" width="70" />
-              <el-table-column prop="kg" label="kg" width="80" />
-              <el-table-column prop="pay_mode" label="计费" width="70" />
-              <el-table-column prop="rate" label="单价" width="70" />
-              <el-table-column prop="amount" label="金额" width="90" />
-              <el-table-column prop="remark" label="备注" min-width="120" />
-            </el-table>
-          </TableOrCards>
-        </el-card>
       </template>
 
       <!-- BOM -->
@@ -1840,7 +1730,7 @@ onMounted(async () => {
         <header class="page-head">
           <div>
             <h2 class="title">车间工作台</h2>
-            <p class="desc">今日过站、待确认、开工班次与在制任务一览。点行可打开任务明细。</p>
+            <p class="desc">今日领料流水、领取未完、开工班次与在制任务一览。点行可打开任务明细。</p>
           </div>
           <div class="head-meta">
             <span class="meta-pill">在制任务 {{ workbenchDisplay.length }}</span>
@@ -1848,11 +1738,11 @@ onMounted(async () => {
         </header>
         <div class="shift-stats">
           <div class="stat ok">
-            <div class="label">今日过站</div>
+            <div class="label">今日领料流水</div>
             <div class="value">{{ overview?.today_station_passes ?? overview?.today_reports ?? 0 }}</div>
           </div>
           <div class="stat warn">
-            <div class="label">待确认</div>
+            <div class="label">领取未完</div>
             <div class="value">{{ overview?.pending_confirm ?? 0 }}</div>
           </div>
           <div class="stat">
@@ -1931,12 +1821,12 @@ onMounted(async () => {
             <div class="value">{{ Number(wipSummary?.total_stock_kg || 0).toFixed(1) }}</div>
           </div>
           <div class="stat warn">
-            <div class="label">待确认过站</div>
-            <div class="value">{{ wipSummary?.pending_confirm_reports ?? 0 }}</div>
+            <div class="label">领取未完</div>
+            <div class="value">{{ wipSummary?.open_worker_issues ?? wipSummary?.pending_confirm_reports ?? 0 }}</div>
           </div>
           <div class="stat">
-            <div class="label">待确认 kg</div>
-            <div class="value">{{ Number(wipSummary?.pending_confirm_weight || 0).toFixed(1) }}</div>
+            <div class="label">领取未完 kg</div>
+            <div class="value">{{ Number(wipSummary?.open_worker_issue_kg ?? wipSummary?.pending_confirm_weight ?? 0).toFixed(1) }}</div>
           </div>
         </div>
         <div class="row shift-toolbar">
@@ -2026,12 +1916,64 @@ onMounted(async () => {
         </el-drawer>
       </template>
 
-      <!-- 工序扣损：按溯源批号汇总，整批板全部结束后才写入 -->
+      <!-- 溯源生产台 -->
+      <template v-else-if="active==='trace-production'">
+        <div class="page-head mb">
+          <div>
+            <h2 class="title">溯源生产</h2>
+            <p class="desc">默认列出全部可用溯源码（库中/生产中/已结束），点击行即可查看工序分布。进入/结束生产请在 App 生管台操作（角色：车间主任/生管）。</p>
+          </div>
+        </div>
+        <div class="row mb">
+          <el-select v-model="traceProdFilter" clearable placeholder="状态" style="width:140px" @change="refresh">
+            <el-option label="全部" value="" />
+            <el-option label="库中" value="in_stock" />
+            <el-option label="生产中" value="in_production" />
+            <el-option label="已结束" value="ended" />
+          </el-select>
+          <el-button @click="refresh">刷新</el-button>
+          <el-input v-model="traceProdCode" clearable placeholder="溯源码详情" style="width:180px" />
+          <el-button type="primary" @click="loadTraceProdWip">工序分布</el-button>
+        </div>
+        <TableOrCards :data="list" :loading="loading" :columns="[
+          { prop: 'trace_code', label: '溯源', primary: true },
+          { prop: 'ui_status', label: '状态' },
+          { prop: 'stock_kg', label: '库存kg' },
+          { prop: 'board_count', label: '板数' },
+        ]">
+          <el-table :data="list" size="small" border stripe @row-click="(row: Row) => { traceProdCode = String(row.trace_code||''); loadTraceProdWip() }">
+            <el-table-column prop="trace_code" label="溯源" min-width="140" />
+            <el-table-column prop="ui_status" label="状态" width="100">
+              <template #default="{ row }">
+                {{ row.ui_status === 'in_production' ? '生产中' : row.ui_status === 'ended' ? '已结束' : '库中' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="stock_kg" label="库存 kg" width="100" />
+            <el-table-column prop="board_count" label="板数" width="80" />
+            <el-table-column prop="session_status" label="会话" width="100" />
+          </el-table>
+        </TableOrCards>
+        <el-card v-if="traceProdWip" class="mt mb">
+          <template #header>工序分布 · {{ traceProdWip.trace_code }} ·
+            {{ traceProdWip.ui_status === 'in_production' ? '生产中' : traceProdWip.ui_status === 'ended' ? '已结束' : '库中' }}
+          </template>
+          <p class="form-tip">可领 {{ Number(traceProdWip.total_available_kg||0).toFixed(2) }} · 占用 {{ Number(traceProdWip.total_occupied_kg||0).toFixed(2) }}</p>
+          <el-table :data="(traceProdWip.steps as Row[]) || []" size="small" border>
+            <el-table-column prop="process_name" label="工序" />
+            <el-table-column prop="available_kg" label="可领 kg" width="100" />
+            <el-table-column prop="occupied_kg" label="占用 kg" width="100" />
+            <el-table-column prop="wip_kg" label="在制合计" width="100" />
+            <el-table-column prop="board_count" label="板数" width="80" />
+          </el-table>
+        </el-card>
+      </template>
+
+      <!-- 工序扣损：按溯源批号汇总，结束溯源生产后按溯源汇总扣损 -->
       <template v-else-if="active==='process-yield'">
         <div class="row mb">
           <el-input v-model="yieldTraceCode" clearable placeholder="溯源码" style="width:180px" @keyup.enter="refresh" />
           <el-button @click="refresh">查询</el-button>
-          <span class="hint">同溯源批号下全部板结束后才写入；不对单板计算扣损</span>
+          <span class="hint">投入=领取净量；产出=入库过账+下道领取；同溯源工序汇总。结束溯源生产后按溯源汇总扣损。</span>
         </div>
         <TableOrCards :data="list" :loading="loading" :columns="yieldTraceCols">
           <el-table :data="list" size="small" border stripe>

@@ -226,20 +226,19 @@ func (s *Services) pieceworkMine(c *gin.Context) bool {
 		totalOut += outW
 	}
 	reports := []gin.H{}
-	rrows, _ := s.DB.Query(`SELECT id, doc_no, process_id, COALESCE(qty,0), COALESCE(weight,0), COALESCE(input_weight,0),
-		COALESCE(output_weight,0), COALESCE(loss,0), COALESCE(utilization,0), COALESCE(scan_code,''), reported_at
-		FROM pd_report_work WHERE worker_id=? AND date(reported_at)=? ORDER BY id DESC`, workerID, bizDate)
+		rrows, _ := s.DB.Query(`SELECT id, event_type, COALESCE(process_id,0), COALESCE(kg,0), COALESCE(amount,0),
+		COALESCE(board_code,''), COALESCE(CAST(created_at AS TEXT),'')
+		FROM pd_station_flow_log WHERE worker_id=? AND biz_date=? ORDER BY id DESC LIMIT 100`, workerID, bizDate)
 	if rrows != nil {
 		defer rrows.Close()
 		for rrows.Next() {
 			var id, processID int64
-			var docNo, scan, reported string
-			var qty, weight, inW, outW, loss, util float64
-			_ = rrows.Scan(&id, &docNo, &processID, &qty, &weight, &inW, &outW, &loss, &util, &scan, &reported)
+			var eventType, board, created string
+			var kg, amount float64
+			_ = rrows.Scan(&id, &eventType, &processID, &kg, &amount, &board, &created)
 			reports = append(reports, gin.H{
-				"id": id, "doc_no": docNo, "process_id": processID, "qty": qty, "weight": weight,
-				"input_weight": inW, "output_weight": outW, "loss": loss, "utilization": util,
-				"scan_code": scan, "reported_at": reported,
+				"id": id, "event_type": eventType, "process_id": processID, "qty": kg, "weight": kg,
+				"amount": amount, "scan_code": board, "board_code": board, "reported_at": created,
 			})
 		}
 	}
@@ -281,49 +280,8 @@ func (s *Services) resolveWorkerID(c *gin.Context) int64 {
 }
 
 func (s *Services) recalcPieceworkSummaries(c *gin.Context) bool {
-	body := bindBody(c)
-	bizDate := strOrDef(body["biz_date"], c.Query("biz_date"))
-	if bizDate == "" {
-		bizDate = time.Now().Format("2006-01-02")
-	}
-	rows, err := s.DB.Query(`SELECT worker_id, process_id,
-		SUM(COALESCE(output_weight, qty_net, qty, 0)),
-		SUM(COALESCE(input_weight, 0)),
-		SUM(COALESCE(loss, 0)),
-		string_agg((id)::text, ',')
-		FROM pd_report_work
-		WHERE date(reported_at)=? AND worker_id IS NOT NULL AND process_id IS NOT NULL
-		GROUP BY worker_id, process_id`, bizDate)
-	if err != nil {
-		api.FailJSON(c, "DB_ERROR:"+err.Error())
-		return true
-	}
-	defer rows.Close()
-	n := 0
-	for rows.Next() {
-		var workerID, processID int64
-		var outW, inW, loss float64
-		var ids string
-		_ = rows.Scan(&workerID, &processID, &outW, &inW, &loss, &ids)
-		var rate float64
-		_ = s.DB.QueryRow(`SELECT rate FROM pay_process_wage_rate WHERE process_id=? AND status='active' ORDER BY id DESC LIMIT 1`, processID).Scan(&rate)
-		amount := outW * rate
-		util := 0.0
-		if inW > 0 {
-			util = outW / inW
-		}
-		var exist int64
-		_ = s.DB.QueryRow(`SELECT id FROM pd_piecework_summary WHERE worker_id=? AND process_id=? AND biz_date=?`, workerID, processID, bizDate).Scan(&exist)
-		if exist > 0 {
-			_, _ = s.DB.Exec(`UPDATE pd_piecework_summary SET qty=?, weight=?, input_weight=?, output_weight=?, loss=?, utilization=?, amount=?, source_report_ids=?, updated_at=NOW() WHERE id=?`,
-				outW, outW, inW, outW, loss, util, amount, ids, exist)
-		} else {
-			_, _ = s.DB.Exec(`INSERT INTO pd_piecework_summary(worker_id, process_id, biz_date, qty, weight, input_weight, output_weight, loss, utilization, amount, source_report_ids)
-				VALUES(?,?,?,?,?,?,?,?,?,?,?)`, workerID, processID, bizDate, outW, outW, inW, outW, loss, util, amount, ids)
-		}
-		n++
-	}
-	api.OK(c, gin.H{"biz_date": bizDate, "recalculated": n})
+	// 旧报工重算已下线；产量以领料占用日结为准。
+	api.FailJSON(c, "FEATURE_REMOVED:recalc_from_report_works;use_piecework_day_settle")
 	return true
 }
 
@@ -386,6 +344,7 @@ func (s *Services) handlePieceworkDaySettle(c *gin.Context) bool {
 		INNER JOIN hr_employee e ON e.id=i.worker_id AND COALESCE(e.emp_type,'')='piece'
 		INNER JOIN pd_process p ON p.id=i.process_id
 		WHERE COALESCE(i.worker_id,0)>0
+		  AND COALESCE(i.biz_status,'open')='work_done'
 		  AND (i.issue_kg - i.returned_kg - COALESCE(i.wage_settled_kg,0)) > 0
 		  AND (COALESCE(NULLIF(p.pay_mode,''),'') IN ('weight','piece') OR (COALESCE(NULLIF(p.pay_mode,''),'')='' AND COALESCE(p.is_piecework,0)=1))
 		ORDER BY i.worker_id, i.process_id, i.id`)

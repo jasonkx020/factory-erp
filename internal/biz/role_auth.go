@@ -23,9 +23,21 @@ func (s *Services) requireMobileClient(c *gin.Context) bool {
 }
 
 func (s *Services) requireAnyRole(c *gin.Context, roles ...string) bool {
+	if s.claimsHasAnyRole(c, roles...) {
+		return true
+	}
 	cl := middleware.Claims(c)
 	if cl == nil {
 		api.FailJSON(c, "UNAUTHORIZED")
+		return false
+	}
+	api.FailJSON(c, "ROLE_FORBIDDEN")
+	return false
+}
+
+func (s *Services) claimsHasAnyRole(c *gin.Context, roles ...string) bool {
+	cl := middleware.Claims(c)
+	if cl == nil {
 		return false
 	}
 	aliases := map[string][]string{
@@ -53,6 +65,5 @@ func (s *Services) requireAnyRole(c *gin.Context, roles ...string) bool {
 			}
 		}
 	}
-	api.FailJSON(c, "ROLE_FORBIDDEN")
 	return false
 }

@@ -7,7 +7,6 @@ import { ADMIN_SPECIAL_MODULE_PATHS } from './adminSpecialRoutes'
 
 /** 现场业务录入仅 App；Admin 对应模块为查询/配置/补单 */
 export const FIELD_INPUT_APP_ONLY: Array<[string, string]> = [
-  ['生产管理', '过站记录'],
   ['采购管理', '过磅收货'],
   ['库存管理', '仓管待入库'],
 ]
@@ -49,7 +48,7 @@ const ONLINE: Array<[string, string]> = [
   ['生产管理', '产线班次'],
   ['生产管理', '例外派岗'],
   ['生产管理', '灵活派发工单'],
-  ['生产管理', '过站记录'],
+  ['生产管理', '工序流水'],
   ['生产管理', '计件工资'],
   ['生产管理', '车间工作台'],
   ['生产管理', '工序在制'],

@@ -138,12 +138,6 @@ export const productionApi = {
   createFlexDispatch: (body: Record<string, unknown>) => api.post('/production/flex-dispatches', body),
   reassignFlex: (id: number, body: Record<string, unknown>) =>
     api.post(`/production/flex-dispatches/${id}/reassign`, body),
-  listReportWorks: () => api.get<PageData>('/production/report-works'),
-  createReportWork: (body: Record<string, unknown>) => api.post('/production/report-works', body),
-  confirmReportWork: (id: number, body?: Record<string, unknown>) =>
-    api.post(`/production/report-works/${id}/confirm`, body || {}),
-  correctReportWork: (id: number, body: Record<string, unknown>) =>
-    api.post(`/production/report-works/${id}/correct`, body),
   listRequisitions: () => api.get<PageData>('/production/requisitions'),
   createRequisition: (body: Record<string, unknown>) => api.post('/production/requisitions', body),
   postRequisition: (id: number) => api.post(`/production/requisitions/${id}/post`, {}),
@@ -198,6 +192,14 @@ export const productionApi = {
     api.get<PageData>(params ? `/production/process-yields?${params}` : '/production/process-yields'),
   processYieldTraces: (params?: string) =>
     api.get<PageData>(params ? `/production/process-yields/traces?${params}` : '/production/process-yields/traces'),
+  traceProductions: (params?: string) =>
+    api.get<PageData>(params ? `/production/trace-productions?${params}` : '/production/trace-productions'),
+  traceProductionWip: (code: string) =>
+    api.get(`/production/trace-productions/${encodeURIComponent(code)}/wip`),
+  startTraceProduction: (body: Record<string, unknown>) =>
+    api.post('/production/trace-productions/start', body),
+  completeTraceProduction: (body: Record<string, unknown>) =>
+    api.post('/production/trace-productions/complete', body),
   boardIssue: (body: Record<string, unknown>) => api.post('/production/board-issues', body),
   boardIssueReturn: (body: Record<string, unknown>) => api.post('/production/board-issues/return', body),
   boardMove: (body: Record<string, unknown>) => api.post('/production/board-moves', body),
@@ -244,8 +246,6 @@ export const productionApi = {
     api.post(`/production/process-returns/${id}/transfer`, body),
   warehouseConfirmProcessReturn: (id: number) =>
     api.post(`/production/process-returns/${id}/warehouse-confirm`, {}),
-  voidReportWork: (id: number, body?: Record<string, unknown>) =>
-    api.post(`/production/report-works/${id}/void`, body || {}),
   drawingLinks: () => api.get<PageData>('/production/drawing-links'),
   createDrawingLink: (body: Record<string, unknown>) => api.post('/production/drawing-links', body),
   costHidePolicies: () => api.get<PageData>('/production/cost-hide-policies'),

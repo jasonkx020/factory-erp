@@ -161,6 +161,10 @@ func (s *Services) handleProductionExt(c *gin.Context, method, openapiPath, acti
 		return s.handleBoardClose(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/board-issues"):
 		return s.handleBoardIssues(c, method, openapiPath, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/production/process-issues"):
+		return s.handleProcessIssuesAPI(c, method, openapiPath, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/production/process-stock-ins"):
+		return s.handleProcessStockIns(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/board-moves"):
 		return s.handleBoardMoves(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/trace-productions"):
@@ -846,11 +850,11 @@ func (s *Services) handleWorkshopWorkbench(c *gin.Context, path string) bool {
 		api.OK(c, gin.H{"list": list, "total": len(list)})
 		return true
 	}
-	// overview — 过站导向 KPI（派工仅作例外参考）
-	var tasksOpen, stationToday, pendingConfirm, flowFail, openShifts int
+	// overview — 领料/流水导向 KPI（派工仅作例外参考）
+	var tasksOpen, stationToday, openIssues, flowFail, openShifts int
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_production_task WHERE COALESCE(is_deleted,0)=0 AND status IN ('pending','released','in_progress')`).Scan(&tasksOpen)
-	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_report_work WHERE status='posted' AND (date(reported_at)=date('now') OR date(created_at)=date('now'))`).Scan(&stationToday)
-	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_report_work WHERE status='confirm_pending'`).Scan(&pendingConfirm)
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_station_flow_log WHERE biz_date=date('now') OR CAST(created_at AS TEXT) LIKE date('now')||'%'`).Scan(&stationToday)
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_process_issue WHERE status='open' AND COALESCE(worker_id,0)>0`).Scan(&openIssues)
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_flow_event WHERE status IN ('error','failed')`).Scan(&flowFail)
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_shift WHERE status='open' AND date(biz_date)=date('now')`).Scan(&openShifts)
 	var exceptionDispatches int
@@ -858,13 +862,13 @@ func (s *Services) handleWorkshopWorkbench(c *gin.Context, path string) bool {
 	api.OK(c, gin.H{
 		"open_tasks":           tasksOpen,
 		"today_station_passes": stationToday,
-		"pending_confirm":      pendingConfirm,
+		"pending_confirm":      openIssues,
 		"failed_flow_events":   flowFail,
 		"open_shifts":          openShifts,
 		"exception_dispatches": exceptionDispatches,
 		"today_reports":        stationToday,
 		"open_dispatches":      exceptionDispatches,
-		"hint":                 "车间工作台：今日过站/待确认/流转失败/产线班次（派工数仅作例外参考）",
+		"hint":                 "车间工作台：今日领料流水/在制占用/流转失败/产线班次（派工数仅作例外参考）",
 	})
 	return true
 }

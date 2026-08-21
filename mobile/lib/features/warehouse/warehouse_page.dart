@@ -6,12 +6,14 @@ import '../../core/auth_state.dart';
 import '../../core/carrier_code_labels.dart';
 import '../../core/employee_modules.dart';
 import '../../core/notify_service.dart';
+import '../../core/recent_code_store.dart';
 import '../../widgets/form_row.dart';
 import '../../widgets/form_section_header.dart';
 import '../../widgets/form_sticky_actions.dart';
 import '../../widgets/hub_entry_tile.dart';
 import '../../widgets/trace_code_field.dart';
 import '../workshop/process_return_page.dart';
+import 'process_pending_approve_page.dart';
 import 'warehouse_verify_page.dart';
 
 /// 仓管作业：Hub 入口 + Navigator.push 全屏子页（对齐收货/过站）。
@@ -413,6 +415,8 @@ class _WarehousePageState extends State<WarehousePage> {
       return;
     }
     final m = Map<String, dynamic>.from(res.data as Map);
+    await RecentCodeStore.remember(RecentCodeStore.trace, code);
+    if (!mounted) return;
     await _openVerifyPage(m);
   }
 
@@ -421,6 +425,12 @@ class _WarehousePageState extends State<WarehousePage> {
     if (code.isEmpty) return;
     final api = context.read<AuthState>().api;
     final r = await api.get('/inventory/box-codes/trace/${Uri.encodeComponent(code)}');
+    if (!mounted) return;
+    if (r.ok) {
+      await RecentCodeStore.remember(RecentCodeStore.board, code);
+      final tr = r.data is Map ? '${(r.data as Map)['trace_code'] ?? ''}'.trim() : '';
+      if (tr.isNotEmpty) await RecentCodeStore.remember(RecentCodeStore.trace, tr);
+    }
     if (!mounted) return;
     setState(() {
       _boxTrace = r.ok && r.data is Map ? Map<String, dynamic>.from(r.data as Map) : {'error': r.msg};
@@ -489,6 +499,84 @@ class _WarehousePageState extends State<WarehousePage> {
       if (_boxTrace != null &&
           (_boxTrace!['code']?.toString() == m['code']?.toString() || _boxTrace!['id'] == id)) {
         setState(() => _boxTrace = null);
+      }
+    }
+  }
+
+  Future<void> _recycleBox(Map m, {bool confirmClear = false}) async {
+    final id = (m['id'] as num?)?.toInt();
+    if (id == null || id <= 0) return;
+    final st = (m['status'] ?? '').toString().toLowerCase();
+    if (st == 'destroyed' || st == 'void') {
+      _prompt('该$_shortLabel已作废，无法回收');
+      return;
+    }
+    final reasonCtrl = TextEditingController(text: confirmClear ? '清空余量并回收' : '仓管回收板码');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(confirmClear ? '清空并回收$_codeLabel' : '回收$_codeLabel'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              confirmClear
+                  ? '板上仍有物料，确认后将清零重量、解除溯源，板码可再次使用。'
+                  : '清空溯源/工序占用，板码保留供再次挂料。有未结领料时不可回收。',
+              style: const TextStyle(fontSize: 13, color: Colors.black54),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonCtrl,
+              decoration: const InputDecoration(
+                labelText: '备注',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(confirmClear ? '确认清空回收' : '确认回收')),
+        ],
+      ),
+    );
+    final reason = reasonCtrl.text.trim();
+    reasonCtrl.dispose();
+    if (ok != true || !mounted) return;
+    final r = await context.read<AuthState>().api.post('/inventory/box-codes/$id/recycle', {
+      'reason': reason.isEmpty ? '仓管回收板码' : reason,
+      'confirm_clear': confirmClear,
+    });
+    if (!mounted) return;
+    final msg = (r.msg).toString();
+    if (!r.ok && (msg.contains('BOARD_NOT_EMPTY') || msg == 'BOARD_NOT_EMPTY')) {
+      final again = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('$_codeLabel仍有重量'),
+          content: Text('确认清空余量并回收？将记仓库出库清零。'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('清空并回收')),
+          ],
+        ),
+      );
+      if (again == true && mounted) {
+        await _recycleBox(m, confirmClear: true);
+      }
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已回收，可再挂料' : r.msg)));
+    if (r.ok) {
+      await RecentCodeStore.remember(RecentCodeStore.board, '${m['code'] ?? ''}');
+      await _loadBoxes();
+      if (_boxTrace != null &&
+          (_boxTrace!['code']?.toString() == m['code']?.toString() || _boxTrace!['id'] == id)) {
+        _boxQuery.text = m['code']?.toString() ?? '';
+        await _traceBox();
       }
     }
   }
@@ -612,6 +700,10 @@ class _WarehousePageState extends State<WarehousePage> {
       _msgIsError = false;
     });
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('出入库已过账')));
+    final scanDone = _txnScan.text.trim();
+    if (scanDone.isNotEmpty) {
+      await RecentCodeStore.remember(RecentCodeStore.board, scanDone);
+    }
     await _loadTxns();
     await _loadBalances();
   }
@@ -734,7 +826,7 @@ class _WarehousePageState extends State<WarehousePage> {
         HubEntryTile(
           icon: Icons.qr_code_2,
           title: context.watch<CarrierCodeLabels>().code,
-          subtitle: '查询${context.watch<CarrierCodeLabels>().code}、销毁未用${context.watch<CarrierCodeLabels>().short}',
+          subtitle: '查询、回收空板再挂料、销毁未用${context.watch<CarrierCodeLabels>().short}',
           onTap: () => _openSection(WarehouseSection.boxes),
         ),
         HubEntryTile(
@@ -754,6 +846,14 @@ class _WarehousePageState extends State<WarehousePage> {
           title: '工序退库',
           subtitle: '未用完领料还仓 · 不回冲计件',
           onTap: _openProcessReturn,
+        ),
+        HubEntryTile(
+          icon: Icons.pending_actions_outlined,
+          title: '领退入库待审',
+          subtitle: '部分退库 / 入库申请 · 过磅同意',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const ProcessPendingApprovePage()),
+          ),
         ),
         HubEntryTile(
           icon: Icons.inventory_2_outlined,
@@ -793,9 +893,10 @@ class _WarehousePageState extends State<WarehousePage> {
               TraceCodeField(
                 controller: _verify,
                 label: '溯源码',
-                hint: '手输或扫码',
+                hint: '手输、扫码或点最近使用',
                 scannerTitle: '扫描溯源码',
                 textCapitalization: TextCapitalization.none,
+                historyKey: RecentCodeStore.trace,
                 onEditingComplete: _scanLocate,
                 onScanned: (_) => _scanLocate(),
               ),
@@ -885,9 +986,10 @@ class _WarehousePageState extends State<WarehousePage> {
         TraceCodeField(
           controller: _boxQuery,
           label: _codeLabel,
-          hint: '手输或扫码',
+          hint: '手输、扫码或点最近使用',
           scannerTitle: '扫描$_codeLabel',
           textCapitalization: TextCapitalization.none,
+          historyKey: RecentCodeStore.board,
           onEditingComplete: _traceBox,
           onScanned: (_) => _traceBox(),
         ),
@@ -897,15 +999,33 @@ class _WarehousePageState extends State<WarehousePage> {
             color: Colors.teal.shade50,
             child: Padding(
               padding: const EdgeInsets.all(12),
-              child: Text(
-                _boxTrace!['error'] != null
-                    ? '${_boxTrace!['error']}'
-                    : '码 ${_boxTrace!['code'] ?? _boxQuery.text}\n'
-                        '溯源 ${_boxTrace!['trace_code'] ?? '-'}\n'
-                        '品 ${_boxTrace!['product_name'] ?? _boxTrace!['product_id'] ?? ''}'
-                        '${_boxTrace!['product_category'] != null && '${_boxTrace!['product_category']}' != '' ? ' · ${_boxTrace!['product_category']}' : ''}\n'
-                        '状态 ${_boxTrace!['status'] ?? ''}\n'
-                        '重量 ${_boxTrace!['weight'] ?? _boxTrace!['qty'] ?? ''}',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _boxTrace!['error'] != null
+                        ? '${_boxTrace!['error']}'
+                        : '码 ${_boxTrace!['code'] ?? _boxQuery.text}\n'
+                            '溯源 ${_boxTrace!['trace_code'] ?? '-'}\n'
+                            '品 ${_boxTrace!['product_name'] ?? _boxTrace!['product_id'] ?? ''}'
+                            '${_boxTrace!['product_category'] != null && '${_boxTrace!['product_category']}' != '' ? ' · ${_boxTrace!['product_category']}' : ''}\n'
+                            '状态 ${_boxTrace!['status'] ?? ''}\n'
+                            '重量 ${_boxTrace!['weight'] ?? _boxTrace!['qty'] ?? ''}',
+                  ),
+                  if (_boxTrace!['error'] == null &&
+                      '${_boxTrace!['status'] ?? ''}'.toLowerCase() != 'destroyed' &&
+                      '${_boxTrace!['status'] ?? ''}'.toLowerCase() != 'void') ...[
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton.tonalIcon(
+                        onPressed: () => _recycleBox(_boxTrace!),
+                        icon: const Icon(Icons.recycling_outlined),
+                        label: Text('回收$_codeLabel'),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),
@@ -915,7 +1035,8 @@ class _WarehousePageState extends State<WarehousePage> {
         ..._boxes.map((e) {
           final m = Map<String, dynamic>.from(e as Map);
           final st = (m['status'] ?? '').toString().toLowerCase();
-          final canDestroy = st != 'destroyed' && st != 'finished';
+          final canDestroy = st != 'destroyed' && st != 'finished' && st != 'void';
+          final canRecycle = st != 'destroyed' && st != 'void';
           return ListTile(
             title: Text('${m['code']}'),
             subtitle: Text(
@@ -925,6 +1046,12 @@ class _WarehousePageState extends State<WarehousePage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text('${m['weight'] ?? m['qty'] ?? ''}'),
+                if (canRecycle)
+                  IconButton(
+                    tooltip: '回收',
+                    icon: const Icon(Icons.recycling_outlined, color: Colors.teal),
+                    onPressed: () => _recycleBox(m),
+                  ),
                 if (canDestroy)
                   IconButton(
                     tooltip: '销毁',
@@ -1148,9 +1275,10 @@ class _WarehousePageState extends State<WarehousePage> {
                     TraceCodeField(
                       controller: _txnScan,
                       label: _codeLabel,
-                      hint: '手输或扫码，可带出产品',
+                      hint: '手输、扫码或点最近使用，可带出产品',
                       scannerTitle: '扫描$_codeLabel',
                       textCapitalization: TextCapitalization.none,
+                      historyKey: RecentCodeStore.board,
                       onEditingComplete: _resolveTxnScan,
                       onScanned: (_) => _resolveTxnScan(),
                     ),

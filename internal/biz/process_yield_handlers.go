@@ -17,38 +17,17 @@ func yieldLossRate(inputKg, lossKg float64) float64 {
 	return roundKg(lossKg / inputKg)
 }
 
-// snapshotTraceYield writes per-process yield for a whole trace once all boards are finished.
-// Aggregates from process issues/moves; does not write board-level yield.
+// snapshotTraceYield writes per-process yield for a whole trace (keyed by trace_code only).
+// Called when foreman completes trace production — not on board close.
 func (s *Services) snapshotTraceYield(trace string) {
-	trace = strings.TrimSpace(trace)
+	trace = strings.ToUpper(strings.TrimSpace(trace))
 	if trace == "" {
-		return
-	}
-	var unfinished int
-	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM inv_box_code
-		WHERE COALESCE(is_deleted,0)=0 AND trace_code=?
-		  AND COALESCE(status,'') NOT IN ('finished','destroyed','void')`, trace).Scan(&unfinished)
-	if unfinished > 0 {
-		return
-	}
-	var finished int
-	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM inv_box_code
-		WHERE COALESCE(is_deleted,0)=0 AND trace_code=? AND status='finished'`, trace).Scan(&finished)
-	if finished <= 0 {
-		return
-	}
-	var bad int
-	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_process_issue i
-		INNER JOIN inv_box_code b ON b.id=i.board_id
-		WHERE COALESCE(b.is_deleted,0)=0 AND b.trace_code=? AND COALESCE(i.trace_code,'')=''`, trace).Scan(&bad)
-	if bad > 0 {
 		return
 	}
 
 	inRows, err := s.DB.Query(`SELECT i.process_id, COALESCE(SUM(i.issue_kg - i.returned_kg),0)
 		FROM pd_process_issue i
-		INNER JOIN inv_box_code b ON b.id=i.board_id AND COALESCE(b.is_deleted,0)=0
-		WHERE b.trace_code=? AND COALESCE(i.worker_id,0)>0
+		WHERE UPPER(COALESCE(i.trace_code,''))=UPPER(?) AND COALESCE(i.worker_id,0)>0
 		GROUP BY i.process_id`, trace)
 	if err != nil {
 		return
@@ -69,8 +48,7 @@ func (s *Services) snapshotTraceYield(trace string) {
 
 	outRows, err := s.DB.Query(`SELECT m.from_process_id, COALESCE(SUM(m.kg),0)
 		FROM pd_process_move m
-		INNER JOIN inv_box_code b ON b.id=m.board_id AND COALESCE(b.is_deleted,0)=0
-		WHERE b.trace_code=? AND COALESCE(m.from_process_id,0)>0
+		WHERE UPPER(COALESCE(m.trace_code,''))=UPPER(?) AND COALESCE(m.from_process_id,0)>0
 		GROUP BY m.from_process_id`, trace)
 	if err != nil {
 		return
@@ -90,6 +68,10 @@ func (s *Services) snapshotTraceYield(trace string) {
 	}
 	outRows.Close()
 
+	boardCount := 0
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM inv_box_code
+		WHERE COALESCE(is_deleted,0)=0 AND UPPER(COALESCE(trace_code,''))=UPPER(?)`, trace).Scan(&boardCount)
+
 	for pid, a := range byProc {
 		inKg, outKg := roundKg(a.inKg), roundKg(a.outKg)
 		if inKg <= kgEps && outKg <= kgEps {
@@ -99,8 +81,10 @@ func (s *Services) snapshotTraceYield(trace string) {
 		rate := yieldLossRate(inKg, lossKg)
 		_, _ = s.DB.Exec(`INSERT INTO pd_trace_process_yield(trace_code, process_id, input_kg, output_kg, loss_kg, loss_rate, board_count)
 			VALUES(?,?,?,?,?,?,?)
-			ON CONFLICT (trace_code, process_id) DO NOTHING`,
-			trace, pid, inKg, outKg, lossKg, rate, finished)
+			ON CONFLICT (trace_code, process_id) DO UPDATE SET
+			input_kg=EXCLUDED.input_kg, output_kg=EXCLUDED.output_kg, loss_kg=EXCLUDED.loss_kg,
+			loss_rate=EXCLUDED.loss_rate, board_count=EXCLUDED.board_count`,
+			trace, pid, inKg, outKg, lossKg, rate, boardCount)
 	}
 }
 

@@ -234,9 +234,8 @@ func (s *Services) getProcessWip(c *gin.Context) bool {
 
 	var pendingCnt int
 	var pendingWeight float64
-	_ = s.DB.QueryRow(`SELECT COUNT(1), COALESCE(SUM(COALESCE(r.weight, r.qty, 0)),0)
-		FROM pd_report_work r
-		WHERE r.status='confirm_pending'`).Scan(&pendingCnt, &pendingWeight)
+	_ = s.DB.QueryRow(`SELECT COUNT(1), COALESCE(SUM(issue_kg - returned_kg - completed_kg),0)
+		FROM pd_process_issue WHERE status='open' AND COALESCE(worker_id,0)>0`).Scan(&pendingCnt, &pendingWeight)
 
 	totalBoxes := 0
 	totalWeight := 0.0
@@ -268,6 +267,7 @@ func (s *Services) getProcessWip(c *gin.Context) bool {
 		"total_boxes": totalBoxes, "total_boards": totalBoxes, "total_weight": totalWeight,
 		"total_stock_kg": totalStock,
 		"pending_confirm_reports": pendingCnt, "pending_confirm_weight": pendingWeight,
+		"open_worker_issues":      pendingCnt, "open_worker_issue_kg": pendingWeight,
 		"unassigned": gin.H{"box_count": unassignedBoxes, "board_count": unassignedBoxes, "wip_weight": roundKg(unassignedWeight)},
 		"steps":      list,
 	})

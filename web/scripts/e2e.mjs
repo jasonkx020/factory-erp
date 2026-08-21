@@ -81,16 +81,15 @@ async function main() {
   assert(reqn.code === 1, `requisition: ${reqn.msg}`)
   const reqPost = await req('POST', `/production/requisitions/${reqn.data.id}/post`, {}, token)
   assert(reqPost.code === 1, `requisition post: ${reqPost.msg}`)
-  const rw = await req('POST', '/production/report-works', {
-    dispatch_id: disp.data.id, process_id: 1, worker_id: 1, qty: 8,
+  const settle = await req('POST', '/production/piecework-summaries/day-settle', {
+    biz_date: new Date().toISOString().slice(0, 10),
   }, token)
-  assert(rw.code === 1, `report-work: ${rw.msg}`)
-  assert(Number(rw.data?.wage_amount) > 0, `wage_amount expected >0 got ${rw.data?.wage_amount}`)
+  assert(settle.code === 1, `day-settle: ${settle.msg}`)
   const sheet = await req('POST', '/payroll/sheets', { remark: 'e2e', period: '2026-08' }, token)
   assert(sheet.code === 1, `payroll sheet: ${sheet.msg}`)
   const batch = await req('POST', '/payroll/sheets/batch-generate', { period: '2026-08' }, token)
   assert(batch.code === 1, `payroll batch: ${batch.msg}`)
-  log(`piecework loop wage=${rw.data.wage_amount}`)
+  log(`piecework loop day-settle rows=${settle.data?.settled_rows ?? 0}`)
 
   // --- purchase loop ---
   const sup = await req('POST', '/purchase/suppliers', {

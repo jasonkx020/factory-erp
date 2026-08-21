@@ -60,8 +60,14 @@ export function formOptionLabel(options: FormOption[], value: unknown, fallback 
 
 export const STATION_FLOW_EVENT_OPTIONS: FormOption[] = [
   { value: 'issue', label: '领取' },
-  { value: 'return', label: '退库' },
-  { value: 'stock_in', label: '入库换码' },
+  { value: 'return_apply', label: '退库申请' },
+  { value: 'return_approve', label: '退库同意' },
+  { value: 'stock_in_apply', label: '入库申请' },
+  { value: 'stock_in_approve', label: '入库过账' },
+  { value: 'next_claim', label: '下道领取' },
+  { value: 'work_done', label: '确认结束' },
+  { value: 'return', label: '退库(旧)' },
+  { value: 'stock_in', label: '入库换码(旧)' },
   { value: 'board_close', label: '板结束' },
   { value: 'day_settle', label: '日结' },
   { value: 'process_master', label: '工序主数据' },
