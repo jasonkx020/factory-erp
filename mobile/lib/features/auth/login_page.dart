@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
@@ -17,9 +18,12 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   late final TextEditingController _login;
   late final TextEditingController _password;
-  late final TextEditingController _server;
+  late final TextEditingController _host;
+  late final TextEditingController _port;
+  String _scheme = 'http';
   String _selectedDemoLogin = 'admin';
   String _savedBaseHint = '';
+  bool _serverFilled = false;
 
   @override
   void initState() {
@@ -30,11 +34,40 @@ class _LoginPageState extends State<LoginPage> {
     _selectedDemoLogin = initial?.login ?? 'admin';
     _login = TextEditingController(text: initial?.login ?? 'admin');
     _password = TextEditingController(text: DebugDemoAccount.password);
-    _server = TextEditingController();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final api = context.read<AuthState>().api;
-      _server.text = displayApiHost(api.baseUrl);
-      setState(() => _savedBaseHint = api.baseUrl);
+    _host = TextEditingController();
+    _port = TextEditingController(text: '80');
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fillServerFromApi(force: false));
+  }
+
+  void _applyParts(({String scheme, String host, String port}) parts) {
+    _scheme = parts.scheme;
+    _host.text = parts.host;
+    _port.text = parts.port;
+  }
+
+  void _fillServerFromApi({required bool force}) {
+    if (!mounted) return;
+    if (_serverFilled && !force) return;
+    final api = context.read<AuthState>().api;
+    _applyParts(splitApiHostPort(api.baseUrl));
+    _serverFilled = true;
+    setState(() => _savedBaseHint = api.baseUrl);
+  }
+
+  String get _serverRaw =>
+      joinApiHostPort(_host.text, _port.text, scheme: _scheme);
+
+  void _onSchemeChanged(Set<String> next) {
+    if (next.isEmpty) return;
+    final nextScheme = next.first;
+    final prevDefault = '${defaultPortForScheme(_scheme)}';
+    final nextDefault = '${defaultPortForScheme(nextScheme)}';
+    setState(() {
+      _scheme = nextScheme;
+      // 端口仍是上一协议默认值时，自动切到新协议默认端口
+      if (_port.text.trim().isEmpty || _port.text.trim() == prevDefault) {
+        _port.text = nextDefault;
+      }
     });
   }
 
@@ -42,7 +75,8 @@ class _LoginPageState extends State<LoginPage> {
   void dispose() {
     _login.dispose();
     _password.dispose();
-    _server.dispose();
+    _host.dispose();
+    _port.dispose();
     super.dispose();
   }
 
@@ -56,10 +90,10 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _applyServer() async {
     final api = context.read<AuthState>().api;
-    await api.setBaseUrl(_server.text);
+    await api.setBaseUrl(_serverRaw);
     if (!mounted) return;
     setState(() {
-      _server.text = displayApiHost(api.baseUrl);
+      _applyParts(splitApiHostPort(api.baseUrl));
       _savedBaseHint = api.baseUrl;
     });
     ScaffoldMessenger.of(context).showSnackBar(
@@ -69,10 +103,10 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _submit() async {
     final auth = context.read<AuthState>();
-    await auth.api.setBaseUrl(_server.text);
+    await auth.api.setBaseUrl(_serverRaw);
     if (!mounted) return;
     setState(() {
-      _server.text = displayApiHost(auth.api.baseUrl);
+      _applyParts(splitApiHostPort(auth.api.baseUrl));
       _savedBaseHint = auth.api.baseUrl;
     });
     final ok = await auth.login(_login.text.trim(), _password.text);
@@ -93,7 +127,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _oauthStub() async {
     final auth = context.read<AuthState>();
-    await auth.api.setBaseUrl(_server.text);
+    await auth.api.setBaseUrl(_serverRaw);
     if (!mounted) return;
     final ok = await auth.loginWithOAuth(provider: 'wechat', code: 'stub');
     if (!mounted) return;
@@ -111,6 +145,7 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final loading = context.watch<AuthState>().loading;
+    final portHint = _scheme == 'https' ? '443' : '80';
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -129,21 +164,55 @@ class _LoginPageState extends State<LoginPage> {
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: _server,
-                    keyboardType: TextInputType.url,
-                    decoration: InputDecoration(
-                      labelText: '后台地址（IP/主机）',
-                      hintText: '192.168.1.100 或 10.0.2.2:18080',
-                      helperText: _savedBaseHint.isEmpty ? '默认模拟器网关 10.0.2.2:18080' : _savedBaseHint,
-                      helperMaxLines: 2,
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'http', label: Text('http')),
+                      ButtonSegment(value: 'https', label: Text('https')),
+                    ],
+                    selected: {_scheme},
+                    onSelectionChanged: loading ? null : _onSchemeChanged,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: TextField(
+                          controller: _host,
+                          keyboardType: TextInputType.url,
+                          autocorrect: false,
+                          enableSuggestions: false,
+                          decoration: InputDecoration(
+                            labelText: '后台主机',
+                            hintText: '192.168.1.100',
+                            helperText: _savedBaseHint.isEmpty ? '模拟器可用 10.0.2.2' : _savedBaseHint,
+                            helperMaxLines: 2,
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: TextField(
+                          controller: _port,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          decoration: InputDecoration(
+                            labelText: '端口',
+                            hintText: portHint,
+                            helperText: '空则 $portHint',
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      IconButton(
                         tooltip: '保存地址',
                         onPressed: loading ? null : _applyServer,
                         icon: const Icon(Icons.save_outlined),
                       ),
-                    ),
+                    ],
                   ),
                   if (showDebugDemoAccounts) ...[
                     const SizedBox(height: 20),

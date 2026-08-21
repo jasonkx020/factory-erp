@@ -33,16 +33,31 @@ class ApiEnvelope {
 }
 
 /// 把用户输入规范成 `http(s)://host:port/api/v1`
+///
+/// 未写端口时按协议默认：http→80、https→443。
+/// 会把全角冒号等常见输入纠成半角，避免端口识别失败。
 String normalizeApiBase(String raw) {
   var s = raw.trim();
   if (s.isEmpty) return kDefaultApiBase;
+  s = s
+      .replaceAll('：', ':')
+      .replaceAll(RegExp(r'\s+'), '')
+      .replaceAll(RegExp(r'/+$'), '');
   if (!s.contains('://')) {
     s = 'http://$s';
   }
   final uri = Uri.tryParse(s);
   if (uri == null || uri.host.isEmpty) return kDefaultApiBase;
+  // 主机里误带了全角冒号等时，host 会变成 "ip：8080" 且 hasPort=false
+  final host = uri.host;
+  if (host.contains(':') || host.contains('：')) {
+    return kDefaultApiBase;
+  }
   final scheme = uri.scheme.isEmpty ? 'http' : uri.scheme;
-  final port = uri.hasPort ? uri.port : 18080;
+  final port = uri.hasPort ? uri.port : defaultPortForScheme(scheme);
+  if (port <= 0 || port > 65535) {
+    return kDefaultApiBase;
+  }
   var path = uri.path;
   if (path.isEmpty || path == '/') {
     path = '/api/v1';
@@ -50,15 +65,58 @@ String normalizeApiBase(String raw) {
     path = path.endsWith('/') ? '${path}api/v1' : '$path/api/v1';
   }
   path = path.replaceAll(RegExp(r'/+$'), '');
-  return Uri(scheme: scheme, host: uri.host, port: port, path: path).toString();
+  return Uri(scheme: scheme, host: host, port: port, path: path).toString();
+}
+
+int defaultPortForScheme(String scheme) {
+  final s = scheme.toLowerCase();
+  if (s == 'https') return 443;
+  return 80;
 }
 
 /// 登录页展示用：尽量显示 host:port
 String displayApiHost(String baseUrl) {
   final u = Uri.tryParse(baseUrl);
   if (u == null || u.host.isEmpty) return baseUrl;
-  if (u.hasPort) return '${u.host}:${u.port}';
-  return u.host;
+  final port = u.hasPort ? u.port : defaultPortForScheme(u.scheme);
+  return '${u.host}:$port';
+}
+
+/// 拆出协议、主机与端口，供登录页分栏编辑。
+({String scheme, String host, String port}) splitApiHostPort(String baseUrlOrHost) {
+  final raw = baseUrlOrHost.trim().replaceAll('：', ':');
+  if (raw.isEmpty) {
+    return (scheme: 'http', host: '10.0.2.2', port: '80');
+  }
+  final normalized = raw.contains('://') || raw.contains('/') ? normalizeApiBase(raw) : null;
+  final u = Uri.tryParse(normalized ?? (raw.contains('://') ? raw : 'http://$raw'));
+  if (u != null && u.host.isNotEmpty && !u.host.contains('%')) {
+    final scheme = (u.scheme == 'https') ? 'https' : 'http';
+    final port = u.hasPort ? u.port : defaultPortForScheme(scheme);
+    return (scheme: scheme, host: u.host, port: '$port');
+  }
+  // 容错：host:port 手工拆
+  final idx = raw.lastIndexOf(':');
+  if (idx > 0 && idx < raw.length - 1) {
+    final host = raw.substring(0, idx).replaceFirst(RegExp(r'^https?://'), '');
+    final port = raw.substring(idx + 1).replaceAll(RegExp(r'[^0-9]'), '');
+    if (host.isNotEmpty && port.isNotEmpty) {
+      final scheme = raw.toLowerCase().startsWith('https://') ? 'https' : 'http';
+      return (scheme: scheme, host: host, port: port);
+    }
+  }
+  final hostOnly = raw.replaceFirst(RegExp(r'^https?://'), '').split('/').first;
+  final scheme = raw.toLowerCase().startsWith('https://') ? 'https' : 'http';
+  return (scheme: scheme, host: hostOnly, port: '${defaultPortForScheme(scheme)}');
+}
+
+String joinApiHostPort(String host, String port, {String scheme = 'http'}) {
+  final h = host.trim().replaceAll('：', ':').replaceAll(RegExp(r'\s+'), '');
+  var p = port.trim().replaceAll(RegExp(r'[^0-9]'), '');
+  final sch = scheme.trim().toLowerCase() == 'https' ? 'https' : 'http';
+  if (h.isEmpty) return '';
+  if (p.isEmpty) p = '${defaultPortForScheme(sch)}';
+  return '$sch://$h:$p';
 }
 
 class ApiClient {

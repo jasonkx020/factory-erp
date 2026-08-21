@@ -104,8 +104,8 @@ class ErpEmployeeApp extends StatelessWidget {
           useMaterial3: true,
         ),
         home: Consumer<AuthState>(
-          builder: (context, a, _) {
-            if (!a.isLoggedIn) return const LoginPage();
+          builder: (context, a, login) {
+            if (!a.isLoggedIn) return login!;
             if (!a.sessionReady) {
               return const Scaffold(
                 body: Center(child: CircularProgressIndicator()),
@@ -113,6 +113,7 @@ class ErpEmployeeApp extends StatelessWidget {
             }
             return const _ShellWithLaunchLink();
           },
+          child: const LoginPage(),
         ),
         routes: {
           '/workshop': (_) => const WorkshopPage(),
