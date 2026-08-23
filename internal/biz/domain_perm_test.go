@@ -65,4 +65,15 @@ func TestCheckAPIPerm(t *testing.T) {
 	if CheckAPIPerm(c, "purchase/weigh-tickets/by-trace", "list", "GET") {
 		t.Fatal("sales with inventory query alone should not pass by-trace")
 	}
+
+	c = mk([]string{"warehouse"}, nil)
+	if !CheckAPIPerm(c, "production/process-issues", "list", "GET") {
+		t.Fatal("warehouse role should pass process-issues list for pending queue")
+	}
+	if !CheckAPIPerm(c, "production/process-issues/:id/issue-approve", "action:issue-approve", "POST") {
+		t.Fatal("warehouse role should pass issue-approve")
+	}
+	if CheckAPIPerm(c, "production/process-issues", "create", "POST") {
+		t.Fatal("warehouse without process perm should not create process-issues")
+	}
 }

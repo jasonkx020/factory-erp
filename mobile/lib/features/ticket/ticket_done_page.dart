@@ -6,7 +6,7 @@ import '../../core/auth_state.dart';
 import '../../core/notify_service.dart';
 import 'ticket_widgets.dart';
 
-/// 已办：我发起且已结案（申请人侧历史）
+/// 已办：我处理过的且已结案（含曾参与流转后转出）
 class TicketDonePage extends StatefulWidget {
   const TicketDonePage({super.key});
 
@@ -26,27 +26,18 @@ class TicketDonePageState extends State<TicketDonePage> {
 
   Future<void> reload() async {
     final api = context.read<AuthState>().api;
-    // 结案后 assignee 清空，以「我发起的」为主；再合并默认可见列表中的结案单
-    final results = await Future.wait([
-      api.get('/workflow/tickets?scope=mine_applicant'),
-      api.get('/workflow/tickets'),
-    ]);
+    final res = await api.get('/workflow/tickets?scope=mine_handled');
     if (!mounted) return;
-    final map = <int, Map<String, dynamic>>{};
-    for (final res in results) {
-      for (final e in ApiClient.listOf(res.data)) {
-        final m = Map<String, dynamic>.from(e as Map);
-        if (!ticketIsClosed('${m['status']}')) continue;
-        final id = (m['id'] as num?)?.toInt();
-        if (id == null) continue;
-        map[id] = m;
-      }
+    final list = <Map<String, dynamic>>[];
+    for (final e in ApiClient.listOf(res.data)) {
+      final m = Map<String, dynamic>.from(e as Map);
+      if (!ticketIsClosed('${m['status']}')) continue;
+      list.add(m);
     }
-    final list = map.values.toList()
-      ..sort((a, b) => ((b['id'] as num?)?.toInt() ?? 0).compareTo((a['id'] as num?)?.toInt() ?? 0));
+    list.sort((a, b) => ((b['id'] as num?)?.toInt() ?? 0).compareTo((a['id'] as num?)?.toInt() ?? 0));
     setState(() {
       _list = list;
-      _msg = results.any((r) => !r.ok) ? results.firstWhere((r) => !r.ok).msg : '';
+      _msg = res.ok ? '' : res.msg;
     });
   }
 
@@ -55,7 +46,7 @@ class TicketDonePageState extends State<TicketDonePage> {
     final notify = context.watch<NotifyService>();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('已办'),
+        title: Text(context.watch<AuthState>().preferQcShell ? '我处理过的' : '已办'),
         actions: ticketShellMessageActions(context, notify.unread),
       ),
       body: RefreshIndicator(

@@ -7,6 +7,7 @@ import 'core/api_client.dart';
 import 'core/auth_state.dart';
 import 'core/carrier_code_labels.dart';
 import 'core/notify_service.dart';
+import 'core/role_codes.dart';
 import 'features/assets/assets_page.dart';
 import 'features/auth/login_page.dart';
 import 'features/collab/collab_finance_page.dart';
@@ -22,6 +23,7 @@ import 'features/receiving/receiving_page.dart';
 import 'features/sales/sales_page.dart';
 import 'features/shell/factory_shell.dart';
 import 'features/shell/main_shell.dart';
+import 'features/shell/qc_shell.dart';
 import 'features/station/station_pass_page.dart';
 import 'features/station/trace_production_page.dart';
 import 'features/ticket/ticket_widgets.dart';
@@ -133,7 +135,7 @@ class ErpEmployeeApp extends StatelessWidget {
           '/tickets': (_) => const TicketsPage(),
           '/ticket-create': (_) => const TicketCreatePage(),
           '/inbox': (_) => const InboxPage(),
-          '/home': (_) => const MainShell(),
+          '/home': (_) => const _ShellWithLaunchLink(),
         },
       ),
     );
@@ -158,5 +160,15 @@ class _ShellWithLaunchLinkState extends State<_ShellWithLaunchLink> {
   }
 
   @override
-  Widget build(BuildContext context) => const FactoryShell();
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthState>();
+    // 纯质检：专用质检壳（待办判定），绝不进采购页
+    if (auth.preferQcShell || auth.primaryRole == WorkbenchRole.qc) {
+      return const QcShell();
+    }
+    if (auth.primaryRole == WorkbenchRole.collab) {
+      return const MainShell();
+    }
+    return const FactoryShell();
+  }
 }

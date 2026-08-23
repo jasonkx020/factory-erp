@@ -46,6 +46,10 @@ func (s *Services) createProcessStockIn(c *gin.Context) bool {
 		api.FailJSON(c, "PROCESS_REQUIRED")
 		return true
 	}
+	if fail := s.assertTraceProcessWip(trace, processID, 0, true); fail != "" {
+		api.FailJSON(c, fail)
+		return true
+	}
 	if fail := s.requireReweighFields(body); fail != "" {
 		api.FailJSON(c, fail)
 		return true
@@ -202,9 +206,9 @@ func (s *Services) approveProcessStockIn(c *gin.Context) bool {
 		api.FailJSON(c, "BOX_REQUIRED")
 		return true
 	}
-	board, errMsg := s.resolveOrCreateBoardForTrace(boardCode, trace, kg)
-	if errMsg != "" {
-		api.FailJSON(c, errMsg)
+	board, be := s.resolveOrCreateBoardForTrace(boardCode, trace, kg)
+	if be != nil {
+		api.HandleBusiness(c, be, nil)
 		return true
 	}
 	_, _ = s.DB.Exec(`UPDATE pd_process_stock_in SET board_id=?, board_code=?, updated_at=NOW() WHERE id=?`,

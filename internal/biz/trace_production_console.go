@@ -81,11 +81,19 @@ func (s *Services) listTraceProductionsConsole(c *gin.Context) bool {
 	})
 	list := make([]gin.H, 0, len(raw))
 	for _, r := range raw {
-		list = append(list, gin.H{
+		fid, fname := s.traceFarmerInfo(r.tc)
+		item := gin.H{
 			"trace_code": r.tc, "ui_status": r.uiStatus, "status": r.uiStatus,
 			"stock_kg": roundKg(r.stockKg), "board_count": r.boardCnt,
 			"session_id": r.sessionID, "session_status": r.sessionStatus,
-		})
+		}
+		if fid > 0 {
+			item["farmer_id"] = fid
+		}
+		if fname != "" {
+			item["farmer_name"] = fname
+		}
+		list = append(list, item)
 	}
 	var total int
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM (
@@ -112,6 +120,24 @@ func (s *Services) traceUIStatus(trace string) (uiStatus string, sessionID int64
 	return "in_stock", sessionID, sessionStatus
 }
 
+func (s *Services) traceFarmerInfo(trace string) (farmerID int64, farmerName string) {
+	trace = strings.ToUpper(strings.TrimSpace(trace))
+	if trace == "" {
+		return 0, ""
+	}
+	_ = s.DB.QueryRow(`SELECT COALESCE(l.farmer_id,0), COALESCE(f.name,'')
+		FROM pur_trace_lot l LEFT JOIN pur_farmer f ON f.id=l.farmer_id
+		WHERE UPPER(COALESCE(l.trace_code,''))=? ORDER BY l.id DESC LIMIT 1`, trace).Scan(&farmerID, &farmerName)
+	if farmerID > 0 {
+		return farmerID, farmerName
+	}
+	_ = s.DB.QueryRow(`SELECT COALESCE(b.farmer_id,0), COALESCE(f.name,'')
+		FROM inv_box_code b LEFT JOIN pur_farmer f ON f.id=b.farmer_id
+		WHERE UPPER(COALESCE(b.trace_code,''))=? AND COALESCE(b.farmer_id,0)>0
+		LIMIT 1`, trace).Scan(&farmerID, &farmerName)
+	return farmerID, farmerName
+}
+
 func (s *Services) getTraceProductionWip(c *gin.Context) bool {
 	trace := strings.ToUpper(strings.TrimSpace(c.Param("code")))
 	if trace == "" {
@@ -122,21 +148,8 @@ func (s *Services) getTraceProductionWip(c *gin.Context) bool {
 		return true
 	}
 	uiStatus, sessionID, sessionStatus := s.traceUIStatus(trace)
-	type stepAgg struct {
-		ProcessID                            int64
-		ProcessName                          string
-		AvailableKg, OccupiedKg, StockKg     float64
-		BoardCount                           int
-	}
-	byProc := map[int64]*stepAgg{}
-	ensure := func(pid int64) *stepAgg {
-		if a, ok := byProc[pid]; ok {
-			return a
-		}
-		a := &stepAgg{ProcessID: pid, ProcessName: s.processName(pid)}
-		byProc[pid] = a
-		return a
-	}
+	wipMap := s.computeTraceProcessWip(trace)
+	boardCountByProc := map[int64]int{}
 	brows, err := s.DB.Query(`SELECT id, code, COALESCE(current_process_id,0), COALESCE(weight, qty, 0), COALESCE(status,'')
 		FROM inv_box_code WHERE COALESCE(is_deleted,0)=0 AND UPPER(COALESCE(trace_code,''))=UPPER(?)
 		  AND COALESCE(status,'') NOT IN ('destroyed','void')`, trace)
@@ -157,44 +170,28 @@ func (s *Services) getTraceProductionWip(c *gin.Context) bool {
 			"weight_kg": roundKg(w), "status": st,
 		})
 		if pid > 0 && w > kgEps {
-			a := ensure(pid)
-			a.AvailableKg = roundKg(a.AvailableKg + w)
-			a.StockKg = roundKg(a.StockKg + w)
-			a.BoardCount++
+			boardCountByProc[pid]++
 		}
 	}
 	brows.Close()
-	irows, _ := s.DB.Query(`SELECT process_id, COALESCE(SUM(issue_kg - returned_kg - completed_kg),0)
-		FROM pd_process_issue WHERE UPPER(COALESCE(trace_code,''))=UPPER(?) AND status='open' AND COALESCE(worker_id,0)>0
-		GROUP BY process_id`, trace)
-	if irows != nil {
-		for irows.Next() {
-			var pid int64
-			var occ float64
-			if err := irows.Scan(&pid, &occ); err != nil {
-				continue
-			}
-			a := ensure(pid)
-			a.OccupiedKg = roundKg(occ)
-		}
-		irows.Close()
-	}
 	steps := []gin.H{}
-	totalAvail, totalOcc := 0.0, 0.0
-	for _, a := range byProc {
-		wip := roundKg(a.AvailableKg + a.OccupiedKg)
-		totalAvail = roundKg(totalAvail + a.AvailableKg)
-		totalOcc = roundKg(totalOcc + a.OccupiedKg)
+	totalAvail, totalOcc, totalWip := 0.0, 0.0, 0.0
+	for _, r := range wipMap {
+		totalAvail = roundKg(totalAvail + r.AvailableKg)
+		totalOcc = roundKg(totalOcc + r.OccupiedKg)
+		totalWip = roundKg(totalWip + r.WipKg)
 		steps = append(steps, gin.H{
-			"process_id": a.ProcessID, "process_name": a.ProcessName,
-			"available_kg": a.AvailableKg, "occupied_kg": a.OccupiedKg,
-			"wip_kg": wip, "stock_kg": a.StockKg, "board_count": a.BoardCount,
+			"process_id": r.ProcessID, "process_name": r.ProcessName,
+			"available_kg": r.AvailableKg, "pool_kg": r.PoolKg, "occupied_kg": r.OccupiedKg,
+			"wip_kg": r.WipKg, "issuable_kg": r.IssuableKg,
+			"can_issue_from": r.CanIssueFrom, "can_stock_in": r.CanStockIn,
+			"stock_kg": r.AvailableKg, "board_count": boardCountByProc[r.ProcessID],
 		})
 	}
 	api.OK(c, gin.H{
 		"trace_code": trace, "ui_status": uiStatus, "status": uiStatus,
 		"session_id": sessionID, "session_status": sessionStatus,
-		"total_available_kg": totalAvail, "total_occupied_kg": totalOcc,
+		"total_available_kg": totalAvail, "total_occupied_kg": totalOcc, "total_wip_kg": totalWip,
 		"steps": steps, "boards": boards,
 	})
 	return true

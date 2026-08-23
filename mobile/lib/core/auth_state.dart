@@ -40,6 +40,9 @@ class AuthState extends ChangeNotifier {
 
   List<WorkbenchRole> get switchableRoles => availableWorkbenchRoles(roles);
 
+  /// 纯质检账号：进质检壳，绝不进采购页。
+  bool get preferQcShell => rolesPreferQcShell(roles);
+
   void _applyUser(Map<String, dynamic>? user) {
     if (user == null) return;
     final displayName = user['name']?.toString().isNotEmpty == true
@@ -189,6 +192,7 @@ class AuthState extends ChangeNotifier {
     permissions = (data['permissions'] as List?)?.map((e) => e.toString()).toList() ?? permissions;
     _applyUser(data['user'] as Map<String, dynamic>?);
     syncUserIdFromToken();
+    // 会话内刷新权限时保留用户手动切换的角色；登录成功后在 _applyLoginData 里再强制重算
     _refreshPrimaryRole(keepSelection: true);
     sessionReady = true;
     notifyListeners();

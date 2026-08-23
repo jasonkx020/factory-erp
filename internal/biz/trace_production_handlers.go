@@ -70,6 +70,8 @@ func (s *Services) handleTraceProduction(c *gin.Context, method, openapiPath, ac
 	switch {
 	case method == "GET" && strings.Contains(openapiPath, "/logs"):
 		return s.listTraceProcessLogs(c)
+	case method == "GET" && strings.Contains(openapiPath, "/material-locations"):
+		return s.getTraceMaterialLocations(c)
 	case method == "GET" && (strings.Contains(openapiPath, "/wip") || strings.HasSuffix(openapiPath, "/wip")):
 		return s.getTraceProductionWip(c)
 	case method == "GET" && (action == "list" || openapiPath == "/api/v1/production/trace-productions"):
@@ -195,6 +197,9 @@ func (s *Services) logTraceProcessEvent(c *gin.Context, eventType string) bool {
 		return true
 	}
 	lid, _ := res.LastInsertId()
+	if eventType == "stop" && outputKg > kgEps {
+		s.creditTraceProcessPoolKg(trace, processID, outputKg)
+	}
 	api.OK(c, gin.H{
 		"id": lid, "session_id": sessionID, "trace_code": trace, "process_id": processID,
 		"process_name": s.processName(processID), "event_type": eventType,

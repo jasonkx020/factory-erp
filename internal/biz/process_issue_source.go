@@ -75,56 +75,22 @@ func (s *Services) handleBoardIssueHTTP(c *gin.Context) bool {
 	var board *boardState
 
 	if source == "warehouse" {
-		if boardCode == "" {
-			api.FailJSON(c, "BOX_REQUIRED")
-			return true
-		}
-		board, errMsg = s.loadBoardByCode(boardCode)
-		if errMsg != "" {
-			api.FailJSON(c, errMsg)
-			return true
-		}
-		s.sanitizeBoardProcessRefs(board)
-		if strings.TrimSpace(board.Trace) == "" {
+		if trace == "" {
 			api.FailJSON(c, "TRACE_CODE_REQUIRED")
 			return true
 		}
-		if board.Status == "finished" {
-			api.FailJSON(c, "BOARD_FINISHED")
-			return true
-		}
-		if trace != "" && strings.ToUpper(strings.TrimSpace(board.Trace)) != trace {
-			api.FailJSON(c, "TRACE_MISMATCH")
-			return true
-		}
-		trace = strings.ToUpper(strings.TrimSpace(board.Trace))
+		trace = strings.ToUpper(strings.TrimSpace(trace))
 		if fail = s.requireTraceProductionOpen(trace); fail != "" {
 			api.FailJSON(c, fail)
 			return true
 		}
-		if fail = s.assertProcessTransitionAllowed(board, processID); fail != "" {
-			api.FailJSON(c, fail)
-			return true
-		}
-		prevProcess := board.ProcessID
-		out, fail = s.issueBoardKg(board, workerID, processID, stepID, kg, opEmpID)
+		photo := strings.TrimSpace(strOrDef(body["photo_url"], strOr(body["image_url"])))
+		out, fail = s.createWarehouseIssuePending(trace, workerID, processID, stepID, kg, opEmpID, photo)
 		if fail != "" {
 			api.FailJSON(c, fail)
 			return true
 		}
-		issueID := asInt64Or0(out["id"])
-		_, _ = s.DB.Exec(`UPDATE pd_process_issue SET source='warehouse' WHERE id=?`, issueID)
-		if err := s.writeProcessIssueStockOut(board, kg, issueID, trace); err != nil {
-			api.FailJSON(c, "STOCK_OUT_FAILED:"+err.Error())
-			return true
-		}
-		if prevProcess > 0 && prevProcess != processID {
-			s.creditUpstreamOutputOnIssue(&boardState{
-				ID: board.ID, Code: board.Code, Trace: board.Trace, ProcessID: prevProcess, StepID: board.StepID,
-			}, processID, kg, workerID)
-		}
 		out["source"] = "warehouse"
-		s.attachBoardPreview(out, board.ID, board.Code, processID, stepID, workerID)
 	} else {
 		if trace == "" {
 			api.FailJSON(c, "TRACE_CODE_REQUIRED")
@@ -134,7 +100,19 @@ func (s *Services) handleBoardIssueHTTP(c *gin.Context) bool {
 			api.FailJSON(c, fail)
 			return true
 		}
-		out, fail = s.issueTraceProcessKg(trace, workerID, processID, stepID, kg, opEmpID)
+		toProcessID := processID
+		fromProcessID := asInt64Or0(body["from_process_id"])
+		if fromProcessID <= 0 {
+			if loc, ok := body["from_location"].(map[string]interface{}); ok {
+				if strings.EqualFold(strings.TrimSpace(strOr(loc["location_type"])), "process") {
+					fromProcessID = asInt64Or0(loc["process_id"])
+				}
+			}
+		}
+		if fromProcessID <= 0 {
+			fromProcessID = toProcessID
+		}
+		out, fail = s.issueTraceProcessKg(trace, workerID, fromProcessID, toProcessID, stepID, kg, opEmpID)
 		if fail != "" {
 			api.FailJSON(c, fail)
 			return true
@@ -161,8 +139,14 @@ func (s *Services) handleBoardIssueHTTP(c *gin.Context) bool {
 	} else {
 		trace = strings.ToUpper(strings.TrimSpace(strOrDef(out["trace_code"], trace)))
 	}
+	eventType := "issue"
+	if source == "warehouse" {
+		if p, ok := out["pending"].(bool); ok && p {
+			eventType = "issue_apply"
+		}
+	}
 	s.appendStationFlowLog(stationFlowEvent{
-		EventType: "issue", BoardID: boardID, BoardCode: boardCodeOut, TraceCode: trace,
+		EventType: eventType, BoardID: boardID, BoardCode: boardCodeOut, TraceCode: trace,
 		ProcessID: processID, StepID: stepID, WorkerID: workerID, WorkerName: workerName, Badge: badge,
 		ActorUserID: claimsUserID(c), OperatorEmployeeID: opEmpID, Kg: kg, Rate: rate, Amount: amt,
 		RefType: "pd_process_issue", RefID: asInt64Or0(out["id"]),
@@ -196,39 +180,38 @@ func (s *Services) attachIssueWagePreview(dst gin.H, processID int64, kg float64
 	}
 }
 
-// issueTraceProcessKg issues from trace-level WIP pool (worker_id=0, any board including 0).
-func (s *Services) issueTraceProcessKg(trace string, workerID, processID, stepID int64, kg float64, issuedBy int64) (gin.H, string) {
+// issueTraceProcessKg issues from trace-level WIP at fromProcess into worker holding at toProcess.
+func (s *Services) issueTraceProcessKg(trace string, workerID, fromProcessID, toProcessID, stepID int64, kg float64, issuedBy int64) (gin.H, string) {
 	trace = strings.ToUpper(strings.TrimSpace(trace))
-	if trace == "" || workerID <= 0 || processID <= 0 || kg <= kgEps {
+	if trace == "" || workerID <= 0 || toProcessID <= 0 || kg <= kgEps {
 		return nil, "INVALID_QTY"
+	}
+	if fromProcessID <= 0 {
+		fromProcessID = toProcessID
 	}
 	if issuedBy <= 0 {
 		issuedBy = workerID
 	}
+	if fail := s.assertTraceProcessWip(trace, fromProcessID, kg, true); fail != "" {
+		return nil, fail
+	}
+	s.ensureProcessIssueLocationColumns()
 	tx, err := s.DB.Begin()
 	if err != nil {
 		return nil, "DB_ERROR"
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var pool float64
-	_ = tx.QueryRow(`SELECT COALESCE(SUM(issue_kg - returned_kg - completed_kg),0)
-		FROM pd_process_issue
-		WHERE UPPER(COALESCE(trace_code,''))=UPPER(?) AND process_id=? AND status='open' AND COALESCE(worker_id,0)=0`,
-		trace, processID).Scan(&pool)
-	if kg-roundKg(pool) > kgEps {
-		return nil, "QTY_EXCEEDS_AVAILABLE"
-	}
-	if fail := takeTracePoolTx(tx, trace, processID, kg); fail != "" {
+	if fail := takeTraceIssuableTx(tx, trace, fromProcessID, kg); fail != "" {
 		return nil, fail
 	}
-	res, err := tx.Exec(`INSERT INTO pd_process_issue(board_id, board_code, trace_code, process_id, step_id, worker_id, issue_kg, returned_kg, completed_kg, status, biz_status, issued_by_employee_id, source)
-		VALUES(0,'',?,?,?,?,?,0,0,'open','open',?,'process')`,
-		trace, processID, stepID, workerID, kg, issuedBy)
+	res, err := tx.Exec(`INSERT INTO pd_process_issue(board_id, board_code, trace_code, process_id, step_id, worker_id, issue_kg, returned_kg, completed_kg, status, biz_status, issued_by_employee_id, source, from_location_type, from_process_id, to_process_id)
+		VALUES(0,'',?,?,?,?,?,0,0,'open','open',?,'process','process',?,?)`,
+		trace, toProcessID, stepID, workerID, kg, issuedBy, fromProcessID, toProcessID)
 	if err != nil {
-		res, err = tx.Exec(`INSERT INTO pd_process_issue(board_id, board_code, trace_code, process_id, step_id, worker_id, issue_kg, returned_kg, completed_kg, status, biz_status, issued_by_employee_id)
-			VALUES(0,'',?,?,?,?,?,0,0,'open','open',?)`,
-			trace, processID, stepID, workerID, kg, issuedBy)
+		res, err = tx.Exec(`INSERT INTO pd_process_issue(board_id, board_code, trace_code, process_id, step_id, worker_id, issue_kg, returned_kg, completed_kg, status, biz_status, issued_by_employee_id, source)
+			VALUES(0,'',?,?,?,?,?,0,0,'open','open',?,'process')`,
+			trace, toProcessID, stepID, workerID, kg, issuedBy)
 		if err != nil {
 			return nil, "DB_ERROR:" + err.Error()
 		}
@@ -239,16 +222,113 @@ func (s *Services) issueTraceProcessKg(trace string, workerID, processID, stepID
 	}
 	out := gin.H{
 		"id": iid, "issue_kg": kg, "action": "issue", "issued_by_employee_id": issuedBy,
-		"worker_id": workerID, "process_id": processID, "trace_code": trace, "source": "process",
+		"worker_id": workerID, "process_id": toProcessID, "from_process_id": fromProcessID,
+		"to_process_id": toProcessID, "trace_code": trace, "source": "process",
 	}
-	s.attachIssueWagePreview(out, processID, kg)
+	s.attachIssueWagePreview(out, toProcessID, kg)
 	return out, ""
+}
+
+func takeTraceIssuableTx(tx *sql.Tx, trace string, processID int64, kg float64) string {
+	need := kg
+	rows, err := tx.Query(`SELECT b.id, COALESCE(b.weight, b.qty, 0),
+		COALESCE((SELECT SUM(l.qty) FROM inv_balance l WHERE l.box_code_id=b.id),0)
+		FROM inv_box_code b
+		WHERE COALESCE(b.is_deleted,0)=0 AND UPPER(COALESCE(b.trace_code,''))=UPPER(?)
+		  AND COALESCE(b.current_process_id,0)=? AND COALESCE(b.status,'') NOT IN ('destroyed','void')
+		ORDER BY b.id`, trace, processID)
+	if err != nil {
+		return "DB_ERROR:" + err.Error()
+	}
+	type boardRow struct {
+		id      int64
+		w, bal  float64
+	}
+	boards := []boardRow{}
+	for rows.Next() {
+		var b boardRow
+		if rows.Scan(&b.id, &b.w, &b.bal) != nil {
+			continue
+		}
+		at := b.w
+		if b.bal > at {
+			at = b.bal
+		}
+		if at <= kgEps {
+			continue
+		}
+		boards = append(boards, b)
+	}
+	rows.Close()
+	for _, b := range boards {
+		if need <= kgEps {
+			break
+		}
+		at := b.w
+		if b.bal > at {
+			at = b.bal
+		}
+		take := math.Min(at, need)
+		if fail := takeBoardProcessKgTx(tx, b.id, take); fail != "" {
+			return fail
+		}
+		need = roundKg(need - take)
+	}
+	if need > kgEps {
+		return takeTracePoolTx(tx, trace, processID, need)
+	}
+	return ""
+}
+
+func takeBoardProcessKgTx(tx *sql.Tx, boardID int64, take float64) string {
+	if tx == nil || boardID <= 0 || take <= kgEps {
+		return ""
+	}
+	var w float64
+	if err := tx.QueryRow(`SELECT COALESCE(weight, qty, 0) FROM inv_box_code WHERE id=?`, boardID).Scan(&w); err != nil {
+		return "DB_ERROR:" + err.Error()
+	}
+	fromW := math.Min(w, take)
+	if fromW > kgEps {
+		nw := roundKg(w - fromW)
+		if _, err := tx.Exec(`UPDATE inv_box_code SET weight=?, qty=?, updated_at=NOW() WHERE id=?`, nw, nw, boardID); err != nil {
+			return "DB_ERROR:" + err.Error()
+		}
+		take = roundKg(take - fromW)
+	}
+	if take <= kgEps {
+		return ""
+	}
+	brows, err := tx.Query(`SELECT id, qty FROM inv_balance WHERE box_code_id=? AND qty > 0.0005 ORDER BY id`, boardID)
+	if err != nil {
+		return "DB_ERROR:" + err.Error()
+	}
+	defer brows.Close()
+	for brows.Next() && take > kgEps {
+		var bid int64
+		var qty float64
+		if brows.Scan(&bid, &qty) != nil {
+			continue
+		}
+		t := math.Min(qty, take)
+		nq := roundKg(qty - t)
+		if _, err := tx.Exec(`UPDATE inv_balance SET qty=? WHERE id=?`, nq, bid); err != nil {
+			return "DB_ERROR:" + err.Error()
+		}
+		take = roundKg(take - t)
+	}
+	if take > kgEps {
+		return "QTY_EXCEEDS_AVAILABLE"
+	}
+	return ""
 }
 
 func takeTracePoolTx(tx *sql.Tx, trace string, processID int64, kg float64) string {
 	need := kg
-	rows, err := tx.Query(`SELECT id, issue_kg, returned_kg, completed_kg FROM pd_process_issue
-		WHERE UPPER(COALESCE(trace_code,''))=UPPER(?) AND process_id=? AND status='open' AND COALESCE(worker_id,0)=0
+	// Foreman-confirmed worker output (work_done) is issuable pool; consume via completed_kg.
+	wrows, err := tx.Query(`SELECT id, issue_kg, returned_kg, completed_kg FROM pd_process_issue
+		WHERE UPPER(COALESCE(trace_code,''))=UPPER(?) AND process_id=? AND status='open'
+		  AND COALESCE(biz_status,'')='work_done' AND COALESCE(worker_id,0)>0
 		ORDER BY created_at, id`, trace, processID)
 	if err != nil {
 		return "DB_ERROR:" + err.Error()
@@ -256,6 +336,45 @@ func takeTracePoolTx(tx *sql.Tx, trace string, processID int64, kg float64) stri
 	type poolRow struct {
 		id                         int64
 		issue, returned, completed float64
+	}
+	wlist := []poolRow{}
+	for wrows.Next() {
+		var r poolRow
+		if err := wrows.Scan(&r.id, &r.issue, &r.returned, &r.completed); err != nil {
+			continue
+		}
+		wlist = append(wlist, r)
+	}
+	wrows.Close()
+	for _, r := range wlist {
+		if need <= kgEps {
+			break
+		}
+		rem := issueRemain(r.issue, r.returned, r.completed)
+		if rem <= kgEps {
+			_, _ = tx.Exec(`UPDATE pd_process_issue SET status='closed', updated_at=NOW() WHERE id=?`, r.id)
+			continue
+		}
+		take := math.Min(rem, need)
+		newDone := roundKg(r.completed + take)
+		st := "open"
+		if issueRemain(r.issue, r.returned, newDone) <= kgEps {
+			st = "closed"
+		}
+		if _, err := tx.Exec(`UPDATE pd_process_issue SET completed_kg=?, status=?, updated_at=NOW() WHERE id=?`, newDone, st, r.id); err != nil {
+			return "DB_ERROR:" + err.Error()
+		}
+		need = roundKg(need - take)
+	}
+	if need <= kgEps {
+		return ""
+	}
+	rows, err := tx.Query(`SELECT id, issue_kg, returned_kg, completed_kg FROM pd_process_issue
+		WHERE UPPER(COALESCE(trace_code,''))=UPPER(?) AND process_id=? AND status='open' AND COALESCE(worker_id,0)=0
+		  AND COALESCE(biz_status,'') NOT IN ('issue_pending_warehouse','return_pending','issue_rejected')
+		ORDER BY created_at, id`, trace, processID)
+	if err != nil {
+		return "DB_ERROR:" + err.Error()
 	}
 	list := []poolRow{}
 	for rows.Next() {
@@ -282,6 +401,55 @@ func takeTracePoolTx(tx *sql.Tx, trace string, processID int64, kg float64) stri
 			st = "closed"
 		}
 		if _, err := tx.Exec(`UPDATE pd_process_issue SET issue_kg=?, status=?, updated_at=NOW() WHERE id=?`, newIssue, st, r.id); err != nil {
+			return "DB_ERROR:" + err.Error()
+		}
+		need = roundKg(need - take)
+	}
+	if need > kgEps {
+		return takeTraceOccupiedTx(tx, trace, processID, need)
+	}
+	return ""
+}
+
+func takeTraceOccupiedTx(tx *sql.Tx, trace string, processID int64, kg float64) string {
+	need := kg
+	rows, err := tx.Query(`SELECT id, issue_kg, returned_kg, completed_kg FROM pd_process_issue
+		WHERE UPPER(COALESCE(trace_code,''))=UPPER(?) AND process_id=? AND status='open'
+		  AND COALESCE(worker_id,0)>0
+		  AND COALESCE(biz_status,'') NOT IN ('work_done','issue_pending_warehouse','return_pending','issue_rejected')
+		ORDER BY created_at, id`, trace, processID)
+	if err != nil {
+		return "DB_ERROR:" + err.Error()
+	}
+	type occRow struct {
+		id                         int64
+		issue, returned, completed float64
+	}
+	list := []occRow{}
+	for rows.Next() {
+		var r occRow
+		if err := rows.Scan(&r.id, &r.issue, &r.returned, &r.completed); err != nil {
+			continue
+		}
+		list = append(list, r)
+	}
+	rows.Close()
+	for _, r := range list {
+		if need <= kgEps {
+			break
+		}
+		rem := issueRemain(r.issue, r.returned, r.completed)
+		if rem <= kgEps {
+			_, _ = tx.Exec(`UPDATE pd_process_issue SET status='closed', updated_at=NOW() WHERE id=?`, r.id)
+			continue
+		}
+		take := math.Min(rem, need)
+		newDone := roundKg(r.completed + take)
+		st := "open"
+		if issueRemain(r.issue, r.returned, newDone) <= kgEps {
+			st = "closed"
+		}
+		if _, err := tx.Exec(`UPDATE pd_process_issue SET completed_kg=?, status=?, updated_at=NOW() WHERE id=?`, newDone, st, r.id); err != nil {
 			return "DB_ERROR:" + err.Error()
 		}
 		need = roundKg(need - take)
@@ -330,4 +498,131 @@ func (s *Services) writeProcessIssueStockOut(board *boardState, kg float64, issu
 		}
 	}
 	return s.adjustBalance(wh, pid, -kg)
+}
+
+func (s *Services) createWarehouseIssuePending(trace string, workerID, processID, stepID int64, kg float64, issuedBy int64, photo string) (gin.H, string) {
+	trace = strings.ToUpper(strings.TrimSpace(trace))
+	if trace == "" || workerID <= 0 || processID <= 0 || kg <= kgEps {
+		return nil, "INVALID_QTY"
+	}
+	if issuedBy <= 0 {
+		issuedBy = workerID
+	}
+	var exist int
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_process_issue
+		WHERE UPPER(COALESCE(trace_code,''))=UPPER(?) AND worker_id=? AND biz_status='issue_pending_warehouse'`,
+		trace, workerID).Scan(&exist)
+	if exist > 0 {
+		return nil, "ISSUE_PENDING_EXISTS"
+	}
+	s.ensureProcessIssueLocationColumns()
+	res, err := s.DB.Exec(`INSERT INTO pd_process_issue(board_id, board_code, trace_code, process_id, step_id, worker_id,
+		issue_kg, returned_kg, completed_kg, status, biz_status, issued_by_employee_id, source,
+		from_location_type, to_process_id, pending_reweigh_kg, pending_photo_url)
+		VALUES(0,'',?,?,?,?,?,0,0,'open','issue_pending_warehouse',?,'warehouse','warehouse',?,?,?)`,
+		trace, processID, stepID, workerID, kg, issuedBy, processID, kg, photo)
+	if err != nil {
+		res, err = s.DB.Exec(`INSERT INTO pd_process_issue(board_id, board_code, trace_code, process_id, step_id, worker_id,
+			issue_kg, returned_kg, completed_kg, status, biz_status, issued_by_employee_id, source, pending_reweigh_kg, pending_photo_url)
+			VALUES(0,'',?,?,?,?,?,0,0,'open','issue_pending_warehouse',?,'warehouse',?,?)`,
+			trace, processID, stepID, workerID, kg, issuedBy, kg, photo)
+		if err != nil {
+			return nil, "DB_ERROR:" + err.Error()
+		}
+	}
+	iid, _ := res.LastInsertId()
+	out := gin.H{
+		"id": iid, "issue_kg": kg, "action": "issue_apply", "issued_by_employee_id": issuedBy,
+		"worker_id": workerID, "process_id": processID, "to_process_id": processID,
+		"trace_code": trace, "source": "warehouse", "biz_status": "issue_pending_warehouse", "pending": true,
+	}
+	s.attachIssueWagePreview(out, processID, kg)
+	return out, ""
+}
+
+// completeWarehousePendingIssue deducts board/pool and finalizes a pending warehouse issue row.
+func (s *Services) completeWarehousePendingIssue(pendingID int64, board *boardState, workerID, processID, stepID int64, kg float64, issuedBy int64) (string, *boardState) {
+	if pendingID <= 0 || board == nil || workerID <= 0 || processID <= 0 || kg <= kgEps {
+		return "INVALID_QTY", nil
+	}
+	if issuedBy <= 0 {
+		issuedBy = workerID
+	}
+	s.ensureProcessIssueLocationColumns()
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return "DB_ERROR", nil
+	}
+	defer func() { _ = tx.Rollback() }()
+	b, fail := s.reloadBoardTx(tx, board.ID)
+	if fail != "" {
+		return fail, nil
+	}
+	reentry := false
+	if b.ProcessID != processID && b.Weight > kgEps {
+		reentry = true
+		if stepID <= 0 {
+			stepID = b.StepID
+		}
+	}
+	avail := 0.0
+	if b.ProcessID == processID || reentry {
+		avail = b.Weight
+	}
+	var pool float64
+	_ = tx.QueryRow(`SELECT COALESCE(SUM(issue_kg - returned_kg - completed_kg),0)
+		FROM pd_process_issue WHERE board_id=? AND process_id=? AND status='open'
+		  AND (COALESCE(worker_id,0)=0 OR COALESCE(biz_status,'')='work_done')
+		  AND COALESCE(biz_status,'') NOT IN ('issue_pending_warehouse','return_pending','issue_rejected')
+		  AND id<>?`,
+		b.ID, processID, pendingID).Scan(&pool)
+	avail = roundKg(avail + pool)
+	// 仓库领料：实物可能在 inv_balance（板码 weight 为 0）；与 box weight 取较大值避免重复计量。
+	whKg := boardWarehouseKgTx(tx, b.ID)
+	if whKg > avail {
+		avail = whKg
+	}
+	if kg-avail > kgEps {
+		return "QTY_EXCEEDS_AVAILABLE", nil
+	}
+	need := kg
+	if (b.ProcessID == processID || reentry) && b.Weight > kgEps && need > kgEps {
+		take := math.Min(b.Weight, need)
+		b.Weight = roundKg(b.Weight - take)
+		need = roundKg(need - take)
+		if reentry || b.ProcessID != processID {
+			if _, err := tx.Exec(`UPDATE inv_box_code SET current_process_id=?, current_step_id=?, weight=?, qty=?, updated_at=NOW() WHERE id=?`,
+				processID, stepID, b.Weight, b.Weight, b.ID); err != nil {
+				return "DB_ERROR:" + err.Error(), nil
+			}
+			b.ProcessID = processID
+			b.StepID = stepID
+		} else if _, err := tx.Exec(`UPDATE inv_box_code SET weight=?, qty=?, updated_at=NOW() WHERE id=?`, b.Weight, b.Weight, b.ID); err != nil {
+			return "DB_ERROR:" + err.Error(), nil
+		}
+	}
+	if need > kgEps {
+		if whKg+kgEps >= need {
+			// 库存台账在 inv_balance；出库扣减由 writeProcessIssueStockOut 完成。
+			need = 0
+		} else if fail := takePoolTx(tx, b.ID, processID, need); fail != "" {
+			return fail, nil
+		}
+	}
+	_, err = tx.Exec(`UPDATE pd_process_issue SET board_id=?, board_code=?, issue_kg=?, status='open', biz_status='open',
+		source='warehouse', from_location_type='warehouse', to_process_id=?, assigned_board_code=?,
+		pending_reweigh_kg=0, pending_photo_url='', updated_at=NOW() WHERE id=? AND biz_status='issue_pending_warehouse'`,
+		b.ID, b.Code, kg, processID, b.Code, pendingID)
+	if err != nil {
+		return "DB_ERROR:" + err.Error(), nil
+	}
+	if err := tx.Commit(); err != nil {
+		return "DB_ERROR:" + err.Error(), nil
+	}
+	board.Weight = b.Weight
+	board.ProcessID = b.ProcessID
+	board.StepID = b.StepID
+	board.Code = b.Code
+	board.Trace = b.Trace
+	return "", board
 }

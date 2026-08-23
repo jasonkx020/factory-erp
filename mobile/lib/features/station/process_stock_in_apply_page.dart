@@ -4,8 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/auth_state.dart';
-import '../../core/recent_code_store.dart';
-import '../../widgets/trace_code_field.dart';
+import '../../widgets/active_trace_dropdown.dart';
 
 /// 独立入库申请（须溯源生产中）：溯源码 + 工序下拉 + 重量 + 照片
 class ProcessStockInApplyPage extends StatefulWidget {
@@ -16,34 +15,30 @@ class ProcessStockInApplyPage extends StatefulWidget {
 }
 
 class _ProcessStockInApplyPageState extends State<ProcessStockInApplyPage> {
-  final _trace = TextEditingController();
   final _kg = TextEditingController();
   int? _processId;
+  String? _selectedTraceCode;
   List<Map<String, dynamic>> _processes = [];
+  List<Map<String, dynamic>> _wipSteps = [];
   String? _photo;
   bool _busy = false;
   bool _loadingProc = false;
+  bool _loadingWip = false;
+
+  static const _tracePrefKey = 'erp.station.selected_trace';
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final prefs = await SharedPreferences.getInstance();
+      _selectedTraceCode = prefs.getString(_tracePrefKey);
       await _loadProcesses();
-      await _prefillRecent();
     });
-  }
-
-  Future<void> _prefillRecent() async {
-    final traces = await RecentCodeStore.list(RecentCodeStore.trace);
-    if (!mounted) return;
-    if (_trace.text.trim().isEmpty && traces.isNotEmpty) {
-      setState(() => _trace.text = traces.first);
-    }
   }
 
   @override
   void dispose() {
-    _trace.dispose();
     _kg.dispose();
     super.dispose();
   }
@@ -82,6 +77,58 @@ class _ProcessStockInApplyPageState extends State<ProcessStockInApplyPage> {
     });
   }
 
+  Future<void> _loadWipForTrace() async {
+    final trace = (_selectedTraceCode ?? '').trim();
+    if (trace.isEmpty) {
+      setState(() => _wipSteps = []);
+      return;
+    }
+    setState(() => _loadingWip = true);
+    final r = await context.read<AuthState>().api.get('/production/trace-productions/${Uri.encodeComponent(trace)}/wip');
+    if (!mounted) return;
+    setState(() => _loadingWip = false);
+    if (!r.ok || r.data is! Map) {
+      setState(() => _wipSteps = []);
+      return;
+    }
+    final data = Map<String, dynamic>.from(r.data as Map);
+    final steps = <Map<String, dynamic>>[];
+    final raw = data['steps'];
+    if (raw is List) {
+      for (final e in raw) {
+        if (e is Map) steps.add(Map<String, dynamic>.from(e));
+      }
+    }
+    final stockable = steps.where((s) => s['can_stock_in'] == true || ((s['wip_kg'] as num?)?.toDouble() ?? 0) > 0).toList();
+    int? pid = _processId;
+    if (pid != null && !stockable.any((s) => (s['process_id'] as num?)?.toInt() == pid)) {
+      pid = null;
+    }
+    if (pid == null && stockable.isNotEmpty) {
+      pid = (stockable.first['process_id'] as num?)?.toInt();
+    }
+    setState(() {
+      _wipSteps = steps;
+      _processId = pid;
+    });
+  }
+
+  void _onTraceSelected(String? code, Map<String, dynamic>? row) {
+    setState(() => _selectedTraceCode = code);
+    _loadWipForTrace();
+  }
+
+  List<Map<String, dynamic>> get _stockableProcesses {
+    if (_wipSteps.isEmpty) return _processes;
+    final ids = _wipSteps
+        .where((s) => s['can_stock_in'] == true || ((s['wip_kg'] as num?)?.toDouble() ?? 0) > 0)
+        .map((s) => (s['process_id'] as num?)?.toInt())
+        .whereType<int>()
+        .toSet();
+    if (ids.isEmpty) return [];
+    return _processes.where((p) => ids.contains((p['id'] as num?)?.toInt())).toList();
+  }
+
   Future<void> _takePhoto() async {
     try {
       final picker = ImagePicker();
@@ -107,14 +154,15 @@ class _ProcessStockInApplyPageState extends State<ProcessStockInApplyPage> {
   }
 
   Future<void> _submit() async {
+    final trace = (_selectedTraceCode ?? '').trim();
     final kg = double.tryParse(_kg.text) ?? 0;
-    if (_trace.text.trim().isEmpty || (_processId ?? 0) <= 0 || kg <= 0 || (_photo ?? '').isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请填写溯源、工序、重量并拍照')));
+    if (trace.isEmpty || (_processId ?? 0) <= 0 || kg <= 0 || (_photo ?? '').isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请选择溯源、工序、重量并拍照')));
       return;
     }
     setState(() => _busy = true);
     final r = await context.read<AuthState>().api.post('/production/process-stock-ins', {
-      'trace_code': _trace.text.trim(),
+      'trace_code': trace,
       'process_id': _processId,
       'apply_kg': kg,
       'reweigh_kg': kg,
@@ -124,7 +172,6 @@ class _ProcessStockInApplyPageState extends State<ProcessStockInApplyPage> {
     if (!mounted) return;
     setState(() => _busy = false);
     if (r.ok) {
-      await RecentCodeStore.remember(RecentCodeStore.trace, _trace.text);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('erp.station.process_id', _processId!);
       if (!mounted) return;
@@ -140,18 +187,24 @@ class _ProcessStockInApplyPageState extends State<ProcessStockInApplyPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          TraceCodeField(
-            controller: _trace,
-            label: '溯源码',
-            hint: '须已进入生产；可点最近使用',
-            historyKey: RecentCodeStore.trace,
+          ActiveTraceDropdown(
+            value: _selectedTraceCode,
+            prefKey: _tracePrefKey,
+            onChanged: _onTraceSelected,
           ),
+          if (_loadingWip)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: LinearProgressIndicator(),
+            ),
           const SizedBox(height: 12),
           DropdownButtonFormField<int>(
-            key: ValueKey('proc-${_processId ?? 0}-${_processes.length}'),
-            initialValue: _processId != null && _processes.any((p) => (p['id'] as num?)?.toInt() == _processId) ? _processId : null,
+            key: ValueKey('proc-${_processId ?? 0}-${_stockableProcesses.length}-${_wipSteps.length}'),
+            initialValue: _processId != null && _stockableProcesses.any((p) => (p['id'] as num?)?.toInt() == _processId)
+                ? _processId
+                : null,
             decoration: InputDecoration(
-              labelText: '当前工序（必选）',
+              labelText: '当前工序（须有在制）',
               border: const OutlineInputBorder(),
               isDense: true,
               suffixIcon: _loadingProc
@@ -165,18 +218,31 @@ class _ProcessStockInApplyPageState extends State<ProcessStockInApplyPage> {
                       onPressed: _loadingProc ? null : _loadProcesses,
                     ),
             ),
-            items: _processes
+            items: _stockableProcesses
                 .map((p) {
                   final id = (p['id'] as num?)?.toInt();
                   if (id == null) return null;
                   final name = '${p['name'] ?? p['code'] ?? id}';
-                  return DropdownMenuItem<int>(value: id, child: Text(name));
+                  double? wip;
+                  for (final s in _wipSteps) {
+                    if ((s['process_id'] as num?)?.toInt() == id) {
+                      wip = (s['wip_kg'] as num?)?.toDouble();
+                      break;
+                    }
+                  }
+                  final suffix = wip != null && wip > 0 ? ' · 在制 ${wip.toStringAsFixed(2)} kg' : '';
+                  return DropdownMenuItem<int>(value: id, child: Text('$name$suffix'));
                 })
                 .whereType<DropdownMenuItem<int>>()
                 .toList(),
-            onChanged: (v) => setState(() => _processId = v),
+            onChanged: _stockableProcesses.isEmpty ? null : (v) => setState(() => _processId = v),
           ),
-          if (_processes.isEmpty && !_loadingProc)
+          if ((_selectedTraceCode ?? '').isNotEmpty && !_loadingWip && _stockableProcesses.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text('该溯源码暂无工序在制，不能申请入库', style: TextStyle(fontSize: 12, color: Colors.orange)),
+            )
+          else if (_processes.isEmpty && !_loadingProc)
             const Padding(
               padding: EdgeInsets.only(top: 6),
               child: Text('暂无工序可选，请点右侧刷新', style: TextStyle(fontSize: 12, color: Colors.orange)),

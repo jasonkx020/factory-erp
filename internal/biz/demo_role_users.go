@@ -134,7 +134,10 @@ func presetRoleGrant(roleCode string) presetGrant {
 				pair("库存管理", "入库质检")...,
 			),
 			views: append(
-				pair("生产管理", "质检管理"),
+				append(
+					pair("采购管理", "过磅收货"),
+					pair("生产管理", "质检管理")...,
+				),
 				pair("统计报表", "质检报表")...,
 			),
 		}

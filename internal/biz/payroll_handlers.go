@@ -998,7 +998,7 @@ func (s *Services) handlePayrollWorkRecords(c *gin.Context) bool {
 		empID, fromYM, toYM).Scan(&wageAmt)
 
 	flows := []gin.H{}
-	if rows, err := s.DB.Query(`SELECT id, event_type, biz_date, COALESCE(board_code,''), COALESCE(process_id,0), COALESCE(process_name,''),
+	if rows, err := s.DB.Query(`SELECT id, event_type, biz_date, COALESCE(board_code,''), COALESCE(trace_code,''), COALESCE(process_id,0), COALESCE(process_name,''),
 		COALESCE(kg,0), COALESCE(pay_mode,''), COALESCE(emp_type,''), COALESCE(rate,0), COALESCE(amount,0), COALESCE(remark,''), CAST(created_at AS TEXT)
 		FROM pd_station_flow_log
 		WHERE worker_id=? AND biz_date>=? AND biz_date<=?
@@ -1006,13 +1006,13 @@ func (s *Services) handlePayrollWorkRecords(c *gin.Context) bool {
 		defer rows.Close()
 		for rows.Next() {
 			var id, procID int64
-			var et, bd, board, processName, payMode, empType, remark, created string
+			var et, bd, board, trace, processName, payMode, empType, remark, created string
 			var kg, rate, amount float64
-			if err := rows.Scan(&id, &et, &bd, &board, &procID, &processName, &kg, &payMode, &empType, &rate, &amount, &remark, &created); err != nil {
+			if err := rows.Scan(&id, &et, &bd, &board, &trace, &procID, &processName, &kg, &payMode, &empType, &rate, &amount, &remark, &created); err != nil {
 				continue
 			}
 			flows = append(flows, gin.H{
-				"id": id, "event_type": et, "biz_date": bd, "board_code": board,
+				"id": id, "event_type": et, "biz_date": bd, "board_code": board, "trace_code": trace,
 				"process_id": procID, "process_name": processName,
 				"kg": kg, "pay_mode": payMode, "emp_type": empType, "rate": rate, "amount": amount,
 				"remark": remark, "created_at": created,

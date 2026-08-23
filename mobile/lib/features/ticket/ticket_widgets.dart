@@ -19,6 +19,14 @@ bool ticketCanAct(String status) => status == 'open' || status == 'in_progress';
 
 /// 仅当前处理人（或系统管理员）可操作工单。
 bool ticketIsCurrentAssignee(AuthState auth, Map<String, dynamic> row) {
+  if (row['can_act'] == true) return true;
+  if (row['can_act'] == false) {
+    final roles = auth.roles.map((e) => e.toString().toLowerCase()).toList();
+    if (roles.contains('sys_admin') || roles.contains('admin') || roles.contains('系统管理员')) {
+      return true;
+    }
+    return false;
+  }
   final roles = auth.roles.map((e) => e.toString().toLowerCase()).toList();
   if (roles.contains('sys_admin') || roles.contains('admin') || roles.contains('系统管理员')) {
     return true;
@@ -35,7 +43,15 @@ bool _hasRole(AuthState auth, String role) {
   return roles.contains(role.toLowerCase()) ||
       roles.contains('sys_admin') ||
       roles.contains('admin') ||
-      (role == 'warehouse' && (roles.contains('仓管') || roles.contains('仓管员')));
+      (role == 'warehouse' && (roles.contains('仓管') || roles.contains('仓管员'))) ||
+      (role == 'qc' && (roles.contains('质检') || roles.contains('质检员')));
+}
+
+bool _isQcOnly(AuthState auth) {
+  if (_hasRole(auth, 'warehouse') || _hasRole(auth, 'finance') || _hasRole(auth, 'purchase')) {
+    return false;
+  }
+  return _hasRole(auth, 'qc');
 }
 
 List<String> _weighVerifyImages(Map<String, dynamic> payload, {String Function(String)? resolve}) {
@@ -103,10 +119,18 @@ Future<void> ticketAct(
   String action, {
   Map<String, dynamic>? extra,
   VoidCallback? onDone,
+  bool requireHandoff = false,
 }) async {
   final id = (row['id'] as num?)?.toInt();
   if (id == null) return;
   final body = <String, dynamic>{'action': action, ...?extra};
+  if (requireHandoff &&
+      body['next_assignee_user_id'] == null &&
+      (body['next_role_code'] == null || '${body['next_role_code']}'.isEmpty)) {
+    final next = await pickNextHandler(context, id);
+    if (next == null) return;
+    body.addAll(next);
+  }
   final r = await context.read<AuthState>().api.post('/workflow/tickets/$id/action', body);
   if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(
@@ -114,6 +138,207 @@ Future<void> ticketAct(
   );
   if (r.ok) {
     onDone?.call();
+    try {
+      context.read<TicketRefreshBus>().bump();
+    } catch (_) {}
+  }
+}
+
+/// 选择下一处理人（或按角色交办）。取消返回 null。
+Future<Map<String, dynamic>?> pickNextHandler(BuildContext context, int ticketId) async {
+  final api = context.read<AuthState>().api;
+  final r = await api.get('/workflow/tickets/$ticketId/handlers-pool');
+  if (!context.mounted) return null;
+  if (!r.ok) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.msg)));
+    return null;
+  }
+  final raw = r.data is Map ? (r.data as Map)['pool'] : null;
+  final pool = <Map<String, dynamic>>[];
+  if (raw is List) {
+    for (final e in raw) {
+      if (e is Map) pool.add(Map<String, dynamic>.from(e));
+    }
+  }
+  if (pool.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('处理人池为空，无法交办')));
+    return null;
+  }
+
+  final roleSet = <String>{};
+  for (final p in pool) {
+    final codes = p['role_codes'];
+    if (codes is List) {
+      for (final c in codes) {
+        final s = c.toString().trim();
+        if (s.isNotEmpty) roleSet.add(s);
+      }
+    }
+  }
+  final roles = roleSet.toList()..sort();
+
+  return showModalBottomSheet<Map<String, dynamic>>(
+    context: context,
+    isScrollControlled: true,
+    builder: (ctx) {
+      String? filterRole;
+      return StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final filtered = filterRole == null || filterRole!.isEmpty
+              ? pool
+              : pool.where((p) {
+                  final codes = p['role_codes'];
+                  if (codes is! List) return false;
+                  return codes.any((c) => c.toString().toLowerCase() == filterRole!.toLowerCase());
+                }).toList();
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.of(ctx).size.height * 0.65,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    child: Text('指定下一处理人', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  ),
+                  if (roles.isNotEmpty)
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        children: [
+                          ChoiceChip(
+                            label: const Text('全部'),
+                            selected: filterRole == null,
+                            onSelected: (_) => setLocal(() => filterRole = null),
+                          ),
+                          ...roles.map(
+                            (role) => Padding(
+                              padding: const EdgeInsets.only(left: 6),
+                              child: ChoiceChip(
+                                label: Text(role),
+                                selected: filterRole == role,
+                                onSelected: (_) => setLocal(() => filterRole = role),
+                              ),
+                            ),
+                          ),
+                          if (filterRole != null)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: TextButton(
+                                onPressed: () => Navigator.pop(ctx, {'next_role_code': filterRole}),
+                                child: Text('交办给角色 $filterRole'),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: filtered.length,
+                      itemBuilder: (_, i) {
+                        final p = filtered[i];
+                        final uid = (p['user_id'] as num?)?.toInt() ?? 0;
+                        final name = '${p['name'] ?? p['login_name'] ?? uid}';
+                        final codes = (p['role_codes'] is List)
+                            ? (p['role_codes'] as List).map((e) => e.toString()).join(',')
+                            : '';
+                        return ListTile(
+                          title: Text(name),
+                          subtitle: codes.isEmpty ? null : Text(codes),
+                          onTap: () => Navigator.pop(ctx, {'next_assignee_user_id': uid}),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
+Future<void> _qcJudgmentFlow(
+  BuildContext context,
+  Map<String, dynamic> d, {
+  VoidCallback? onActed,
+}) async {
+  final bizId = (d['biz_id'] as num?)?.toInt() ?? 0;
+  final ticketId = (d['id'] as num?)?.toInt() ?? 0;
+  if (bizId <= 0) return;
+
+  String? result;
+  String grade = 'A';
+  final remarkCtrl = TextEditingController();
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setLocal) => AlertDialog(
+        title: const Text('质检判定'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'pass', label: Text('合格')),
+                ButtonSegment(value: 'fail', label: Text('不合格')),
+              ],
+              emptySelectionAllowed: true,
+              selected: {if (result != null) result!},
+              onSelectionChanged: (s) => setLocal(() => result = s.isEmpty ? null : s.first),
+            ),
+            if (result == 'pass') ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                // ignore: deprecated_member_use — StatefulBuilder 需受控 value
+                value: grade,
+                decoration: const InputDecoration(labelText: '等级'),
+                items: const [
+                  DropdownMenuItem(value: 'A', child: Text('A')),
+                  DropdownMenuItem(value: 'B', child: Text('B')),
+                  DropdownMenuItem(value: 'C', child: Text('C')),
+                ],
+                onChanged: (v) => setLocal(() => grade = v ?? 'A'),
+              ),
+            ],
+            const SizedBox(height: 8),
+            TextField(controller: remarkCtrl, decoration: const InputDecoration(labelText: '备注')),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(
+            onPressed: result == null ? null : () => Navigator.pop(ctx, true),
+            child: const Text('下一步'),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (ok != true || result == null || !context.mounted) return;
+
+  Map<String, dynamic> body = {
+    'qc_result': result,
+    'remark': remarkCtrl.text.trim(),
+  };
+  if (result == 'pass') {
+    body['grade'] = grade;
+    final next = await pickNextHandler(context, ticketId);
+    if (next == null || !context.mounted) return;
+    body.addAll(next);
+  }
+
+  final r = await context.read<AuthState>().api.post('/purchase/weigh-tickets/$bizId/qc', body);
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(r.ok ? '质检已提交' : r.msg)),
+  );
+  if (r.ok) {
+    onActed?.call();
     try {
       context.read<TicketRefreshBus>().bump();
     } catch (_) {}
@@ -177,6 +402,10 @@ Future<void> openTicketDetail(
       if (w['photos'] is Map) {
         payload['photos'] = w['photos'];
       }
+      payload['status'] = w['status'] ?? payload['status'];
+      payload['qc_result'] = w['qc_result'] ?? payload['qc_result'];
+      payload['grade'] = w['grade'] ?? payload['grade'];
+      payload['receive_kind'] = w['receive_kind'] ?? payload['receive_kind'];
     }
   }
 
@@ -272,11 +501,31 @@ Future<void> openTicketDetail(
             }),
           if (canAct) ...[
             const SizedBox(height: 8),
-            if (isWeigh && _hasRole(auth, 'warehouse') && !hasSettle)
+            if (isWeigh && (_hasRole(auth, 'qc') || _hasRole(auth, 'purchase')) &&
+                !_hasRole(auth, 'warehouse') &&
+                (payload['qc_result'] == null || '${payload['qc_result']}'.isEmpty ||
+                    '${payload['status']}' == 'qc_pending' ||
+                    '${payload['status']}' == 'draft' ||
+                    '${payload['status']}' == 'pending_confirm'))
               FilledButton(
                 onPressed: () async {
                   Navigator.pop(ctx);
-                  await ticketAct(context, d, 'warehouse_confirm', onDone: onActed);
+                  await _qcJudgmentFlow(context, d, onActed: onActed);
+                },
+                child: const Text('质检判定'),
+              )
+            else if (isWeigh && _hasRole(auth, 'warehouse') && !hasSettle && !_isQcOnly(auth))
+              FilledButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  final needHandoff = '${payload['receive_kind'] ?? 'gate'}'.toLowerCase() == 'stockin';
+                  await ticketAct(
+                    context,
+                    d,
+                    'warehouse_confirm',
+                    requireHandoff: needHandoff,
+                    onDone: onActed,
+                  );
                 },
                 child: const Text('核对并确认入库'),
               )
@@ -288,13 +537,13 @@ Future<void> openTicketDetail(
                 },
                 child: const Text('确认付款'),
               )
-            else if (!isWeigh || (!_hasRole(auth, 'warehouse') && !_hasRole(auth, 'finance'))) ...[
+            else if (!isWeigh || (!_hasRole(auth, 'warehouse') && !_hasRole(auth, 'finance') && !_hasRole(auth, 'qc'))) ...[
               FilledButton(
                 onPressed: () async {
                   Navigator.pop(ctx);
-                  await ticketAct(context, d, 'approve', onDone: onActed);
+                  await ticketAct(context, d, 'approve', requireHandoff: true, onDone: onActed);
                 },
-                child: const Text('通过/办结'),
+                child: const Text('通过并交办'),
               ),
               if (!isWeigh) ...[
                 const SizedBox(height: 8),
@@ -559,10 +808,10 @@ class TicketListCard extends StatelessWidget {
             ? PopupMenuButton<String>(
                 onSelected: onAction,
                 itemBuilder: (_) => [
-                  if (isWeigh)
+                  if (isWeigh && _hasRole(auth, 'warehouse'))
                     const PopupMenuItem(value: 'warehouse_confirm', child: Text('确认入库')),
                   if (!isWeigh) ...[
-                    const PopupMenuItem(value: 'approve', child: Text('通过/办结')),
+                    const PopupMenuItem(value: 'approve', child: Text('通过并交办')),
                     const PopupMenuItem(value: 'return_confirm', child: Text('确认归还')),
                   ],
                   const PopupMenuItem(value: 'reject', child: Text('驳回')),

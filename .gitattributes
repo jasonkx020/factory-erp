@@ -1,0 +1,3 @@
+# Keep migration SQL checksum-stable across platforms (footer hashes assume LF).
+migrations/**/*.sql text eol=lf
+migrations/**/*.md text eol=lf

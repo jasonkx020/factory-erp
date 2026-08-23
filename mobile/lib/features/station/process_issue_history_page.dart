@@ -7,6 +7,102 @@ import '../../core/auth_state.dart';
 import '../../core/recent_code_store.dart';
 import '../../widgets/trace_code_field.dart';
 
+class _IssueStatusStyle {
+  const _IssueStatusStyle({
+    required this.label,
+    required this.color,
+    required this.background,
+    required this.icon,
+  });
+
+  final String label;
+  final Color color;
+  final Color background;
+  final IconData icon;
+}
+
+_IssueStatusStyle _statusStyleFor(Map<String, dynamic> row) {
+  final biz = '${row['biz_status'] ?? ''}'.trim();
+  final status = '${row['status'] ?? ''}'.trim();
+  switch (biz) {
+    case 'issue_pending_warehouse':
+      return const _IssueStatusStyle(
+        label: '待仓管确认',
+        color: Color(0xFFE65100),
+        background: Color(0xFFFFF3E0),
+        icon: Icons.hourglass_top_outlined,
+      );
+    case 'work_done':
+      return const _IssueStatusStyle(
+        label: '已结束',
+        color: Color(0xFF546E7A),
+        background: Color(0xFFECEFF1),
+        icon: Icons.check_circle_outline,
+      );
+    case 'issue_rejected':
+      return const _IssueStatusStyle(
+        label: '仓管已驳回',
+        color: Color(0xFFC62828),
+        background: Color(0xFFFFEBEE),
+        icon: Icons.cancel_outlined,
+      );
+    case 'return_pending':
+      return const _IssueStatusStyle(
+        label: '退库待审',
+        color: Color(0xFFEF6C00),
+        background: Color(0xFFFBE9E7),
+        icon: Icons.undo_outlined,
+      );
+    default:
+      if (status == 'closed') {
+        return const _IssueStatusStyle(
+          label: '已结束',
+          color: Color(0xFF546E7A),
+          background: Color(0xFFECEFF1),
+          icon: Icons.check_circle_outline,
+        );
+      }
+      return const _IssueStatusStyle(
+        label: '进行中',
+        color: Color(0xFF0D7A6F),
+        background: Color(0xFFE0F2F1),
+        icon: Icons.play_circle_outline,
+      );
+  }
+}
+
+class _StatusLegend extends StatelessWidget {
+  const _StatusLegend();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget dot(Color color, String label) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 4),
+            Text(label, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+          ],
+        );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Wrap(
+        spacing: 14,
+        runSpacing: 4,
+        children: [
+          dot(const Color(0xFFE65100), '待仓管确认'),
+          dot(const Color(0xFF0D7A6F), '进行中'),
+          dot(const Color(0xFF546E7A), '已结束'),
+        ],
+      ),
+    );
+  }
+}
+
 /// 领料历史：本人 / 代领；工牌号与时间过滤；申请退库；主任确认结束
 class ProcessIssueHistoryPage extends StatefulWidget {
   const ProcessIssueHistoryPage({super.key, this.scope = 'related'});
@@ -246,6 +342,7 @@ class _ProcessIssueHistoryPageState extends State<ProcessIssueHistoryPage> {
                   ],
                 ),
                 const SizedBox(height: 8),
+                const _StatusLegend(),
               ],
             ),
           ),
@@ -263,16 +360,36 @@ class _ProcessIssueHistoryPageState extends State<ProcessIssueHistoryPage> {
                       final issuer = '${e['issuer_name'] ?? ''}';
                       final badge = '${e['badge_code'] ?? ''}'.trim();
                       final created = '${e['created_at'] ?? ''}'.trim();
-                      return ListTile(
-                        title: Text('${e['board_code'] ?? ''} · ${e['process_name'] ?? ''}'),
-                        subtitle: Text(
-                          '领 ${e['issue_kg']} · 退 ${e['returned_kg']} · 完 ${e['completed_kg']} · 可退 ${e['returnable_kg']}'
-                          '${badge.isNotEmpty ? ' · 工牌 $badge' : ''}'
-                          '${proxy ? ' · 代领给 $worker（操作人 $issuer）' : (worker.isNotEmpty ? ' · $worker' : '')}'
-                          ' · ${e['biz_status']}'
-                          '${created.isNotEmpty ? ' · $created' : ''}',
+                      final style = _statusStyleFor(e);
+                      return Material(
+                        color: style.background.withValues(alpha: 0.55),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            radius: 18,
+                            backgroundColor: style.color.withValues(alpha: 0.14),
+                            foregroundColor: style.color,
+                            child: Icon(style.icon, size: 20),
+                          ),
+                          title: Text(
+                            '${(e['trace_code'] ?? '').toString().isNotEmpty ? e['trace_code'] : (e['board_code'] ?? '')} · ${e['process_name'] ?? ''}',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text(
+                            '领 ${e['issue_kg']} · 退 ${e['returned_kg']} · 完 ${e['completed_kg']} · 可退 ${e['returnable_kg']}'
+                            '${badge.isNotEmpty ? ' · 工牌 $badge' : ''}'
+                            '${proxy ? ' · 代领给 $worker（操作人 $issuer）' : (worker.isNotEmpty ? ' · $worker' : '')}'
+                            '${created.isNotEmpty ? ' · $created' : ''}',
+                          ),
+                          trailing: Chip(
+                            label: Text(style.label),
+                            labelStyle: TextStyle(color: style.color, fontSize: 12, fontWeight: FontWeight.w600),
+                            backgroundColor: style.background,
+                            side: BorderSide(color: style.color.withValues(alpha: 0.35)),
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                          ),
+                          onTap: () => _openDetail((e['id'] as num).toInt()),
                         ),
-                        onTap: () => _openDetail((e['id'] as num).toInt()),
                       );
                     },
                   ),
@@ -382,6 +499,8 @@ class _IssueDetailSheetState extends State<_IssueDetailSheet> {
   Widget build(BuildContext context) {
     final ended = _row['biz_status'] == 'work_done';
     final pending = _row['biz_status'] == 'return_pending';
+    final whPending = _row['biz_status'] == 'issue_pending_warehouse';
+    final rejected = _row['biz_status'] == 'issue_rejected';
     final proxy = _row['is_proxy'] == true;
     final badge = '${_row['badge_code'] ?? ''}'.trim();
     return Padding(
@@ -398,8 +517,25 @@ class _IssueDetailSheetState extends State<_IssueDetailSheet> {
             Text('时间 ${_row['created_at'] ?? '-'}'),
             Text(
                 '已领 ${_row['issue_kg']} / 已退 ${_row['returned_kg']} / 已产出 ${_row['completed_kg']} / 可退 ${_row['returnable_kg']}'),
-            Text('状态 ${_row['biz_status']}'),
-            if (!ended && !pending) ...[
+            Builder(builder: (context) {
+              final style = _statusStyleFor(_row);
+              return Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(
+                  children: [
+                    const Text('状态 '),
+                    Chip(
+                      label: Text(style.label),
+                      labelStyle: TextStyle(color: style.color, fontWeight: FontWeight.w600),
+                      backgroundColor: style.background,
+                      side: BorderSide(color: style.color.withValues(alpha: 0.35)),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ),
+              );
+            }),
+            if (!ended && !pending && !whPending && !rejected) ...[
               const SizedBox(height: 12),
               TextField(
                   controller: _kg,
@@ -413,7 +549,7 @@ class _IssueDetailSheetState extends State<_IssueDetailSheet> {
               ),
               FilledButton(onPressed: _busy ? null : _returnApply, child: const Text('申请部分退库')),
             ],
-            if (widget.isForeman && !ended && !pending) ...[
+            if (widget.isForeman && !ended && !pending && !whPending && !rejected) ...[
               const SizedBox(height: 8),
               OutlinedButton(onPressed: _busy ? null : _confirmDone, child: const Text('确认结束（进日结）')),
             ],

@@ -30,7 +30,13 @@ class _FactoryShellState extends State<FactoryShell> {
   int _index = 0;
   WorkbenchRole? _builtFor;
 
-  List<_TabSpec> _tabsFor(WorkbenchRole role) {
+  List<_TabSpec> _tabsFor(AuthState auth, WorkbenchRole role) {
+    // 纯质检绝不出现采购 Tab（兜底，正常应已进 QcShell）
+    if (auth.preferQcShell) {
+      return [
+        _TabSpec(label: '我的', icon: Icons.person, builder: () => const MinePage(asTab: true)),
+      ];
+    }
     final tabs = <_TabSpec>[];
     void addStation() => tabs.add(_TabSpec(
           label: '生产',
@@ -53,23 +59,22 @@ class _FactoryShellState extends State<FactoryShell> {
           builder: () => const WorkshopPage(asTab: true),
         ));
 
-    switch (role) {
-      case WorkbenchRole.worker:
-        addStation();
-      case WorkbenchRole.receiving:
-        addReceiving();
-      case WorkbenchRole.warehouse:
-        addWarehouse();
-      case WorkbenchRole.workshop:
-        addStation();
-        addTeam();
-      case WorkbenchRole.admin:
-        addStation();
-        addReceiving();
-        addWarehouse();
-        addTeam();
-      default:
-        addStation();
+    if (role == WorkbenchRole.worker) {
+      addStation();
+    } else if (role == WorkbenchRole.receiving) {
+      addReceiving();
+    } else if (role == WorkbenchRole.warehouse) {
+      addWarehouse();
+    } else if (role == WorkbenchRole.workshop) {
+      addStation();
+      addTeam();
+    } else if (role == WorkbenchRole.admin) {
+      addStation();
+      addReceiving();
+      addWarehouse();
+      addTeam();
+    } else if (role != WorkbenchRole.qc) {
+      addStation();
     }
     tabs.add(_TabSpec(label: '我的', icon: Icons.person, builder: () => const MinePage(asTab: true)));
     return tabs;
@@ -92,7 +97,7 @@ class _FactoryShellState extends State<FactoryShell> {
       _builtFor = role;
       _index = 0;
     }
-    final tabs = _tabsFor(role);
+    final tabs = _tabsFor(auth, role);
     if (_index >= tabs.length) _index = 0;
 
     final switchable = auth.switchableRoles;

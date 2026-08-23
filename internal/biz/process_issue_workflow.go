@@ -21,6 +21,12 @@ func (s *Services) handleProcessIssuesAPI(c *gin.Context, method, openapiPath, a
 	if strings.Contains(openapiPath, "/return-reject") && method == "POST" {
 		return s.handleIssueReturnReject(c)
 	}
+	if strings.Contains(openapiPath, "/issue-approve") && method == "POST" {
+		return s.handleIssueWarehouseApprove(c)
+	}
+	if strings.Contains(openapiPath, "/issue-reject") && method == "POST" {
+		return s.handleIssueWarehouseReject(c)
+	}
 	if strings.Contains(openapiPath, "/confirm-done") && method == "POST" {
 		return s.handleIssueConfirmDone(c)
 	}
@@ -61,6 +67,11 @@ func (s *Services) listProcessIssues(c *gin.Context) bool {
 	where := `WHERE 1=1`
 	args := []interface{}{}
 	switch scope {
+	case "warehouse_queue", "warehouse_pending":
+		if !s.claimsHasAnyRole(c, "warehouse", "foreman", "admin", "sys_admin") {
+			api.FailJSON(c, "ROLE_FORBIDDEN")
+			return true
+		}
 	case "mine", "for_me":
 		where += ` AND i.worker_id=?`
 		args = append(args, empID)
@@ -102,6 +113,7 @@ func (s *Services) listProcessIssues(c *gin.Context) bool {
 		i.process_id, COALESCE(p.name,''), i.worker_id, COALESCE(ew.name,''), COALESCE(ew.badge_code,''),
 		COALESCE(i.issued_by_employee_id,0), COALESCE(ei.name,''),
 		i.issue_kg, i.returned_kg, i.completed_kg, COALESCE(i.pending_return_kg,0),
+		COALESCE(i.pending_reweigh_kg,0), COALESCE(i.pending_photo_url,''),
 		COALESCE(i.status,'open'), COALESCE(i.biz_status,'open'), COALESCE(i.source,''),
 		COALESCE(i.work_done_by,0), COALESCE(CAST(i.work_done_at AS TEXT),''),
 		COALESCE(CAST(i.created_at AS TEXT),'')
@@ -119,22 +131,29 @@ func (s *Services) listProcessIssues(c *gin.Context) bool {
 	for rows.Next() {
 		var id, boardID, processID, workerID, issuerID, doneBy int64
 		var boardCode, trace, processName, workerName, badgeCode, issuerName, status, bizStatus, source, doneAt, created string
-		var issueKg, retKg, doneKg, pendKg float64
+		var pendPhoto string
+		var issueKg, retKg, doneKg, pendKg, pendReweigh float64
 		if err := rows.Scan(&id, &boardID, &boardCode, &trace, &processID, &processName, &workerID, &workerName, &badgeCode,
-			&issuerID, &issuerName, &issueKg, &retKg, &doneKg, &pendKg, &status, &bizStatus, &source, &doneBy, &doneAt, &created); err != nil {
+			&issuerID, &issuerName, &issueKg, &retKg, &doneKg, &pendKg, &pendReweigh, &pendPhoto, &status, &bizStatus, &source, &doneBy, &doneAt, &created); err != nil {
 			continue
 		}
 		proxy := issuerID > 0 && workerID > 0 && issuerID != workerID
-		list = append(list, gin.H{
+		_, farmerName := s.traceFarmerInfo(trace)
+		item := gin.H{
 			"id": id, "board_id": boardID, "board_code": boardCode, "trace_code": trace,
 			"process_id": processID, "process_name": processName,
 			"worker_id": workerID, "worker_name": workerName, "badge_code": badgeCode,
 			"issued_by_employee_id": issuerID, "issuer_name": issuerName,
 			"is_proxy": proxy, "issue_kg": issueKg, "returned_kg": retKg, "completed_kg": doneKg,
-			"pending_return_kg": pendKg, "returnable_kg": s.issueReturnableKg(issueKg, retKg, doneKg, pendKg),
+			"pending_return_kg": pendKg, "pending_reweigh_kg": pendReweigh, "pending_photo_url": pendPhoto,
+			"returnable_kg": s.issueReturnableKg(issueKg, retKg, doneKg, pendKg),
 			"status": status, "biz_status": bizStatus, "source": source, "ended": bizStatus == "work_done",
 			"work_done_by": doneBy, "work_done_at": doneAt, "created_at": created,
-		})
+		}
+		if farmerName != "" {
+			item["farmer_name"] = farmerName
+		}
+		list = append(list, item)
 	}
 	api.PageOK(c, list, total, pageNum, pageSize)
 	return true
@@ -215,6 +234,10 @@ func (s *Services) handleIssueReturnApply(c *gin.Context) bool {
 	}
 	if strOr(row["biz_status"]) == "return_pending" {
 		api.FailJSON(c, "RETURN_ALREADY_PENDING")
+		return true
+	}
+	if strOr(row["biz_status"]) == "issue_pending_warehouse" {
+		api.FailJSON(c, "NOT_ISSUE_PENDING")
 		return true
 	}
 	workerID := asInt64Or0(row["worker_id"])
@@ -429,4 +452,118 @@ func (s *Services) creditUpstreamOutputOnIssue(board *boardState, toProcessID in
 
 func fmtDocNo(prefix string) string {
 	return fmt.Sprintf("%s%s", prefix, time.Now().Format("060102150405"))
+}
+
+func (s *Services) handleIssueWarehouseApprove(c *gin.Context) bool {
+	if !s.requireAnyRole(c, "warehouse", "foreman", "admin") {
+		return true
+	}
+	id := paramID(c)
+	body := bindBody(c)
+	row := s.loadProcessIssueRow(id)
+	if row == nil {
+		api.FailJSON(c, "NOT_FOUND")
+		return true
+	}
+	if strOr(row["biz_status"]) != "issue_pending_warehouse" {
+		api.FailJSON(c, "NOT_ISSUE_PENDING")
+		return true
+	}
+	boardCode := strings.TrimSpace(strOrDef(body["board_code"], strOr(body["box_code"])))
+	if boardCode == "" {
+		api.FailJSON(c, "BOX_REQUIRED")
+		return true
+	}
+	if fail := s.requireReweighFields(body); fail != "" {
+		api.FailJSON(c, fail)
+		return true
+	}
+	approveKg, _ := asFloat(body["reweigh_kg"])
+	if approveKg <= kgEps {
+		approveKg = asFloatOr0(row["issue_kg"])
+	}
+	approveKg = roundKg(approveKg)
+	if approveKg <= kgEps {
+		api.FailJSON(c, "INVALID_QTY")
+		return true
+	}
+	board, errMsg := s.loadBoardByCode(boardCode)
+	if errMsg != "" {
+		api.FailJSON(c, errMsg)
+		return true
+	}
+	s.sanitizeBoardProcessRefs(board)
+	trace := strings.ToUpper(strings.TrimSpace(strOr(row["trace_code"])))
+	if be := assertBoardTraceForIssue(board, trace); be != nil {
+		api.HandleBusiness(c, be, nil)
+		return true
+	}
+	if board.Status == "finished" {
+		api.FailJSON(c, "BOARD_FINISHED")
+		return true
+	}
+	processID := asInt64Or0(row["process_id"])
+	workerID := asInt64Or0(row["worker_id"])
+	if fail := s.assertProcessTransitionAllowed(board, processID); fail != "" {
+		api.FailJSON(c, fail)
+		return true
+	}
+	prevProcess := board.ProcessID
+	opEmpID, _, _, _ := s.currentEmployeeInfo(c)
+	fail, boardOut := s.completeWarehousePendingIssue(id, board, workerID, processID, 0, approveKg, opEmpID)
+	if fail != "" {
+		api.FailJSON(c, fail)
+		return true
+	}
+	if err := s.writeProcessIssueStockOut(boardOut, approveKg, id, trace); err != nil {
+		api.FailJSON(c, "STOCK_OUT_FAILED:"+err.Error())
+		return true
+	}
+	if prevProcess > 0 && prevProcess != processID {
+		s.creditUpstreamOutputOnIssue(&boardState{
+			ID: boardOut.ID, Code: boardOut.Code, Trace: boardOut.Trace, ProcessID: prevProcess, StepID: boardOut.StepID,
+		}, processID, approveKg, workerID)
+	}
+	photo := strings.TrimSpace(strOrDef(body["photo_url"], strOr(body["image_url"])))
+	s.appendStationFlowLog(stationFlowEvent{
+		EventType: "issue_approve", BoardID: boardOut.ID, BoardCode: boardOut.Code, TraceCode: trace,
+		ProcessID: processID, WorkerID: workerID, ActorUserID: claimsUserID(c), OperatorEmployeeID: opEmpID,
+		Kg: approveKg, RefType: "pd_process_issue", RefID: id,
+		Payload: gin.H{"photo_url": photo, "assigned_board_code": boardCode},
+	})
+	out := s.loadProcessIssueRow(id)
+	s.attachIssueWagePreview(out, processID, approveKg)
+	api.OK(c, out)
+	return true
+}
+
+func (s *Services) handleIssueWarehouseReject(c *gin.Context) bool {
+	if !s.requireAnyRole(c, "warehouse", "foreman", "admin") {
+		return true
+	}
+	id := paramID(c)
+	row := s.loadProcessIssueRow(id)
+	if row == nil {
+		api.FailJSON(c, "NOT_FOUND")
+		return true
+	}
+	if strOr(row["biz_status"]) != "issue_pending_warehouse" {
+		api.FailJSON(c, "NOT_ISSUE_PENDING")
+		return true
+	}
+	_, err := s.DB.Exec(`UPDATE pd_process_issue SET biz_status='issue_rejected', status='closed',
+		pending_reweigh_kg=0, pending_photo_url='', pending_remark=?, updated_at=NOW() WHERE id=?`,
+		strOr(bindBody(c)["remark"]), id)
+	if err != nil {
+		api.FailJSON(c, "DB_ERROR:"+err.Error())
+		return true
+	}
+	empID, _, _, _ := s.currentEmployeeInfo(c)
+	s.appendStationFlowLog(stationFlowEvent{
+		EventType: "issue_reject", TraceCode: strOr(row["trace_code"]), ProcessID: asInt64Or0(row["process_id"]),
+		WorkerID: asInt64Or0(row["worker_id"]), ActorUserID: claimsUserID(c), OperatorEmployeeID: empID,
+		RefType: "pd_process_issue", RefID: id,
+	})
+	api.OK(c, s.loadProcessIssueRow(id))
+	return true
 }

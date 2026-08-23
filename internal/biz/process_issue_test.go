@@ -522,3 +522,48 @@ func TestBoardStockInNewCodeAndReissue(t *testing.T) {
 		t.Fatalf("worker open on next want 40 got %v", got)
 	}
 }
+
+func TestAssertBoardTraceForIssue(t *testing.T) {
+	t.Parallel()
+	board := &boardState{Code: "B-WRONG", Trace: "T-B"}
+	be := assertBoardTraceForIssue(board, "T-A")
+	if be == nil || be.Msg != "TRACE_MISMATCH" {
+		t.Fatalf("want TRACE_MISMATCH got %#v", be)
+	}
+	data, ok := be.Data.(gin.H)
+	if !ok {
+		t.Fatalf("want gin.H data got %T", be.Data)
+	}
+	if data["expected_trace_code"] != "T-A" {
+		t.Fatalf("expected_trace_code want T-A got %v", data["expected_trace_code"])
+	}
+	if data["board_trace_code"] != "T-B" {
+		t.Fatalf("board_trace_code want T-B got %v", data["board_trace_code"])
+	}
+
+	empty := &boardState{Code: "B-EMPTY", Trace: ""}
+	if be := assertBoardTraceForIssue(empty, "T-A"); be == nil || be.Msg != "TRACE_MISMATCH" {
+		t.Fatalf("empty board trace should mismatch got %#v", be)
+	}
+
+	match := &boardState{Code: "B-OK", Trace: "t-a"}
+	if be := assertBoardTraceForIssue(match, "T-A"); be != nil {
+		t.Fatalf("matching trace should pass got %#v", be)
+	}
+}
+
+func TestResolveOrCreateBoardForTraceMismatch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := openIssueDB(t)
+	_, _ = s.DB.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, qty, weight, trace_code, status)
+		VALUES('BX-TRACE-B', 1, 1, 50, 50, 'T-B', 'open')
+		ON CONFLICT DO NOTHING`)
+	_, be := s.resolveOrCreateBoardForTrace("BX-TRACE-B", "T-A", 10)
+	if be == nil || be.Msg != "TRACE_MISMATCH" {
+		t.Fatalf("want TRACE_MISMATCH got %#v", be)
+	}
+	data, ok := be.Data.(gin.H)
+	if !ok || data["expected_trace_code"] != "T-A" {
+		t.Fatalf("want expected T-A in data got %#v", be.Data)
+	}
+}

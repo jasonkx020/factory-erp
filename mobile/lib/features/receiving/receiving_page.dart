@@ -8,6 +8,7 @@ import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
 import '../../core/employee_modules.dart';
 import '../../core/notify_service.dart';
+import '../../core/role_codes.dart';
 import '../../widgets/form_row.dart';
 import '../../widgets/form_section_header.dart';
 import '../../widgets/form_sticky_actions.dart';
@@ -327,6 +328,15 @@ class _ReceivingPageState extends State<ReceivingPage> {
     final canWh = canAccessEmployeeModule(EmployeeModule.warehouse, auth.permissions, auth.roles);
     _canRecv = canRecv;
     _canWh = canWh;
+    if (rolesPreferQcShell(auth.roles)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('质检请从质检待办处理，无需进入采购建单')),
+        );
+        Navigator.of(context).pushReplacementNamed('/home');
+      }
+      return;
+    }
     if (!canRecv && !canWh) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无采购权限')));

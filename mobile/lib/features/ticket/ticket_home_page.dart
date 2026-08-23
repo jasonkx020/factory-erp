@@ -9,7 +9,7 @@ import 'ticket_widgets.dart';
 /// 首页三 Tab：
 /// - 待处理：当前指派给我且未结案（可操作）
 /// - 处理中：我发起、已转出、未结案（只读跟踪）
-/// - 我发起的：我发起且已结案（历史）
+/// - 我处理过的：日志参与过的履历（含在办与已结；非当前处理人只读）
 class TicketHomePage extends StatefulWidget {
   const TicketHomePage({super.key, this.embedded = true});
 
@@ -19,12 +19,12 @@ class TicketHomePage extends StatefulWidget {
   State<TicketHomePage> createState() => TicketHomePageState();
 }
 
-enum _HomeTab { open, progress, mine }
+enum _HomeTab { open, progress, handled }
 
 class TicketHomePageState extends State<TicketHomePage> {
   List<Map<String, dynamic>> _open = [];
   List<Map<String, dynamic>> _progress = [];
-  List<Map<String, dynamic>> _mine = [];
+  List<Map<String, dynamic>> _handled = [];
   _HomeTab _tab = _HomeTab.open;
   String _msg = '';
   bool _loading = false;
@@ -52,6 +52,7 @@ class TicketHomePageState extends State<TicketHomePage> {
     final results = await Future.wait([
       api.get('/workflow/tickets?scope=mine_assignee'),
       api.get('/workflow/tickets?scope=mine_applicant'),
+      api.get('/workflow/tickets?scope=mine_handled'),
     ]);
     if (!mounted) return;
     final assignee = ApiClient.listOf(results[0].data)
@@ -60,26 +61,26 @@ class TicketHomePageState extends State<TicketHomePage> {
     final applicant = ApiClient.listOf(results[1].data)
         .map((e) => Map<String, dynamic>.from(e as Map))
         .toList();
+    final handled = ApiClient.listOf(results[2].data)
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
 
-    // 待处理：指派给我的未结案（API 已限 open|in_progress）
     final open = List<Map<String, dynamic>>.from(assignee);
 
-    // 处理中：我发起、已转给他人、未结案（仍指派给我的在「待处理」）
     final progress = applicant.where((m) {
       if (ticketIsClosed('${m['status']}')) return false;
       return _assigneeId(m) != myId;
     }).toList();
 
-    // 我发起的：已办结历史
-    final mine = applicant.where((m) => ticketIsClosed('${m['status']}')).toList();
-
     setState(() {
       _open = open;
       _progress = progress;
-      _mine = mine;
+      _handled = handled;
       _msg = !results[0].ok
           ? results[0].msg
-          : (!results[1].ok ? results[1].msg : '');
+          : (!results[1].ok
+              ? results[1].msg
+              : (!results[2].ok ? results[2].msg : ''));
       _loading = false;
     });
   }
@@ -90,13 +91,17 @@ class TicketHomePageState extends State<TicketHomePage> {
         return _open;
       case _HomeTab.progress:
         return _progress;
-      case _HomeTab.mine:
-        return _mine;
+      case _HomeTab.handled:
+        return _handled;
     }
   }
 
-  /// 仅「待处理」可操作；处理中 / 我发起的只读。
-  bool get _currentShowActions => _tab == _HomeTab.open;
+  /// 待处理默认可操作；我处理过的若仍是当前处理人也可操作。
+  bool _allowActionsFor(Map<String, dynamic> m) {
+    if (_tab == _HomeTab.open) return true;
+    if (_tab == _HomeTab.handled) return m['can_act'] == true;
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -133,10 +138,10 @@ class TicketHomePageState extends State<TicketHomePage> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: _TabChip(
-                    label: '我发起的',
-                    count: _mine.length,
-                    selected: _tab == _HomeTab.mine,
-                    onTap: () => setState(() => _tab = _HomeTab.mine),
+                    label: '我处理过的',
+                    count: _handled.length,
+                    selected: _tab == _HomeTab.handled,
+                    onTap: () => setState(() => _tab = _HomeTab.handled),
                   ),
                 ),
               ],
@@ -157,10 +162,10 @@ class TicketHomePageState extends State<TicketHomePage> {
               padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Text('我发起且已转出、尚未办结（只读）', style: TextStyle(color: Colors.black54, fontSize: 12)),
             ),
-          if (_tab == _HomeTab.mine)
+          if (_tab == _HomeTab.handled)
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text('我发起且已办结的历史', style: TextStyle(color: Colors.black54, fontSize: 12)),
+              child: Text('我参与过的工单履历；非当前处理人只读', style: TextStyle(color: Colors.black54, fontSize: 12)),
             ),
           if (rows.isEmpty)
             const Padding(
@@ -171,15 +176,21 @@ class TicketHomePageState extends State<TicketHomePage> {
             ...rows.map(
               (m) => TicketListCard(
                 row: m,
-                showActions: _currentShowActions,
+                showActions: _allowActionsFor(m),
                 emphasizeAssignee: _tab == _HomeTab.progress,
                 onTap: () => openTicketDetail(
                   context,
                   m,
-                  allowActions: _currentShowActions,
+                  allowActions: _allowActionsFor(m),
                   onActed: reload,
                 ),
-                onAction: (a) => ticketAct(context, m, a, onDone: reload),
+                onAction: (a) => ticketAct(
+                  context,
+                  m,
+                  a,
+                  requireHandoff: a == 'approve' || a == 'close',
+                  onDone: reload,
+                ),
               ),
             ),
           const SizedBox(height: 24),
@@ -191,7 +202,7 @@ class TicketHomePageState extends State<TicketHomePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('首页'),
+        title: Text(auth.preferQcShell ? '质检工作台' : '首页'),
         actions: [
           ...ticketShellMessageActions(context, notify.unread),
           TextButton(

@@ -877,27 +877,52 @@ func (s *Services) handleWeighFlowNextOptions(c *gin.Context) bool {
 }
 
 func (s *Services) advanceWeighTicketAssignee(c *gin.Context, weighID int64, fromAction, nextRole, nextNodeID string) {
-	var kind, docNo string
-	_ = s.DB.QueryRow(`SELECT COALESCE(receive_kind,'gate'), COALESCE(doc_no,'') FROM pur_weigh_ticket WHERE id=?`, weighID).Scan(&kind, &docNo)
-	role, _ := s.nextRoleAfterAction(kind, fromAction, nextRole, nextNodeID)
-	if role == "" {
-		return
+	body := map[string]interface{}{}
+	if nextRole != "" {
+		body["next_role_code"] = nextRole
 	}
-	uid := s.firstUserIDByRoleCode(role)
-	if uid <= 0 {
-		return
-	}
-	var tid int64
-	_ = s.DB.QueryRow(`SELECT id FROM wf_ticket WHERE biz_type='weigh_ticket' AND biz_id=? AND status IN ('open','in_progress') ORDER BY id DESC LIMIT 1`, weighID).Scan(&tid)
+	_ = nextNodeID
+	_ = s.handoffWeighOpenTicket(c, weighID, fromAction, body)
+}
+
+// handoffWeighOpenTicket assigns open weigh collab ticket to next handler (explicit user or role).
+// Returns error code when next handler cannot be resolved.
+func (s *Services) handoffWeighOpenTicket(c *gin.Context, weighID int64, fromAction string, body map[string]interface{}) string {
+	var tid, catID int64
+	var docNo string
+	_ = s.DB.QueryRow(`SELECT t.id, COALESCE(t.category_id,0), COALESCE(w.doc_no,'')
+		FROM wf_ticket t JOIN pur_weigh_ticket w ON w.id=t.biz_id
+		WHERE t.biz_type='weigh_ticket' AND t.biz_id=? AND t.status IN ('open','in_progress') ORDER BY t.id DESC LIMIT 1`, weighID).
+		Scan(&tid, &catID, &docNo)
 	if tid <= 0 {
-		return
+		return ""
 	}
-	_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=NOW() WHERE id=?`, uid, tid)
+	nextUID, errCode := s.resolveNextHandoffUser(catID, body)
+	if errCode != "" {
+		role := strOr(body["next_role_code"])
+		if role == "" {
+			role = strOr(body["next_role"])
+		}
+		var kind string
+		_ = s.DB.QueryRow(`SELECT COALESCE(receive_kind,'gate') FROM pur_weigh_ticket WHERE id=?`, weighID).Scan(&kind)
+		if role == "" {
+			role, _ = s.nextRoleAfterAction(kind, fromAction, role, strOr(body["next_node_id"]))
+		}
+		if role != "" {
+			body2 := map[string]interface{}{"next_role_code": role}
+			nextUID, errCode = s.resolveNextHandoffUser(catID, body2)
+		}
+	}
+	if errCode != "" || nextUID <= 0 {
+		return "NEXT_HANDLER_REQUIRED"
+	}
+	_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=NOW() WHERE id=?`, nextUID, tid)
 	cl := middleware.Claims(c)
 	from := int64(0)
 	if cl != nil {
 		from = cl.UserID
 	}
-	s.appendTicketLog(tid, "assign", from, uid, "flow:"+fromAction+"->"+role)
-	s.notifyTicketAssignee(c, tid, "workflow.ticket.assigned", docNo+" → "+role, uid, from)
+	s.appendTicketLog(tid, "assign", from, nextUID, "flow:"+fromAction)
+	s.notifyTicketAssignee(c, tid, "workflow.ticket.assigned", docNo+" → next", nextUID, from)
+	return ""
 }

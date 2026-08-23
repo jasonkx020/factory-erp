@@ -181,7 +181,12 @@ class ApiClient {
     return h;
   }
 
-  Future<ApiEnvelope> post(String path, Map<String, dynamic> body, {bool auth = true}) {
+  Future<ApiEnvelope> post(
+    String path,
+    Map<String, dynamic> body, {
+    bool auth = true,
+    Duration? timeout,
+  }) {
     return _send(
       'POST',
       path,
@@ -191,6 +196,7 @@ class ApiClient {
         body: jsonEncode(body),
       ),
       requestBody: body,
+      timeout: timeout,
     );
   }
 
@@ -257,10 +263,11 @@ class ApiClient {
     String path,
     Future<http.Response> Function() send, {
     Object? requestBody,
+    Duration? timeout,
   }) async {
     final url = '$baseUrl$path';
     try {
-      final res = await send().timeout(const Duration(seconds: 12));
+      final res = await send().timeout(timeout ?? const Duration(seconds: 12));
       return _parse(method, url, res, requestBody: requestBody);
     } catch (e, st) {
       _logApiError(method, url, error: e, stack: st, requestBody: requestBody);

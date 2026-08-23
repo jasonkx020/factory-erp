@@ -19,8 +19,12 @@ List<RoleStep> stepsForWorkbenchRole(WorkbenchRole role, {String codeLabel = '�
     case WorkbenchRole.receiving:
       return [
         const RoleStep(title: '建过磅单', subtitle: '农户过磅建单', route: '/receiving'),
-        const RoleStep(title: '质检确认', subtitle: '过磅单质检与确认', route: '/receiving'),
         RoleStep(title: '出码推仓', subtitle: '生成$codeLabel并推送待入库', route: '/receiving'),
+      ];
+    case WorkbenchRole.qc:
+      return const [
+        RoleStep(title: '待办工单', subtitle: '质检合格/不合格并交办下一处理人', route: '/home'),
+        RoleStep(title: '我处理过的', subtitle: '查看已参与的质检履历', route: '/home'),
       ];
     case WorkbenchRole.warehouse:
       return [

@@ -141,6 +141,10 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/production/trace-productions/:code/material-locations"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/production/flow-events"
   },
   {
@@ -1610,6 +1614,14 @@
   {
     "method": "POST",
     "path": "/api/v1/production/process-issues/:id/return-reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/process-issues/:id/issue-approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/process-issues/:id/issue-reject"
   },
   {
     "method": "POST",

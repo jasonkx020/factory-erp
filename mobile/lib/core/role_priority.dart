@@ -25,9 +25,11 @@ String? canonicalRole(String role) {
   switch (role) {
     case 'purchase':
     case '采购员':
+      return 'purchase';
     case 'qc':
     case '质检':
-      return 'purchase';
+    case '质检员':
+      return 'qc';
     case 'warehouse':
     case '仓管员':
       return 'warehouse';
@@ -57,6 +59,8 @@ String roleDisplayName(String canonical) {
   switch (canonical) {
     case 'purchase':
       return '采购';
+    case 'qc':
+      return '质检';
     case 'warehouse':
       return '仓管作业';
     case 'foreman':

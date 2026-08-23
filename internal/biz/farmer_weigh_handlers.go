@@ -980,6 +980,9 @@ func (s *Services) updateWeighTicket(c *gin.Context) bool {
 }
 
 func (s *Services) qcWeighTicket(c *gin.Context) bool {
+	if !s.requireAnyRole(c, "qc", "purchase", "质检", "质检员") {
+		return true
+	}
 	id := paramID(c)
 	body := bindBody(c)
 	result := strings.ToLower(strOrDef(body["qc_result"], strOr(body["result"])))
@@ -998,32 +1001,78 @@ func (s *Services) qcWeighTicket(c *gin.Context) bool {
 		api.FailJSON(c, "NOT_FOUND")
 		return true
 	}
-	if status != "draft" && status != "qc_pending" {
+	st := strings.ToLower(strings.TrimSpace(status))
+	if st != "draft" && st != "qc_pending" && st != "pending_confirm" {
 		api.FailJSON(c, "INVALID_STATUS")
 		return true
 	}
-	newStatus := "qc_fail"
+
+	cl := middleware.Claims(c)
+	var tid, assignee int64
+	_ = s.DB.QueryRow(`SELECT id, COALESCE(current_assignee_user_id,0) FROM wf_ticket
+		WHERE biz_type='weigh_ticket' AND biz_id=? AND status IN ('open','in_progress') ORDER BY id DESC LIMIT 1`, id).
+		Scan(&tid, &assignee)
+	if tid > 0 && cl != nil && !claimsIsSysAdmin(cl.Roles, cl.Permissions) {
+		if assignee != cl.UserID {
+			api.FailJSON(c, "PERM_DENIED")
+			return true
+		}
+	}
+
+	var nextUID int64
+	var catID int64
+	if tid > 0 {
+		_ = s.DB.QueryRow(`SELECT COALESCE(category_id,0) FROM wf_ticket WHERE id=?`, tid).Scan(&catID)
+	}
 	if result == "pass" {
-		newStatus = "qc_pass"
 		grade := strings.ToUpper(strOr(body["grade"]))
 		if grade == "" {
 			api.FailJSON(c, "GRADE_REQUIRED")
 			return true
 		}
-		_, _ = s.DB.Exec(`UPDATE pur_weigh_ticket SET grade=? WHERE id=?`, grade, id)
-	}
-	_, err := s.DB.Exec(`UPDATE pur_weigh_ticket SET qc_result=?, status=?, remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=?`,
-		result, newStatus, strOr(body["remark"]), id)
-	if err != nil {
-		api.FailJSON(c, "DB_ERROR:"+err.Error())
+		if tid > 0 {
+			var errCode string
+			nextUID, errCode = s.resolveNextHandoffUser(catID, body)
+			if errCode != "" {
+				api.FailJSON(c, errCode)
+				return true
+			}
+		}
+		_, _ = s.DB.Exec(`UPDATE pur_weigh_ticket SET grade=?, qc_result='pass', status='qc_pass',
+			remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=?`, grade, strOr(body["remark"]), id)
+	} else {
+		_, err := s.DB.Exec(`UPDATE pur_weigh_ticket SET qc_result='fail', status='qc_fail',
+			remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=?`, strOr(body["remark"]), id)
+		if err != nil {
+			api.FailJSON(c, "DB_ERROR:"+err.Error())
+			return true
+		}
+		if tid > 0 {
+			fromUID := int64(0)
+			if cl != nil {
+				fromUID = cl.UserID
+			}
+			_, _ = s.DB.Exec(`UPDATE wf_ticket SET status='rejected', closed_at=NOW(), updated_at=NOW(), current_assignee_user_id=NULL WHERE id=?`, tid)
+			s.appendTicketLog(tid, "qc_fail", fromUID, 0, strOr(body["remark"]))
+		}
+		out := s.loadWeighTicket(id)
+		out["stocked_in"] = false
+		s.writeAuditCtx(c, "weigh_ticket", id, "qc", "fail", nil, out)
+		api.OK(c, out)
 		return true
 	}
+
 	out := s.loadWeighTicket(id)
 	out["stocked_in"] = false
-	// no auto stock-in — warehouse must confirm after weigh confirm+trace
-	s.writeAuditCtx(c, "weigh_ticket", id, "qc", result, nil, out)
-	if result == "pass" {
-		s.advanceWeighTicketAssignee(c, id, "qc_deduct", strOr(body["next_role"]), strOr(body["next_node_id"]))
+	s.writeAuditCtx(c, "weigh_ticket", id, "qc", "pass", nil, out)
+	if tid > 0 && nextUID > 0 {
+		fromUID := int64(0)
+		if cl != nil {
+			fromUID = cl.UserID
+		}
+		_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=NOW() WHERE id=?`, nextUID, tid)
+		s.appendTicketLog(tid, "qc_pass", fromUID, nextUID, strOrDef(body["comment"], "qc_pass"))
+		s.notifyTicketAssignee(c, tid, "workflow.ticket.assigned", strOr(out["doc_no"])+" 质检合格", nextUID, fromUID)
 	}
 	api.OK(c, out)
 	return true
@@ -1112,8 +1161,11 @@ func (s *Services) applyVerifiedWeighStockIn(c *gin.Context, id int64, body map[
 	}
 	if kind == "gate" {
 		s.closeInboundCollabOnGateAccept(c, id)
-	} else {
-		s.advanceWeighTicketAssignee(c, id, "warehouse_confirm", strOr(body["next_role"]), strOr(body["next_node_id"]))
+	} else if !asBool(body["skip_flow_advance"]) {
+		if code := s.handoffWeighOpenTicket(c, id, "warehouse_confirm", body); code != "" {
+			// 已入库但交办失败：仍返回成功库存结果，交办错误由调用方预检；此处仅尝试静默兼容旧客户端
+			s.advanceWeighTicketAssignee(c, id, "warehouse_confirm", strOr(body["next_role"]), strOr(body["next_node_id"]))
+		}
 	}
 	if s.Notify != nil {
 		s.Notify.CompleteTask("weigh_ticket", id, "purchase.weigh_confirmed")

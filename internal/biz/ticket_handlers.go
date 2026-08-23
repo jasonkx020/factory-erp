@@ -323,7 +323,8 @@ func (s *Services) resolveHandlerPool(catID int64) []gin.H {
 		if disp == "" {
 			disp = login
 		}
-		out = append(out, gin.H{"user_id": uid, "login_name": login, "name": disp})
+		roles := s.userRoleCodes(uid)
+		out = append(out, gin.H{"user_id": uid, "login_name": login, "name": disp, "role_codes": roles})
 	}
 	for _, p := range pairs {
 		if p.ht == "user" {
@@ -355,6 +356,69 @@ func (s *Services) firstHandlerUserID(catID int64) int64 {
 	for _, p := range s.resolveHandlerPool(catID) {
 		if uid := asInt64Or0(p["user_id"]); uid > 0 {
 			return uid
+		}
+	}
+	return 0
+}
+
+func (s *Services) userRoleCodes(uid int64) []string {
+	out := []string{}
+	if uid <= 0 {
+		return out
+	}
+	rows, err := s.DB.Query(`SELECT r.code FROM iam_role r
+		JOIN iam_user_role ur ON ur.role_id=r.id WHERE ur.user_id=?`, uid)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var code string
+		if rows.Scan(&code) == nil && code != "" {
+			out = append(out, code)
+		}
+	}
+	return out
+}
+
+// resolveNextHandoffUser resolves next_assignee_user_id or next_role_code against the category pool.
+func (s *Services) resolveNextHandoffUser(catID int64, body map[string]interface{}) (int64, string) {
+	next, _ := asInt64(body["next_assignee_user_id"])
+	role := strings.TrimSpace(strOrDef(body["next_role_code"], strOr(body["next_role"])))
+	if next > 0 {
+		if catID > 0 && !s.assigneeInPool(catID, next) {
+			return 0, "ASSIGNEE_NOT_IN_POOL"
+		}
+		return next, ""
+	}
+	if role == "" {
+		return 0, "NEXT_HANDLER_REQUIRED"
+	}
+	uid := s.firstPoolUserByRoleCode(catID, role)
+	if uid <= 0 {
+		// role not in pool: fall back to any active user with that role
+		uid = s.firstUserIDByRoleCode(role)
+	}
+	if uid <= 0 {
+		return 0, "NEXT_HANDLER_REQUIRED"
+	}
+	if catID > 0 && !s.assigneeInPool(catID, uid) {
+		return 0, "ASSIGNEE_NOT_IN_POOL"
+	}
+	return uid, ""
+}
+
+func (s *Services) firstPoolUserByRoleCode(catID int64, roleCode string) int64 {
+	roleCode = strings.ToLower(strings.TrimSpace(roleCode))
+	if roleCode == "" {
+		return 0
+	}
+	for _, p := range s.resolveHandlerPool(catID) {
+		uid := asInt64Or0(p["user_id"])
+		for _, c := range s.userRoleCodes(uid) {
+			if strings.EqualFold(c, roleCode) {
+				return uid
+			}
 		}
 	}
 	return 0
@@ -489,6 +553,16 @@ func (s *Services) listTickets(c *gin.Context) bool {
 	case "mine_assignee":
 		where += ` AND t.current_assignee_user_id=? AND t.status IN ('open','in_progress')`
 		args = append(args, cl.UserID)
+	case "mine_handled":
+		// 我是申请人 / 当前处理人 / 曾在流转日志 from|to 出现过
+		where += ` AND (
+			t.applicant_user_id=? OR t.current_assignee_user_id=?
+			OR EXISTS (
+				SELECT 1 FROM wf_ticket_log l
+				WHERE l.ticket_id=t.id AND (l.from_user_id=? OR l.to_user_id=?)
+			)
+		)`
+		args = append(args, cl.UserID, cl.UserID, cl.UserID, cl.UserID)
 	default:
 		if !admin {
 			where += ` AND (t.applicant_user_id=? OR t.current_assignee_user_id=?)`
@@ -513,11 +587,22 @@ func (s *Services) listTickets(c *gin.Context) bool {
 		var id, catID, applicant, assignee, bizID int64
 		var docNo, catCode, catName, title, status, bizType, payload, created, updated, closed string
 		_ = rows.Scan(&id, &docNo, &catID, &catCode, &catName, &title, &status, &applicant, &assignee, &bizType, &bizID, &payload, &created, &updated, &closed)
+		canAct := (status == "open" || status == "in_progress") && assignee == cl.UserID
+		if admin && (status == "open" || status == "in_progress") {
+			canAct = true
+		}
+		iHandled := applicant == cl.UserID || assignee == cl.UserID
+		if !iHandled {
+			var n int
+			_ = s.DB.QueryRow(`SELECT COUNT(1) FROM wf_ticket_log WHERE ticket_id=? AND (from_user_id=? OR to_user_id=?)`, id, cl.UserID, cl.UserID).Scan(&n)
+			iHandled = n > 0
+		}
 		row := gin.H{
 			"id": id, "doc_no": docNo, "category_id": catID, "category_code": catCode, "category_name": catName,
 			"title": title, "status": status, "applicant_user_id": applicant, "current_assignee_user_id": assignee,
 			"applicant_name": s.userDisplayName(applicant), "assignee_name": s.userDisplayName(assignee),
 			"biz_type": bizType, "biz_id": bizID, "payload_json": payload, "created_at": created, "updated_at": updated, "closed_at": closed,
+			"can_act": canAct, "i_handled": iHandled,
 		}
 		if bizType == "weigh_ticket" && claimsIsWarehouseOnly(cl) {
 			row["payload_json"] = maskWeighPayloadJSON(payload)
@@ -574,6 +659,13 @@ func (s *Services) getTicket(c *gin.Context) bool {
 	b, _ := json.Marshal(payload)
 	d["payload_json"] = string(b)
 	d["payload"] = payload
+	assignee := asInt64Or0(d["current_assignee_user_id"])
+	st := strOr(d["status"])
+	canAct := (st == "open" || st == "in_progress") && cl != nil && assignee == cl.UserID
+	if cl != nil && claimsIsSysAdmin(cl.Roles, cl.Permissions) && (st == "open" || st == "in_progress") {
+		canAct = true
+	}
+	d["can_act"] = canAct
 	api.OK(c, d)
 	return true
 }
@@ -716,7 +808,6 @@ func (s *Services) assignTicket(c *gin.Context) bool {
 	}
 	id := paramID(c)
 	body := bindBody(c)
-	next, _ := asInt64(body["next_assignee_user_id"])
 	t := s.loadTicket(id)
 	if t == nil {
 		api.FailJSON(c, "NOT_FOUND")
@@ -728,8 +819,9 @@ func (s *Services) assignTicket(c *gin.Context) bool {
 		return true
 	}
 	catID := asInt64Or0(t["category_id"])
-	if next <= 0 || !s.assigneeInPool(catID, next) {
-		api.FailJSON(c, "ASSIGNEE_NOT_IN_POOL")
+	next, errCode := s.resolveNextHandoffUser(catID, body)
+	if errCode != "" {
+		api.FailJSON(c, errCode)
 		return true
 	}
 	cur := asInt64Or0(t["current_assignee_user_id"])
@@ -784,7 +876,6 @@ func (s *Services) actionTicketBody(c *gin.Context, id int64, body map[string]in
 		return false
 	}
 	comment := strOr(body["comment"])
-	next, _ := asInt64(body["next_assignee_user_id"])
 	catID := asInt64Or0(t["category_id"])
 	bizType := strOr(t["biz_type"])
 	bizID := asInt64Or0(t["biz_id"])
@@ -797,12 +888,31 @@ func (s *Services) actionTicketBody(c *gin.Context, id int64, body map[string]in
 			}
 			body["verified"] = true
 			body["match_confirmed"] = true
+			var receiveKind string
+			_ = s.DB.QueryRow(`SELECT COALESCE(receive_kind,'gate') FROM pur_weigh_ticket WHERE id=?`, bizID).Scan(&receiveKind)
+			needHandoff := strings.ToLower(strings.TrimSpace(receiveKind)) == "stockin"
+			var nextUID int64
+			if needHandoff {
+				var errCode string
+				nextUID, errCode = s.resolveNextHandoffUser(catID, body)
+				if errCode != "" {
+					api.FailJSON(c, errCode)
+					return false
+				}
+				body["skip_flow_advance"] = true
+			}
 			_, errCode, _ := s.applyVerifiedWeighStockIn(c, bizID, body)
 			if errCode != "" {
 				api.FailJSON(c, errCode)
 				return false
 			}
-			s.appendTicketLog(id, "warehouse_confirm", cl.UserID, 0, comment)
+			if needHandoff && nextUID > 0 {
+				_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=NOW() WHERE id=?`, nextUID, id)
+				s.appendTicketLog(id, "warehouse_confirm", cl.UserID, nextUID, comment)
+				s.notifyTicketAssignee(c, id, "workflow.ticket.assigned", strOr(t["title"]), nextUID, cl.UserID)
+			} else {
+				s.appendTicketLog(id, "warehouse_confirm", cl.UserID, 0, comment)
+			}
 			return true
 		case "settle_pay":
 			if !s.requireAnyRole(c, "finance") {
@@ -856,35 +966,50 @@ func (s *Services) actionTicketBody(c *gin.Context, id int64, body map[string]in
 			return true
 		case "approve", "close":
 			var sid int64
-			var st string
-			_ = s.DB.QueryRow(`SELECT id, status FROM pur_farmer_settlement WHERE weigh_ticket_id=? ORDER BY id DESC LIMIT 1`, bizID).Scan(&sid, &st)
-			if sid > 0 && st != "settle_paid" && claimsHasAnyRole(cl, "finance") {
+			var stPay string
+			_ = s.DB.QueryRow(`SELECT id, status FROM pur_farmer_settlement WHERE weigh_ticket_id=? ORDER BY id DESC LIMIT 1`, bizID).Scan(&sid, &stPay)
+			if sid > 0 && stPay != "settle_paid" && claimsHasAnyRole(cl, "finance") {
 				api.FailJSON(c, "SETTLE_PAY_REQUIRED")
 				return false
 			}
+			// 过磅协同中间环节禁止静默办结：必须交办下一处理人/角色
+			nextUID, errCode := s.resolveNextHandoffUser(catID, body)
+			if errCode != "" {
+				api.FailJSON(c, errCode)
+				return false
+			}
+			_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=NOW() WHERE id=?`, nextUID, id)
+			s.appendTicketLog(id, action, cl.UserID, nextUID, comment)
+			if s.Notify != nil {
+				s.Notify.CompleteTask("wf_ticket", id)
+			}
+			s.notifyTicketAssignee(c, id, "workflow.ticket.assigned", strOr(t["title"]), nextUID, cl.UserID)
+			return true
 		}
 	}
 
 	switch action {
 	case "approve", "return_confirm", "close":
-		if next > 0 {
-			if !s.assigneeInPool(catID, next) {
-				api.FailJSON(c, "ASSIGNEE_NOT_IN_POOL")
-				return false
-			}
-			_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=NOW() WHERE id=?`, next, id)
-			s.appendTicketLog(id, action, cl.UserID, next, comment)
+		finalize := asBool(body["finalize"]) || asBool(body["finish"]) || action == "return_confirm" ||
+			(bizType == "hr_tool_issue" && action == "approve")
+		nextUID, errCode := s.resolveNextHandoffUser(catID, body)
+		if errCode == "" && nextUID > 0 {
+			_, _ = s.DB.Exec(`UPDATE wf_ticket SET current_assignee_user_id=?, status='in_progress', updated_at=NOW() WHERE id=?`, nextUID, id)
+			s.appendTicketLog(id, action, cl.UserID, nextUID, comment)
 			if s.Notify != nil {
 				s.Notify.CompleteTask("wf_ticket", id)
 			}
-			s.notifyTicketAssignee(c, id, "workflow.ticket.assigned", strOr(t["title"]), next, cl.UserID)
-		} else {
+			s.notifyTicketAssignee(c, id, "workflow.ticket.assigned", strOr(t["title"]), nextUID, cl.UserID)
+		} else if finalize {
 			_, _ = s.DB.Exec(`UPDATE wf_ticket SET status='done', closed_at=NOW(), updated_at=NOW(), current_assignee_user_id=NULL WHERE id=?`, id)
 			s.appendTicketLog(id, action, cl.UserID, 0, comment)
 			if s.Notify != nil {
 				s.Notify.CompleteTask("wf_ticket", id)
 			}
 			s.notifyTicketApplicant(c, id, "workflow.ticket.done", strOr(t["title"]), asInt64Or0(t["applicant_user_id"]))
+		} else {
+			api.FailJSON(c, "NEXT_HANDLER_REQUIRED")
+			return false
 		}
 		if bizType == "hr_tool_issue" && bizID > 0 {
 			s.applyToolBizFromTicketAction(c, action, bizID, body)

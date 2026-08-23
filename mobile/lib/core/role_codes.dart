@@ -1,4 +1,21 @@
-/// Role codes used by employee app workbench (align with IAM seed + employeeModules).
+// Role codes used by employee app workbench (align with IAM seed + employeeModules).
+
+bool roleCodeIsQc(String code) {
+  final c = code.trim().toLowerCase();
+  return c == 'qc' || c == '质检' || c == '质检员' || c.contains('质检');
+}
+
+bool roleCodeIsPurchase(String code) {
+  final c = code.trim().toLowerCase();
+  return c == 'purchase' || c == '采购员' || c == '采购';
+}
+
+bool rolesHasQc(List<String> roles) => roles.any(roleCodeIsQc);
+
+bool rolesHasPurchase(List<String> roles) => roles.any(roleCodeIsPurchase);
+
+/// 纯质检（无采购角色）：应进入质检壳，禁止采购建单页。
+bool rolesPreferQcShell(List<String> roles) => rolesHasQc(roles) && !rolesHasPurchase(roles);
 
 /// Priority: first match in [roles] wins as primary business role.
 const List<String> employeeRolePriority = [
@@ -6,6 +23,7 @@ const List<String> employeeRolePriority = [
   '采购员',
   'qc',
   '质检',
+  '质检员',
   'warehouse',
   '仓管员',
   'foreman',
@@ -24,7 +42,8 @@ const List<String> employeeRolePriority = [
 
 /// Canonical workbench keys derived from role codes.
 enum WorkbenchRole {
-  receiving, // purchase / qc
+  receiving, // purchase
+  qc, // 质检：工单判定，不进采购建单
   warehouse,
   workshop, // foreman
   worker, // piece / fixed
@@ -38,6 +57,8 @@ String workbenchRoleLabel(WorkbenchRole r) {
   switch (r) {
     case WorkbenchRole.receiving:
       return '采购';
+    case WorkbenchRole.qc:
+      return '质检';
     case WorkbenchRole.warehouse:
       return '仓管作业';
     case WorkbenchRole.worker:
@@ -56,12 +77,10 @@ String workbenchRoleLabel(WorkbenchRole r) {
 }
 
 WorkbenchRole workbenchRoleFromCode(String code) {
-  switch (code) {
-    case 'purchase':
-    case '采购员':
-    case 'qc':
-    case '质检':
-      return WorkbenchRole.receiving;
+  final raw = code.trim();
+  if (roleCodeIsPurchase(raw)) return WorkbenchRole.receiving;
+  if (roleCodeIsQc(raw)) return WorkbenchRole.qc;
+  switch (raw) {
     case 'warehouse':
     case '仓管员':
       return WorkbenchRole.warehouse;
@@ -87,13 +106,25 @@ WorkbenchRole workbenchRoleFromCode(String code) {
   }
 }
 
+bool _rolesContainCode(List<String> roles, String code) {
+  final want = code.trim().toLowerCase();
+  for (final r in roles) {
+    if (r.trim().toLowerCase() == want) return true;
+  }
+  return false;
+}
+
 /// Resolve primary workbench role from IAM role codes (priority order).
 WorkbenchRole resolvePrimaryWorkbenchRole(List<String> roles) {
   for (final code in employeeRolePriority) {
-    if (roles.contains(code)) {
+    if (_rolesContainCode(roles, code)) {
       final wr = workbenchRoleFromCode(code);
       if (wr != WorkbenchRole.none) return wr;
     }
+  }
+  for (final r in roles) {
+    final wr = workbenchRoleFromCode(r);
+    if (wr != WorkbenchRole.none) return wr;
   }
   return WorkbenchRole.none;
 }
@@ -107,7 +138,7 @@ List<WorkbenchRole> availableWorkbenchRoles(List<String> roles) {
     if (wr == WorkbenchRole.none || wr == WorkbenchRole.admin) continue;
     if (seen.add(wr)) out.add(wr);
   }
-  if (roles.contains('sys_admin') || roles.contains('系统管理员')) {
+  if (_rolesContainCode(roles, 'sys_admin') || _rolesContainCode(roles, '系统管理员')) {
     if (seen.add(WorkbenchRole.admin)) out.add(WorkbenchRole.admin);
   }
   return out;

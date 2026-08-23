@@ -31,7 +31,7 @@ const wages = ref<Row[]>([])
 const flowCols: MobileCardColumn[] = [
   { prop: 'created_at', label: '时间', primary: true },
   { prop: 'event_type_label', label: '类型' },
-  { prop: 'board_code', label: '板码' },
+  { prop: 'trace_code', label: '溯源码' },
   { prop: 'process_name', label: '工序' },
   { prop: 'kg', label: 'kg' },
   { prop: 'amount', label: '金额' },
@@ -95,6 +95,7 @@ async function load() {
     kpi.value = (data.kpi as Row) || {}
     flows.value = ((data.flows as Row[]) || []).map((r) => ({
       ...r,
+      trace_code: String(r.trace_code || r.board_code || '').trim() || '—',
       event_type_label: formOptionLabel(STATION_FLOW_EVENT_OPTIONS, r.event_type),
     }))
     piecework.value = (data.piecework as Row[]) || []
@@ -173,7 +174,7 @@ onMounted(load)
                 <el-tag size="small" effect="plain">{{ row.event_type_label }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="board_code" label="板码" min-width="120" />
+            <el-table-column prop="trace_code" label="溯源码" min-width="140" show-overflow-tooltip />
             <el-table-column prop="process_name" label="工序" min-width="110" />
             <el-table-column label="kg" width="90" align="right">
               <template #default="{ row }">{{ num(row.kg) }}</template>

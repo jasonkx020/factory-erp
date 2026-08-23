@@ -38,7 +38,7 @@ class TicketTodoPageState extends State<TicketTodoPage> {
     final notify = context.watch<NotifyService>();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('待办'),
+        title: Text(context.watch<AuthState>().preferQcShell ? '质检待办' : '待办'),
         actions: ticketShellMessageActions(context, notify.unread),
       ),
       body: Column(

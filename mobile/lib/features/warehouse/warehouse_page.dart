@@ -850,7 +850,7 @@ class _WarehousePageState extends State<WarehousePage> {
         HubEntryTile(
           icon: Icons.pending_actions_outlined,
           title: '领退入库待审',
-          subtitle: '部分退库 / 入库申请 · 过磅同意',
+          subtitle: '领料 / 退库 / 入库 · 分配板码复磅过账',
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const ProcessPendingApprovePage()),
           ),

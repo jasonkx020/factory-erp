@@ -233,6 +233,36 @@ func isWeighWarehouseAPI(resourceKey, action string) bool {
 	}
 }
 
+// isWeighQcAPI 质检仅判定：查过磅 + action:qc；不含入厂/分板。
+func isWeighQcAPI(resourceKey, action string) bool {
+	if resourceKey != "purchase/weigh-tickets" {
+		return false
+	}
+	switch action {
+	case "action:qc", "get", "list":
+		return true
+	default:
+		return false
+	}
+}
+
+// isWarehouseProductionPendingAPI 仓管待审队列：领料/退库/入库过账，不依赖「工序流水」权限。
+func isWarehouseProductionPendingAPI(resourceKey, action string) bool {
+	if !strings.HasPrefix(resourceKey, "production/process-issues") &&
+		!strings.HasPrefix(resourceKey, "production/process-stock-ins") {
+		return false
+	}
+	switch action {
+	case "list", "get",
+		"action:issue-approve", "action:issue-reject",
+		"action:return-approve", "action:return-reject",
+		"action:approve", "action:reject":
+		return true
+	default:
+		return false
+	}
+}
+
 func claimsHasWeighWarehousePerm(perms []string, write bool) bool {
 	if write {
 		return claimsHasCode(perms,
@@ -290,6 +320,17 @@ func CheckAPIPerm(c *gin.Context, resourceKey, action, method string) bool {
 	// 仓管扫码定位 / 确认入库：仓管角色，或持有仓管待入库/过磅收货权限
 	if isWeighWarehouseAPI(resourceKey, action) &&
 		(claimsHasAnyRole(claims, "warehouse", "仓管", "仓管员") || claimsHasWeighWarehousePerm(claims.Permissions, write)) {
+		return true
+	}
+	// 工序领退料/入库待审：仓管角色或仓管待入库权限，无需「生产管理:工序流水」
+	if isWarehouseProductionPendingAPI(resourceKey, action) &&
+		(claimsHasAnyRole(claims, "warehouse", "foreman", "admin", "仓管", "仓管员") ||
+			claimsHasWeighWarehousePerm(claims.Permissions, write)) {
+		return true
+	}
+	// 质检判定：可查过磅与提交 qc；入厂类 action 不走此旁路（仍由 warehouse 拦截）
+	if isWeighQcAPI(resourceKey, action) &&
+		claimsHasAnyRole(claims, "qc", "质检", "质检员", "purchase") {
 		return true
 	}
 	// App 现场过站：计件/固定/班组长角色可访问 scan / confirm / 我的计件

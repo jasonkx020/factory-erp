@@ -181,6 +181,32 @@ func (s *Services) loadBoardByCode(code string) (*boardState, string) {
 	return &b, ""
 }
 
+func boardTraceMismatchError(boardCode, boardTrace, expectedTrace string) *api.BusinessError {
+	return &api.BusinessError{
+		Msg: "TRACE_MISMATCH",
+		Data: gin.H{
+			"expected_trace_code": strings.ToUpper(strings.TrimSpace(expectedTrace)),
+			"board_trace_code":    strings.ToUpper(strings.TrimSpace(boardTrace)),
+			"board_code":          strings.TrimSpace(boardCode),
+		},
+	}
+}
+
+// assertBoardTraceForIssue ensures the scanned board belongs to the issue application's trace.
+func assertBoardTraceForIssue(board *boardState, expectedTrace string) *api.BusinessError {
+	if board == nil {
+		return &api.BusinessError{Msg: "BOX_NOT_FOUND"}
+	}
+	expected := strings.ToUpper(strings.TrimSpace(expectedTrace))
+	if expected == "" {
+		return nil
+	}
+	if strings.ToUpper(strings.TrimSpace(board.Trace)) != expected {
+		return boardTraceMismatchError(board.Code, board.Trace, expected)
+	}
+	return nil
+}
+
 func (s *Services) reloadBoardTx(tx *sql.Tx, id int64) (*boardState, string) {
 	var b boardState
 	err := tx.QueryRow(`SELECT id, COALESCE(code,''), COALESCE(product_id,0), COALESCE(warehouse_id,0),
@@ -221,14 +247,19 @@ func (s *Services) boardAvailableKg(boardID, processID int64, currentProcessID i
 func (s *Services) poolOpenKg(boardID, processID int64) float64 {
 	var v float64
 	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(issue_kg - returned_kg - completed_kg),0)
-		FROM pd_process_issue WHERE board_id=? AND process_id=? AND status='open' AND COALESCE(worker_id,0)=0`, boardID, processID).Scan(&v)
+		FROM pd_process_issue WHERE board_id=? AND process_id=? AND status='open'
+		  AND (COALESCE(worker_id,0)=0 OR COALESCE(biz_status,'')='work_done')
+		  AND COALESCE(biz_status,'') NOT IN ('issue_pending_warehouse','return_pending','issue_rejected')`,
+		boardID, processID).Scan(&v)
 	return roundKg(v)
 }
 
 func (s *Services) processOpenKg(boardID, processID int64) float64 {
 	var v float64
 	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(issue_kg - returned_kg - completed_kg),0)
-		FROM pd_process_issue WHERE board_id=? AND process_id=? AND status='open' AND COALESCE(worker_id,0)>0`, boardID, processID).Scan(&v)
+		FROM pd_process_issue WHERE board_id=? AND process_id=? AND status='open'
+		  AND COALESCE(worker_id,0)>0 AND COALESCE(biz_status,'') NOT IN ('work_done','issue_pending_warehouse','return_pending','issue_rejected')`,
+		boardID, processID).Scan(&v)
 	if v < kgEps {
 		return 0
 	}
@@ -428,8 +459,9 @@ func (s *Services) issueBoardKg(board *boardState, workerID, processID, stepID i
 
 func takePoolTx(tx *sql.Tx, boardID, processID int64, kg float64) string {
 	need := kg
-	rows, err := tx.Query(`SELECT id, issue_kg, returned_kg, completed_kg FROM pd_process_issue
-		WHERE board_id=? AND process_id=? AND status='open' AND COALESCE(worker_id,0)=0
+	wrows, err := tx.Query(`SELECT id, issue_kg, returned_kg, completed_kg FROM pd_process_issue
+		WHERE board_id=? AND process_id=? AND status='open'
+		  AND COALESCE(biz_status,'')='work_done' AND COALESCE(worker_id,0)>0
 		ORDER BY created_at, id`, boardID, processID)
 	if err != nil {
 		return "DB_ERROR:" + err.Error()
@@ -437,6 +469,45 @@ func takePoolTx(tx *sql.Tx, boardID, processID int64, kg float64) string {
 	type poolRow struct {
 		id                         int64
 		issue, returned, completed float64
+	}
+	wlist := []poolRow{}
+	for wrows.Next() {
+		var r poolRow
+		if err := wrows.Scan(&r.id, &r.issue, &r.returned, &r.completed); err != nil {
+			continue
+		}
+		wlist = append(wlist, r)
+	}
+	wrows.Close()
+	for _, r := range wlist {
+		if need <= kgEps {
+			break
+		}
+		rem := issueRemain(r.issue, r.returned, r.completed)
+		if rem <= kgEps {
+			_, _ = tx.Exec(`UPDATE pd_process_issue SET status='closed', updated_at=NOW() WHERE id=?`, r.id)
+			continue
+		}
+		take := math.Min(rem, need)
+		newDone := roundKg(r.completed + take)
+		st := "open"
+		if issueRemain(r.issue, r.returned, newDone) <= kgEps {
+			st = "closed"
+		}
+		if _, err := tx.Exec(`UPDATE pd_process_issue SET completed_kg=?, status=?, updated_at=NOW() WHERE id=?`, newDone, st, r.id); err != nil {
+			return "DB_ERROR:" + err.Error()
+		}
+		need = roundKg(need - take)
+	}
+	if need <= kgEps {
+		return ""
+	}
+	rows, err := tx.Query(`SELECT id, issue_kg, returned_kg, completed_kg FROM pd_process_issue
+		WHERE board_id=? AND process_id=? AND status='open' AND COALESCE(worker_id,0)=0
+		  AND COALESCE(biz_status,'') NOT IN ('issue_pending_warehouse','return_pending','issue_rejected')
+		ORDER BY created_at, id`, boardID, processID)
+	if err != nil {
+		return "DB_ERROR:" + err.Error()
 	}
 	list := []poolRow{}
 	for rows.Next() {
@@ -617,9 +688,14 @@ func (s *Services) boardProcessRemainKg(boardID, processID int64) float64 {
 func boardProcessRemainKgTx(tx *sql.Tx, boardID, processID int64, curProc int64, weight float64) float64 {
 	var occ, pool float64
 	_ = tx.QueryRow(`SELECT COALESCE(SUM(issue_kg - returned_kg - completed_kg),0)
-		FROM pd_process_issue WHERE board_id=? AND process_id=? AND status='open' AND COALESCE(worker_id,0)>0`, boardID, processID).Scan(&occ)
+		FROM pd_process_issue WHERE board_id=? AND process_id=? AND status='open'
+		  AND COALESCE(worker_id,0)>0 AND COALESCE(biz_status,'') NOT IN ('work_done','issue_pending_warehouse','return_pending','issue_rejected')`,
+		boardID, processID).Scan(&occ)
 	_ = tx.QueryRow(`SELECT COALESCE(SUM(issue_kg - returned_kg - completed_kg),0)
-		FROM pd_process_issue WHERE board_id=? AND process_id=? AND status='open' AND COALESCE(worker_id,0)=0`, boardID, processID).Scan(&pool)
+		FROM pd_process_issue WHERE board_id=? AND process_id=? AND status='open'
+		  AND (COALESCE(worker_id,0)=0 OR COALESCE(biz_status,'')='work_done')
+		  AND COALESCE(biz_status,'') NOT IN ('issue_pending_warehouse','return_pending','issue_rejected')`,
+		boardID, processID).Scan(&pool)
 	remain := roundKg(occ + pool)
 	if curProc == processID {
 		remain = roundKg(remain + weight)
@@ -866,6 +942,15 @@ func (s *Services) boardWarehouseKg(boardID int64) float64 {
 	}
 	var v float64
 	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(qty),0) FROM inv_balance WHERE box_code_id=?`, boardID).Scan(&v)
+	return roundKg(v)
+}
+
+func boardWarehouseKgTx(tx *sql.Tx, boardID int64) float64 {
+	if tx == nil || boardID <= 0 {
+		return 0
+	}
+	var v float64
+	_ = tx.QueryRow(`SELECT COALESCE(SUM(qty),0) FROM inv_balance WHERE box_code_id=?`, boardID).Scan(&v)
 	return roundKg(v)
 }
 

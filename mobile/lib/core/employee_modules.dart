@@ -1,3 +1,5 @@
+import 'role_codes.dart';
+
 /// Mirrors web/packages/shared employeeModules.ts
 /// 木薯产线试点：默认入口仅保留现场工序相关模块；其余成员供路由页权限校验使用。
 enum EmployeeModule {
@@ -59,11 +61,10 @@ bool canAccessEmployeeModule(EmployeeModule module, List<String> permissions, Li
           roles.contains('foreman') ||
           roles.contains('车间主任');
     case EmployeeModule.receiving:
-      return roles.contains('purchase') ||
-          roles.contains('采购员') ||
-          roles.contains('qc') ||
-          roles.contains('质检') ||
-          _matchAny(permissions, ['采购管理', '过磅', '农户', 'purchase', 'weigh']);
+      // 纯质检不开放采购建单（即便持有过磅收货查看权限）
+      if (rolesPreferQcShell(roles)) return false;
+      return rolesHasPurchase(roles) ||
+          _matchAny(permissions, ['采购管理:过磅收货', '采购管理:农户档案', '过磅收货:编辑', 'purchase', 'weigh']);
     case EmployeeModule.warehouse:
       return roles.contains('warehouse') ||
           roles.contains('仓管员') ||

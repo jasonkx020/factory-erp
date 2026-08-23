@@ -7,32 +7,34 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"erp/internal/api"
 )
 
 // resolveOrCreateBoardForTrace loads board by code or creates one hanging the given trace.
-func (s *Services) resolveOrCreateBoardForTrace(code, trace string, qty float64) (*boardState, string) {
+func (s *Services) resolveOrCreateBoardForTrace(code, trace string, qty float64) (*boardState, *api.BusinessError) {
 	code = strings.TrimSpace(code)
 	trace = strings.ToUpper(strings.TrimSpace(trace))
 	if code == "" {
-		return nil, "BOX_REQUIRED"
+		return nil, &api.BusinessError{Msg: "BOX_REQUIRED"}
 	}
 	if trace == "" {
-		return nil, "TRACE_CODE_REQUIRED"
+		return nil, &api.BusinessError{Msg: "TRACE_CODE_REQUIRED"}
 	}
 	board, errMsg := s.loadBoardByCode(code)
 	if errMsg == "" && board != nil {
 		bt := strings.ToUpper(strings.TrimSpace(board.Trace))
 		if bt != "" && bt != trace {
-			return nil, "TRACE_MISMATCH"
+			return nil, boardTraceMismatchError(code, board.Trace, trace)
 		}
 		if bt == "" {
 			_, _ = s.DB.Exec(`UPDATE inv_box_code SET trace_code=?, updated_at=NOW() WHERE id=?`, trace, board.ID)
 			board.Trace = trace
 		}
-		return board, ""
+		return board, nil
 	}
 	if errMsg != "" && errMsg != "BOX_NOT_FOUND" && !strings.Contains(errMsg, "NOT_FOUND") {
-		return nil, errMsg
+		return nil, &api.BusinessError{Msg: errMsg}
 	}
 	// Create new board for this trace
 	whID := int64(1)
@@ -53,7 +55,7 @@ func (s *Services) resolveOrCreateBoardForTrace(code, trace string, qty float64)
 		VALUES(?,?,?,?,?,?,?,'open')`,
 		code, productID, whID, time.Now().Format("20060102"), 0, 0, trace)
 	if err != nil {
-		return nil, "DB_ERROR:" + err.Error()
+		return nil, &api.BusinessError{Msg: "DB_ERROR:" + err.Error()}
 	}
 	id, _ := res.LastInsertId()
 	if id <= 0 {
@@ -61,9 +63,9 @@ func (s *Services) resolveOrCreateBoardForTrace(code, trace string, qty float64)
 	}
 	board, errMsg = s.loadBoardByCode(code)
 	if errMsg != "" {
-		return nil, errMsg
+		return nil, &api.BusinessError{Msg: errMsg}
 	}
-	return board, ""
+	return board, nil
 }
 
 // stockInTraceProcessKg completes open issues for (trace, process) including board_id=0, then stocks into board.
