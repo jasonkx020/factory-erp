@@ -50,6 +50,14 @@ func (s *Services) createProcessStockIn(c *gin.Context) bool {
 		api.FailJSON(c, fail)
 		return true
 	}
+	productID := asInt64Or0(body["product_id"])
+	if productID <= 0 {
+		productID = s.resolveStepOutputProduct(s.resolveRoutingIDForTrace(trace, 0), processID)
+	}
+	if fail := s.assertStockInProductForProcess(trace, productID, processID); fail != "" {
+		api.FailJSON(c, fail)
+		return true
+	}
 	if fail := s.requireReweighFields(body); fail != "" {
 		api.FailJSON(c, fail)
 		return true
@@ -202,6 +210,14 @@ func (s *Services) approveProcessStockIn(c *gin.Context) bool {
 	boardCode := strings.TrimSpace(strOrDef(body["board_code"], strOr(body["box_code"])))
 	trace := strings.ToUpper(strings.TrimSpace(strOr(row["trace_code"])))
 	processID := asInt64Or0(row["process_id"])
+	productID := asInt64Or0(body["product_id"])
+	if productID <= 0 {
+		productID = s.resolveStepOutputProduct(s.resolveRoutingIDForTrace(trace, 0), processID)
+	}
+	if fail := s.assertStockInProductForProcess(trace, productID, processID); fail != "" {
+		api.FailJSON(c, fail)
+		return true
+	}
 	if boardCode == "" {
 		api.FailJSON(c, "BOX_REQUIRED")
 		return true

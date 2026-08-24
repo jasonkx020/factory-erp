@@ -128,6 +128,11 @@ func EnsureFinanceSchema(db *sql.DB) {
 }
 
 func (s *Services) handleFinanceDomain(c *gin.Context, method, openapiPath, action string) bool {
+	if !strings.HasPrefix(openapiPath, "/api/v1/finance/cost-accountings") &&
+		!strings.HasPrefix(openapiPath, "/api/v1/finance/cost-traces") {
+		api.FailJSON(c, "FEATURE_REMOVED:finance_full_ledger")
+		return true
+	}
 	s.ensureFinanceCashColumns()
 	// keep supplier party guard for create
 	if s.handleFinancePartyGuard(c, method, openapiPath, action) {

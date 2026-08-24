@@ -39,9 +39,9 @@ func TestCheckAPIPerm(t *testing.T) {
 		t.Fatal("sales create without edit should deny")
 	}
 
-	c = mk([]string{"fin"}, []string{"财务管理:凭证管理:编辑"})
-	if !CheckAPIPerm(c, "finance/vouchers", "create", "POST") {
-		t.Fatal("finance edit should pass create")
+	c = mk([]string{"payroll"}, []string{"财务管理:成本核算:查看"})
+	if !CheckAPIPerm(c, "finance/cost-accountings", "list", "GET") {
+		t.Fatal("cost accounting view should pass list")
 	}
 
 	c = mk([]string{"sys_admin"}, nil)

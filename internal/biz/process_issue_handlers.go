@@ -355,6 +355,8 @@ func (s *Services) attachBoardPreview(dst gin.H, boardID int64, code string, pro
 	if step == nil && processName != "" {
 		dst["step_name"] = processName
 	}
+	routingID := s.resolveRoutingIDForTrace(trace, productID)
+	s.attachProcessProductPreview(dst, routingID, processID)
 	s.attachPieceworkLockPreview(dst, workerID, processID, stepID)
 }
 
@@ -367,6 +369,9 @@ func (s *Services) issueBoardKg(board *boardState, workerID, processID, stepID i
 	}
 	if board.Status == "finished" {
 		return nil, "BOARD_FINISHED"
+	}
+	if fail := s.assertBoardProductForProcess(board, processID); fail != "" {
+		return nil, fail
 	}
 	if issuedBy <= 0 {
 		issuedBy = workerID
@@ -1008,10 +1013,16 @@ func (s *Services) moveBoardKg(board *boardState, toWorkerID int64, kg float64, 
 	if fromStep != nil && fromStep.WarehouseID > 0 {
 		wh = fromStep.WarehouseID
 	}
+	outputPID := int64(0)
+	if fromStep != nil {
+		outputPID = fromStep.OutputProductID
+	} else if fromProcess > 0 {
+		outputPID = s.resolveStepOutputProduct(s.resolveRoutingIDForTrace(b.Trace, b.ProductID), fromProcess)
+	}
 	code, nid, serr := s.stockInNewBoardFrom(&boardState{
 		ID: b.ID, Code: b.Code, ProductID: b.ProductID, WarehouseID: b.WarehouseID,
 		TaskID: b.TaskID, WoID: b.WoID, Trace: b.Trace,
-	}, wh, fromProcess, fromStepID, kg)
+	}, wh, fromProcess, fromStepID, outputPID, kg)
 	if serr != nil {
 		msg := serr.Error()
 		if msg == "PRODUCT_REQUIRED" || msg == "TRACE_CODE_REQUIRED" || msg == "INVALID_QTY" {

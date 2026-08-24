@@ -39,144 +39,95 @@ func presetRoleGrant(roleCode string) presetGrant {
 	case "boss":
 		return presetGrant{
 			views: append(
-				append(
-					append(pair("统计报表",
-						"企业报表", "老板驾驶舱", "生产看板", "生产实况", "客户询价查询", "CRM统计", "日统计报表",
-						"毛利润统计", "质检报表", "账目统计", "出入库查询", "收发存明细", "跟进记录查询",
-						"销售重量统计", "产品销售查询", "系统物流查询", "成本利润表", "资产负债表", "现金流量表", "利润表",
-					), pair("财务管理",
-						"账目管理", "交易流水账", "收入支出明细", "订单管理", "小程序管理", "凭证管理", "发票管理",
-						"收款核单", "外币结汇", "结汇查询", "分摊撤销", "收款预警", "出纳对账", "预收预付管理",
-						"成本核算", "合同利润", "销售认款", "销售退货退单", "往来调整单", "财务审批", "资金管理",
-						"财务报表", "成本明细溯源表", "月度结转",
-					)...),
-					pair("销售管理", "销售订单", "询价管理", "历史报价查询", "订单复购", "数据排行榜")...,
+				pair("统计报表",
+					"生产看板", "生产实况", "三仓库存概览",
+					"日经营快照", "原料入场日报", "计件日结汇总",
+					"工序扣损收率分析", "收发存明细", "溯源批进度查询", "农户结算对账汇总",
+					"薪酬核算对账", "成本期间汇总",
 				),
-				pair("审批管理", "任务管理", "单据审核", "费用财务审批", "询价财务审批", "询价明细审批", "采购审批", "采购计划单审批", "考勤审批")...,
+				pair("财务管理", "成本核算", "成本明细溯源表")...,
 			),
-		}
-	case "sales":
-		return presetGrant{
 			edits: append(
-				pair("销售管理",
-					"销售订单", "自助下单", "询价管理", "合同管理", "修改订单", "发货审批", "预发货管理", "单据打印",
-					"订单复购", "数据排行榜", "销售锁价", "询价审批", "历史报价查询", "销售BOM", "我的订单", "成本预算", "报价计算器", "出厂结算",
-				),
-				pair("客户管理",
-					"CRM客户管理", "商机管理", "客户档案", "客户跟进", "资源分配", "保护机制", "释放机制",
-					"询价管理", "导入客户", "线索锁定", "线索隐藏", "任务提醒",
-				)...,
+				pair("工资管理", "工人信息管理", "工资批量管理", "工序工资", "薪酬核算", "员工工作台账"),
+				pair("系统管理", "批量核算工资")...,
 			),
 		}
 	case "purchase":
 		return presetGrant{
-			edits: append(
-				pair("采购管理",
-					"供应商管理", "农户档案", "过磅收货", "过磅品种", "溯源批号", "农户结算", "原料溯源", "采购申请",
-					"采购计划单", "采购入库", "来料质检", "采购退货", "采购分析", "历史价格查看", "采购任务管理",
-				),
-				pair("审批管理", "任务管理", "采购审批", "采购计划单审批")...,
+			edits: pair("采购管理",
+				"农户档案", "过磅收货", "过磅流程编排", "过磅品种", "溯源批号", "农户结算", "原料溯源", "来料质检",
 			),
 			views: pair("库存管理", "库存查询", "出入库记录汇总"),
 		}
 	case "warehouse":
 		return presetGrant{
-			edits: append(
-				pair("库存管理",
-					"库存查询", "仓管待入库", "地磅台账", "亏料预警", "过量预警", "入库质检", "仓库盘点", "车间盘点",
-					"仓库盘点记录", "销售退皮", "物料调拨耗用", "商品调价组装拆分", "物料转应付", "在途量统计",
-					"待用量统计", "可用量分析", "期初入库", "出入库记录汇总", "采购退货", "箱码管理",
-				),
-				pair("采购管理", "采购入库", "采购退货", "来料质检", "过磅收货")...,
+			edits: pair("库存管理",
+				"库存查询", "仓管待入库", "箱码管理", "出入库记录汇总",
+				"可用量分析", "亏料预警", "过量预警", "在途量统计", "待用量统计",
 			),
-			views: pair("产品管理", "产品档案"),
+			views: append(
+				pair("采购管理", "过磅收货"),
+				pair("产品管理", "产品档案")...,
+			),
 		}
 	case "planner":
 		return presetGrant{
 			edits: pair("生产管理",
-				"多单整合管理", "生产任务单", "图纸分发", "工序定义", "产线班次", "例外派岗", "灵活派发工单",
-				"过站记录", "计件工资", "计件领料表", "自动BOM", "MRP物料分析", "联动式领料", "车间工作台",
-				"工序在制", "委外加工", "受托加工生产流程管控", "一单多商品", "进度跟踪", "质检管理", "返修单", "废料管理", "退库未用完还仓",
+				"工序定义", "工艺流程", "产线班次", "例外派岗",
+				"工序流水", "计件工资", "工序在制", "溯源生产", "工序扣损", "退库未用完还仓",
 			),
 			views: append(
 				pair("库存管理", "库存查询", "可用量分析", "在途量统计", "待用量统计"),
 				pair("工资管理", "工序工资")...,
 			),
-			extraCodes: []string{"生产管理:生产派工:新增"},
 		}
 	case "foreman":
 		return presetGrant{
 			edits: pair("生产管理",
-				"生产任务单", "例外派岗", "灵活派发工单", "过站记录", "联动式领料", "车间工作台", "工序在制", "进度跟踪", "质检管理", "返修单",
+				"例外派岗", "工序流水", "工序在制", "溯源生产", "退库未用完还仓",
 			),
 			views: append(
 				pair("库存管理", "库存查询"),
 				pair("工资管理", "工序工资", "员工工作台账")...,
 			),
-			extraCodes: []string{"生产管理:扫码报工:新增", "生产管理:扫码报工:查看", "生产管理:联动式领料:新增", "生产管理:生产派工:新增"},
 		}
 	case "piece":
 		return presetGrant{
-			edits:      pair("生产管理", "过站记录", "联动式领料"),
-			views:      pair("工资管理", "工序工资"),
-			extraCodes: []string{"生产管理:扫码报工:新增", "生产管理:扫码报工:查看", "生产管理:联动式领料:新增"},
+			edits: pair("生产管理", "工序流水"),
+			views: pair("工资管理", "工序工资"),
 		}
 	case "fixed":
 		return presetGrant{
-			edits:      pair("生产管理", "过站记录"),
-			views:      pair("生产管理", "质检管理"),
-			extraCodes: []string{"生产管理:扫码报工:新增", "生产管理:扫码报工:查看"},
+			edits: pair("生产管理", "工序流水"),
+			views: pair("生产管理", "溯源生产"),
 		}
 	case "qc":
 		return presetGrant{
-			edits: append(
-				pair("采购管理", "来料质检"),
-				pair("库存管理", "入库质检")...,
-			),
-			views: append(
-				append(
-					pair("采购管理", "过磅收货"),
-					pair("生产管理", "质检管理")...,
-				),
-				pair("统计报表", "质检报表")...,
-			),
+			edits: pair("采购管理", "来料质检"),
+			views: pair("采购管理", "过磅收货", "原料溯源"),
 		}
 	case "hr":
 		return presetGrant{
-			edits: pair("人事管理",
-				"员工档案", "公司架构", "角色管理", "入职登记", "离职登记", "人事调动", "工具领还",
-				"考勤管理", "班次管理", "绩效管理", "请假管理", "考勤明细", "加班补卡统计", "考勤月度统计",
-				"考勤绩效汇总", "外访明细", "备忘录管理", "员工日志",
-			),
-			views: pair("审批管理", "任务管理", "考勤审批"),
+			edits: pair("人事管理", "员工档案", "公司架构", "角色管理"),
 		}
 	case "payroll":
 		return presetGrant{
 			edits: append(
-				pair("工资管理", "工人信息管理", "工资批量管理", "工序工资", "薪酬核算", "员工工作台账", "销售提成"),
+				pair("工资管理", "工人信息管理", "工资批量管理", "工序工资", "薪酬核算", "员工工作台账"),
 				pair("系统管理", "批量核算工资")...,
+			),
+			views: append(
+				pair("财务管理", "成本核算", "成本明细溯源表"),
+				pair("统计报表", "薪酬核算对账", "计件日结汇总")...,
 			),
 		}
 	case "finance":
 		return presetGrant{
-			edits: append(
-				pair("财务管理",
-					"账目管理", "交易流水账", "收入支出明细", "订单管理", "小程序管理", "凭证管理", "发票管理", "收款核单",
-					"外币结汇", "结汇查询", "分摊撤销", "收款预警", "出纳对账", "预收预付管理", "成本核算", "合同利润",
-					"销售认款", "销售退货退单", "往来调整单", "财务审批", "资金管理", "财务报表", "成本明细溯源表", "月度结转",
-				),
-				pair("审批管理", "任务管理", "费用财务审批", "询价财务审批", "询价明细审批")...,
-			),
-			views:      pair("工资管理", "工资批量管理", "薪酬核算", "员工工作台账"),
-			extraCodes: []string{"审批管理:任务管理:审批"},
-		}
-	case "customer":
-		return presetGrant{
-			edits: pair("销售管理", "询价管理", "自助下单", "我的订单", "订单复购", "报价计算器"),
 			views: append(
-				pair("销售管理", "历史报价查询", "销售锁价", "合同管理", "发货审批", "预发货管理"),
-				pair("产品管理", "产品档案")...,
+				pair("财务管理", "成本核算", "成本明细溯源表"),
+				pair("统计报表", "日经营快照", "成本期间汇总", "农户结算对账汇总")...,
 			),
+			edits: pair("工资管理", "工资批量管理", "薪酬核算", "员工工作台账"),
 		}
 	default:
 		return presetGrant{}
@@ -189,8 +140,6 @@ func demoRoleUserSeeds() []demoRoleUser {
 			"HQ01", nil, "", "系统管理员", "13800001001", "450103198001011011", "EMP-ADMIN", "6222080000000001", "450103198001011", 0, "fixed", 1},
 		{"u_boss", "E-BS", "韦建国", "office", "boss", "统计报表",
 			"HQ01", nil, "", "总经理", "13800001018", "450103197501011018", "EMP-BS", "6222080000000018", "450103197501011", 12000, "fixed", 2},
-		{"u_sales", "E-SL", "周海燕", "sales", "sales", "销售管理",
-			"D-SALES", nil, "", "销售员", "13800001016", "450103199203151016", "EMP-SL", "6222080000000016", "450103199203151", 4500, "fixed", 3},
 		{"u_purchase", "E-PUR", "李采购", "office", "purchase", "采购管理",
 			"D-PUR", nil, "", "采购员", "13800001010", "450103199104121010", "EMP-PUR", "6222080000000010", "450103199104121", 4800, "fixed", 3},
 		{"u_warehouse", "E-WH", "黄仓管", "warehouse", "warehouse", "库存管理",
@@ -225,7 +174,6 @@ func EnsureDemoRoleUsers(db *sql.DB) {
 	for _, u := range demoRoleUserSeeds() {
 		ensureOneDemoRoleUser(db, u)
 	}
-	ensureDemoCustomerPortal(db)
 	SeedOpenShiftForToday(db)
 	log.Printf("demo role users ensured (password=admin123)")
 }
@@ -372,48 +320,4 @@ func bindDomainPerms(db *sql.DB, roleID int64, domain string) {
 		_, _ = db.Exec(`INSERT INTO iam_role_permission(role_id, permission_id) VALUES(?,?)
 ON CONFLICT (role_id, permission_id) DO NOTHING`, roleID, pid)
 	}
-}
-
-// ensureDemoCustomerPortal creates Portal demo login cust01 bound to a CRM customer.
-func ensureDemoCustomerPortal(db *sql.DB) {
-	if db == nil {
-		return
-	}
-	_, _ = db.Exec(`INSERT INTO iam_role(code, name, data_scope_type, is_system, remark, status)
-		VALUES('customer','客户自助','self',1,'Portal 客户自助账号','active')
-		ON CONFLICT (code) DO UPDATE SET name=EXCLUDED.name, remark=EXCLUDED.remark, status='active', is_deleted=0`)
-
-	var customerID int64
-	_ = db.QueryRow(`SELECT id FROM crm_customer WHERE COALESCE(is_deleted,0)=0 AND code='CU-DEMO-11' LIMIT 1`).Scan(&customerID)
-	if customerID == 0 {
-		_ = db.QueryRow(`SELECT id FROM crm_customer WHERE COALESCE(is_deleted,0)=0 AND code='CU-PORTAL-01' LIMIT 1`).Scan(&customerID)
-	}
-	if customerID == 0 {
-		_ = db.QueryRow(`SELECT id FROM crm_customer WHERE COALESCE(is_deleted,0)=0 AND status='active' ORDER BY id LIMIT 1`).Scan(&customerID)
-	}
-	if customerID == 0 {
-		_, _ = db.Exec(`INSERT INTO crm_customer(code, name, short_name, contact_name, mobile, address, level, source, status, is_public_sea, is_locked, is_hidden, settle_method, payment_days, credit_limit, remark)
-			VALUES('CU-PORTAL-01','门户演示客户','门户客户','王采购','13900001901','南宁','A','门户','active',0,0,0,'月结',30,50000,'客户自助演示')
-			ON CONFLICT (code) DO NOTHING`)
-		_ = db.QueryRow(`SELECT id FROM crm_customer WHERE code='CU-PORTAL-01' LIMIT 1`).Scan(&customerID)
-	}
-	if customerID == 0 {
-		return
-	}
-
-	_, _ = db.Exec(`INSERT INTO iam_user(login_name, password_hash, employee_id, customer_id, user_type, status, is_deleted)
-		VALUES('cust01',?,NULL,?,'customer','active',0)
-		ON CONFLICT (login_name) DO UPDATE SET
-			password_hash=EXCLUDED.password_hash, customer_id=EXCLUDED.customer_id, user_type='customer',
-			status='active', is_deleted=0, employee_id=NULL`, demoPasswordHash, customerID)
-
-	var userID, roleID int64
-	_ = db.QueryRow(`SELECT id FROM iam_user WHERE login_name='cust01' LIMIT 1`).Scan(&userID)
-	roleID = lookupRoleID(db, "customer")
-	if userID == 0 || roleID == 0 {
-		return
-	}
-	_, _ = db.Exec(`INSERT INTO iam_user_role(user_id, role_id) VALUES(?,?)
-ON CONFLICT (user_id, role_id) DO NOTHING`, userID, roleID)
-	bindPresetRolePerms(db, roleID, "customer")
 }

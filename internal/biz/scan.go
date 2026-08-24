@@ -113,6 +113,18 @@ func (s *Services) handleScan(c *gin.Context, resolveOnly bool) bool {
 
 	reqProcessID, _ := asInt64(body["process_id"])
 	reqStepID, _ := asInt64(body["step_id"])
+	var traceCode string
+	_ = s.DB.QueryRow(`SELECT COALESCE(trace_code,'') FROM inv_box_code WHERE id=?`, boxID).Scan(&traceCode)
+	suggestedProcessID := int64(0)
+	if reqProcessID <= 0 {
+		routingID := s.resolveRoutingIDForTrace(traceCode, productID)
+		if routingID > 0 && productID > 0 {
+			suggestedProcessID = s.resolveNextProcessByProduct(routingID, productID)
+			if suggestedProcessID > 0 {
+				reqProcessID = suggestedProcessID
+			}
+		}
+	}
 	if reqProcessID <= 0 {
 		api.FailJSON(c, "PROCESS_REQUIRED")
 		return true
@@ -145,6 +157,13 @@ func (s *Services) handleScan(c *gin.Context, resolveOnly bool) bool {
 		"process_id": processID, "step_id": stepID, "task_id": taskID,
 		"work_order_id": woID, "dispatch_id": dispatchID, "net_weight": qty,
 		"input_weight": inputWeight, "output_weight": outputWeight, "loss": loss, "utilization": utilization,
+	}
+	if suggestedProcessID > 0 {
+		preview["suggested_process_id"] = suggestedProcessID
+		routingID := s.resolveRoutingIDForTrace(traceCode, productID)
+		if st := s.stepByProcess(routingID, suggestedProcessID); st != nil {
+			preview["suggested_step_id"] = st.ID
+		}
 	}
 	if step := s.loadStep(stepID); step != nil {
 		preview["step_name"] = step.StepName
@@ -217,15 +236,24 @@ func (s *Services) firstStep(routingID int64) *routingStep {
 	return s.loadStep(id)
 }
 
-// resolveInboundEntryStep 按产品绑定的 active 工艺取首步；无产品/无工艺则失败（不静默回退成品线）。
-func (s *Services) resolveInboundEntryStep(productID int64) (processID, stepID, warehouseID int64, errMsg string) {
+// resolveInboundEntryStep locates the routing step for inbound by product (trace-locked routing preferred).
+func (s *Services) resolveInboundEntryStep(productID int64, traceCode ...string) (processID, stepID, warehouseID int64, errMsg string) {
 	if productID <= 0 {
 		return 0, 0, 0, "PRODUCT_REQUIRED"
 	}
-	var rid int64
-	_ = s.DB.QueryRow(`SELECT id FROM pd_routing WHERE product_id=? AND status='active' AND COALESCE(is_deleted,0)=0 ORDER BY id DESC LIMIT 1`, productID).Scan(&rid)
+	trace := ""
+	if len(traceCode) > 0 {
+		trace = strings.ToUpper(strings.TrimSpace(traceCode[0]))
+	}
+	rid := s.resolveRoutingIDForTrace(trace, productID)
+	if rid <= 0 {
+		_ = s.DB.QueryRow(`SELECT id FROM pd_routing WHERE product_id=? AND status='active' AND COALESCE(is_deleted,0)=0 ORDER BY id DESC LIMIT 1`, productID).Scan(&rid)
+	}
 	if rid <= 0 {
 		return 0, 0, 0, "ROUTING_REQUIRED"
+	}
+	if step := s.resolveInboundStepByProduct(rid, productID); step != nil {
+		return step.ProcessID, step.ID, step.WarehouseID, ""
 	}
 	step := s.firstStep(rid)
 	if step == nil {

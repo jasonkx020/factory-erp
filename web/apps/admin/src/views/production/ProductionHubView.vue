@@ -327,6 +327,11 @@ const traceProdWip = ref<Row | null>(null)
 const traceProdReport = ref<Row | null>(null)
 const traceProdCode = ref('')
 const traceProdBusy = ref(false)
+const traceStartDialogVisible = ref(false)
+const traceStartOptions = ref<Row[]>([])
+const traceStartProductName = ref('')
+const traceStartSelectedRoutingId = ref<number | null>(null)
+const traceStartSuggestedId = ref<number | null>(null)
 
 function traceStepStatusLabel(st: unknown): string {
   switch (String(st || '')) {
@@ -755,6 +760,69 @@ async function loadTraceProdWip() {
   if (traceProdWip.value?.ui_status === 'ended') {
     await loadTraceProdReport()
   }
+}
+
+async function openTraceStartDialog() {
+  const code = String(traceProdCode.value || '').trim()
+  if (!code) return ElMessage.warning('请输入溯源码')
+  traceProdBusy.value = true
+  const res = await productionApi.traceProductionRoutingOptions(code)
+  traceProdBusy.value = false
+  if (res.code !== 1) return ElMessage.error(res.msg || '加载工艺选项失败')
+  const d = (res.data || {}) as Row
+  traceStartOptions.value = (d.routing_options as Row[]) || []
+  traceStartProductName.value = String(d.product_name || '')
+  const suggested = Number(d.suggested_routing_id || 0)
+  traceStartSuggestedId.value = suggested > 0 ? suggested : null
+  traceStartSelectedRoutingId.value =
+    suggested > 0 ? suggested : (traceStartOptions.value[0]?.id as number | undefined) ?? null
+  if (!traceStartOptions.value.length) {
+    return ElMessage.warning('该原料产品暂无可用工艺，请先在「工艺流程」配置')
+  }
+  traceStartDialogVisible.value = true
+}
+
+const traceStartPreviewSteps = computed(() => {
+  const rid = traceStartSelectedRoutingId.value
+  const opt = traceStartOptions.value.find((o) => Number(o.id) === Number(rid))
+  return (opt?.steps_preview as string[]) || []
+})
+
+async function confirmTraceStart() {
+  const code = String(traceProdCode.value || '').trim()
+  const routingId = traceStartSelectedRoutingId.value
+  if (!code) return ElMessage.warning('请输入溯源码')
+  if (!routingId) return ElMessage.warning('请选择工艺流程')
+  traceProdBusy.value = true
+  const res = await productionApi.startTraceProduction({ trace_code: code, routing_id: routingId })
+  traceProdBusy.value = false
+  if (res.code !== 1) return ElMessage.error(res.msg || '进入生产失败')
+  traceStartDialogVisible.value = false
+  ElMessage.success('已进入生产，工艺路线已锁定')
+  await loadTraceProdWip()
+  await refresh()
+}
+
+async function startTraceProduction() {
+  await openTraceStartDialog()
+}
+
+function traceProdTimelineSteps(): Row[] {
+  const wip = traceProdWip.value
+  if (!wip) return []
+  const routing = (wip.routing_steps as Row[]) || []
+  if (routing.length) return routing
+  return (wip.steps as Row[]) || []
+}
+
+function canCompleteTraceStep(row: Row): boolean {
+  const wip = traceProdWip.value
+  if (!wip || wip.ui_status !== 'in_production') return false
+  const action = String(row.action || row.step_status || '')
+  if (action === 'complete' || row.step_status === 'ready') {
+    return Number(wip.can_complete_process_id) === Number(row.process_id)
+  }
+  return false
 }
 
 async function loadTraceProdReport() {
@@ -1997,17 +2065,46 @@ onMounted(async () => {
         </TableOrCards>
         <el-card v-if="traceProdWip" v-loading="traceProdBusy" class="mt mb">
           <template #header>
-            工序时间线 · {{ traceProdWip.trace_code }} ·
-            {{ traceProdWip.ui_status === 'in_production' ? '生产中' : traceProdWip.ui_status === 'ended' ? '已结束' : '库中' }}
-            <span v-if="traceProdWip.product_name" class="hint"> · {{ traceProdWip.product_name }}</span>
+            <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+              <span>
+                工序时间线 · {{ traceProdWip.trace_code }} ·
+                {{ traceProdWip.ui_status === 'in_production' ? '生产中' : traceProdWip.ui_status === 'ended' ? '已结束' : '库中' }}
+                <span v-if="traceProdWip.product_name" class="hint"> · {{ traceProdWip.product_name }}</span>
+                <span v-if="traceProdWip.routing_code || traceProdWip.routing_name" class="hint">
+                  · 工艺 {{ traceProdWip.routing_code }}<template v-if="traceProdWip.routing_name"> · {{ traceProdWip.routing_name }}</template>
+                </span>
+              </span>
+              <span>
+                <el-button
+                  v-if="traceProdWip.ui_status === 'in_stock'"
+                  type="primary"
+                  size="small"
+                  :loading="traceProdBusy"
+                  @click="startTraceProduction"
+                >进入生产</el-button>
+                <el-tag v-else-if="traceProdWip.ui_status === 'in_production'" type="warning" size="small">生产中</el-tag>
+                <el-tag v-else-if="traceProdWip.ui_status === 'ended'" type="success" size="small">已结案</el-tag>
+              </span>
+            </div>
           </template>
           <p class="form-tip">
             可领 {{ Number(traceProdWip.total_available_kg||0).toFixed(2) }} · 占用 {{ Number(traceProdWip.total_occupied_kg||0).toFixed(2) }}
-            <span v-if="(traceProdWip.routing_steps as Row[]|undefined)?.length"> · 全部工序结束后自动结案</span>
+            <span v-if="traceProdTimelineSteps().length"> · 全部工序结束后自动结案</span>
+            <span v-else> · 未配置工艺路线，请先在「工艺流程」绑定产品工艺</span>
           </p>
-          <el-table :data="((traceProdWip.routing_steps as Row[])?.length ? traceProdWip.routing_steps : traceProdWip.steps) as Row[]" size="small" border>
+          <el-alert
+            v-if="traceProdWip.ui_status === 'in_stock'"
+            type="info"
+            :closable="false"
+            show-icon
+            class="mb"
+            title="请先点击「进入生产」，再按工序顺序结束各工序"
+          />
+          <el-table :data="traceProdTimelineSteps()" size="small" border>
             <el-table-column prop="seq_no" label="#" width="50" />
             <el-table-column prop="process_name" label="工序" min-width="120" />
+            <el-table-column prop="input_product_name" label="领取产物" min-width="110" />
+            <el-table-column prop="output_product_name" label="产出产物" min-width="110" />
             <el-table-column label="状态" width="90">
               <template #default="{ row }">
                 <el-tag v-if="row.step_status" size="small" :type="traceStepStatusType(row.step_status)">{{ traceStepStatusLabel(row.step_status) }}</el-tag>
@@ -2026,13 +2123,22 @@ onMounted(async () => {
             <el-table-column label="扣损" width="80">
               <template #default="{ row }">{{ row.loss_kg != null ? Number(row.loss_kg).toFixed(2) : '—' }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="110">
+            <el-table-column label="操作" width="150">
               <template #default="{ row }">
                 <el-button
-                  v-if="row.step_status === 'ready' && Number(traceProdWip.can_complete_process_id) === Number(row.process_id)"
+                  v-if="canCompleteTraceStep(row)"
                   type="primary" link size="small"
                   @click="completeTraceProcessStep(Number(row.process_id))"
                 >结束本工序</el-button>
+                <el-tooltip
+                  v-else-if="(row.step_status === 'ready' || row.action === 'complete') && traceProdWip.ui_status !== 'in_production'"
+                  content="请先点击「进入生产」"
+                >
+                  <el-button type="primary" link size="small" disabled>结束本工序</el-button>
+                </el-tooltip>
+                <span v-else-if="row.step_status === 'done' || row.action === 'done'" class="muted">已完成</span>
+                <span v-else-if="row.step_status === 'in_progress' || row.action === 'in_progress'" class="hint">{{ row.action_hint || '在制中' }}</span>
+                <span v-else class="muted">{{ row.action_hint || '待做' }}</span>
               </template>
             </el-table-column>
           </el-table>
@@ -2077,9 +2183,34 @@ onMounted(async () => {
             </el-tab-pane>
           </el-tabs>
         </el-card>
+        <el-dialog v-model="traceStartDialogVisible" title="选择工艺流程" width="520px" destroy-on-close>
+          <p class="form-tip mb">
+            溯源码 <strong>{{ traceProdCode }}</strong>
+            <span v-if="traceStartProductName"> · 原料 {{ traceStartProductName }}</span>
+          </p>
+          <el-form label-width="88px">
+            <el-form-item label="工艺流程" required>
+              <el-select v-model="traceStartSelectedRoutingId" placeholder="选择工艺" style="width:100%">
+                <el-option
+                  v-for="opt in traceStartOptions"
+                  :key="Number(opt.id)"
+                  :label="`${opt.code} · ${opt.name}（${opt.step_count} 道工序）`"
+                  :value="Number(opt.id)"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="traceStartPreviewSteps.length" label="工序预览">
+              <el-tag v-for="(s, i) in traceStartPreviewSteps" :key="i" size="small" class="mr" style="margin:2px">
+                {{ i + 1 }}. {{ s }}
+              </el-tag>
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="traceStartDialogVisible = false">取消</el-button>
+            <el-button type="primary" :loading="traceProdBusy" @click="confirmTraceStart">确认进入生产</el-button>
+          </template>
+        </el-dialog>
       </template>
-
-      <!-- 工序扣损：按溯源批号汇总，结束溯源生产后按溯源汇总扣损 -->
       <template v-else-if="active==='process-yield'">
         <div class="row mb">
           <el-input v-model="yieldTraceCode" clearable placeholder="溯源码" style="width:180px" @keyup.enter="refresh" />

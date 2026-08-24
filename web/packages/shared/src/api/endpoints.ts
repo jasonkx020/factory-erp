@@ -196,6 +196,8 @@ export const productionApi = {
     api.get<PageData>(params ? `/production/trace-productions?${params}` : '/production/trace-productions'),
   traceProductionWip: (code: string) =>
     api.get(`/production/trace-productions/${encodeURIComponent(code)}/wip`),
+  traceProductionRoutingOptions: (code: string) =>
+    api.get(`/production/trace-productions/${encodeURIComponent(code)}/routing-options`),
   traceProductionReport: (code: string) =>
     api.get(`/production/trace-productions/${encodeURIComponent(code)}/report`),
   startTraceProduction: (body: Record<string, unknown>) =>
@@ -907,10 +909,25 @@ export const reportApi = {
     api.put('/report/dashboards/boss/widgets', body),
   production: () => api.get('/report/dashboards/production'),
   live: () => api.get('/report/dashboards/live'),
+  warehouse: () => api.get('/report/dashboards/warehouse'),
   enterprise: () => api.get<PageData>('/report/enterprise'),
   enterpriseByCode: (code: string) => api.get(`/report/enterprise/${code}`),
   daily: (bizDate?: string) =>
     api.get('/report/daily' + (bizDate ? `?biz_date=${encodeURIComponent(bizDate)}` : '')),
+  inboundDaily: (bizDate?: string) =>
+    api.get('/report/inbound-daily' + (bizDate ? `?biz_date=${encodeURIComponent(bizDate)}` : '')),
+  pieceworkDaily: (bizDate?: string) =>
+    api.get('/report/piecework-daily' + (bizDate ? `?biz_date=${encodeURIComponent(bizDate)}` : '')),
+  yieldAnalysis: (bizDate?: string) =>
+    api.get('/report/yield-analysis' + (bizDate ? `?biz_date=${encodeURIComponent(bizDate)}` : '')),
+  traceProgress: (status?: string) =>
+    api.get('/report/trace-progress' + (status ? `?status=${encodeURIComponent(status)}` : '')),
+  farmerSettlementSummary: (bizDate?: string) =>
+    api.get('/report/farmer-settlement-summary' + (bizDate ? `?biz_date=${encodeURIComponent(bizDate)}` : '')),
+  payrollReconcile: (period?: string) =>
+    api.get('/report/payroll-reconcile' + (period ? `?period=${encodeURIComponent(period)}` : '')),
+  costPeriodSummary: (period?: string) =>
+    api.get('/report/cost-period-summary' + (period ? `?period=${encodeURIComponent(period)}` : '')),
   crmStats: () => api.get('/report/crm-stats'),
   inquiries: () => api.get<PageData>('/report/inquiry-queries'),
   followUps: () => api.get<PageData>('/report/follow-ups'),

@@ -31,6 +31,7 @@ func RegisterProductionExtra(r *gin.RouterGroup, h Handler) {
 	r.GET("/production/trace-productions", h.Dispatch("GET", "/api/v1/production/trace-productions", "/production/trace-productions", "production/trace-productions", "list"))
 	r.GET("/production/trace-productions/logs", h.Dispatch("GET", "/api/v1/production/trace-productions/logs", "/production/trace-productions/logs", "production/trace-productions", "list"))
 	r.GET("/production/trace-productions/:code/wip", h.Dispatch("GET", "/api/v1/production/trace-productions/{code}/wip", "/production/trace-productions/:code/wip", "production/trace-productions", "get"))
+	r.GET("/production/trace-productions/:code/routing-options", h.Dispatch("GET", "/api/v1/production/trace-productions/{code}/routing-options", "/production/trace-productions/:code/routing-options", "production/trace-productions", "get"))
 	r.GET("/production/trace-productions/:code/report", h.Dispatch("GET", "/api/v1/production/trace-productions/{code}/report", "/production/trace-productions/:code/report", "production/trace-productions", "get"))
 	r.GET("/production/trace-productions/:code/material-locations", h.Dispatch("GET", "/api/v1/production/trace-productions/{code}/material-locations", "/production/trace-productions/:code/material-locations", "production/trace-productions", "get"))
 	r.POST("/production/trace-productions/start", h.Dispatch("POST", "/api/v1/production/trace-productions/start", "/production/trace-productions/start", "production/trace-productions", "action:start"))

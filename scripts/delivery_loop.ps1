@@ -31,12 +31,10 @@ $manual = @(
   "",
   "## Manual walkthrough (required before sign-off)",
   "",
-  "- [ ] u_piece: 过站 → 确认 → 我的核对",
-  "- [ ] u_fixed: 过站（无计件金额）",
-  "- [ ] u_purchase/u_qc: 过磅收货",
-  "- [ ] u_warehouse: 待入库",
-  "- [ ] u_foreman: 班组（无每箱派工）",
-  "- [ ] admin: 生产 Hub 无报工创建表单"
+  "- [ ] u_warehouse: 待入库 + 超可用量拦截",
+  "- [ ] u_foreman/u_planner: 溯源生产 → 领料",
+  "- [ ] u_payroll: 计件日结 + 农户结算",
+  "- [ ] admin: 侧栏仅产线白名单模块"
 )
 
 $lines = @(

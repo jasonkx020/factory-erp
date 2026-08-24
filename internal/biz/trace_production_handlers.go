@@ -100,6 +100,8 @@ func (s *Services) handleTraceProduction(c *gin.Context, method, openapiPath, ac
 		return s.getTraceProductionReport(c)
 	case method == "GET" && strings.Contains(openapiPath, "/material-locations"):
 		return s.getTraceMaterialLocations(c)
+	case method == "GET" && strings.Contains(openapiPath, "/routing-options"):
+		return s.getTraceProductionRoutingOptions(c)
 	case method == "GET" && (strings.Contains(openapiPath, "/wip") || strings.HasSuffix(openapiPath, "/wip")):
 		return s.getTraceProductionWip(c)
 	case method == "GET" && (action == "list" || openapiPath == "/api/v1/production/trace-productions"):
@@ -126,7 +128,7 @@ func (s *Services) handleTraceProduction(c *gin.Context, method, openapiPath, ac
 }
 
 func (s *Services) startTraceProduction(c *gin.Context) bool {
-	if !s.requireAnyRole(c, "foreman") {
+	if !s.requireAnyRole(c, "foreman", "planner", "admin") {
 		return true
 	}
 	body := bindBody(c)
@@ -135,28 +137,69 @@ func (s *Services) startTraceProduction(c *gin.Context) bool {
 		api.FailJSON(c, "TRACE_CODE_REQUIRED")
 		return true
 	}
+	routingID := asInt64Or0(body["routing_id"])
 	var exist int64
 	_ = s.DB.QueryRow(`SELECT id FROM pd_trace_production WHERE UPPER(trace_code)=? AND status='in_progress'`, trace).Scan(&exist)
 	if exist > 0 {
 		api.OK(c, s.loadTraceProduction(exist))
 		return true
 	}
+	productID, fail := s.validateTraceRoutingStart(trace, routingID)
+	if fail != "" {
+		api.FailJSON(c, fail)
+		return true
+	}
+	rCode, rName, _ := s.loadRoutingMeta(routingID)
 	uid := claimsUserID(c)
-	res, err := s.DB.Exec(`INSERT INTO pd_trace_production(trace_code, status, started_by, remark)
-		VALUES(?,'in_progress',?,?)`, trace, uid, strOr(body["remark"]))
+	remark := strOr(body["remark"])
+	if rCode != "" {
+		if remark != "" {
+			remark += " | "
+		}
+		remark += "routing=" + rCode
+		if rName != "" {
+			remark += "(" + rName + ")"
+		}
+	}
+	res, err := s.DB.Exec(`INSERT INTO pd_trace_production(trace_code, status, started_by, routing_id, product_id, remark)
+		VALUES(?,'in_progress',?,?,?,?)`, trace, uid, routingID, productID, remark)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
 		return true
 	}
 	id, _ := res.LastInsertId()
 	_, _ = s.DB.Exec(`INSERT INTO pd_trace_process_log(session_id, trace_code, event_type, actor_user_id, remark)
-		VALUES(?,?,?,?,?)`, id, trace, "session_start", uid, strOr(body["remark"]))
+		VALUES(?,?,?,?,?)`, id, trace, "session_start", uid, remark)
 	api.OK(c, s.loadTraceProduction(id))
 	return true
 }
 
+func (s *Services) getTraceProductionRoutingOptions(c *gin.Context) bool {
+	trace := strings.ToUpper(strings.TrimSpace(c.Param("code")))
+	if trace == "" {
+		trace = strings.ToUpper(strings.TrimSpace(c.Query("trace_code")))
+	}
+	if trace == "" {
+		api.FailJSON(c, "TRACE_CODE_REQUIRED")
+		return true
+	}
+	productID := s.resolveTraceProductID(trace)
+	if productID <= 0 {
+		api.FailJSON(c, "PRODUCT_REQUIRED")
+		return true
+	}
+	_, pname, _ := s.productMeta(productID)
+	options := s.listRoutingsForProduct(productID)
+	suggested := s.resolveRoutingID(0, productID)
+	api.OK(c, gin.H{
+		"trace_code": trace, "product_id": productID, "product_name": pname,
+		"suggested_routing_id": suggested, "routing_options": options,
+	})
+	return true
+}
+
 func (s *Services) completeTraceProduction(c *gin.Context) bool {
-	if !s.requireAnyRole(c, "foreman") {
+	if !s.requireAnyRole(c, "foreman", "planner", "admin") {
 		return true
 	}
 	body := bindBody(c)
@@ -303,20 +346,33 @@ func (s *Services) loadTraceProduction(id int64) gin.H {
 	if id <= 0 {
 		return nil
 	}
-	var startedBy, completedBy int64
+	var startedBy, completedBy, routingID, productID int64
 	var trace, status, remark, startedAt, completedAt string
 	var loss, inKg, outKg float64
 	err := s.DB.QueryRow(`SELECT id, trace_code, status, started_by, completed_by, COALESCE(CAST(started_at AS TEXT),''), COALESCE(CAST(completed_at AS TEXT),''),
-		COALESCE(remark,''), loss_rate, input_kg, output_kg FROM pd_trace_production WHERE id=?`, id).
-		Scan(&id, &trace, &status, &startedBy, &completedBy, &startedAt, &completedAt, &remark, &loss, &inKg, &outKg)
+		COALESCE(remark,''), loss_rate, input_kg, output_kg, COALESCE(routing_id,0), COALESCE(product_id,0) FROM pd_trace_production WHERE id=?`, id).
+		Scan(&id, &trace, &status, &startedBy, &completedBy, &startedAt, &completedAt, &remark, &loss, &inKg, &outKg, &routingID, &productID)
 	if err != nil {
-		return nil
+		// Fallback for DB without new columns yet.
+		err = s.DB.QueryRow(`SELECT id, trace_code, status, started_by, completed_by, COALESCE(CAST(started_at AS TEXT),''), COALESCE(CAST(completed_at AS TEXT),''),
+			COALESCE(remark,''), loss_rate, input_kg, output_kg FROM pd_trace_production WHERE id=?`, id).
+			Scan(&id, &trace, &status, &startedBy, &completedBy, &startedAt, &completedAt, &remark, &loss, &inKg, &outKg)
+		if err != nil {
+			return nil
+		}
 	}
-	return gin.H{
+	rCode, rName, _ := s.loadRoutingMeta(routingID)
+	out := gin.H{
 		"id": id, "trace_code": trace, "status": status, "started_by": startedBy, "completed_by": completedBy,
 		"started_at": startedAt, "completed_at": completedAt, "remark": remark,
 		"loss_rate": loss, "input_kg": inKg, "output_kg": outKg,
+		"routing_id": routingID, "product_id": productID,
 	}
+	if rCode != "" {
+		out["routing_code"] = rCode
+		out["routing_name"] = rName
+	}
+	return out
 }
 
 func (s *Services) calcTraceSessionYield(trace string) (inputKg, outputKg, lossRate float64) {
@@ -353,7 +409,7 @@ func (s *Services) finalizeTraceProduction(trace string, sessionID, actorUID int
 }
 
 func (s *Services) completeTraceProcess(c *gin.Context) bool {
-	if !s.requireAnyRole(c, "foreman") {
+	if !s.requireAnyRole(c, "foreman", "planner", "admin") {
 		return true
 	}
 	body := bindBody(c)

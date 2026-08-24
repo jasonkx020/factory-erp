@@ -176,6 +176,7 @@ func (s *Services) getTraceProductionWip(c *gin.Context) bool {
 		}
 	}
 	brows.Close()
+	rCode, rName, _ := s.loadRoutingMeta(routingID)
 	steps := []gin.H{}
 	totalAvail, totalOcc, totalWip := 0.0, 0.0, 0.0
 	for _, r := range wipMap {
@@ -194,6 +195,7 @@ func (s *Services) getTraceProductionWip(c *gin.Context) bool {
 		"trace_code": trace, "ui_status": uiStatus, "status": uiStatus,
 		"session_id": sessionID, "session_status": sessionStatus,
 		"product_id": productID, "routing_id": routingID, "product_name": productName,
+		"routing_code": rCode, "routing_name": rName,
 		"routing_steps": routingSteps, "current_step_index": currentIdx, "can_complete_process_id": canCompletePID,
 		"total_available_kg": totalAvail, "total_occupied_kg": totalOcc, "total_wip_kg": totalWip,
 		"steps": steps, "boards": boards,

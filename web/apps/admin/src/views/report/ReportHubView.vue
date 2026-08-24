@@ -8,149 +8,137 @@ import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.v
 
 type Row = Record<string, unknown>
 
-const enterpriseCols: MobileCardColumn[] = [
-  { prop: 'code', label: '编码', primary: true },
-  { prop: 'name', label: '名称' },
-  { prop: 'report_type', label: '类型' },
-  { prop: 'status', label: '状态' },
-]
-const crmLevelCols: MobileCardColumn[] = [
-  { prop: 'level', label: '级别', primary: true },
-  { prop: 'count', label: '数量' },
-]
-const inquiryCols: MobileCardColumn[] = [
-  { prop: 'doc_no', label: '单号', primary: true },
-  { prop: 'customer_id', label: '客户ID' },
-  { prop: 'status', label: '状态' },
-  { prop: 'created_at', label: '创建时间' },
-]
-const followCols: MobileCardColumn[] = [
-  { prop: 'customer_name', label: '客户', primary: true },
-  { prop: 'follow_type', label: '类型' },
-  { prop: 'follow_at', label: '跟进时间' },
-  { prop: 'content', label: '内容' },
-  { prop: 'next_remind_at', label: '下次提醒' },
-]
-const qcCols: MobileCardColumn[] = [
-  { prop: 'doc_no', label: '单号', primary: true },
-  { prop: 'source', label: '来源' },
-  { prop: 'qc_type', label: '类型' },
-  { prop: 'product_id', label: '产品ID' },
-  { prop: 'qty', label: '数量' },
-  { prop: 'qty_pass', label: '合格' },
-  { prop: 'qty_fail', label: '不合格' },
-  { prop: 'result', label: '结果' },
-  { prop: 'status', label: '状态' },
-  { prop: 'created_at', label: '时间' },
-]
-const accountDirCols: MobileCardColumn[] = [
-  { prop: 'direction', label: '方向', primary: true },
-  { prop: 'count', label: '笔数' },
-  { prop: 'amount', label: '金额' },
-]
-const fundCols: MobileCardColumn[] = [
-  { prop: 'code', label: '编码', primary: true },
-  { prop: 'name', label: '名称' },
-  { prop: 'currency', label: '币种' },
-  { prop: 'balance', label: '余额' },
-]
-const stockTxnCols: MobileCardColumn[] = [
-  { prop: 'doc_no', label: '单号', primary: true },
-  { prop: 'doc_type', label: '类型' },
-  { prop: 'warehouse_id', label: '仓库' },
-  { prop: 'biz_date', label: '业务日' },
-  { prop: 'qty_in', label: '入库量' },
-  { prop: 'qty_out', label: '出库量' },
-  { prop: 'status', label: '状态' },
-  { prop: 'remark', label: '备注' },
-]
-const stockLedgerCols: MobileCardColumn[] = [
-  { prop: 'product_name', label: '产品名称', primary: true },
-  { prop: 'warehouse_name', label: '仓库' },
-  { prop: 'product_code', label: '产品编码' },
-  { prop: 'batch_no', label: '批次' },
-  { prop: 'qty', label: '数量' },
-  { prop: 'avg_cost', label: '平均成本' },
-  { prop: 'amount', label: '金额' },
-]
-const salesWeightCols: MobileCardColumn[] = [
-  { prop: 'product_name', label: '产品名称', primary: true },
-  { prop: 'product_code', label: '产品编码' },
-  { prop: 'qty', label: '数量' },
-  { prop: 'weight', label: '重量' },
-  { prop: 'amount', label: '金额' },
-]
-const productSalesCols: MobileCardColumn[] = [
-  { prop: 'product_name', label: '产品名称', primary: true },
-  { prop: 'product_code', label: '产品编码' },
-  { prop: 'order_count', label: '订单数' },
-  { prop: 'qty', label: '数量' },
-  { prop: 'amount', label: '金额' },
-  { prop: 'avg_price', label: '均价' },
-]
-const logisticsCols: MobileCardColumn[] = [
-  { prop: 'track_no', label: '运单号', primary: true },
-  { prop: 'carrier_name', label: '承运商' },
-  { prop: 'order_id', label: '订单ID' },
-  { prop: 'status', label: '状态' },
-  { prop: 'location', label: '位置' },
-  { prop: 'updated_at', label: '更新时间' },
-]
-const costProfitCols: MobileCardColumn[] = [
-  { prop: 'doc_no', label: '单号', primary: true },
-  { prop: 'period', label: '期间' },
-  { prop: 'product_id', label: '产品ID' },
-  { prop: 'material_cost', label: '材料' },
-  { prop: 'labor_cost', label: '人工' },
-  { prop: 'overhead', label: '制造费用' },
-  { prop: 'total_cost', label: '总成本' },
-  { prop: 'status', label: '状态' },
-]
-const statementLineCols: MobileCardColumn[] = [
-  { prop: 'item', label: '项目', primary: true },
-  { prop: 'section', label: '类别' },
-  { prop: 'amount', label: '金额' },
-]
+const SECTIONS = new Set([
+  'production-board',
+  'live',
+  'warehouse',
+  'daily',
+  'inbound-daily',
+  'piecework-daily',
+  'yield-analysis',
+  'stock-ledger',
+  'trace-progress',
+  'farmer-settlement-summary',
+  'payroll-reconcile',
+  'cost-period-summary',
+])
 
-const route = useRoute()
 const TITLE_MAP: Record<string, string> = {
-  enterprise: '企业报表',
-  boss: '老板驾驶舱',
   'production-board': '生产看板',
   live: '生产实况',
-  inquiries: '客户询价查询',
-  'crm-stats': 'CRM统计',
-  daily: '日统计报表',
-  'gross-profit': '毛利润统计',
-  qc: '质检报表',
-  accounts: '账目统计',
-  'stock-txns': '出入库查询',
+  warehouse: '三仓库存概览',
+  daily: '日经营快照',
+  'inbound-daily': '原料入场日报',
+  'piecework-daily': '计件日结汇总',
+  'yield-analysis': '工序扣损收率分析',
   'stock-ledger': '收发存明细',
-  'follow-ups': '跟进记录查询',
-  'sales-weight': '销售重量统计',
-  'product-sales': '产品销售查询',
-  logistics: '系统物流查询',
-  'cost-profit': '成本利润表',
-  'balance-sheet': '资产负债表',
-  'cash-flow': '现金流量表',
-  'income-statement': '利润表',
+  'trace-progress': '溯源批进度查询',
+  'farmer-settlement-summary': '农户结算对账汇总',
+  'payroll-reconcile': '薪酬核算对账',
+  'cost-period-summary': '成本期间汇总',
 }
 
 const KPI_SECTIONS = new Set([
-  'boss',
   'production-board',
   'live',
-  'enterprise',
-  'crm-stats',
+  'warehouse',
   'daily',
-  'gross-profit',
-  'accounts',
-  'balance-sheet',
-  'cash-flow',
-  'income-statement',
+  'piecework-daily',
+  'farmer-settlement-summary',
+  'payroll-reconcile',
+  'cost-period-summary',
 ])
 
-const active = computed(() => String(route.params.section || 'boss'))
+const warehouseCols: MobileCardColumn[] = [
+  { prop: 'warehouse_name', label: '仓库', primary: true },
+  { prop: 'warehouse_type', label: '类型' },
+  { prop: 'qty_kg', label: '结存kg' },
+  { prop: 'sku_count', label: 'SKU数' },
+]
+const inboundCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '过磅单号', primary: true },
+  { prop: 'farmer_name', label: '农户' },
+  { prop: 'gross_weight', label: '毛重' },
+  { prop: 'deduct_weight', label: '扣损' },
+  { prop: 'net_weight', label: '净重' },
+  { prop: 'qc_result', label: '质检' },
+  { prop: 'status', label: '状态' },
+]
+const pieceworkCols: MobileCardColumn[] = [
+  { prop: 'worker_name', label: '工人', primary: true },
+  { prop: 'process_name', label: '工序' },
+  { prop: 'qty', label: '完成kg' },
+  { prop: 'amount', label: '金额' },
+]
+const yieldCols: MobileCardColumn[] = [
+  { prop: 'process_name', label: '工序', primary: true },
+  { prop: 'trace_count', label: '溯源批数' },
+  { prop: 'input_kg', label: '投入kg' },
+  { prop: 'output_kg', label: '产出kg' },
+  { prop: 'loss_kg', label: '损耗kg' },
+  { prop: 'loss_rate', label: '损耗率' },
+]
+const stockLedgerCols: MobileCardColumn[] = [
+  { prop: 'warehouse_name', label: '仓库', primary: true },
+  { prop: 'product_name', label: '产品' },
+  { prop: 'product_code', label: '编码' },
+  { prop: 'qty', label: '数量' },
+  { prop: 'amount', label: '金额' },
+]
+const traceCols: MobileCardColumn[] = [
+  { prop: 'trace_code', label: '溯源码', primary: true },
+  { prop: 'status', label: '状态' },
+  { prop: 'input_kg', label: '投入kg' },
+  { prop: 'output_kg', label: '产出kg' },
+  { prop: 'loss_rate', label: '损耗率' },
+  { prop: 'open_issues', label: '在制领料' },
+]
+const settlementCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '结算单号', primary: true },
+  { prop: 'farmer_name', label: '农户' },
+  { prop: 'biz_date', label: '业务日' },
+  { prop: 'net_weight', label: '净重' },
+  { prop: 'amount', label: '金额' },
+  { prop: 'status', label: '状态' },
+  { prop: 'trace_code', label: '溯源码' },
+]
+const payrollReconcileCols: MobileCardColumn[] = [
+  { prop: 'worker_name', label: '工人', primary: true },
+  { prop: 'emp_no', label: '工号' },
+  { prop: 'sheet_piece_amount', label: '工资单计件' },
+  { prop: 'piecework_amount', label: '计件汇总' },
+  { prop: 'diff', label: '差异' },
+  { prop: 'sheet_total', label: '工资单合计' },
+]
+const costPeriodCols: MobileCardColumn[] = [
+  { prop: 'doc_no', label: '成本单', primary: true },
+  { prop: 'period', label: '期间' },
+  { prop: 'product_name', label: '产品' },
+  { prop: 'material_cost', label: '物料' },
+  { prop: 'labor_cost', label: '人工' },
+  { prop: 'overhead', label: '制造' },
+  { prop: 'total_cost', label: '合计' },
+  { prop: 'status', label: '状态' },
+]
+const flowCols: MobileCardColumn[] = [
+  { prop: 'event_type', label: '事件', primary: true },
+  { prop: 'trace_code', label: '溯源码' },
+  { prop: 'process_name', label: '工序' },
+  { prop: 'worker_name', label: '工人' },
+  { prop: 'kg', label: 'kg' },
+  { prop: 'created_at', label: '时间' },
+]
+const wipCols: MobileCardColumn[] = [
+  { prop: 'process_name', label: '工序', primary: true },
+  { prop: 'issue_count', label: '领料单数' },
+  { prop: 'wip_kg', label: '在制kg' },
+]
+
+const route = useRoute()
+const active = computed(() => {
+  const s = String(route.params.section || 'production-board')
+  return SECTIONS.has(s) ? s : 'production-board'
+})
 const title = computed(() => TITLE_MAP[active.value] || '统计报表')
 const loading = ref(false)
 const list = ref<Row[]>([])
@@ -159,12 +147,13 @@ const summary = ref<Row | null>(null)
 const extraRows = ref<Row[]>([])
 const asOf = ref('')
 const bizDate = ref(new Date().toISOString().slice(0, 10))
+const periodMonth = ref(new Date().toISOString().slice(0, 7))
+const dateSections = new Set(['daily', 'inbound-daily', 'piecework-daily', 'yield-analysis', 'farmer-settlement-summary'])
+const periodSections = new Set(['payroll-reconcile', 'cost-period-summary'])
 
 function fmt(v: unknown) {
   if (v == null || v === '') return '—'
-  if (typeof v === 'number') {
-    return Number.isInteger(v) ? String(v) : v.toFixed(2)
-  }
+  if (typeof v === 'number') return Number.isInteger(v) ? String(v) : v.toFixed(2)
   return String(v)
 }
 
@@ -187,19 +176,12 @@ async function refresh() {
     const sec = active.value
     let res: { code: number; msg?: string; data?: unknown }
 
-    if (sec === 'boss') {
-      res = await reportApi.boss()
-      if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
-      const data = (res.data as Row) || {}
-      kpis.value = (data.kpis as Row[]) || (data.list as Row[]) || []
-      summary.value = (data.summary as Row) || null
-      asOf.value = String(data.as_of || '')
-      list.value = kpis.value
-    } else if (sec === 'production-board') {
+    if (sec === 'production-board') {
       res = await reportApi.production()
       if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
       const data = (res.data as Row) || {}
       kpis.value = (data.list as Row[]) || []
+      extraRows.value = (data.wip_by_process as Row[]) || []
       asOf.value = String(data.as_of || '')
       list.value = kpis.value
     } else if (sec === 'live') {
@@ -207,30 +189,23 @@ async function refresh() {
       if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
       const data = (res.data as Row) || {}
       kpis.value = (data.list as Row[]) || []
+      extraRows.value = (data.recent_flow as Row[]) || []
       asOf.value = String(data.as_of || '')
       list.value = kpis.value
-    } else if (sec === 'enterprise') {
-      res = await reportApi.enterprise()
+    } else if (sec === 'warehouse') {
+      res = await reportApi.warehouse()
       if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
       const data = (res.data as Row) || {}
-      const overview = (data.overview as Row) || {}
-      summary.value = overview
-      kpis.value = toKpisFromSummary(overview, {
-        sales_orders: '销售订单数',
-        sales_amount: '销售总额',
-        customers: '客户数',
-        products: '产品数',
-        stock_sku: '有库存SKU',
-        fund_balance: '资金余额',
-        open_tasks: '在制任务',
-        fixed_assets: '固定资产',
-      })
-      asOf.value = String(overview.generated_at || '')
-      list.value = ((data.list as Row[]) || []).map((r) => ({
-        ...r,
-        ...(typeof r === 'object' ? {} : {}),
-      }))
-      if (!list.value.length) list.value = kpis.value
+      list.value = (data.list as Row[]) || []
+      summary.value = (data.summary as Row) || null
+      asOf.value = String(data.as_of || '')
+      if (summary.value) {
+        kpis.value = toKpisFromSummary(summary.value, {
+          total_qty_kg: '总库存kg',
+          shortage_alerts: '亏料预警',
+          excess_alerts: '过量预警',
+        })
+      }
     } else if (sec === 'daily') {
       res = await reportApi.daily(bizDate.value)
       if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
@@ -238,129 +213,102 @@ async function refresh() {
       const s = (data.summary as Row) || ((data.list as Row[]) || [])[0] || {}
       summary.value = s
       kpis.value = toKpisFromSummary(s, {
-        sales_amount: '销售额',
-        sales_orders: '销售单数',
-        report_works: '报工单数',
-        report_qty: '报工量',
+        inbound_net_kg: '入场净重kg',
+        inbound_tickets: '过磅单数',
+        production_output_kg: '产出kg',
+        flow_log_kg: '工序过账kg',
+        piecework_amount: '计件支出',
+        farmer_payable: '农户应付',
+        farmer_paid: '农户已付',
         stock_in: '入库量',
         stock_out: '出库量',
-        cash_in: '现金流入',
-        cash_out: '现金流出',
-        follow_ups: '跟进数',
       })
       list.value = (data.list as Row[]) || [s]
-    } else if (sec === 'crm-stats') {
-      res = await reportApi.crmStats()
-      if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
-      const data = (res.data as Row) || {}
-      kpis.value = (data.list as Row[]) || []
-      extraRows.value = (data.by_level as Row[]) || []
-      list.value = kpis.value
-    } else if (sec === 'inquiries') {
-      res = await reportApi.inquiries()
-      if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
-      list.value = ((res.data as { list?: Row[] })?.list) || []
-    } else if (sec === 'follow-ups') {
-      res = await reportApi.followUps()
-      if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
-      list.value = ((res.data as { list?: Row[] })?.list) || []
-    } else if (sec === 'gross-profit') {
-      res = await reportApi.grossProfit()
-      if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
-      const data = (res.data as Row) || {}
-      summary.value = (data.summary as Row) || null
-      kpis.value = (data.list as Row[]) || []
-      list.value = kpis.value
-    } else if (sec === 'qc') {
-      res = await reportApi.qc()
-      if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
-      list.value = ((res.data as { list?: Row[] })?.list) || []
-    } else if (sec === 'accounts') {
-      res = await reportApi.accounts()
+    } else if (sec === 'inbound-daily') {
+      res = await reportApi.inboundDaily(bizDate.value)
       if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
       const data = (res.data as Row) || {}
       summary.value = (data.summary as Row) || null
       list.value = (data.list as Row[]) || []
-      extraRows.value = (data.funds as Row[]) || []
       if (summary.value) {
         kpis.value = toKpisFromSummary(summary.value, {
-          income: '收入合计',
-          expense: '支出合计',
-          net: '净额',
+          ticket_count: '过磅单数',
+          gross_kg: '毛重kg',
+          deduct_kg: '扣损kg',
+          net_kg: '净重kg',
+          settlement_amount: '结算金额',
+          settlement_pending: '待付金额',
         })
       }
-    } else if (sec === 'stock-txns') {
-      res = await reportApi.stockTxns()
+    } else if (sec === 'piecework-daily') {
+      res = await reportApi.pieceworkDaily(bizDate.value)
+      if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
+      const data = (res.data as Row) || {}
+      summary.value = (data.summary as Row) || null
+      list.value = (data.list as Row[]) || []
+      if (summary.value) {
+        kpis.value = toKpisFromSummary(summary.value, {
+          worker_count: '工人数',
+          total_qty_kg: '完成kg',
+          total_amount: '计件金额',
+          flow_log_rows: '流水笔数',
+        })
+      }
+    } else if (sec === 'yield-analysis') {
+      res = await reportApi.yieldAnalysis(bizDate.value)
       if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
       list.value = ((res.data as { list?: Row[] })?.list) || []
     } else if (sec === 'stock-ledger') {
       res = await reportApi.stockLedger()
       if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
       list.value = ((res.data as { list?: Row[] })?.list) || []
-    } else if (sec === 'sales-weight') {
-      res = await reportApi.salesWeight()
+    } else if (sec === 'trace-progress') {
+      res = await reportApi.traceProgress()
       if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
       list.value = ((res.data as { list?: Row[] })?.list) || []
-    } else if (sec === 'product-sales') {
-      res = await reportApi.productSales()
-      if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
-      list.value = ((res.data as { list?: Row[] })?.list) || []
-    } else if (sec === 'logistics') {
-      res = await reportApi.logistics()
-      if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
-      list.value = ((res.data as { list?: Row[] })?.list) || []
-    } else if (sec === 'cost-profit') {
-      res = await reportApi.costProfit()
+    } else if (sec === 'farmer-settlement-summary') {
+      res = await reportApi.farmerSettlementSummary(bizDate.value)
       if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
       const data = (res.data as Row) || {}
       summary.value = (data.summary as Row) || null
       list.value = (data.list as Row[]) || []
       if (summary.value) {
         kpis.value = toKpisFromSummary(summary.value, {
-          total_cost: '成本合计',
-          revenue: '收入',
-          profit: '利润',
+          doc_count: '结算单数',
+          total_amount: '结算总额',
+          paid_amount: '已付',
+          pending_amount: '待付',
         })
       }
-    } else if (sec === 'balance-sheet') {
-      res = await reportApi.balanceSheet()
+    } else if (sec === 'payroll-reconcile') {
+      res = await reportApi.payrollReconcile(periodMonth.value)
       if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
       const data = (res.data as Row) || {}
       summary.value = (data.summary as Row) || null
       list.value = (data.list as Row[]) || []
-      asOf.value = String(data.as_of || '')
       if (summary.value) {
         kpis.value = toKpisFromSummary(summary.value, {
-          total_assets: '资产合计',
-          total_liabilities: '负债合计',
-          equity: '净资产',
+          sheet_no: '工资单号',
+          worker_count: '对账人数',
+          diff_count: '有差异人数',
+          sheet_piece_total: '工资单计件合计',
+          piecework_total: '计件汇总合计',
+          diff_total: '差异合计',
         })
       }
-    } else if (sec === 'cash-flow') {
-      res = await reportApi.cashFlow()
+    } else if (sec === 'cost-period-summary') {
+      res = await reportApi.costPeriodSummary(periodMonth.value)
       if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
       const data = (res.data as Row) || {}
       summary.value = (data.summary as Row) || null
       list.value = (data.list as Row[]) || []
       if (summary.value) {
         kpis.value = toKpisFromSummary(summary.value, {
-          in: '现金流入',
-          out: '现金流出',
-          net: '净现金流',
-        })
-      }
-    } else if (sec === 'income-statement') {
-      res = await reportApi.incomeStatement()
-      if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
-      const data = (res.data as Row) || {}
-      summary.value = (data.summary as Row) || null
-      list.value = (data.list as Row[]) || []
-      if (summary.value) {
-        kpis.value = toKpisFromSummary(summary.value, {
-          income: '营业收入',
-          cost: '营业成本',
-          expense: '期间费用',
-          profit: '利润总额',
+          doc_count: '成本单数',
+          material_total: '物料合计',
+          labor_total: '人工合计',
+          overhead_total: '制造费用',
+          cost_total: '总成本',
         })
       }
     }
@@ -383,232 +331,178 @@ watch(active, refresh)
         <div v-if="asOf" class="sub">数据截止：{{ asOf }}</div>
       </div>
       <div class="actions">
-        <template v-if="active === 'daily'">
+        <template v-if="dateSections.has(active)">
           <el-date-picker v-model="bizDate" type="date" value-format="YYYY-MM-DD" size="small" style="width: 150px" />
           <el-button size="small" type="primary" @click="refresh">按日查询</el-button>
+        </template>
+        <template v-else-if="periodSections.has(active)">
+          <el-date-picker v-model="periodMonth" type="month" value-format="YYYY-MM" size="small" style="width: 150px" />
+          <el-button size="small" type="primary" @click="refresh">按期间查询</el-button>
         </template>
         <el-button size="small" @click="refresh">刷新</el-button>
       </div>
     </div>
 
     <el-row v-if="showKpis" :gutter="12" class="mb">
-      <el-col v-for="k in kpis" :key="String(k.key || k.metric || k.title)" :xs="24" :sm="8" :md="6">
+      <el-col v-for="k in kpis" :key="String(k.key || k.title)" :xs="24" :sm="8" :md="6">
         <el-card shadow="never" class="kpi">
-          <div class="stat-label">{{ k.title || k.item || k.metric || k.key }}</div>
-          <div class="stat-value">{{ fmt(k.value ?? k.amount) }}<span v-if="k.unit" class="unit">{{ k.unit }}</span></div>
+          <div class="stat-label">{{ k.title }}</div>
+          <div class="stat-value">{{ fmt(k.value) }}</div>
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- 老板/生产看板/实况：仅 KPI -->
-    <template v-if="active === 'boss' || active === 'production-board' || active === 'live'">
+    <template v-if="active === 'production-board' || active === 'live'">
       <el-empty v-if="!kpis.length" description="暂无指标数据" />
+      <template v-if="active === 'production-board' && extraRows.length">
+        <h4>工序在制</h4>
+        <TableOrCards :data="extraRows" :loading="loading" :columns="wipCols" empty-text="暂无在制">
+          <el-table :data="extraRows" size="small" empty-text="暂无在制">
+            <el-table-column prop="process_name" label="工序" min-width="120" />
+            <el-table-column prop="issue_count" label="领料单数" width="100" />
+            <el-table-column prop="wip_kg" label="在制kg" width="120" />
+          </el-table>
+        </TableOrCards>
+      </template>
+      <template v-if="active === 'live' && extraRows.length">
+        <h4>近1小时流水</h4>
+        <TableOrCards :data="extraRows" :loading="loading" :columns="flowCols" empty-text="暂无流水">
+          <el-table :data="extraRows" size="small" empty-text="暂无流水">
+            <el-table-column prop="event_type" label="事件" width="100" />
+            <el-table-column prop="trace_code" label="溯源码" width="140" />
+            <el-table-column prop="process_name" label="工序" width="100" />
+            <el-table-column prop="worker_name" label="工人" width="100" />
+            <el-table-column prop="kg" label="kg" width="90" />
+            <el-table-column prop="created_at" label="时间" min-width="160" />
+          </el-table>
+        </TableOrCards>
+      </template>
     </template>
 
-    <!-- 企业报表定义表 -->
-    <template v-else-if="active === 'enterprise'">
-      <h4>报表定义</h4>
-      <TableOrCards :data="list" :loading="loading" :columns="enterpriseCols" empty-text="暂无定义">
-        <el-table :data="list" size="small" empty-text="暂无定义">
-          <el-table-column prop="code" label="编码" width="160" />
-          <el-table-column prop="name" label="名称" min-width="140" />
-          <el-table-column prop="report_type" label="类型" width="120" />
-          <el-table-column prop="status" label="状态" width="90" />
+    <template v-else-if="active === 'warehouse'">
+      <TableOrCards :data="list" :loading="loading" :columns="warehouseCols" empty-text="暂无库存数据">
+        <el-table :data="list" size="small" empty-text="暂无库存数据">
+          <el-table-column prop="warehouse_name" label="仓库" min-width="120" />
+          <el-table-column prop="warehouse_type" label="类型" width="100" />
+          <el-table-column prop="qty_kg" label="结存kg" width="120" />
+          <el-table-column prop="sku_count" label="SKU数" width="90" />
         </el-table>
       </TableOrCards>
     </template>
 
-    <!-- CRM 分级 -->
-    <template v-else-if="active === 'crm-stats'">
-      <h4>客户分级</h4>
-      <TableOrCards :data="extraRows" :loading="loading" :columns="crmLevelCols" empty-text="暂无分级数据">
-        <el-table :data="extraRows" size="small" empty-text="暂无分级数据">
-          <el-table-column prop="level" label="级别" min-width="140" />
-          <el-table-column prop="count" label="数量" width="120" />
-        </el-table>
-      </TableOrCards>
-    </template>
-
-    <!-- 日统计明细 -->
     <template v-else-if="active === 'daily'">
       <el-descriptions v-if="summary" :column="3" border size="small" title="当日汇总">
         <el-descriptions-item label="业务日">{{ summary.biz_date }}</el-descriptions-item>
-        <el-descriptions-item label="销售额">{{ fmt(summary.sales_amount) }}</el-descriptions-item>
-        <el-descriptions-item label="销售单">{{ fmt(summary.sales_orders) }}</el-descriptions-item>
-        <el-descriptions-item label="报工">{{ fmt(summary.report_works) }} / {{ fmt(summary.report_qty) }}</el-descriptions-item>
+        <el-descriptions-item label="入场净重">{{ fmt(summary.inbound_net_kg) }} kg</el-descriptions-item>
+        <el-descriptions-item label="过磅单">{{ fmt(summary.inbound_tickets) }}</el-descriptions-item>
+        <el-descriptions-item label="产出">{{ fmt(summary.production_output_kg) }} kg</el-descriptions-item>
+        <el-descriptions-item label="计件支出">{{ fmt(summary.piecework_amount) }}</el-descriptions-item>
+        <el-descriptions-item label="农户应付/已付">{{ fmt(summary.farmer_payable) }} / {{ fmt(summary.farmer_paid) }}</el-descriptions-item>
         <el-descriptions-item label="出入库">入 {{ fmt(summary.stock_in) }} / 出 {{ fmt(summary.stock_out) }}</el-descriptions-item>
-        <el-descriptions-item label="现金流">入 {{ fmt(summary.cash_in) }} / 出 {{ fmt(summary.cash_out) }}</el-descriptions-item>
       </el-descriptions>
     </template>
 
-    <!-- 询价 -->
-    <template v-else-if="active === 'inquiries'">
-      <TableOrCards :data="list" :loading="loading" :columns="inquiryCols" empty-text="暂无询价">
-        <el-table :data="list" size="small" empty-text="暂无询价">
-          <el-table-column prop="id" label="ID" width="70" />
-          <el-table-column prop="doc_no" label="单号" width="160" />
-          <el-table-column prop="customer_id" label="客户ID" width="90" />
-          <el-table-column prop="status" label="状态" width="100" />
-          <el-table-column prop="created_at" label="创建时间" min-width="160" />
-        </el-table>
-      </TableOrCards>
-    </template>
-
-    <!-- 跟进 -->
-    <template v-else-if="active === 'follow-ups'">
-      <TableOrCards :data="list" :loading="loading" :columns="followCols" empty-text="暂无跟进">
-        <el-table :data="list" size="small" empty-text="暂无跟进">
-          <el-table-column prop="id" label="ID" width="70" />
-          <el-table-column prop="customer_name" label="客户" min-width="140" />
-          <el-table-column prop="follow_type" label="类型" width="100" />
-          <el-table-column prop="follow_at" label="跟进时间" width="160" />
-          <el-table-column prop="content" label="内容" min-width="200" show-overflow-tooltip />
-          <el-table-column prop="next_remind_at" label="下次提醒" width="160" />
-        </el-table>
-      </TableOrCards>
-    </template>
-
-    <!-- 毛利仅 KPI -->
-    <template v-else-if="active === 'gross-profit'">
-      <el-empty v-if="!kpis.length" description="暂无毛利数据" />
-    </template>
-
-    <!-- 质检 -->
-    <template v-else-if="active === 'qc'">
-      <TableOrCards :data="list" :loading="loading" :columns="qcCols" empty-text="暂无质检记录">
-        <el-table :data="list" size="small" empty-text="暂无质检记录">
-          <el-table-column prop="source" label="来源" width="90" />
-          <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column prop="qc_type" label="类型" width="100" />
-          <el-table-column prop="product_id" label="产品ID" width="90" />
-          <el-table-column prop="qty" label="数量" width="90" />
-          <el-table-column prop="qty_pass" label="合格" width="80" />
-          <el-table-column prop="qty_fail" label="不合格" width="80" />
-          <el-table-column prop="result" label="结果" width="90" />
+    <template v-else-if="active === 'inbound-daily'">
+      <TableOrCards :data="list" :loading="loading" :columns="inboundCols" empty-text="暂无过磅记录">
+        <el-table :data="list" size="small" empty-text="暂无过磅记录">
+          <el-table-column prop="doc_no" label="过磅单号" width="150" />
+          <el-table-column prop="farmer_name" label="农户" min-width="120" />
+          <el-table-column prop="gross_weight" label="毛重" width="90" />
+          <el-table-column prop="deduct_weight" label="扣损" width="90" />
+          <el-table-column prop="net_weight" label="净重" width="90" />
+          <el-table-column prop="qc_result" label="质检" width="90" />
           <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column prop="created_at" label="时间" min-width="160" />
         </el-table>
       </TableOrCards>
     </template>
 
-    <!-- 账目 -->
-    <template v-else-if="active === 'accounts'">
-      <h4>收支方向汇总</h4>
-      <TableOrCards :data="list" :loading="loading" :columns="accountDirCols" class="mb" empty-text="暂无流水">
-        <el-table :data="list" size="small" class="mb" empty-text="暂无流水">
-          <el-table-column prop="direction" label="方向" width="100" />
-          <el-table-column prop="count" label="笔数" width="100" />
-          <el-table-column prop="amount" label="金额" min-width="140" />
-        </el-table>
-      </TableOrCards>
-      <h4>资金账户</h4>
-      <TableOrCards :data="extraRows" :loading="loading" :columns="fundCols" empty-text="暂无账户">
-        <el-table :data="extraRows" size="small" empty-text="暂无账户">
-          <el-table-column prop="code" label="编码" width="120" />
-          <el-table-column prop="name" label="名称" min-width="140" />
-          <el-table-column prop="currency" label="币种" width="80" />
-          <el-table-column prop="balance" label="余额" width="140" />
+    <template v-else-if="active === 'piecework-daily'">
+      <TableOrCards :data="list" :loading="loading" :columns="pieceworkCols" empty-text="暂无计件数据">
+        <el-table :data="list" size="small" empty-text="暂无计件数据">
+          <el-table-column prop="worker_name" label="工人" min-width="120" />
+          <el-table-column prop="process_name" label="工序" width="120" />
+          <el-table-column prop="qty" label="完成kg" width="100" />
+          <el-table-column prop="amount" label="金额" width="100" />
         </el-table>
       </TableOrCards>
     </template>
 
-    <!-- 出入库 -->
-    <template v-else-if="active === 'stock-txns'">
-      <TableOrCards :data="list" :loading="loading" :columns="stockTxnCols" empty-text="暂无出入库单据">
-        <el-table :data="list" size="small" empty-text="暂无出入库单据">
-          <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column prop="doc_type" label="类型" width="100" />
-          <el-table-column prop="warehouse_id" label="仓库" width="80" />
-          <el-table-column prop="biz_date" label="业务日" width="110" />
-          <el-table-column prop="qty_in" label="入库量" width="100" />
-          <el-table-column prop="qty_out" label="出库量" width="100" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
+    <template v-else-if="active === 'yield-analysis'">
+      <TableOrCards :data="list" :loading="loading" :columns="yieldCols" empty-text="暂无扣损数据">
+        <el-table :data="list" size="small" empty-text="暂无扣损数据">
+          <el-table-column prop="process_name" label="工序" min-width="120" />
+          <el-table-column prop="trace_count" label="溯源批数" width="100" />
+          <el-table-column prop="input_kg" label="投入kg" width="100" />
+          <el-table-column prop="output_kg" label="产出kg" width="100" />
+          <el-table-column prop="loss_kg" label="损耗kg" width="100" />
+          <el-table-column prop="loss_rate" label="损耗率" width="100" />
         </el-table>
       </TableOrCards>
     </template>
 
-    <!-- 收发存 -->
     <template v-else-if="active === 'stock-ledger'">
       <TableOrCards :data="list" :loading="loading" :columns="stockLedgerCols" empty-text="暂无库存余额">
         <el-table :data="list" size="small" empty-text="暂无库存余额">
           <el-table-column prop="warehouse_name" label="仓库" width="120" />
           <el-table-column prop="product_code" label="产品编码" width="120" />
           <el-table-column prop="product_name" label="产品名称" min-width="140" />
-          <el-table-column prop="batch_no" label="批次" width="100" />
           <el-table-column prop="qty" label="数量" width="100" />
-          <el-table-column prop="avg_cost" label="平均成本" width="110" />
           <el-table-column prop="amount" label="金额" width="120" />
         </el-table>
       </TableOrCards>
     </template>
 
-    <!-- 销售重量 -->
-    <template v-else-if="active === 'sales-weight'">
-      <TableOrCards :data="list" :loading="loading" :columns="salesWeightCols" empty-text="暂无销售重量">
-        <el-table :data="list" size="small" empty-text="暂无销售重量">
-          <el-table-column prop="product_code" label="产品编码" width="120" />
-          <el-table-column prop="product_name" label="产品名称" min-width="140" />
-          <el-table-column prop="qty" label="数量" width="100" />
-          <el-table-column prop="weight" label="重量" width="120" />
-          <el-table-column prop="amount" label="金额" width="120" />
-        </el-table>
-      </TableOrCards>
-    </template>
-
-    <!-- 产品销售 -->
-    <template v-else-if="active === 'product-sales'">
-      <TableOrCards :data="list" :loading="loading" :columns="productSalesCols" empty-text="暂无产品销售">
-        <el-table :data="list" size="small" empty-text="暂无产品销售">
-          <el-table-column prop="product_code" label="产品编码" width="120" />
-          <el-table-column prop="product_name" label="产品名称" min-width="140" />
-          <el-table-column prop="order_count" label="订单数" width="90" />
-          <el-table-column prop="qty" label="数量" width="100" />
-          <el-table-column prop="amount" label="金额" width="120" />
-          <el-table-column prop="avg_price" label="均价" width="110" />
-        </el-table>
-      </TableOrCards>
-    </template>
-
-    <!-- 物流 -->
-    <template v-else-if="active === 'logistics'">
-      <TableOrCards :data="list" :loading="loading" :columns="logisticsCols" empty-text="暂无物流轨迹（可在系统物流表维护）">
-        <el-table :data="list" size="small" empty-text="暂无物流轨迹（可在系统物流表维护）">
-          <el-table-column prop="track_no" label="运单号" width="160" />
-          <el-table-column prop="carrier_name" label="承运商" width="120" />
-          <el-table-column prop="order_id" label="订单ID" width="90" />
+    <template v-else-if="active === 'trace-progress'">
+      <TableOrCards :data="list" :loading="loading" :columns="traceCols" empty-text="暂无溯源批">
+        <el-table :data="list" size="small" empty-text="暂无溯源批">
+          <el-table-column prop="trace_code" label="溯源码" width="150" />
           <el-table-column prop="status" label="状态" width="100" />
-          <el-table-column prop="location" label="位置" min-width="140" />
-          <el-table-column prop="updated_at" label="更新时间" width="160" />
+          <el-table-column prop="input_kg" label="投入kg" width="100" />
+          <el-table-column prop="output_kg" label="产出kg" width="100" />
+          <el-table-column prop="loss_rate" label="损耗率" width="90" />
+          <el-table-column prop="open_issues" label="在制领料" width="100" />
         </el-table>
       </TableOrCards>
     </template>
 
-    <!-- 成本利润明细 -->
-    <template v-else-if="active === 'cost-profit'">
-      <TableOrCards :data="list" :loading="loading" :columns="costProfitCols" empty-text="暂无成本核算">
-        <el-table :data="list" size="small" empty-text="暂无成本核算">
-          <el-table-column prop="doc_no" label="单号" width="140" />
+    <template v-else-if="active === 'farmer-settlement-summary'">
+      <TableOrCards :data="list" :loading="loading" :columns="settlementCols" empty-text="暂无结算单">
+        <el-table :data="list" size="small" empty-text="暂无结算单">
+          <el-table-column prop="doc_no" label="结算单号" width="150" />
+          <el-table-column prop="farmer_name" label="农户" min-width="120" />
+          <el-table-column prop="biz_date" label="业务日" width="110" />
+          <el-table-column prop="net_weight" label="净重" width="90" />
+          <el-table-column prop="amount" label="金额" width="100" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column prop="trace_code" label="溯源码" width="140" />
+        </el-table>
+      </TableOrCards>
+    </template>
+
+    <template v-else-if="active === 'payroll-reconcile'">
+      <TableOrCards :data="list" :loading="loading" :columns="payrollReconcileCols" empty-text="暂无对账数据">
+        <el-table :data="list" size="small" empty-text="暂无对账数据">
+          <el-table-column prop="worker_name" label="工人" min-width="120" />
+          <el-table-column prop="emp_no" label="工号" width="100" />
+          <el-table-column prop="sheet_piece_amount" label="工资单计件" width="110" />
+          <el-table-column prop="piecework_amount" label="计件汇总" width="110" />
+          <el-table-column prop="diff" label="差异" width="100" />
+          <el-table-column prop="sheet_total" label="工资单合计" width="110" />
+        </el-table>
+      </TableOrCards>
+    </template>
+
+    <template v-else-if="active === 'cost-period-summary'">
+      <TableOrCards :data="list" :loading="loading" :columns="costPeriodCols" empty-text="暂无成本核算单">
+        <el-table :data="list" size="small" empty-text="暂无成本核算单">
+          <el-table-column prop="doc_no" label="成本单" width="150" />
           <el-table-column prop="period" label="期间" width="100" />
-          <el-table-column prop="product_id" label="产品ID" width="90" />
-          <el-table-column prop="material_cost" label="材料" width="100" />
+          <el-table-column prop="product_name" label="产品" min-width="120" />
+          <el-table-column prop="material_cost" label="物料" width="100" />
           <el-table-column prop="labor_cost" label="人工" width="100" />
-          <el-table-column prop="overhead" label="制造费用" width="100" />
-          <el-table-column prop="total_cost" label="总成本" width="110" />
-          <el-table-column prop="status" label="状态" width="100" />
-        </el-table>
-      </TableOrCards>
-    </template>
-
-    <!-- 资产负债表 / 现金流 / 利润表 -->
-    <template v-else-if="active === 'balance-sheet' || active === 'cash-flow' || active === 'income-statement'">
-      <TableOrCards :data="list" :loading="loading" :columns="statementLineCols" empty-text="暂无报表行">
-        <el-table :data="list" size="small" empty-text="暂无报表行">
-          <el-table-column v-if="active === 'balance-sheet'" prop="section" label="类别" width="110" />
-          <el-table-column prop="item" label="项目" min-width="180" />
-          <el-table-column prop="amount" label="金额" width="160">
-            <template #default="{ row }">{{ fmt(row.amount) }}</template>
-          </el-table-column>
+          <el-table-column prop="overhead" label="制造" width="100" />
+          <el-table-column prop="total_cost" label="合计" width="110" />
+          <el-table-column prop="status" label="状态" width="90" />
         </el-table>
       </TableOrCards>
     </template>
@@ -623,8 +517,7 @@ watch(active, refresh)
 .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .mb { margin-bottom: 12px; }
 .kpi { margin-bottom: 12px; }
-.stat-label { color: #888; font-size: 13px; }
-.stat-value { font-size: 22px; font-weight: 600; margin-top: 6px; }
-.unit { margin-left: 4px; font-size: 13px; font-weight: 400; color: #666; }
-h4 { margin: 8px 0 8px; font-size: 14px; }
+.stat-label { font-size: 12px; color: #888; }
+.stat-value { font-size: 22px; font-weight: 600; margin-top: 4px; }
+h4 { margin: 16px 0 8px; font-size: 14px; }
 </style>

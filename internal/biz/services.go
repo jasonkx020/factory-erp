@@ -41,8 +41,18 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 			return s.Notify.HandleAPI(c, method, openapiPath, action)
 		}
 		return false
-	case strings.HasPrefix(openapiPath, "/api/v1/sales/outbound-settles"):
-		return s.handleOutboundSettles(c, method, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/sales/"):
+		api.FailJSON(c, "FEATURE_REMOVED:sales")
+		return true
+	case strings.HasPrefix(openapiPath, "/api/v1/crm/"):
+		api.FailJSON(c, "FEATURE_REMOVED:crm")
+		return true
+	case strings.HasPrefix(openapiPath, "/api/v1/asset/"):
+		api.FailJSON(c, "FEATURE_REMOVED:asset")
+		return true
+	case strings.HasPrefix(openapiPath, "/api/v1/approval/"):
+		api.FailJSON(c, "FEATURE_REMOVED:approval")
+		return true
 	case strings.HasPrefix(openapiPath, "/api/v1/production/piece-issue-sheets"):
 		return s.handlePieceIssueSheets(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/process-reports"):
@@ -55,8 +65,6 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		return s.handleWeighbridges(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/product/"):
 		return s.handleProductDomain(c, method, openapiPath, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/asset/"):
-		return s.handleAssetDomain(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/inventory/balances") && method == "GET":
 		s.listBalances(c)
 		return true
@@ -150,8 +158,6 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		return s.handleEmployees(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/hr/"):
 		return s.handleHROps(c, method, openapiPath, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/approval/"):
-		return s.handleApprovalDomain(c, method, openapiPath, action)
 	case openapiPath == "/api/v1/iam/hr-perm-overview":
 		return s.hrPermOverview(c)
 	case strings.Contains(openapiPath, "/iam/users/") && strings.Contains(openapiPath, "/bind-employee"):
@@ -167,16 +173,12 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 			return s.getRoleDetailIAM(c)
 		}
 		return s.handleIAM(c, method, action, openapiPath)
-	case strings.HasPrefix(openapiPath, "/api/v1/crm/"):
-		return s.handleCRM(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/"):
 		return s.handlePurchase(c, method, openapiPath, resourceKey, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/finance/"):
 		return s.handleFinanceDomain(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/report/"):
 		return s.handleReportDomain(c, method, openapiPath, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/sales/"):
-		return s.handleSales(c, method, openapiPath, action)
 	case openapiPath == "/api/v1/health":
 		return false // keep health package
 	case strings.HasPrefix(openapiPath, "/api/v1/auth/"):

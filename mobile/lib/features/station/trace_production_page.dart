@@ -266,10 +266,18 @@ class _TraceDetailSheetState extends State<_TraceDetailSheet> {
   }
 
   String _stepSubtitle(Map s) {
+    final inName = '${s['input_product_name'] ?? ''}'.trim();
+    final outName = '${s['output_product_name'] ?? ''}'.trim();
+    final productHint = [
+      if (inName.isNotEmpty) '领 $inName',
+      if (outName.isNotEmpty) '产 $outName',
+    ].join(' · ');
     if (s['step_status'] == 'done') {
-      return '扣损 ${s['loss_kg'] ?? '-'} kg · 产出 ${s['output_kg'] ?? '-'} kg';
+      final base = '扣损 ${s['loss_kg'] ?? '-'} kg · 产出 ${s['output_kg'] ?? '-'} kg';
+      return productHint.isEmpty ? base : '$productHint · $base';
     }
-    return '在制 ${s['wip_kg'] ?? s['available_kg'] ?? 0} kg · ${_stepStatusLabel('${s['step_status']}')}';
+    final base = '在制 ${s['wip_kg'] ?? s['available_kg'] ?? 0} kg · ${_stepStatusLabel('${s['step_status']}')}';
+    return productHint.isEmpty ? base : '$productHint · $base';
   }
 
   Future<void> _loadReport() async {
@@ -323,17 +331,125 @@ class _TraceDetailSheetState extends State<_TraceDetailSheet> {
   }
 
   Future<void> _start() async {
+    final api = context.read<AuthState>().api;
     setState(() => _busy = true);
-    final r = await context.read<AuthState>().api.post('/production/trace-productions/start', {
+    final code = Uri.encodeComponent(widget.traceCode);
+    final optRes = await api.get('/production/trace-productions/$code/routing-options');
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (!optRes.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(optRes.msg)));
+      return;
+    }
+    final data = optRes.data is Map ? Map<String, dynamic>.from(optRes.data as Map) : <String, dynamic>{};
+    final rawOpts = data['routing_options'];
+    final options = rawOpts is List
+        ? rawOpts.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+        : <Map<String, dynamic>>[];
+    if (options.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('该原料暂无可用工艺，请先在管理端配置工艺流程')));
+      return;
+    }
+    final suggested = (data['suggested_routing_id'] as num?)?.toInt();
+    int? selected = suggested ?? (options.first['id'] as num?)?.toInt();
+    final productName = '${data['product_name'] ?? ''}';
+    final confirmed = await showDialog<int>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            final preview = () {
+              for (final o in options) {
+                if ((o['id'] as num?)?.toInt() == selected && o['steps_preview'] is List) {
+                  return (o['steps_preview'] as List).map((e) => '$e').join(' → ');
+                }
+              }
+              return '';
+            }();
+            return AlertDialog(
+              title: const Text('选择工艺流程'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (productName.isNotEmpty) Text('原料：$productName', style: const TextStyle(fontSize: 13, color: Colors.black54)),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<int>(
+                      value: selected,
+                      decoration: const InputDecoration(labelText: '工艺流程', border: OutlineInputBorder(), isDense: true),
+                      items: options.map((o) {
+                        final id = (o['id'] as num?)?.toInt() ?? 0;
+                        final label = '${o['code'] ?? ''} · ${o['name'] ?? ''}（${o['step_count'] ?? 0}道）';
+                        return DropdownMenuItem(value: id, child: Text(label, overflow: TextOverflow.ellipsis));
+                      }).toList(),
+                      onChanged: (v) => setLocal(() => selected = v),
+                    ),
+                    if (preview.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text('工序：$preview', style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+                FilledButton(onPressed: selected == null ? null : () => Navigator.pop(ctx, selected), child: const Text('确认进入生产')),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (confirmed == null || !mounted) return;
+    setState(() => _busy = true);
+    final r = await api.post('/production/trace-productions/start', {
       'trace_code': widget.traceCode,
+      'routing_id': confirmed,
     });
     if (!mounted) return;
     setState(() => _busy = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已进入生产' : r.msg)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已进入生产，工艺已锁定' : r.msg)));
     if (r.ok) {
       widget.onChanged();
       await _load();
     }
+  }
+
+  bool _canCompleteStep(Map<String, dynamic> s) {
+    final st = _wip?['ui_status']?.toString();
+    if (st != 'in_progress') return false;
+    final action = '${s['action'] ?? s['step_status'] ?? ''}';
+    if (action != 'complete' && s['step_status'] != 'ready') return false;
+    return _wip?['can_complete_process_id'] == s['process_id'];
+  }
+
+  List<Map<String, dynamic>> _timelineSteps() {
+    if (_wip == null) return const [];
+    final routing = _wip!['routing_steps'];
+    if (routing is List && routing.isNotEmpty) {
+      return routing.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+    final steps = _wip!['steps'];
+    if (steps is List) {
+      return steps.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+    return const [];
+  }
+
+  Widget? _stepTrailing(Map<String, dynamic> s) {
+    if (_canCompleteStep(s)) {
+      return TextButton(onPressed: _busy ? null : () => _completeProcess(s), child: const Text('结束'));
+    }
+    final st = '${s['step_status'] ?? s['action'] ?? ''}';
+    if ((st == 'ready' || st == 'complete') && _wip?['ui_status'] != 'in_progress') {
+      return const Text('待启动', style: TextStyle(fontSize: 12, color: Colors.black45));
+    }
+    if (st == 'done') return const Text('已完成', style: TextStyle(fontSize: 12, color: Colors.teal));
+    if (st == 'in_progress') {
+      return Text('${s['action_hint'] ?? '在制中'}', style: TextStyle(fontSize: 12, color: Colors.orange.shade800));
+    }
+    return Text('${s['action_hint'] ?? '待做'}', style: const TextStyle(fontSize: 12, color: Colors.black45));
   }
 
   @override
@@ -357,23 +473,26 @@ class _TraceDetailSheetState extends State<_TraceDetailSheet> {
               ),
               if (_wip!['product_name'] != null && '${_wip!['product_name']}'.isNotEmpty)
                 Text('物料 ${_wip!['product_name']}', style: const TextStyle(fontSize: 13, color: Colors.black54)),
+              if (_wip!['routing_code'] != null && '${_wip!['routing_code']}'.isNotEmpty)
+                Text(
+                  '工艺 ${_wip!['routing_code']}${_wip!['routing_name'] != null && '${_wip!['routing_name']}'.isNotEmpty ? ' · ${_wip!['routing_name']}' : ''}',
+                  style: const TextStyle(fontSize: 13, color: Colors.black54),
+                ),
               const SizedBox(height: 12),
-              if (st != 'ended')
+              if (st == 'in_stock')
                 FilledButton(onPressed: _busy ? null : _start, child: const Text('进入生产'))
+              else if (st == 'in_production')
+                const Text('已启动溯源生产，请按工序顺序结束', style: TextStyle(fontSize: 13, color: Colors.orange))
               else
                 const Text('全部工序结束后已自动结案', style: TextStyle(fontSize: 13, color: Colors.teal)),
-              if (st != 'ended' && _wip!['routing_steps'] is List && (_wip!['routing_steps'] as List).isNotEmpty)
+              if (st != 'ended' && _timelineSteps().isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text('按工艺顺序结束各工序；末道工序完成后自动结案', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                 ),
               const SizedBox(height: 16),
               const Text('工序时间线', style: TextStyle(fontWeight: FontWeight.w600)),
-              for (final s in ((_wip!['routing_steps'] is List && (_wip!['routing_steps'] as List).isNotEmpty)
-                      ? _wip!['routing_steps']
-                      : _wip!['steps']) as List? ??
-                  const [])
-                  .whereType<Map>())
+              for (final s in _timelineSteps())
                 ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
@@ -383,10 +502,8 @@ class _TraceDetailSheetState extends State<_TraceDetailSheet> {
                     child: Text('${s['seq_no'] ?? ''}', style: TextStyle(fontSize: 11, color: _stepColor('${s['step_status']}'))),
                   ),
                   title: Text('${s['process_name'] ?? s['process_id']}'),
-                  subtitle: Text(_stepSubtitle(Map<String, dynamic>.from(s))),
-                  trailing: s['step_status'] == 'ready' && _wip!['can_complete_process_id'] == s['process_id']
-                      ? TextButton(onPressed: _busy ? null : () => _completeProcess(Map<String, dynamic>.from(s)), child: const Text('结束'))
-                      : null,
+                  subtitle: Text(_stepSubtitle(s)),
+                  trailing: _stepTrailing(s),
                 ),
               if (_report != null) ...[
                 const SizedBox(height: 16),

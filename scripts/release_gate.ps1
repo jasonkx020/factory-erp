@@ -1,4 +1,4 @@
-# Release gate: unit tests + health + pilot/finance smoke + unauthorized
+# Release gate: unit tests + health + cassava delivery smoke
 # Usage: powershell -File scripts/release_gate.ps1
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
@@ -22,6 +22,13 @@ function Assert-Ok($name, $resp) {
     throw "FAIL $name : $($resp | ConvertTo-Json -Compress -Depth 6)"
   }
   Write-Host "OK  $name"
+}
+
+function Assert-Fail($name, $resp) {
+  if ($null -eq $resp -or $resp.code -eq 1) {
+    throw "FAIL $name : expected error, got $($resp | ConvertTo-Json -Compress -Depth 4)"
+  }
+  Write-Host "OK  $name (rejected)"
 }
 
 function Stop-GateApi {
@@ -68,75 +75,37 @@ try {
   if ($metrics.Content -notmatch "erp_http_requests_total") { throw "metrics missing counter" }
   Write-Host "OK  metrics"
 
-  Write-Host "== 4) login + pilot/finance lists =="
+  Write-Host "== 4) login + cassava scope lists =="
   $login = Invoke-Api POST "/auth/login" @{ login_name = "admin"; password = "admin123"; client_type = "web" } $null
   Assert-Ok "login" $login
   $token = $login.data.access_token
 
   foreach ($p in @(
     "/purchase/weigh-tickets",
+    "/purchase/farmers",
     "/inventory/balances",
+    "/inventory/availability",
     "/production/station-flow-logs",
     "/production/process-wip",
-    "/production/dispatches",
-    "/finance/vouchers",
-    "/finance/account-subjects",
-    "/finance/fund-accounts"
+    "/production/trace-productions",
+    "/finance/cost-accountings",
+    "/finance/cost-traces",
+    "/report/dashboards/production",
+    "/report/dashboards/live",
+    "/report/dashboards/warehouse",
+    "/report/daily",
+    "/report/stock-ledger",
+    "/report/payroll-reconcile",
+    "/report/cost-period-summary"
   )) {
     Assert-Ok $p (Invoke-Api GET $p $null $token)
   }
 
-  Write-Host "== 5) finance closed loop =="
-  $codeS = "G" + (Get-Random -Maximum 99999)
-  $codeF = "F" + (Get-Random -Maximum 99999)
-  $subj = Invoke-Api POST "/finance/account-subjects" @{ code = $codeS; name = "gate-cash"; subject_type = "asset" } $token
-  Assert-Ok "create subject" $subj
-  $fund = Invoke-Api POST "/finance/fund-accounts" @{ code = $codeF; name = "gate-fund"; currency = "CNY"; balance = 0 } $token
-  Assert-Ok "create fund" $fund
-  Assert-Ok "ledger" (Invoke-Api POST "/finance/ledger-entries" @{
-    direction = "in"; amount = 100; account_id = [int64]$fund.data.id; subject_id = [int64]$subj.data.id; remark = "gate"
-  } $token)
-
-  $period = Get-Date -Format "yyyy-MM"
-  $sid = [int64]$subj.data.id
-  $vch = Invoke-Api POST "/finance/vouchers" @{
-    summary = "gate voucher"; period = $period
-    lines = @(
-      @{ subject_id = $sid; debit = 100; credit = 0 },
-      @{ subject_id = $sid; debit = 0; credit = 100 }
-    )
-  } $token
-  Assert-Ok "voucher create" $vch
-  $vid = [int64]$vch.data.id
-  Assert-Ok "voucher approve" (Invoke-Api POST "/finance/vouchers/$vid/approve" @{} $token)
-  Assert-Ok "voucher post" (Invoke-Api POST "/finance/vouchers/$vid/post" @{} $token)
-
-  $rejected = $false
-  try {
-    $badV = Invoke-Api POST "/finance/vouchers" @{
-      summary = "bad"; period = $period
-      lines = @(@{ subject_id = $sid; debit = 50; credit = 0 })
-    } $token
-    $badId = [int64]$badV.data.id
-    $postBad = Invoke-Api POST "/finance/vouchers/$badId/post" @{} $token
-    if ($postBad.code -eq 1) { throw "unbalanced post unexpectedly ok" }
-    $rejected = $true
-  } catch {
-    if ($_.Exception.Message -match "unexpectedly ok") { throw }
-    $rejected = $true
-  }
-  if (-not $rejected) { throw "unbalanced post not rejected" }
-  Write-Host "OK  unbalanced post rejected"
-
-  $wo = Invoke-Api POST "/finance/receipt-writeoffs" @{
-    customer_id = 1; amount = 10; fund_account_id = [int64]$fund.data.id; sales_order_id = 1; line_amount = 10
-  } $token
-  Assert-Ok "writeoff" $wo
-  Assert-Ok "writeoff confirm" (Invoke-Api POST "/finance/receipt-writeoffs/$([int64]$wo.data.id)/confirm" @{} $token)
-
-  $y = [int](Get-Date -Format "yyyy"); $mo = [int](Get-Date -Format "MM")
-  Assert-Ok "month close" (Invoke-Api POST "/finance/month-closes" @{ year = $y; month = $mo } $token)
-  Assert-Ok "statements" (Invoke-Api POST "/finance/statements/generate" @{ period = $period } $token)
+  Write-Host "== 5) removed domains return FEATURE_REMOVED =="
+  Assert-Fail "sales removed" (Invoke-Api GET "/sales/orders" $null $token)
+  Assert-Fail "crm removed" (Invoke-Api GET "/crm/customers" $null $token)
+  Assert-Fail "finance voucher removed" (Invoke-Api GET "/finance/vouchers" $null $token)
+  Assert-Fail "boss dashboard removed" (Invoke-Api GET "/report/dashboards/boss" $null $token)
 
   Write-Host "== 6) delivery smokes =="
   $env:API_BASE = "$base"
@@ -150,7 +119,7 @@ try {
   Write-Host "== 7) unauthorized =="
   $denied = $false
   try {
-    Invoke-WebRequest -Method GET -Uri "$base/finance/vouchers" -UseBasicParsing | Out-Null
+    Invoke-WebRequest -Method GET -Uri "$base/finance/cost-accountings" -UseBasicParsing | Out-Null
   } catch {
     $denied = $true
   }
@@ -169,11 +138,10 @@ try {
     "|-------|--------|",
     "| go test ./internal/biz | PASS |",
     "| /live /ready(db=up) /health /metrics | PASS |",
-    "| login + weigh/inventory/report/finance lists | PASS |",
-    "| station_pass_smoke (领料预览+旧报工拒绝) | PASS |",
-    "| delivery_loop (mobile+station smoke) | PASS |",
-    "| finance loop subject->fund/ledger->voucher post->writeoff->month close->statements | PASS |",
-    "| unbalanced voucher post rejected | PASS |",
+    "| login + cassava scope API lists | PASS |",
+    "| removed sales/crm/full-finance rejected | PASS |",
+    "| station_pass_smoke | PASS |",
+    "| mobile_delivery_smoke | PASS |",
     "| request without token rejected | PASS |",
     "",
     "Sign: _______________  Date: _______________",

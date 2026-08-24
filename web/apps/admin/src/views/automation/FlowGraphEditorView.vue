@@ -496,6 +496,7 @@ onBeforeUnmount(() => {
           <el-table-column label="卡点" width="50">
             <template #default="{ row }">{{ row.is_inbound_checkpoint ? '是' : '' }}</template>
           </el-table-column>
+          <el-table-column prop="output_product_name" label="产出产物" min-width="100" />
           <el-table-column label="绑仓" width="50">
             <template #default="{ row }">{{ row.checkpoint_bind_warehouse ? '是' : '' }}</template>
           </el-table-column>
@@ -571,6 +572,16 @@ onBeforeUnmount(() => {
             <el-form-item label="工序">
               <el-select v-model="(selected.data as Row).process_id" filterable style="width:100%" @change="syncSelectedData">
                 <el-option v-for="p in processes" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="产出产物">
+              <el-select v-model="(selected.data as Row).output_product_id" clearable filterable style="width:100%" placeholder="选择产物" @change="syncSelectedData">
+                <el-option
+                  v-for="p in products"
+                  :key="String(p.id)"
+                  :label="`${p.code || ''} · ${p.name || p.id}`"
+                  :value="Number(p.id)"
+                />
               </el-select>
             </el-form-item>
             <el-form-item label="计件"><el-switch v-model="(selected.data as Row).is_piecework" @change="syncSelectedData" /></el-form-item>

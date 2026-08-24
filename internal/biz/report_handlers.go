@@ -100,7 +100,13 @@ func EnsureReportSchema(db *sql.DB) {
 }
 
 func (s *Services) handleReportDomain(c *gin.Context, method, openapiPath, action string) bool {
+	if !isCassavaReportPath(openapiPath) {
+		api.FailJSON(c, "FEATURE_REMOVED:report")
+		return true
+	}
 	switch {
+	case strings.HasPrefix(openapiPath, "/api/v1/report/dashboards/warehouse"):
+		return s.reportWarehouseDashboard(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/report/dashboards/boss/widgets"):
 		return s.handleBossWidgets(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/report/dashboards/boss"):
@@ -115,7 +121,25 @@ func (s *Services) handleReportDomain(c *gin.Context, method, openapiPath, actio
 		return s.reportCRMStats(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/report/daily"):
 		return s.reportDaily(c)
-	case strings.HasPrefix(openapiPath, "/api/v1/report/inquiry-queries"):
+	case strings.HasPrefix(openapiPath, "/api/v1/report/inbound-daily"):
+		return s.reportInboundDaily(c)
+	case strings.HasPrefix(openapiPath, "/api/v1/report/piecework-daily"):
+		return s.reportPieceworkDaily(c)
+	case strings.HasPrefix(openapiPath, "/api/v1/report/yield-analysis"):
+		return s.reportYieldAnalysis(c)
+	case strings.HasPrefix(openapiPath, "/api/v1/report/trace-progress"):
+		return s.reportTraceProgress(c)
+	case strings.HasPrefix(openapiPath, "/api/v1/report/farmer-settlement-summary"):
+		return s.reportFarmerSettlementSummary(c)
+	case strings.HasPrefix(openapiPath, "/api/v1/report/payroll-reconcile"):
+		return s.reportPayrollReconcile(c)
+	case strings.HasPrefix(openapiPath, "/api/v1/report/cost-period-summary"):
+		return s.reportCostPeriodSummary(c)
+	case strings.HasPrefix(openapiPath, "/api/v1/report/qc"):
+		return s.reportIncomingQC(c)
+	case strings.HasPrefix(openapiPath, "/api/v1/report/stock-ledger"):
+		return s.reportStockLedger(c)
+	case strings.HasPrefix(openapiPath, "/api/v1/report/dashboards/boss/widgets"):
 		return s.reportInquiries(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/report/follow-ups"):
 		return s.reportFollowUps(c)
@@ -241,24 +265,65 @@ func (s *Services) handleBossWidgets(c *gin.Context, method, action string) bool
 }
 
 func (s *Services) reportProductionDashboard(c *gin.Context) bool {
+	today := reportToday()
 	list := []gin.H{
-		{"key": "open_tasks", "title": "在制任务", "value": s.queryCount(`SELECT COUNT(1) FROM pd_production_task WHERE COALESCE(is_deleted,0)=0 AND status IN ('pending','released','in_progress')`)},
-		{"key": "open_dispatches", "title": "未完成派工", "value": s.queryCount(`SELECT COUNT(1) FROM pd_dispatch WHERE status IN ('dispatched','reassigned')`)},
-		{"key": "reports_today", "title": "今日报工单", "value": s.queryCount(`SELECT COUNT(1) FROM pd_report_work WHERE date(COALESCE(reported_at,created_at))=date('now')`)},
-		{"key": "qty_today", "title": "今日报工量", "value": s.queryFloat(`SELECT COALESCE(SUM(qty),0) FROM pd_report_work WHERE date(COALESCE(reported_at,created_at))=date('now')`)},
-		{"key": "qc_pending", "title": "待质检", "value": s.queryCount(`SELECT COUNT(1) FROM pd_qc_order WHERE status IN ('draft','pending')`)},
+		{"key": "trace_in_progress", "title": "在制溯源批", "value": s.queryCount(`SELECT COUNT(1) FROM pd_trace_production WHERE status='in_progress'`)},
+		{"key": "open_issues", "title": "在制领料单", "value": s.queryCount(`SELECT COUNT(1) FROM pd_process_issue WHERE status='open'`)},
+		{"key": "pending_warehouse", "title": "待仓管审核", "value": s.queryCount(`SELECT COUNT(1) FROM pd_process_issue WHERE biz_status='issue_pending_warehouse'`)},
+		{"key": "flow_today", "title": "今日过账笔数", "value": s.queryCount(`SELECT COUNT(1) FROM pd_station_flow_log WHERE biz_date=?`, today)},
+		{"key": "flow_kg_today", "title": "今日过账kg", "value": s.queryFloat(`SELECT COALESCE(SUM(kg),0) FROM pd_station_flow_log WHERE biz_date=?`, today)},
+		{"key": "issue_kg_today", "title": "今日领料kg", "value": s.queryFloat(`SELECT COALESCE(SUM(issue_kg),0) FROM pd_process_issue WHERE date(created_at)=?`, today)},
 	}
-	api.OK(c, gin.H{"title": "生产看板", "list": list, "total": len(list), "as_of": time.Now().Format(time.RFC3339)})
+	wip := []gin.H{}
+	rows, err := s.DB.Query(`SELECT pi.process_id, COALESCE(p.name,''), COUNT(1), COALESCE(SUM(pi.issue_kg-pi.completed_kg-pi.returned_kg),0)
+		FROM pd_process_issue pi
+		LEFT JOIN pd_process p ON p.id=pi.process_id
+		WHERE pi.status='open'
+		GROUP BY pi.process_id, p.name
+		ORDER BY pi.process_id`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var pid int64
+			var name string
+			var cnt int
+			var kg float64
+			_ = rows.Scan(&pid, &name, &cnt, &kg)
+			wip = append(wip, gin.H{"process_id": pid, "process_name": name, "issue_count": cnt, "wip_kg": kg})
+		}
+	}
+	api.OK(c, gin.H{
+		"title": "生产运营看板", "list": list, "total": len(list),
+		"wip_by_process": wip, "as_of": time.Now().Format(time.RFC3339),
+	})
 	return true
 }
 
 func (s *Services) reportLiveDashboard(c *gin.Context) bool {
 	list := []gin.H{
-		{"key": "flow_fail", "title": "流转失败", "value": s.queryCount(`SELECT COUNT(1) FROM pd_flow_event WHERE status IN ('error','failed')`)},
-		{"key": "reports_1h", "title": "近1小时报工", "value": s.queryCount(`SELECT COUNT(1) FROM pd_report_work WHERE datetime(COALESCE(reported_at,created_at))>=datetime('now','-1 hour')`)},
-		{"key": "open_dispatches", "title": "待接收派工", "value": s.queryCount(`SELECT COUNT(1) FROM pd_dispatch WHERE status IN ('dispatched','reassigned')`)},
+		{"key": "flow_fail", "title": "流转异常", "value": s.queryCount(`SELECT COUNT(1) FROM pd_flow_event WHERE status IN ('error','failed')`)},
+		{"key": "flow_1h", "title": "近1小时流水", "value": s.queryCount(`SELECT COUNT(1) FROM pd_station_flow_log WHERE datetime(created_at)>=datetime('now','-1 hour')`)},
+		{"key": "flow_kg_1h", "title": "近1小时过账kg", "value": s.queryFloat(`SELECT COALESCE(SUM(kg),0) FROM pd_station_flow_log WHERE datetime(created_at)>=datetime('now','-1 hour')`)},
+		{"key": "active_workers", "title": "近1小时活跃工人", "value": s.queryCount(`SELECT COUNT(DISTINCT worker_id) FROM pd_station_flow_log WHERE datetime(created_at)>=datetime('now','-1 hour') AND worker_id>0`)},
+		{"key": "open_issues", "title": "在制领料", "value": s.queryCount(`SELECT COUNT(1) FROM pd_process_issue WHERE status='open'`)},
+		{"key": "pending_warehouse", "title": "待仓管审核", "value": s.queryCount(`SELECT COUNT(1) FROM pd_process_issue WHERE biz_status='issue_pending_warehouse'`)},
 	}
-	api.OK(c, gin.H{"title": "生产实况", "list": list, "total": len(list), "as_of": time.Now().Format(time.RFC3339)})
+	recent := []gin.H{}
+	rows, err := s.DB.Query(`SELECT id, event_type, trace_code, process_name, worker_name, kg, created_at
+		FROM pd_station_flow_log
+		WHERE datetime(created_at)>=datetime('now','-1 hour')
+		ORDER BY id DESC LIMIT 50`)
+	if err == nil {
+		defer rows.Close()
+		maps, _ := rowsToMaps(rows)
+		for _, row := range maps {
+			recent = append(recent, gin.H(row))
+		}
+	}
+	api.OK(c, gin.H{
+		"title": "生产实况", "list": list, "total": len(list),
+		"recent_flow": recent, "as_of": time.Now().Format(time.RFC3339),
+	})
 	return true
 }
 
@@ -312,16 +377,16 @@ func (s *Services) reportDaily(c *gin.Context) bool {
 		bizDate = reportToday()
 	}
 	payload := gin.H{
-		"biz_date":     bizDate,
-		"sales_amount": s.queryFloat(`SELECT COALESCE(SUM(total_amount),0) FROM sl_sales_order WHERE COALESCE(is_deleted,0)=0 AND date(created_at)=?`, bizDate),
-		"sales_orders": s.queryCount(`SELECT COUNT(1) FROM sl_sales_order WHERE COALESCE(is_deleted,0)=0 AND date(created_at)=?`, bizDate),
-		"report_works": s.queryCount(`SELECT COUNT(1) FROM pd_report_work WHERE date(COALESCE(reported_at,created_at))=?`, bizDate),
-		"report_qty":   s.queryFloat(`SELECT COALESCE(SUM(qty),0) FROM pd_report_work WHERE date(COALESCE(reported_at,created_at))=?`, bizDate),
-		"stock_in":     s.queryFloat(`SELECT COALESCE(SUM(l.qty),0) FROM inv_stock_txn_line l JOIN inv_stock_txn t ON t.id=l.txn_id WHERE t.status='posted' AND l.direction='in' AND date(t.biz_date)=?`, bizDate),
-		"stock_out":    s.queryFloat(`SELECT COALESCE(SUM(l.qty),0) FROM inv_stock_txn_line l JOIN inv_stock_txn t ON t.id=l.txn_id WHERE t.status='posted' AND l.direction='out' AND date(t.biz_date)=?`, bizDate),
-		"cash_in":      s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM fin_ledger_entry WHERE direction='in' AND biz_date=?`, bizDate),
-		"cash_out":     s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM fin_ledger_entry WHERE direction='out' AND biz_date=?`, bizDate),
-		"follow_ups":   s.queryCount(`SELECT COUNT(1) FROM crm_follow_up WHERE date(follow_at)=?`, bizDate),
+		"biz_date": bizDate,
+		"inbound_tickets": s.queryCount(`SELECT COUNT(1) FROM pur_weigh_ticket WHERE COALESCE(is_deleted,0)=0 AND biz_date=?`, bizDate),
+		"inbound_net_kg":  s.queryFloat(`SELECT COALESCE(SUM(net_weight),0) FROM pur_weigh_ticket WHERE COALESCE(is_deleted,0)=0 AND biz_date=?`, bizDate),
+		"production_output_kg": s.queryFloat(`SELECT COALESCE(SUM(output_kg),0) FROM pd_trace_production WHERE date(completed_at)=?`, bizDate),
+		"flow_log_kg":     s.queryFloat(`SELECT COALESCE(SUM(kg),0) FROM pd_station_flow_log WHERE biz_date=?`, bizDate),
+		"piecework_amount": s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM pd_piecework_summary WHERE biz_date=?`, bizDate),
+		"farmer_payable":  s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM pur_farmer_settlement WHERE biz_date=? AND status NOT IN ('paid','settle_paid')`, bizDate),
+		"farmer_paid":     s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM pur_farmer_settlement WHERE biz_date=? AND status IN ('paid','settle_paid')`, bizDate),
+		"stock_in":        s.queryFloat(`SELECT COALESCE(SUM(l.qty),0) FROM inv_stock_txn_line l JOIN inv_stock_txn t ON t.id=l.txn_id WHERE t.status='posted' AND l.direction='in' AND date(t.biz_date)=?`, bizDate),
+		"stock_out":       s.queryFloat(`SELECT COALESCE(SUM(l.qty),0) FROM inv_stock_txn_line l JOIN inv_stock_txn t ON t.id=l.txn_id WHERE t.status='posted' AND l.direction='out' AND date(t.biz_date)=?`, bizDate),
 	}
 	b, _ := json.Marshal(payload)
 	_, _ = s.DB.Exec(`INSERT INTO rpt_report_snapshot(report_code, biz_date, payload_json) VALUES('daily',?,?)

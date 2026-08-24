@@ -197,10 +197,11 @@ func (s *Services) stockInTraceProcessKg(board *boardState, toWorkerID int64, kg
 	if wh <= 0 {
 		wh = 1
 	}
+	outputPID := s.resolveStepOutputProduct(s.resolveRoutingIDForTrace(trace, b.ProductID), fromProcess)
 	newCode, newID, serr := s.stockInNewBoardFrom(&boardState{
 		ID: b.ID, Code: b.Code, Trace: trace, ProductID: b.ProductID, WarehouseID: wh,
 		ProcessID: fromProcess, StepID: b.StepID, TaskID: b.TaskID, WoID: b.WoID,
-	}, wh, fromProcess, b.StepID, kg)
+	}, wh, fromProcess, b.StepID, outputPID, kg)
 	if serr != nil {
 		return nil, "STOCK_IN_FAILED:" + serr.Error()
 	}

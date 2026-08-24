@@ -11,7 +11,6 @@ INSERT INTO sys_department(id, org_id, parent_id, code, name, dept_type) VALUES
  (3, 1, 1, 'D-PROD', '生产部', 'normal'),
  (4, 1, 1, 'D-WH', '仓储部', 'normal'),
  (5, 1, 1, 'D-PUR', '采购部', 'normal'),
- (6, 1, 1, 'D-SALES', '销售部', 'normal'),
  (7, 1, 1, 'D-QC', '质检部', 'normal'),
  (8, 1, 1, 'D-HR', '人事行政部', 'normal'),
  (9, 1, 1, 'D-FIN', '财务部', 'normal'),
@@ -54,7 +53,7 @@ ON CONFLICT DO NOTHING;
 INSERT INTO iam_admin_group(id, code, name, remark, sort_no) VALUES
  (1, 'g_platform', '平台管理组', '系统管理员', 10),
  (2, 'g_biz', '经营决策组', '老板', 20),
- (3, 'g_ops', '业务作业组', '销售采购', 30),
+ (3, 'g_ops', '业务作业组', '采购', 30),
  (4, 'g_plant', '仓储生产组', '仓管计划车间质检', 40),
  (5, 'g_line', '一线作业组', '计件固定工', 50),
  (6, 'g_func', '职能管理组', '人事薪资财务', 60)
@@ -62,8 +61,7 @@ ON CONFLICT DO NOTHING;
 
 INSERT INTO iam_role(id, code, name, data_scope_type, is_system, remark) VALUES
  (1, 'sys_admin', '系统管理员', 'all', 1, '系统管理+角色管理'),
- (2, 'boss', '老板', 'all', 1, '驾驶舱/财务只读'),
- (3, 'sales', '销售员', 'self', 1, '销售客户'),
+ (2, 'boss', '老板', 'all', 1, '驾驶舱/成本只读'),
  (4, 'purchase', '采购员', 'all', 1, '采购'),
  (5, 'warehouse', '仓管员', 'warehouse', 1, '库存按仓'),
  (6, 'planner', '生产计划', 'all', 1, '生产计划'),
@@ -77,7 +75,7 @@ INSERT INTO iam_role(id, code, name, data_scope_type, is_system, remark) VALUES
 ON CONFLICT DO NOTHING;
 
 INSERT INTO iam_admin_group_role(group_id, role_id) VALUES
- (1,1),(2,2),(3,3),(3,4),(4,5),(4,6),(4,7),(4,10),(5,8),(5,9),(6,11),(6,12),(6,13)
+ (1,1),(2,2),(3,4),(4,5),(4,6),(4,7),(4,10),(5,8),(5,9),(6,11),(6,12),(6,13)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO iam_permission(code, name, domain, module, action) VALUES
@@ -97,7 +95,7 @@ INSERT INTO iam_permission(code, name, domain, module, action) VALUES
  ('产品管理:产品档案:新增', '产品档案新增', '产品管理', '产品档案', '新增'),
  ('工资管理:工序工资:查看', '工序工资', '工资管理', '工序工资', '查看'),
  ('财务管理:成本核算:查看', '成本核算', '财务管理', '成本核算', '查看'),
- ('审批管理:任务管理:审批', '审批处理', '审批管理', '任务管理', '审批')
+ ('财务管理:成本明细溯源表:查看', '成本明细溯源表', '财务管理', '成本明细溯源表', '查看')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO iam_role_permission(role_id, permission_id)
@@ -140,8 +138,7 @@ INSERT INTO iam_field_policy(role_id, field_key, field_name, visible, editable) 
 ON CONFLICT DO NOTHING;
 
 INSERT INTO iam_menu_custom(role_id, domain, module, menu_key, visible, sort_no) VALUES
- (8, '生产管理', '过站记录', '生产管理:过站记录', 1, 10),
- (8, '生产管理', '联动式领料', '生产管理:联动式领料', 1, 20),
+ (8, '生产管理', '工序流水', '生产管理:工序流水', 1, 10),
  (8, '工资管理', '工序工资', '工资管理:工序工资', 1, 30)
 ON CONFLICT DO NOTHING;
 
@@ -169,7 +166,6 @@ INSERT INTO hr_employee(id, emp_no, name, org_id, dept_id, team_id, job_title, e
  (13, 'E-FM', '赵主任', 1, 3, NULL, '车间主任', 'office', '13800001013', 'EMP-FM', '450103198703221013', 'active'),
  (14, 'E-PC', '陈计件', 1, 2, 1, '去皮计件工', 'piece', '13800001014', 'EMP-PC', '450103199505051014', 'active'),
  (15, 'E-FX', '刘固定', 1, 2, 2, '收货固定工', 'fixed', '13800001015', 'EMP-FX', '450103199408181015', 'active'),
- (16, 'E-SL', '周海燕', 1, 6, NULL, '销售员', 'sales', '13800001016', 'EMP-SL', '450103199203151016', 'active'),
  (17, 'E-FN', '钱会计', 1, 9, NULL, '会计', 'office', '13800001017', 'EMP-FN', '450103198909091017', 'active'),
  (18, 'E-BS', '韦建国', 1, 1, NULL, '总经理', 'office', '13800001018', 'EMP-BS', '450103197501011018', 'active'),
  (19, 'E-PL', '吴计划', 1, 3, NULL, '生产计划员', 'office', '13800001019', 'EMP-PL', '450103198812011019', 'active'),
@@ -183,7 +179,6 @@ INSERT INTO iam_user(id, login_name, password_hash, employee_id, user_type, stat
  (13, 'u_foreman', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 13, 'biz', 'active'),
  (14, 'u_piece', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 14, 'biz', 'active'),
  (15, 'u_fixed', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 15, 'biz', 'active'),
- (16, 'u_sales', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 16, 'biz', 'active'),
  (17, 'u_finance', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 17, 'biz', 'active'),
  (18, 'u_boss', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 18, 'biz', 'active'),
  (19, 'u_planner', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 19, 'biz', 'active'),
@@ -194,12 +189,12 @@ ON CONFLICT DO NOTHING;
 UPDATE hr_employee SET user_id = id WHERE id BETWEEN 10 AND 21;
 
 INSERT INTO iam_user_role(user_id, role_id) VALUES
- (10, 4), (11, 10), (12, 5), (13, 7), (14, 8), (15, 9), (16, 3), (17, 13), (18, 2),
+ (10, 4), (11, 10), (12, 5), (13, 7), (14, 8), (15, 9), (17, 13), (18, 2),
  (19, 6), (20, 11), (21, 12)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO iam_admin_group_user(group_id, user_id) VALUES
- (3, 10), (4, 11), (4, 12), (4, 13), (5, 14), (5, 15), (3, 16), (6, 17), (2, 18),
+ (3, 10), (4, 11), (4, 12), (4, 13), (5, 14), (5, 15), (6, 17), (2, 18),
  (4, 19), (6, 20), (6, 21)
 ON CONFLICT DO NOTHING;
 
@@ -348,7 +343,6 @@ INSERT INTO sys_department_role(dept_id, role_id) VALUES
  (3, 6),
  (4, 5),
  (5, 4),
- (6, 3),
  (7, 10),
  (8, 11),
  (9, 13), (9, 12),
@@ -366,7 +360,6 @@ INSERT INTO pay_worker_profile(employee_id, pay_type, monthly_base, bank_account
  (13, 'fixed', 6200, '6222080000000013', '450103198703221', 'active'),
  (14, 'piece', 0, '6222080000000014', '450103199505051', 'active'),
  (15, 'fixed', 3800, '6222080000000015', '450103199408181', 'active'),
- (16, 'fixed', 4500, '6222080000000016', '450103199203151', 'active'),
  (17, 'fixed', 5800, '6222080000000017', '450103198909091', 'active'),
  (18, 'fixed', 12000, '6222080000000018', '450103197501011', 'active'),
  (19, 'fixed', 5500, '6222080000000019', '450103198812011', 'active'),

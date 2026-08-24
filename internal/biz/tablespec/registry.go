@@ -42,7 +42,7 @@ var Registry = map[string]*Spec{
 				{"seq_no", TypeInt}, {"process_id", TypeInt}, {"step_code", TypeStr}, {"step_name", TypeStr},
 				{"is_piecework", TypeBool}, {"is_inbound_checkpoint", TypeBool}, {"is_qc_required", TypeBool},
 				{"auto_next", TypeBool}, {"auto_stock_in", TypeBool}, {"auto_stock_out", TypeBool},
-				{"warehouse_id", TypeInt}, {"workshop_dept_id", TypeInt},
+				{"warehouse_id", TypeInt}, {"workshop_dept_id", TypeInt}, {"output_product_id", TypeInt},
 			},
 		},
 		Actions: map[string]string{"activate": "active", "close": "closed"},

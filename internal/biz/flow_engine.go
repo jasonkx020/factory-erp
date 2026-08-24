@@ -27,6 +27,7 @@ type routingStep struct {
 	AutoStockIn               bool
 	AutoStockOut              bool
 	WarehouseID               int64
+	OutputProductID           int64
 }
 
 // AfterReportWork drives automation after a report-work is created.
@@ -186,9 +187,9 @@ func (s *Services) loadStep(id int64) *routingStep {
 	var piece, cp, bind, an, asi, aso int
 	err := s.DB.QueryRow(`SELECT id, routing_id, seq_no, process_id, COALESCE(step_code,''), COALESCE(step_name,''),
 		COALESCE(is_piecework,0), COALESCE(is_inbound_checkpoint,0), COALESCE(checkpoint_bind_warehouse,0), COALESCE(auto_next,1),
-		COALESCE(auto_stock_in,0), COALESCE(auto_stock_out,0), COALESCE(warehouse_id,0)
+		COALESCE(auto_stock_in,0), COALESCE(auto_stock_out,0), COALESCE(warehouse_id,0), COALESCE(output_product_id,0)
 		FROM pd_routing_step WHERE id=?`, id).
-		Scan(&st.ID, &st.RoutingID, &st.SeqNo, &st.ProcessID, &st.StepCode, &st.StepName, &piece, &cp, &bind, &an, &asi, &aso, &st.WarehouseID)
+		Scan(&st.ID, &st.RoutingID, &st.SeqNo, &st.ProcessID, &st.StepCode, &st.StepName, &piece, &cp, &bind, &an, &asi, &aso, &st.WarehouseID, &st.OutputProductID)
 	if err != nil {
 		return nil
 	}
@@ -278,7 +279,13 @@ func (s *Services) autoStockInNewBox(oldCode string, warehouseID, processID int6
 	if woID > 0 {
 		old.WoID = woID
 	}
-	newCode, _, err := s.stockInNewBoardFrom(old, warehouseID, processID, stepID, qty)
+	outputPID := int64(0)
+	if step := s.loadStep(stepID); step != nil {
+		outputPID = step.OutputProductID
+	} else if step == nil && processID > 0 {
+		outputPID = s.resolveStepOutputProduct(s.resolveRoutingIDForTrace(old.Trace, old.ProductID), processID)
+	}
+	newCode, _, err := s.stockInNewBoardFrom(old, warehouseID, processID, stepID, outputPID, qty)
 	return newCode, err
 }
 
@@ -337,7 +344,7 @@ func (s *Services) handleFlowRules(c *gin.Context, method, action string) bool {
 		}
 		rows, err := s.DB.Query(`SELECT id, routing_id, seq_no, process_id, COALESCE(step_code,''), COALESCE(step_name,''),
 			COALESCE(is_piecework,0), COALESCE(is_inbound_checkpoint,0), COALESCE(checkpoint_bind_warehouse,0), COALESCE(auto_next,1),
-			COALESCE(auto_stock_in,0), COALESCE(auto_stock_out,0), COALESCE(warehouse_id,0)
+			COALESCE(auto_stock_in,0), COALESCE(auto_stock_out,0), COALESCE(warehouse_id,0), COALESCE(output_product_id,0)
 			FROM pd_routing_step WHERE routing_id=? ORDER BY seq_no`, rid)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR")
@@ -346,15 +353,30 @@ func (s *Services) handleFlowRules(c *gin.Context, method, action string) bool {
 		defer rows.Close()
 		list := []gin.H{}
 		for rows.Next() {
-			var id, rrid, pid, wh int64
+			var id, rrid, pid, wh, outPID int64
 			var seq, piece, cp, bind, an, asi, aso int
 			var code, name string
-			_ = rows.Scan(&id, &rrid, &seq, &pid, &code, &name, &piece, &cp, &bind, &an, &asi, &aso, &wh)
-			list = append(list, gin.H{
+			_ = rows.Scan(&id, &rrid, &seq, &pid, &code, &name, &piece, &cp, &bind, &an, &asi, &aso, &wh, &outPID)
+			item := gin.H{
 				"id": id, "routing_id": rrid, "seq_no": seq, "process_id": pid, "step_code": code, "step_name": name,
 				"is_piecework": piece == 1, "is_inbound_checkpoint": cp == 1, "checkpoint_bind_warehouse": bind == 1, "auto_next": an == 1,
-				"auto_stock_in": asi == 1, "auto_stock_out": aso == 1, "warehouse_id": wh,
-			})
+				"auto_stock_in": asi == 1, "auto_stock_out": aso == 1, "warehouse_id": wh, "output_product_id": outPID,
+			}
+			if outPID > 0 {
+				_, pname, _ := s.productMeta(outPID)
+				item["output_product_name"] = pname
+			}
+			var inputPID int64
+			if seq > 1 {
+				_ = s.DB.QueryRow(`SELECT COALESCE(output_product_id,0) FROM pd_routing_step WHERE routing_id=? AND seq_no=?`,
+					rrid, seq-1).Scan(&inputPID)
+			}
+			if inputPID > 0 {
+				_, inName, _ := s.productMeta(inputPID)
+				item["input_product_id"] = inputPID
+				item["input_product_name"] = inName
+			}
+			list = append(list, item)
 		}
 		api.OK(c, gin.H{"routing_id": rid, "steps": list})
 		return true

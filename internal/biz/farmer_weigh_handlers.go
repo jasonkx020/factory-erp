@@ -2008,16 +2008,16 @@ func (s *Services) doWeighStockInBatch(c *gin.Context, id int64, body map[string
 	if productID <= 0 {
 		return false, "PRODUCT_REQUIRED", 0, nil
 	}
-	procID, stepID, stepWH, errMsg := s.resolveInboundEntryStep(productID)
+	trace := strings.TrimSpace(strOr(m["trace_code"]))
+	if trace == "" {
+		return false, "TRACE_CODE_REQUIRED", 0, nil
+	}
+	procID, stepID, stepWH, errMsg := s.resolveInboundEntryStep(productID, trace)
 	if errMsg != "" {
 		return false, errMsg, 0, nil
 	}
 	for _, ln := range lines {
 		batchSum += ln.Weight
-	}
-	trace := strings.TrimSpace(strOr(m["trace_code"]))
-	if trace == "" {
-		return false, "TRACE_CODE_REQUIRED", 0, nil
 	}
 	lot := s.loadOpenTraceLot(trace)
 	existCnt, existSum := s.weighBoxedProgressForLot(trace, lot.Since)

@@ -73,6 +73,30 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/production/trace-productions"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/trace-productions/logs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/trace-productions/:code/routing-options"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/trace-productions/:code/report"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/trace-productions/:code/wip"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/trace-productions/:code/material-locations"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/production/tasks"
   },
   {
@@ -90,26 +114,6 @@
   {
     "method": "GET",
     "path": "/api/v1/production/task-merges/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/trace-productions"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/trace-productions/logs"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/trace-productions/:code/wip"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/trace-productions/:code/report"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/trace-productions/:code/material-locations"
   },
   {
     "method": "GET",
@@ -1297,11 +1301,11 @@
   },
   {
     "method": "GET",
-    "path": "/api/v1/report/daily"
+    "path": "/api/v1/report/dashboards/warehouse"
   },
   {
     "method": "GET",
-    "path": "/api/v1/report/cash-flow"
+    "path": "/api/v1/report/daily"
   },
   {
     "method": "GET",
@@ -1309,7 +1313,39 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/report/cost-period-summary"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/cash-flow"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/report/crm-stats"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/inbound-daily"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/income-statement"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/inquiry-queries"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/piecework-daily"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/payroll-reconcile"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/product-sales"
   },
   {
     "method": "GET",
@@ -1333,11 +1369,11 @@
   },
   {
     "method": "GET",
-    "path": "/api/v1/report/income-statement"
+    "path": "/api/v1/report/farmer-settlement-summary"
   },
   {
     "method": "GET",
-    "path": "/api/v1/report/inquiry-queries"
+    "path": "/api/v1/report/follow-ups"
   },
   {
     "method": "GET",
@@ -1349,7 +1385,11 @@
   },
   {
     "method": "GET",
-    "path": "/api/v1/report/follow-ups"
+    "path": "/api/v1/report/yield-analysis"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/report/trace-progress"
   },
   {
     "method": "GET",
@@ -1358,10 +1398,6 @@
   {
     "method": "GET",
     "path": "/api/v1/report/logistics"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/report/product-sales"
   },
   {
     "method": "GET",

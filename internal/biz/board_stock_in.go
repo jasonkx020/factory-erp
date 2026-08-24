@@ -8,7 +8,7 @@ import (
 
 // stockInNewBoardFrom creates a child board code marked with the completed process/step,
 // posts produce_in, and links inv_balance to the new box when possible.
-func (s *Services) stockInNewBoardFrom(old *boardState, warehouseID, processID, stepID int64, qty float64) (newCode string, newID int64, err error) {
+func (s *Services) stockInNewBoardFrom(old *boardState, warehouseID, processID, stepID, outputProductID int64, qty float64) (newCode string, newID int64, err error) {
 	if old == nil || qty <= kgEps {
 		return "", 0, fmt.Errorf("INVALID_QTY")
 	}
@@ -18,7 +18,10 @@ func (s *Services) stockInNewBoardFrom(old *boardState, warehouseID, processID, 
 	if warehouseID <= 0 {
 		warehouseID = 1
 	}
-	productID := old.ProductID
+	productID := outputProductID
+	if productID <= 0 {
+		productID = old.ProductID
+	}
 	if productID <= 0 {
 		return "", 0, fmt.Errorf("PRODUCT_REQUIRED")
 	}

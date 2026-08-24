@@ -602,6 +602,7 @@ CREATE TABLE IF NOT EXISTS pd_routing_step (
   auto_stock_out INTEGER NOT NULL DEFAULT 0,
   warehouse_id INTEGER,
   workshop_dept_id INTEGER,
+  output_product_id BIGINT NOT NULL DEFAULT 0,
   UNIQUE(routing_id, seq_no),
   FOREIGN KEY(routing_id) REFERENCES pd_routing(id),
   FOREIGN KEY(process_id) REFERENCES pd_process(id)

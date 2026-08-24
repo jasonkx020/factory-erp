@@ -20,7 +20,6 @@ func EnsureDemoData(db *sql.DB) {
 	var ver string
 	_ = db.QueryRow(`SELECT value FROM schema_meta WHERE key='demo_showcase_version'`).Scan(&ver)
 	if ver == demoShowcaseVersion {
-		ensureDemoCustomerPortal(db)
 		ensureDemoTimelineData(db)
 		return
 	}
@@ -46,7 +45,6 @@ func EnsureDemoData(db *sql.DB) {
 	seedDemoReport(db, today, now)
 
 	_, _ = db.Exec(`INSERT OR REPLACE INTO schema_meta(key, value) VALUES('demo_showcase_version', ?)`, demoShowcaseVersion)
-	ensureDemoCustomerPortal(db)
 	ensureDemoTimelineData(db)
 	log.Printf("demo showcase data ensured (%s)", demoShowcaseVersion)
 }
