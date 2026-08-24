@@ -36,7 +36,7 @@ var preferredList = map[[2]string]string{
 	{"库存管理", "在途量统计"}:      "/inventory/in-transits",
 	{"生产管理", "生产任务单"}:      "/production/tasks",
 	{"生产管理", "工序定义"}:       "/production/processes",
-	{"生产管理", "工艺流程"}:       "/production/processes",
+	{"生产管理", "工艺流程"}:       "/production/routings",
 	{"生产管理", "产线班次"}:       "/production/shifts",
 	{"生产管理", "例外派岗"}:       "/production/dispatches",
 	{"生产管理", "过站记录"}:       "/production/report-works",

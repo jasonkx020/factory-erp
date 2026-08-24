@@ -73,6 +73,46 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/production/tasks"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/tasks/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/tasks/:id/items"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/task-merges"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/task-merges/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/trace-productions"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/trace-productions/logs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/trace-productions/:code/wip"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/trace-productions/:code/report"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/production/trace-productions/:code/material-locations"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/production/report-works"
   },
   {
@@ -106,42 +146,6 @@
   {
     "method": "GET",
     "path": "/api/v1/production/routings/:id/steps"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/tasks"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/tasks/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/tasks/:id/items"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/task-merges"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/task-merges/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/trace-productions"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/trace-productions/logs"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/trace-productions/:code/wip"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/production/trace-productions/:code/material-locations"
   },
   {
     "method": "GET",
@@ -1701,6 +1705,26 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/production/trace-productions/process-start"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/trace-productions/process-stop"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/trace-productions/process-complete"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/trace-productions/start"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/production/trace-productions/complete"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/production/task-merges"
   },
   {
@@ -1714,22 +1738,6 @@
   {
     "method": "POST",
     "path": "/api/v1/production/tasks/:id/close"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/trace-productions/process-start"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/trace-productions/process-stop"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/trace-productions/start"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/production/trace-productions/complete"
   },
   {
     "method": "POST",

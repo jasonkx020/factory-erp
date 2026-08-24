@@ -235,8 +235,49 @@ class _TraceDetailSheet extends StatefulWidget {
 
 class _TraceDetailSheetState extends State<_TraceDetailSheet> {
   Map<String, dynamic>? _wip;
+  Map<String, dynamic>? _report;
   bool _busy = false;
   String? _err;
+
+  Color _stepColor(String st) {
+    switch (st) {
+      case 'done':
+        return Colors.teal;
+      case 'in_progress':
+        return Colors.orange.shade700;
+      case 'ready':
+        return Colors.blue;
+      default:
+        return Colors.blueGrey;
+    }
+  }
+
+  String _stepStatusLabel(String st) {
+    switch (st) {
+      case 'done':
+        return '已完成';
+      case 'in_progress':
+        return '进行中';
+      case 'ready':
+        return '可结束';
+      default:
+        return '待做';
+    }
+  }
+
+  String _stepSubtitle(Map s) {
+    if (s['step_status'] == 'done') {
+      return '扣损 ${s['loss_kg'] ?? '-'} kg · 产出 ${s['output_kg'] ?? '-'} kg';
+    }
+    return '在制 ${s['wip_kg'] ?? s['available_kg'] ?? 0} kg · ${_stepStatusLabel('${s['step_status']}')}';
+  }
+
+  Future<void> _loadReport() async {
+    final code = Uri.encodeComponent(widget.traceCode);
+    final r = await context.read<AuthState>().api.get('/production/trace-productions/$code/report');
+    if (!mounted || !r.ok) return;
+    setState(() => _report = r.data is Map ? Map<String, dynamic>.from(r.data as Map) : null);
+  }
 
   @override
   void initState() {
@@ -258,6 +299,27 @@ class _TraceDetailSheetState extends State<_TraceDetailSheet> {
       return;
     }
     setState(() => _wip = r.data is Map ? Map<String, dynamic>.from(r.data as Map) : null);
+    if (_wip?['ui_status']?.toString() == 'ended') {
+      await _loadReport();
+    } else {
+      setState(() => _report = null);
+    }
+  }
+
+  Future<void> _completeProcess(Map step) async {
+    setState(() => _busy = true);
+    final r = await context.read<AuthState>().api.post('/production/trace-productions/process-complete', {
+      'trace_code': widget.traceCode,
+      'process_id': step['process_id'],
+    });
+    if (!mounted) return;
+    setState(() => _busy = false);
+    final auto = r.data is Map && (r.data as Map)['auto_finalized'] == true;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? (auto ? '已自动结案' : '工序已结束') : r.msg)));
+    if (r.ok) {
+      widget.onChanged();
+      await _load();
+    }
   }
 
   Future<void> _start() async {
@@ -268,21 +330,6 @@ class _TraceDetailSheetState extends State<_TraceDetailSheet> {
     if (!mounted) return;
     setState(() => _busy = false);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已进入生产' : r.msg)));
-    if (r.ok) {
-      widget.onChanged();
-      await _load();
-    }
-  }
-
-  Future<void> _complete() async {
-    setState(() => _busy = true);
-    final r = await context.read<AuthState>().api.post('/production/trace-productions/complete', {
-      'trace_code': widget.traceCode,
-      'id': _wip?['session_id'],
-    });
-    if (!mounted) return;
-    setState(() => _busy = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已结束生产' : r.msg)));
     if (r.ok) {
       widget.onChanged();
       await _load();
@@ -308,23 +355,58 @@ class _TraceDetailSheetState extends State<_TraceDetailSheet> {
                 '${widget.statusLabel(st)} · 可领 ${_wip!['total_available_kg'] ?? 0} kg · 占用 ${_wip!['total_occupied_kg'] ?? 0} kg',
                 style: const TextStyle(fontSize: 13, color: Colors.black54),
               ),
+              if (_wip!['product_name'] != null && '${_wip!['product_name']}'.isNotEmpty)
+                Text('物料 ${_wip!['product_name']}', style: const TextStyle(fontSize: 13, color: Colors.black54)),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(child: FilledButton(onPressed: _busy ? null : _start, child: const Text('进入生产'))),
-                  const SizedBox(width: 12),
-                  Expanded(child: OutlinedButton(onPressed: _busy ? null : _complete, child: const Text('结束生产'))),
-                ],
-              ),
+              if (st != 'ended')
+                FilledButton(onPressed: _busy ? null : _start, child: const Text('进入生产'))
+              else
+                const Text('全部工序结束后已自动结案', style: TextStyle(fontSize: 13, color: Colors.teal)),
+              if (st != 'ended' && _wip!['routing_steps'] is List && (_wip!['routing_steps'] as List).isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text('按工艺顺序结束各工序；末道工序完成后自动结案', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                ),
               const SizedBox(height: 16),
-              const Text('工序分布', style: TextStyle(fontWeight: FontWeight.w600)),
-              for (final s in ((_wip!['steps'] is List ? _wip!['steps'] as List : const [])).whereType<Map>())
+              const Text('工序时间线', style: TextStyle(fontWeight: FontWeight.w600)),
+              for (final s in ((_wip!['routing_steps'] is List && (_wip!['routing_steps'] as List).isNotEmpty)
+                      ? _wip!['routing_steps']
+                      : _wip!['steps']) as List? ??
+                  const [])
+                  .whereType<Map>())
                 ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    radius: 14,
+                    backgroundColor: _stepColor('${s['step_status']}').withValues(alpha: 0.15),
+                    child: Text('${s['seq_no'] ?? ''}', style: TextStyle(fontSize: 11, color: _stepColor('${s['step_status']}'))),
+                  ),
                   title: Text('${s['process_name'] ?? s['process_id']}'),
-                  subtitle: Text('可领 ${s['available_kg']} · 占用 ${s['occupied_kg']} · 在制 ${s['wip_kg']}'),
+                  subtitle: Text(_stepSubtitle(Map<String, dynamic>.from(s))),
+                  trailing: s['step_status'] == 'ready' && _wip!['can_complete_process_id'] == s['process_id']
+                      ? TextButton(onPressed: _busy ? null : () => _completeProcess(Map<String, dynamic>.from(s)), child: const Text('结束'))
+                      : null,
                 ),
+              if (_report != null) ...[
+                const SizedBox(height: 16),
+                const Text('生产报表', style: TextStyle(fontWeight: FontWeight.w600)),
+                Builder(builder: (context) {
+                  final summary = _report!['summary'] is Map ? Map<String, dynamic>.from(_report!['summary'] as Map) : <String, dynamic>{};
+                  final rate = ((summary['trace_loss_rate'] as num?) ?? 0) * 100;
+                  return Text(
+                    '投入 ${summary['trace_input_kg'] ?? '-'} kg · 产出 ${summary['trace_output_kg'] ?? '-'} kg · 耗损率 ${rate.toStringAsFixed(1)}%',
+                    style: const TextStyle(fontSize: 13),
+                  );
+                }),
+                for (final y in ((_report!['process_yields'] is List ? _report!['process_yields'] as List : const [])).whereType<Map>())
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('${y['process_name'] ?? y['process_id']}'),
+                    subtitle: Text('投 ${y['input_kg']} · 产 ${y['output_kg']} · 损 ${y['loss_kg']} kg'),
+                  ),
+              ],
               if ((_wip!['boards'] is List ? _wip!['boards'] as List : const []).isNotEmpty) ...[
                 const SizedBox(height: 8),
                 const Text('板明细', style: TextStyle(fontWeight: FontWeight.w600)),

@@ -149,6 +149,8 @@ func (s *Services) getTraceProductionWip(c *gin.Context) bool {
 	}
 	uiStatus, sessionID, sessionStatus := s.traceUIStatus(trace)
 	wipMap := s.computeTraceProcessWip(trace)
+	productID, routingID, productName, _ := s.resolveTraceRoutingSteps(trace)
+	routingSteps, currentIdx, canCompletePID := s.buildTraceRoutingTimeline(trace, wipMap)
 	boardCountByProc := map[int64]int{}
 	brows, err := s.DB.Query(`SELECT id, code, COALESCE(current_process_id,0), COALESCE(weight, qty, 0), COALESCE(status,'')
 		FROM inv_box_code WHERE COALESCE(is_deleted,0)=0 AND UPPER(COALESCE(trace_code,''))=UPPER(?)
@@ -191,6 +193,8 @@ func (s *Services) getTraceProductionWip(c *gin.Context) bool {
 	api.OK(c, gin.H{
 		"trace_code": trace, "ui_status": uiStatus, "status": uiStatus,
 		"session_id": sessionID, "session_status": sessionStatus,
+		"product_id": productID, "routing_id": routingID, "product_name": productName,
+		"routing_steps": routingSteps, "current_step_index": currentIdx, "can_complete_process_id": canCompletePID,
 		"total_available_kg": totalAvail, "total_occupied_kg": totalOcc, "total_wip_kg": totalWip,
 		"steps": steps, "boards": boards,
 	})

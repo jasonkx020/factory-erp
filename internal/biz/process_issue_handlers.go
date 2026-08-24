@@ -314,8 +314,22 @@ func (s *Services) attachBoardPreview(dst gin.H, boardID int64, code string, pro
 	dst["process_open_kg"] = procOpen
 	dst["wip_kg"] = roundKg(avail + procOpen)
 	dst["buffer_reentry"] = processID != curProc && weight > kgEps
-	dst["has_next"] = false
-	dst["can_next"] = false
+	if step != nil {
+		next := s.nextStep(step)
+		if next != nil {
+			dst["has_next"] = true
+			dst["can_next"] = weight > kgEps || procOpen > kgEps
+			dst["next_process_id"] = next.ProcessID
+			dst["next_step_id"] = next.ID
+			dst["next_step_name"] = next.StepName
+		} else {
+			dst["has_next"] = false
+			dst["can_next"] = false
+		}
+	} else {
+		dst["has_next"] = false
+		dst["can_next"] = false
+	}
 	dst["can_stock_in"] = true
 	if step != nil {
 		dst["step_name"] = step.StepName
@@ -768,24 +782,30 @@ func (s *Services) moveBoardKg(board *boardState, toWorkerID int64, kg float64, 
 	if kind == "finish" || kind == "finish_in" {
 		kind = "stock_in"
 	}
-	if kind == "next" {
-		return nil, "AUTO_ROUTING_DISABLED"
-	}
-	if kind != "stock_in" {
-		return nil, "INVALID_MOVE_KIND"
-	}
 	fromProcess := fromProcessID
 	if fromProcess <= 0 {
 		fromProcess = board.ProcessID
-	}
-	if fromProcess <= 0 {
-		return nil, "PROCESS_REQUIRED"
 	}
 	fromStepID := fromStepIDHint
 	if fromStepID <= 0 {
 		fromStepID = board.StepID
 	}
 	fromStep := s.loadStep(fromStepID)
+	var toStep *routingStep
+	if kind == "next" {
+		if fromStep == nil {
+			return nil, "ROUTING_REQUIRED"
+		}
+		toStep = s.nextStep(fromStep)
+		if toStep == nil {
+			return nil, "NO_NEXT_STEP"
+		}
+	} else if kind != "stock_in" {
+		return nil, "INVALID_MOVE_KIND"
+	}
+	if fromProcess <= 0 {
+		return nil, "PROCESS_REQUIRED"
+	}
 	tx, err := s.DB.Begin()
 	if err != nil {
 		return nil, "DB_ERROR"
@@ -879,9 +899,18 @@ func (s *Services) moveBoardKg(board *boardState, toWorkerID int64, kg float64, 
 	for _, a := range allocs {
 		issueIDs = append(issueIDs, fmt.Sprintf("%d", a.issueID))
 	}
+	var toProcessID, toStepID int64
+	if toStep != nil {
+		toProcessID = toStep.ProcessID
+		toStepID = toStep.ID
+	}
+	var toProcArg, toStepArg interface{}
+	if toProcessID > 0 {
+		toProcArg, toStepArg = toProcessID, toStepID
+	}
 	res, err := tx.Exec(`INSERT INTO pd_process_move(board_id, board_code, trace_code, from_process_id, from_step_id, to_process_id, to_step_id, to_worker_id, kg, move_kind, issue_ids, created_by)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-		b.ID, b.Code, b.Trace, fromProcess, fromStepID, nil, nil, toWorkerID, kg, kind, strings.Join(issueIDs, ","), nullIf0(createdBy))
+		b.ID, b.Code, b.Trace, fromProcess, fromStepID, toProcArg, toStepArg, toWorkerID, kg, kind, strings.Join(issueIDs, ","), nullIf0(createdBy))
 	if err != nil {
 		return nil, "DB_ERROR:" + err.Error()
 	}
@@ -889,17 +918,88 @@ func (s *Services) moveBoardKg(board *boardState, toWorkerID int64, kg float64, 
 	for _, a := range allocs {
 		_, _ = tx.Exec(`INSERT INTO pd_process_move_alloc(move_id, issue_id, kg) VALUES(?,?,?)`, moveID, a.issueID, a.kg)
 	}
+	if kind == "next" && toProcessID > 0 && toWorkerID > 0 {
+		_, err = tx.Exec(`INSERT INTO pd_process_issue(board_id, board_code, trace_code, process_id, step_id, worker_id, issue_kg, returned_kg, completed_kg, status)
+			VALUES(?,?,?,?,?,?,?,0,0,'open')`, b.ID, b.Code, b.Trace, toProcessID, toStepID, toWorkerID, kg)
+		if err != nil {
+			return nil, "DB_ERROR:" + err.Error()
+		}
+	}
 
 	fromRemain := boardProcessRemainKgTx(tx, b.ID, fromProcess, b.ProcessID, b.Weight)
 	if fromRemain <= kgEps {
-		if _, err := tx.Exec(`UPDATE inv_box_code SET weight=0, qty=0, updated_at=NOW() WHERE id=?`, b.ID); err != nil {
-			return nil, "DB_ERROR:" + err.Error()
+		if kind == "stock_in" {
+			if _, err := tx.Exec(`UPDATE inv_box_code SET weight=0, qty=0, updated_at=NOW() WHERE id=?`, b.ID); err != nil {
+				return nil, "DB_ERROR:" + err.Error()
+			}
+			b.Weight = 0
+		} else if toStep != nil {
+			var poolTo float64
+			_ = tx.QueryRow(`SELECT COALESCE(SUM(issue_kg - returned_kg - completed_kg),0)
+				FROM pd_process_issue WHERE board_id=? AND process_id=? AND status='open' AND COALESCE(worker_id,0)=0`, b.ID, toProcessID).Scan(&poolTo)
+			if poolTo > kgEps {
+				if fail := takePoolTx(tx, b.ID, toProcessID, poolTo); fail != "" {
+					return nil, fail
+				}
+				b.Weight = roundKg(poolTo)
+			} else {
+				b.Weight = 0
+			}
+			if _, err := tx.Exec(`UPDATE inv_box_code SET current_process_id=?, current_step_id=?, weight=?, qty=?, updated_at=NOW() WHERE id=?`,
+				toProcessID, toStepID, b.Weight, b.Weight, b.ID); err != nil {
+				return nil, "DB_ERROR:" + err.Error()
+			}
+			b.ProcessID = toProcessID
+			b.StepID = toStepID
 		}
-		b.Weight = 0
 	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, "DB_ERROR:" + err.Error()
+	}
+
+	if kind == "next" {
+		doPiece := fromProcess > 0 && (fromStep == nil || fromStep.IsPiecework)
+		if fromStep == nil && fromProcess > 0 {
+			var pPiece int
+			_ = s.DB.QueryRow(`SELECT COALESCE(is_piecework,0) FROM pd_process WHERE id=?`, fromProcess).Scan(&pPiece)
+			doPiece = pPiece == 1
+		}
+		pieceKg := 0.0
+		settledAmt := 0.0
+		if doPiece {
+			src := fmt.Sprintf("M%d", moveID)
+			rate := s.processWageRate(fromProcess)
+			for _, a := range allocs {
+				if !a.piece || a.workerID <= 0 || a.kg <= kgEps {
+					continue
+				}
+				s.upsertPieceworkSummaryKeyed(a.workerID, fromProcess, src, a.kg, a.kg, a.kg, 0, 1)
+				pieceKg = roundKg(pieceKg + a.kg)
+				settledAmt = roundMoney(settledAmt + a.kg*rate)
+			}
+		}
+		board.Weight = b.Weight
+		board.ProcessID = b.ProcessID
+		board.StepID = b.StepID
+		board.Status = b.Status
+		out := gin.H{
+			"id": moveID, "action": kind, "kg": kg, "move_kind": kind,
+			"from_process_id": fromProcess, "from_step_id": fromStepID,
+			"settled_kg": pieceKg, "settled_wage_amount": settledAmt,
+		}
+		if doPiece && pieceKg > kgEps {
+			out["piecework"] = true
+			out["piecework_status"] = "settled"
+		}
+		if toProcessID > 0 {
+			out["to_process_id"] = toProcessID
+			out["to_step_id"] = toStepID
+			if toStep != nil {
+				out["to_step_name"] = toStep.StepName
+			}
+		}
+		return out, ""
 	}
 
 	var newBoardCode string

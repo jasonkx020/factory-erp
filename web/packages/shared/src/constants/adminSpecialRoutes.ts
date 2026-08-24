@@ -113,7 +113,7 @@ export const ADMIN_SPECIAL_MODULE_PATHS: Record<string, string> = {
   '审批管理/费用申请': '/approval/hub/expense-requests',
   '审批管理/考勤审批': '/approval/hub/attendance',
   '生产管理/工序定义': '/production/hub/processes',
-  '生产管理/工艺流程': '/production/hub/processes',
+  '生产管理/工艺流程': '/production/hub/routings',
   '生产管理/产线班次': '/production/hub/shifts',
   '生产管理/例外派岗': '/production/hub/dispatches',
   '生产管理/灵活派发工单': '/production/hub/flex',

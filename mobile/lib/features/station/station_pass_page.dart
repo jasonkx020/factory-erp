@@ -102,6 +102,7 @@ class _StationPassPageState extends State<StationPassPage> {
         'TRACE_MISMATCH': '板码与溯源码不一致',
         'STOCK_OUT_FAILED': '仓库出库记账失败',
         'ISSUE_PENDING_EXISTS': '该溯源已有待仓管确认的领料申请',
+        'ROUTING_TRANSITION_FORBIDDEN': '该工序不在工艺路线允许范围内',
         'APP_ONLY': '请在 App 操作',
       };
 
@@ -230,6 +231,32 @@ class _StationPassPageState extends State<StationPassPage> {
       _sources = sources;
       _selectedSourceKey = key;
     });
+    await _applyRoutingProcessHint(trace);
+  }
+
+  Future<void> _applyRoutingProcessHint(String trace) async {
+    final r = await context.read<AuthState>().api.get('/production/trace-productions/${Uri.encodeComponent(trace)}/wip');
+    if (!mounted || !r.ok || r.data is! Map) return;
+    final data = Map<String, dynamic>.from(r.data as Map);
+    final steps = data['routing_steps'];
+    if (steps is! List || steps.isEmpty) return;
+    int? hint;
+    for (final e in steps) {
+      if (e is! Map) continue;
+      final st = '${e['step_status']}';
+      final pid = (e['process_id'] as num?)?.toInt();
+      if (pid == null || pid <= 0) continue;
+      if (st == 'in_progress' || st == 'ready') {
+        hint = pid;
+        break;
+      }
+      if (st == 'pending' && hint == null) {
+        hint = pid;
+      }
+    }
+    if (hint != null && _processes.any((p) => (p['id'] as num?)?.toInt() == hint)) {
+      setState(() => _processId = hint);
+    }
   }
 
   void _onTraceSelected(String? code, Map<String, dynamic>? row) {

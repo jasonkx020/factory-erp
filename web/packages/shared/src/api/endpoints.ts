@@ -196,10 +196,14 @@ export const productionApi = {
     api.get<PageData>(params ? `/production/trace-productions?${params}` : '/production/trace-productions'),
   traceProductionWip: (code: string) =>
     api.get(`/production/trace-productions/${encodeURIComponent(code)}/wip`),
+  traceProductionReport: (code: string) =>
+    api.get(`/production/trace-productions/${encodeURIComponent(code)}/report`),
   startTraceProduction: (body: Record<string, unknown>) =>
     api.post('/production/trace-productions/start', body),
   completeTraceProduction: (body: Record<string, unknown>) =>
     api.post('/production/trace-productions/complete', body),
+  completeTraceProcess: (body: Record<string, unknown>) =>
+    api.post('/production/trace-productions/process-complete', body),
   boardIssue: (body: Record<string, unknown>) => api.post('/production/board-issues', body),
   boardIssueReturn: (body: Record<string, unknown>) => api.post('/production/board-issues/return', body),
   boardMove: (body: Record<string, unknown>) => api.post('/production/board-moves', body),

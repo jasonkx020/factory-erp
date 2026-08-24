@@ -29,6 +29,7 @@ import {
   EnumSelect,
 } from '../../components/select'
 import PieceIssueView from './PieceIssueView.vue'
+import RoutingView from '../automation/RoutingView.vue'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 import { useCarrierCodeLabel } from '../../composables/useCarrierCodeLabel'
@@ -323,7 +324,26 @@ const wipDrawerTitle = ref('')
 const yieldTraceCode = ref('')
 const traceProdFilter = ref('')
 const traceProdWip = ref<Row | null>(null)
+const traceProdReport = ref<Row | null>(null)
 const traceProdCode = ref('')
+const traceProdBusy = ref(false)
+
+function traceStepStatusLabel(st: unknown): string {
+  switch (String(st || '')) {
+    case 'done': return '已完成'
+    case 'in_progress': return '进行中'
+    case 'ready': return '可结束'
+    default: return '待做'
+  }
+}
+function traceStepStatusType(st: unknown): 'success' | 'warning' | 'info' | '' {
+  switch (String(st || '')) {
+    case 'done': return 'success'
+    case 'in_progress': return 'warning'
+    case 'ready': return 'info'
+    default: return ''
+  }
+}
 const shiftMembers = computed(() =>
   ((shiftDetail.value?.members as Row[]) || []).map((m) => ({
     ...m,
@@ -726,9 +746,38 @@ async function daySettlePiece() {
 async function loadTraceProdWip() {
   const code = String(traceProdCode.value || '').trim()
   if (!code) return ElMessage.warning('请输入溯源码')
+  traceProdBusy.value = true
   const res = await productionApi.traceProductionWip(code)
+  traceProdBusy.value = false
   if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
   traceProdWip.value = (res.data as Row) || null
+  traceProdReport.value = null
+  if (traceProdWip.value?.ui_status === 'ended') {
+    await loadTraceProdReport()
+  }
+}
+
+async function loadTraceProdReport() {
+  const code = String(traceProdCode.value || '').trim()
+  if (!code) return
+  const res = await productionApi.traceProductionReport(code)
+  if (res.code !== 1) return ElMessage.error(res.msg || '报表加载失败')
+  traceProdReport.value = (res.data as Row) || null
+}
+
+async function completeTraceProcessStep(processId: number) {
+  const code = String(traceProdCode.value || '').trim()
+  if (!code || !processId) return
+  traceProdBusy.value = true
+  const res = await productionApi.completeTraceProcess({ trace_code: code, process_id: processId })
+  traceProdBusy.value = false
+  if (res.code !== 1) return ElMessage.error(res.msg || '结束工序失败')
+  const d = (res.data || {}) as Row
+  if (d.auto_finalized) ElMessage.success('末道工序已结束，溯源生产已自动结案')
+  else ElMessage.success('工序已结束')
+  await loadTraceProdWip()
+  if (traceProdWip.value?.ui_status === 'ended') await loadTraceProdReport()
+  await refresh()
 }
 
 async function loadStationFlow() {
@@ -1114,14 +1163,7 @@ onMounted(async () => {
 
 <template>
   <div>
-    <div v-if="embedRoutings" class="page">
-      <div class="head">
-        <h2>工艺流程</h2>
-        <p class="hint">已取消工艺流程编排。App 过站须手动指定工序；请在「工序定义」维护工序主数据。</p>
-      </div>
-      <el-alert type="warning" show-icon :closable="false"
-        title="工艺流程编辑已停用：过站不再按工艺图自动流通，请工人在 App 选择本站工序后领取/入库。" />
-    </div>
+    <RoutingView v-if="embedRoutings" />
     <PieceIssueView v-else-if="embedPieceIssue" />
 
     <div v-else class="page" v-loading="loading">
@@ -1921,7 +1963,7 @@ onMounted(async () => {
         <div class="page-head mb">
           <div>
             <h2 class="title">溯源生产</h2>
-            <p class="desc">默认列出全部可用溯源码（库中/生产中/已结束），点击行即可查看工序分布。进入/结束生产请在 App 生管台操作（角色：车间主任/生管）。</p>
+            <p class="desc">列出全部可用溯源码；点击行查看工艺工序时间线。生管可结束本工序；全部工序结束后自动结案并生成生产报表。</p>
           </div>
         </div>
         <div class="row mb">
@@ -1953,18 +1995,87 @@ onMounted(async () => {
             <el-table-column prop="session_status" label="会话" width="100" />
           </el-table>
         </TableOrCards>
-        <el-card v-if="traceProdWip" class="mt mb">
-          <template #header>工序分布 · {{ traceProdWip.trace_code }} ·
+        <el-card v-if="traceProdWip" v-loading="traceProdBusy" class="mt mb">
+          <template #header>
+            工序时间线 · {{ traceProdWip.trace_code }} ·
             {{ traceProdWip.ui_status === 'in_production' ? '生产中' : traceProdWip.ui_status === 'ended' ? '已结束' : '库中' }}
+            <span v-if="traceProdWip.product_name" class="hint"> · {{ traceProdWip.product_name }}</span>
           </template>
-          <p class="form-tip">可领 {{ Number(traceProdWip.total_available_kg||0).toFixed(2) }} · 占用 {{ Number(traceProdWip.total_occupied_kg||0).toFixed(2) }}</p>
-          <el-table :data="(traceProdWip.steps as Row[]) || []" size="small" border>
-            <el-table-column prop="process_name" label="工序" />
-            <el-table-column prop="available_kg" label="可领 kg" width="100" />
-            <el-table-column prop="occupied_kg" label="占用 kg" width="100" />
-            <el-table-column prop="wip_kg" label="在制合计" width="100" />
-            <el-table-column prop="board_count" label="板数" width="80" />
+          <p class="form-tip">
+            可领 {{ Number(traceProdWip.total_available_kg||0).toFixed(2) }} · 占用 {{ Number(traceProdWip.total_occupied_kg||0).toFixed(2) }}
+            <span v-if="(traceProdWip.routing_steps as Row[]|undefined)?.length"> · 全部工序结束后自动结案</span>
+          </p>
+          <el-table :data="((traceProdWip.routing_steps as Row[])?.length ? traceProdWip.routing_steps : traceProdWip.steps) as Row[]" size="small" border>
+            <el-table-column prop="seq_no" label="#" width="50" />
+            <el-table-column prop="process_name" label="工序" min-width="120" />
+            <el-table-column label="状态" width="90">
+              <template #default="{ row }">
+                <el-tag v-if="row.step_status" size="small" :type="traceStepStatusType(row.step_status)">{{ traceStepStatusLabel(row.step_status) }}</el-tag>
+                <span v-else>—</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="WIP kg" width="90">
+              <template #default="{ row }">{{ Number(row.wip_kg ?? row.available_kg ?? 0).toFixed(2) }}</template>
+            </el-table-column>
+            <el-table-column label="投料" width="80">
+              <template #default="{ row }">{{ row.input_kg != null ? Number(row.input_kg).toFixed(2) : '—' }}</template>
+            </el-table-column>
+            <el-table-column label="产出" width="80">
+              <template #default="{ row }">{{ row.output_kg != null ? Number(row.output_kg).toFixed(2) : '—' }}</template>
+            </el-table-column>
+            <el-table-column label="扣损" width="80">
+              <template #default="{ row }">{{ row.loss_kg != null ? Number(row.loss_kg).toFixed(2) : '—' }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="110">
+              <template #default="{ row }">
+                <el-button
+                  v-if="row.step_status === 'ready' && Number(traceProdWip.can_complete_process_id) === Number(row.process_id)"
+                  type="primary" link size="small"
+                  @click="completeTraceProcessStep(Number(row.process_id))"
+                >结束本工序</el-button>
+              </template>
+            </el-table-column>
           </el-table>
+        </el-card>
+        <el-card v-if="traceProdReport" class="mt mb">
+          <template #header>溯源生产报表 · {{ traceProdReport.trace_code }}</template>
+          <p class="form-tip">
+            溯源投入 {{ Number((traceProdReport.summary as Row)?.trace_input_kg || 0).toFixed(2) }} kg ·
+            产出 {{ Number((traceProdReport.summary as Row)?.trace_output_kg || 0).toFixed(2) }} kg ·
+            耗损率 {{ (Number((traceProdReport.summary as Row)?.trace_loss_rate || 0) * 100).toFixed(1) }}%
+          </p>
+          <el-tabs>
+            <el-tab-pane label="工序扣损">
+              <el-table :data="(traceProdReport.process_yields as Row[]) || []" size="small" border>
+                <el-table-column prop="process_name" label="工序" />
+                <el-table-column label="投料 kg"><template #default="{ row }">{{ Number(row.input_kg||0).toFixed(2) }}</template></el-table-column>
+                <el-table-column label="产出 kg"><template #default="{ row }">{{ Number(row.output_kg||0).toFixed(2) }}</template></el-table-column>
+                <el-table-column label="扣损 kg"><template #default="{ row }">{{ Number(row.loss_kg||0).toFixed(2) }}</template></el-table-column>
+              </el-table>
+            </el-tab-pane>
+            <el-tab-pane label="领料摘要">
+              <el-table :data="(traceProdReport.issues as Row[]) || []" size="small" border max-height="320">
+                <el-table-column prop="board_code" label="板码" width="120" />
+                <el-table-column prop="process_name" label="工序" />
+                <el-table-column prop="issue_kg" label="领取 kg" width="90" />
+                <el-table-column prop="status" label="状态" width="80" />
+              </el-table>
+            </el-tab-pane>
+            <el-tab-pane label="板明细">
+              <el-table :data="(traceProdReport.boards as Row[]) || []" size="small" border>
+                <el-table-column prop="code" label="板码" />
+                <el-table-column prop="process_name" label="工序" />
+                <el-table-column prop="weight_kg" label="kg" width="90" />
+              </el-table>
+            </el-tab-pane>
+            <el-tab-pane label="日志">
+              <el-table :data="(traceProdReport.logs as Row[]) || []" size="small" border max-height="320">
+                <el-table-column prop="event_type" label="事件" width="140" />
+                <el-table-column prop="process_name" label="工序" />
+                <el-table-column prop="created_at" label="时间" min-width="160" />
+              </el-table>
+            </el-tab-pane>
+          </el-tabs>
         </el-card>
       </template>
 
@@ -1973,7 +2084,7 @@ onMounted(async () => {
         <div class="row mb">
           <el-input v-model="yieldTraceCode" clearable placeholder="溯源码" style="width:180px" @keyup.enter="refresh" />
           <el-button @click="refresh">查询</el-button>
-          <span class="hint">投入=领取净量；产出=入库过账+下道领取；同溯源工序汇总。结束溯源生产后按溯源汇总扣损。</span>
+          <span class="hint">投入=领取净量；产出=下道移转+入库。逐工序结束或自动结案后可见扣损。</span>
         </div>
         <TableOrCards :data="list" :loading="loading" :columns="yieldTraceCols">
           <el-table :data="list" size="small" border stripe>

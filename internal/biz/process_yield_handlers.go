@@ -17,6 +17,42 @@ func yieldLossRate(inputKg, lossKg float64) float64 {
 	return roundKg(lossKg / inputKg)
 }
 
+// snapshotTraceProcessYield writes yield for a single process on a trace.
+func (s *Services) snapshotTraceProcessYield(trace string, processID int64) (inputKg, outputKg, lossKg, lossRate float64) {
+	trace = strings.ToUpper(strings.TrimSpace(trace))
+	if trace == "" || processID <= 0 {
+		return 0, 0, 0, 0
+	}
+	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(i.issue_kg - i.returned_kg),0)
+		FROM pd_process_issue i
+		WHERE UPPER(COALESCE(i.trace_code,''))=UPPER(?) AND i.process_id=? AND COALESCE(i.worker_id,0)>0`,
+		trace, processID).Scan(&inputKg)
+	inputKg = roundKg(inputKg)
+	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(m.kg),0)
+		FROM pd_process_move m
+		WHERE UPPER(COALESCE(m.trace_code,''))=UPPER(?) AND m.from_process_id=?`,
+		trace, processID).Scan(&outputKg)
+	outputKg = roundKg(outputKg)
+	if inputKg <= kgEps && outputKg <= kgEps {
+		return inputKg, outputKg, 0, 0
+	}
+	lossKg = roundKg(inputKg - outputKg)
+	if lossKg < 0 {
+		lossKg = 0
+	}
+	lossRate = yieldLossRate(inputKg, lossKg)
+	boardCount := 0
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM inv_box_code
+		WHERE COALESCE(is_deleted,0)=0 AND UPPER(COALESCE(trace_code,''))=UPPER(?)`, trace).Scan(&boardCount)
+	_, _ = s.DB.Exec(`INSERT INTO pd_trace_process_yield(trace_code, process_id, input_kg, output_kg, loss_kg, loss_rate, board_count)
+		VALUES(?,?,?,?,?,?,?)
+		ON CONFLICT (trace_code, process_id) DO UPDATE SET
+		input_kg=EXCLUDED.input_kg, output_kg=EXCLUDED.output_kg, loss_kg=EXCLUDED.loss_kg,
+		loss_rate=EXCLUDED.loss_rate, board_count=EXCLUDED.board_count`,
+		trace, processID, inputKg, outputKg, lossKg, lossRate, boardCount)
+	return inputKg, outputKg, lossKg, lossRate
+}
+
 // snapshotTraceYield writes per-process yield for a whole trace (keyed by trace_code only).
 // Called when foreman completes trace production — not on board close.
 func (s *Services) snapshotTraceYield(trace string) {
@@ -77,13 +113,16 @@ func (s *Services) snapshotTraceYield(trace string) {
 		if inKg <= kgEps && outKg <= kgEps {
 			continue
 		}
+		var exist int
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_trace_process_yield WHERE UPPER(trace_code)=UPPER(?) AND process_id=?`, trace, pid).Scan(&exist)
+		if exist > 0 {
+			continue
+		}
 		lossKg := roundKg(inKg - outKg)
 		rate := yieldLossRate(inKg, lossKg)
 		_, _ = s.DB.Exec(`INSERT INTO pd_trace_process_yield(trace_code, process_id, input_kg, output_kg, loss_kg, loss_rate, board_count)
 			VALUES(?,?,?,?,?,?,?)
-			ON CONFLICT (trace_code, process_id) DO UPDATE SET
-			input_kg=EXCLUDED.input_kg, output_kg=EXCLUDED.output_kg, loss_kg=EXCLUDED.loss_kg,
-			loss_rate=EXCLUDED.loss_rate, board_count=EXCLUDED.board_count`,
+			ON CONFLICT (trace_code, process_id) DO NOTHING`,
 			trace, pid, inKg, outKg, lossKg, rate, boardCount)
 	}
 }

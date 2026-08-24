@@ -120,8 +120,8 @@ func TestBoardIssueReturnMovePiecework(t *testing.T) {
 		t.Fatalf("wip should stay 100 after return, got %v", wip)
 	}
 
-	if _, fail := s.moveBoardKg(board, 9, 30, "next", 1, 1, 10); fail != "AUTO_ROUTING_DISABLED" {
-		t.Fatalf("next must be disabled, got %s", fail)
+	if _, fail := s.moveBoardKg(board, 9, 30, "next", 1, 1, 10); fail != "" {
+		t.Fatalf("next: %s", fail)
 	}
 	out, fail := s.moveBoardKg(board, 9, 30, "stock_in", 1, 1, 10)
 	if fail != "" {

@@ -444,6 +444,17 @@ export const MODULES: ModuleMeta[] = [
   },
   {
     domain: '生产管理',
+    module: '工艺流程',
+    phase: 1,
+    list: '/production/routings',
+    create: '/production/routings',
+    detail: '/production/routings/{id}',
+    update: '/production/routings/{id}',
+    remove: '/production/routings/{id}',
+    actions: [],
+  },
+  {
+    domain: '生产管理',
     module: '产线班次',
     phase: 1,
     list: '/production/shifts',
@@ -469,7 +480,7 @@ export const MODULES: ModuleMeta[] = [
     domain: '生产管理',
     module: '工序流水',
     phase: 1,
-    list: '/production/station-flow-logs',
+    list: '',
     actions: [],
   },
   {
@@ -528,6 +539,13 @@ export const MODULES: ModuleMeta[] = [
     module: '工序在制',
     phase: 1,
     list: '/production/process-wip',
+    actions: [],
+  },
+  {
+    domain: '生产管理',
+    module: '溯源生产',
+    phase: 1,
+    list: '',
     actions: [],
   },
   {
