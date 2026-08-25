@@ -83,6 +83,7 @@ var resourceDomainModule = map[string]domainModule{
 	// hr / payroll
 	"hr/employees": {"人事管理", "员工档案"}, "hr/onboards": {"人事管理", "入职登记"},
 	"hr/departments": {"人事管理", "公司架构"}, "hr/work-teams": {"人事管理", "员工档案"},
+	"hr/job-titles":  {"人事管理", "岗位管理"},
 	"hr/tool-issues": {"人事管理", "工具领还"}, "system/personnel-transfers": {"人事管理", "人事调动"},
 	"payroll/wage-rates":   {"工资管理", "工序工资"},
 	"payroll/sheets":       {"工资管理", "薪酬核算"},

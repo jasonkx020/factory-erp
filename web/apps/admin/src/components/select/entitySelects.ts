@@ -60,6 +60,16 @@ export async function loadWorkTeams(deptId?: number): Promise<Row[]> {
   return asList(await hrApi.workTeams(deptId))
 }
 
+export async function loadJobTitles(empType?: string): Promise<Row[]> {
+  return asList(await hrApi.jobTitles(empType))
+}
+
+export async function ensureJobTitle(name: string, empType?: string): Promise<Row | null> {
+  const res = await hrApi.ensureJobTitle({ name, emp_type: empType || '' })
+  if (res.code !== 1) return null
+  return (res.data as Row) || null
+}
+
 export async function loadProcesses(): Promise<Row[]> {
   return asList(await productionApi.processes())
 }

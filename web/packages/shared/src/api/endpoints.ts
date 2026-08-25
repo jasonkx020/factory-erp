@@ -336,6 +336,18 @@ export const hrApi = {
     api.get<PageData>(
       deptId && deptId > 0 ? `/hr/work-teams?dept_id=${deptId}` : '/hr/work-teams',
     ),
+  jobTitles: (empType?: string, status?: string) => {
+    const q = new URLSearchParams()
+    if (empType) q.set('emp_type', empType)
+    if (status) q.set('status', status)
+    const qs = q.toString()
+    return api.get<PageData>(qs ? `/hr/job-titles?${qs}` : '/hr/job-titles')
+  },
+  getJobTitle: (id: number) => api.get(`/hr/job-titles/${id}`),
+  createJobTitle: (body: Record<string, unknown>) => api.post('/hr/job-titles', body),
+  updateJobTitle: (id: number, body: Record<string, unknown>) => api.put(`/hr/job-titles/${id}`, body),
+  removeJobTitle: (id: number) => api.del(`/hr/job-titles/${id}`),
+  ensureJobTitle: (body: Record<string, unknown>) => api.post('/hr/job-titles/ensure', body),
   batchImportEmployees: (body: Record<string, unknown>) => api.post('/hr/employee-imports', body),
   setBadge: (id: number, badge_code?: string, opts?: { regenerate?: boolean }) =>
     api.put(`/hr/employees/${id}/badge`, {

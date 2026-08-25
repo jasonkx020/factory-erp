@@ -12,7 +12,7 @@ import {
   hrApi,
   iamApi,
 } from '@erp/shared'
-import { EnumSelect, TeamSelect } from '../../components/select'
+import { EnumSelect, TeamSelect, JobTitleSelect } from '../../components/select'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 import { downloadExcel } from '../../utils/exportExcel'
@@ -24,7 +24,7 @@ const empCols: MobileCardColumn[] = [
   { prop: 'emp_no', label: '工号' },
   { prop: 'login_name', label: '登录账号' },
   { prop: 'emp_type_label', label: '用工类型' },
-  { prop: 'job_title', label: '岗位' },
+  { prop: 'job_title_name', label: '岗位' },
   { prop: 'mobile', label: '手机' },
   { prop: 'dept_name', label: '部门' },
   { prop: 'status_label', label: '状态' },
@@ -54,7 +54,7 @@ const form = reactive({
   emp_no: '',
   name: '',
   emp_type: DEFAULT_EMP_TYPE,
-  job_title: '',
+  job_title_id: 0,
   mobile: '',
   id_card_no: '',
   org_id: 1,
@@ -235,7 +235,7 @@ function openCreate() {
     emp_no: '',
     name: '',
     emp_type: DEFAULT_EMP_TYPE,
-    job_title: '',
+    job_title_id: 0,
     mobile: '',
     id_card_no: '',
     org_id: 1,
@@ -265,7 +265,7 @@ async function openEdit(row: Row) {
     emp_no: data.emp_no || '',
     name: data.name || '',
     emp_type: data.emp_type || DEFAULT_EMP_TYPE,
-    job_title: data.job_title || '',
+    job_title_id: Number(data.job_title_id) || 0,
     mobile: data.mobile || '',
     id_card_no: data.id_card_no || '',
     org_id: Number(data.org_id) || 1,
@@ -372,7 +372,7 @@ async function save() {
       id_card_no: form.id_card_no.trim(),
       mobile: form.mobile.trim(),
       emp_type: form.emp_type,
-      job_title: form.job_title,
+      job_title_id: form.job_title_id || null,
       status: form.status,
       dept_ids: form.dept_ids,
       primary_dept_id: form.primary_dept_id || form.dept_ids[0] || form.dept_id,
@@ -388,7 +388,7 @@ async function save() {
       id_card_no: form.id_card_no.trim(),
       mobile: form.mobile.trim(),
       emp_type: form.emp_type,
-      job_title: form.job_title,
+      job_title_id: form.job_title_id || null,
       dept_ids: form.dept_ids,
       primary_dept_id: form.primary_dept_id || form.dept_ids[0] || form.dept_id,
       dept_id: form.primary_dept_id || form.dept_ids[0] || form.dept_id,
@@ -484,7 +484,7 @@ function exportEmployeesExcel() {
       String(r.name || ''),
       String(r.login_name || ''),
       empTypeLabel(r.emp_type),
-      String(r.job_title || ''),
+      String(r.job_title_name || ''),
       String(r.mobile || ''),
       String(r.id_card_no || ''),
       String(r.dept_name || ''),
@@ -642,9 +642,9 @@ onMounted(load)
             <el-tag size="small" effect="plain" :type="empTypeTagType(row.emp_type)">{{ row.emp_type_label || empTypeLabel(row.emp_type) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="job_title" label="岗位" width="110">
+        <el-table-column prop="job_title_name" label="岗位" width="110">
           <template #default="{ row }">
-            <span :class="{ muted: !row.job_title }">{{ row.job_title || '—' }}</span>
+            <span :class="{ muted: !row.job_title_name }">{{ row.job_title_name || '—' }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="mobile" label="手机" width="120" />
@@ -715,7 +715,7 @@ onMounted(load)
           <EnumSelect v-model="form.emp_type" :options="EMP_TYPE_OPTIONS" :clearable="false" style="width:100%" />
         </el-form-item>
         <el-form-item label="岗位">
-          <el-input v-model="form.job_title" placeholder="可选" />
+          <JobTitleSelect v-model="form.job_title_id" :emp-type="form.emp_type" style="width:100%" />
         </el-form-item>
         <el-form-item label="所属部门">
           <el-select

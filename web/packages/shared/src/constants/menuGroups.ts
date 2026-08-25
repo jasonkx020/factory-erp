@@ -26,7 +26,7 @@ export const ERP_MENU_GROUPS: Record<string, MenuGroup[]> = {
     { title: '工价与档案', modules: ['工人信息管理', '工序工资'] },
     { title: '核算发放', modules: ['工资批量管理', '薪酬核算', '员工工作台账'] },
   ],
-  人事管理: [{ title: '组织人事', modules: ['员工档案', '公司架构', '角色管理'] }],
+  人事管理: [{ title: '组织人事', modules: ['员工档案', '岗位管理', '公司架构', '角色管理'] }],
   统计报表: [
     { title: '经营看板', modules: ['生产看板', '生产实况', '三仓库存概览'] },
     { title: '日结对账', modules: ['日经营快照', '原料入场日报', '计件日结汇总'] },

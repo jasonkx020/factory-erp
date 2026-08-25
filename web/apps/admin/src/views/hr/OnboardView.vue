@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { DEFAULT_EMP_TYPE, EMP_TYPE_OPTIONS, empTypeLabel, hrApi, iamApi } from '@erp/shared'
-import { TeamSelect } from '../../components/select'
+import { TeamSelect, JobTitleSelect } from '../../components/select'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
 
@@ -14,7 +14,7 @@ const onboardCols: MobileCardColumn[] = [
   { prop: 'onboard_date', label: '入职日' },
   { prop: 'emp_no', label: '工号' },
   { prop: 'emp_type', label: '类型' },
-  { prop: 'job_title', label: '岗位' },
+  { prop: 'job_title_name', label: '岗位' },
   { prop: 'mobile', label: '手机' },
   { prop: 'id_card_no', label: '身份证号' },
   { prop: 'status', label: '状态' },
@@ -41,7 +41,7 @@ const form = reactive({
   dept_ids: [] as number[],
   primary_dept_id: 1,
   team_id: 0,
-  job_title: '',
+  job_title_id: 0,
   mobile: '',
   badge_code: '',
   id_card_no: '',
@@ -95,7 +95,7 @@ function resetForm() {
     dept_ids: [1],
     primary_dept_id: 1,
     team_id: 0,
-    job_title: '',
+    job_title_id: 0,
     mobile: '',
     badge_code: '',
     id_card_no: '',
@@ -163,7 +163,7 @@ async function openEdit(row: Row) {
     dept_ids: deptIds.length ? deptIds : primary ? [primary] : [1],
     primary_dept_id: primary,
     team_id: Number(emp.team_id) || 0,
-    job_title: String(emp.job_title || ''),
+    job_title_id: Number(emp.job_title_id) || 0,
     mobile: String(emp.mobile || ''),
     badge_code: String(emp.badge_code || ''),
     id_card_no: String(emp.id_card_no || d.id_card_no || ''),
@@ -294,8 +294,7 @@ onMounted(load)
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="job_title" label="岗位" width="100" />
-        <el-table-column prop="job_title" label="岗位" />
+        <el-table-column prop="job_title_name" label="岗位" width="100" />
         <el-table-column prop="mobile" label="手机" width="120" />
         <el-table-column prop="id_card_no" label="身份证号" width="160" show-overflow-tooltip />
         <el-table-column label="开户" width="80">
@@ -363,7 +362,7 @@ onMounted(load)
           </el-col>
           <el-col :span="12" :xs="24">
             <el-form-item label="岗位">
-              <el-input v-model="form.job_title" placeholder="如 去皮工" />
+              <JobTitleSelect v-model="form.job_title_id" :emp-type="form.emp_type" style="width:100%" />
             </el-form-item>
           </el-col>
           <el-col :span="12" :xs="24">

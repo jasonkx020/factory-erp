@@ -26,6 +26,17 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg)
 }
 
+async function jobTitleId(token, name, empType = '') {
+  const q = empType ? `?emp_type=${encodeURIComponent(empType)}` : ''
+  const res = await req('GET', `/hr/job-titles${q}`, undefined, token)
+  assert(res.code === 1, `job-titles: ${res.msg}`)
+  const hit = (res.data?.list || []).find((x) => x.name === name)
+  if (hit?.id) return hit.id
+  const ensured = await req('POST', '/hr/job-titles/ensure', { name, emp_type: empType }, token)
+  assert(ensured.code === 1 && ensured.data?.id, `ensure job title ${name}: ${ensured.msg}`)
+  return ensured.data.id
+}
+
 async function main() {
   const log = (m) => console.log('✓', m)
 
@@ -33,6 +44,10 @@ async function main() {
   assert(login.code === 1, `login: ${login.msg}`)
   const token = login.data.access_token
   log('login')
+
+  const peelId = await jobTitleId(token, '去皮工', 'piece')
+  const cutId = await jobTitleId(token, '切断工', 'fixed')
+  log('job titles loaded')
 
   const roles = await req('GET', '/iam/roles', undefined, token)
   assert(roles.code === 1, `roles: ${roles.msg}`)
@@ -47,7 +62,7 @@ async function main() {
     emp_type: 'piece',
     dept_id: 1,
     team_id: 1,
-    job_title: '去皮工',
+    job_title_id: peelId,
     mobile: '13800001111',
     badge_code: `BD-${Date.now().toString().slice(-6)}`,
     onboard_date: '2026-08-04',
@@ -70,7 +85,7 @@ async function main() {
 
   const upd = await req('PUT', `/hr/onboards/${oid}`, {
     name: '入职E2E工人改',
-    job_title: '切断工',
+    job_title_id: cutId,
     remark: 'e2e updated',
     role_ids: [roleID],
     need_account: true,

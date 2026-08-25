@@ -1261,6 +1261,14 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/hr/job-titles"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/job-titles/:id"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/hr/visits"
   },
   {
@@ -2501,6 +2509,158 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/hr/overtime-patches"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/overtime-patches/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/overtime-patches/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/overtime-patches/:id/cancel"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/onboards"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/onboards/:id/cancel"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/onboards/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/offboards"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/offboards/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/attendance/records"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/attendance/records/patch"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/attendance/records/punch"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/attendance/rules"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/attendance/month-stats/recalc"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/attendance-perf-summaries/recalc"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/tool-issues"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/tool-issues/:id/return"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/tool-issues/:id/return-request"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/tool-issues/:id/return-confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/tool-issues/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/tool-issues/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/employee-imports"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/employee-journals"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/employees"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/employees/:id/open-account"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/leave-requests"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/leave-requests/:id/cancel"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/leave-requests/:id/approve"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/leave-requests/:id/reject"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/performance/results"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/performance/schemes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/job-titles"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/job-titles/ensure"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/departments"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/memos"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/shifts"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/visits"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/hr/id-card/ocr"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/approval/inquiry-finance"
   },
   {
@@ -2650,150 +2810,6 @@
   {
     "method": "POST",
     "path": "/api/v1/asset/fixed-assets"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/overtime-patches"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/overtime-patches/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/overtime-patches/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/overtime-patches/:id/cancel"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/onboards"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/onboards/:id/cancel"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/onboards/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/offboards"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/offboards/:id/confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/attendance/records"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/attendance/records/patch"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/attendance/records/punch"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/attendance/rules"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/attendance/month-stats/recalc"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/attendance-perf-summaries/recalc"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/tool-issues"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/tool-issues/:id/return"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/tool-issues/:id/return-request"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/tool-issues/:id/return-confirm"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/tool-issues/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/tool-issues/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/employee-imports"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/employee-journals"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/employees"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/employees/:id/open-account"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/leave-requests"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/leave-requests/:id/cancel"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/leave-requests/:id/approve"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/leave-requests/:id/reject"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/performance/results"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/performance/schemes"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/departments"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/memos"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/shifts"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/visits"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/hr/id-card/ocr"
   },
   {
     "method": "POST",
@@ -3150,6 +3166,10 @@
   {
     "method": "DELETE",
     "path": "/api/v1/hr/shifts/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/hr/job-titles/:id"
   },
   {
     "method": "DELETE",
@@ -3710,6 +3730,10 @@
   {
     "method": "PUT",
     "path": "/api/v1/hr/shifts/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/hr/job-titles/:id"
   },
   {
     "method": "PUT",

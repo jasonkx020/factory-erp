@@ -58,7 +58,7 @@ export const CASSAVA_PRODUCT_SCOPE: ProductScopeEntry[] = [
   },
   {
     domain: '人事管理',
-    modules: ['员工档案', '公司架构', '角色管理'],
+    modules: ['员工档案', '岗位管理', '公司架构', '角色管理'],
   },
   {
     domain: '财务管理',

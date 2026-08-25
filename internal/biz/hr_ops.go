@@ -1348,6 +1348,12 @@ func (s *Services) handleDepartments(c *gin.Context, method, action string) bool
 				return true
 			}
 		}
+		if deptType == deptTypeWorkshop {
+			if err := s.applyWorkshopTeamMembers(id, parseTeamMembersBody(body)); err != nil {
+				api.FailJSON(c, err.Error())
+				return true
+			}
+		}
 		detail, err := s.packDeptDetail(id)
 		if err != nil {
 			api.FailJSON(c, "NOT_FOUND")
@@ -1423,6 +1429,12 @@ func (s *Services) handleDepartments(c *gin.Context, method, action string) bool
 		if teams, ok := body["teams"].([]interface{}); ok && deptType == deptTypeWorkshop {
 			if err := s.syncDeptTeams(id, teams); err != nil {
 				api.FailJSON(c, "DB_ERROR:"+err.Error())
+				return true
+			}
+		}
+		if deptType == deptTypeWorkshop {
+			if err := s.applyWorkshopTeamMembers(id, parseTeamMembersBody(body)); err != nil {
+				api.FailJSON(c, err.Error())
 				return true
 			}
 		}

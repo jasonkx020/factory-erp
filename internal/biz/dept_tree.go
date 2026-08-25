@@ -290,7 +290,7 @@ func (s *Services) packDeptDetail(id int64) (gin.H, error) {
 		"inherited_roles":    s.loadRoleDetailsByIDs(inheritedRoleIDs),
 	}
 	if deptType == deptTypeWorkshop {
-		out["teams"] = s.listWorkTeamsByDept(id)
+		out["teams"] = s.listWorkTeamsWithMembers(id)
 	}
 	return out, nil
 }

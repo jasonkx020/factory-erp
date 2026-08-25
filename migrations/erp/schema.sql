@@ -122,6 +122,21 @@ CREATE TABLE IF NOT EXISTS sys_code_rule (
   updated_at TEXT NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS hr_job_title (
+  id BIGSERIAL PRIMARY KEY,
+  code TEXT NOT NULL,
+  name TEXT NOT NULL,
+  emp_type TEXT NOT NULL DEFAULT '',
+  sort_no INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active',
+  is_deleted INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT NOW(),
+  updated_at TEXT NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS hr_job_title_code_uq ON hr_job_title(code) WHERE COALESCE(is_deleted, 0) = 0;
+CREATE UNIQUE INDEX IF NOT EXISTS hr_job_title_name_uq ON hr_job_title(name) WHERE COALESCE(is_deleted, 0) = 0;
+
 -- 员工 / 用户 / 权限
 CREATE TABLE IF NOT EXISTS hr_employee (
   id BIGSERIAL PRIMARY KEY,
@@ -130,7 +145,7 @@ CREATE TABLE IF NOT EXISTS hr_employee (
   org_id INTEGER NOT NULL,
   dept_id INTEGER,
   team_id INTEGER,
-  job_title TEXT,
+  job_title_id INTEGER,
   emp_type TEXT NOT NULL DEFAULT 'office',
   mobile TEXT,
   badge_code TEXT,
@@ -141,7 +156,8 @@ CREATE TABLE IF NOT EXISTS hr_employee (
   updated_at TEXT NOT NULL DEFAULT NOW(),
   is_deleted INTEGER NOT NULL DEFAULT 0,
   version INTEGER NOT NULL DEFAULT 0,
-  FOREIGN KEY(org_id) REFERENCES sys_organization(id)
+  FOREIGN KEY(org_id) REFERENCES sys_organization(id),
+  FOREIGN KEY(job_title_id) REFERENCES hr_job_title(id)
 );
 
 CREATE TABLE IF NOT EXISTS iam_user (

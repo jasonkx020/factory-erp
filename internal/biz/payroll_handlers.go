@@ -902,9 +902,11 @@ func (s *Services) runCommissionCalc(c *gin.Context) bool {
 	if f, ok := asFloat(m["rate"]); ok {
 		rate = f
 	}
-	// sales employees: office or emp with sales in job_title, or all with user
-	rows, err := s.DB.Query(`SELECT id FROM hr_employee WHERE COALESCE(is_deleted,0)=0 AND status='active'
-		AND (emp_type='office' OR COALESCE(job_title,'') LIKE '%销售%' OR emp_type='fixed')`)
+	// sales employees: office, sales job title, or fixed
+	rows, err := s.DB.Query(`SELECT e.id FROM hr_employee e
+		LEFT JOIN hr_job_title j ON j.id=e.job_title_id AND COALESCE(j.is_deleted,0)=0
+		WHERE COALESCE(e.is_deleted,0)=0 AND e.status='active'
+		AND (e.emp_type='office' OR e.emp_type='fixed' OR COALESCE(j.code,'')='JT-SALES' OR COALESCE(j.name,'') LIKE '%销售%')`)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR")
 		return true
