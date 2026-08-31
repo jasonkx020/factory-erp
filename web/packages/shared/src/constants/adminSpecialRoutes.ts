@@ -41,6 +41,7 @@ export const ADMIN_SPECIAL_MODULE_PATHS: Record<string, string> = {
   '工资管理/薪酬核算': '/payroll/sheets',
   '工资管理/员工工作台账': '/payroll/work-records',
   '人事管理/员工档案': '/hr/employees',
+  '人事管理/岗位管理': '/hr/job-titles',
   '人事管理/公司架构': '/hr/departments',
   '人事管理/角色管理': '/hr/roles',
   '统计报表/生产看板': '/report/hub/production-board',

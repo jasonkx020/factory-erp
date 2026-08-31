@@ -84,6 +84,12 @@
 | 1 | 人事管理 | 班次管理 | DELETE | `/api/v1/hr/shifts/{id}` | 班次-删除 |
 | 1 | 人事管理 | 班次管理 | GET | `/api/v1/hr/shifts/{id}` | 班次-详情 |
 | 1 | 人事管理 | 班次管理 | PUT | `/api/v1/hr/shifts/{id}` | 班次-更新 |
+| 1 | 人事管理 | 岗位管理 | GET | `/api/v1/hr/job-titles` | 岗位-列表 |
+| 1 | 人事管理 | 岗位管理 | POST | `/api/v1/hr/job-titles` | 岗位-新建 |
+| 1 | 人事管理 | 岗位管理 | POST | `/api/v1/hr/job-titles/ensure` | 岗位-幂等入库 |
+| 1 | 人事管理 | 岗位管理 | GET | `/api/v1/hr/job-titles/{id}` | 岗位-详情 |
+| 1 | 人事管理 | 岗位管理 | PUT | `/api/v1/hr/job-titles/{id}` | 岗位-更新 |
+| 1 | 人事管理 | 岗位管理 | DELETE | `/api/v1/hr/job-titles/{id}` | 岗位-删除 |
 | 1 | 人事管理 | 公司架构 | GET | `/api/v1/hr/work-teams` | 班组-列表 |
 | 1 | 人事管理 | 角色管理 | GET | `/api/v1/iam/hr-perm-overview` | 人事权限工作台-总览 |
 | 1 | 人事管理 | 角色管理 | DELETE | `/api/v1/iam/users/{id}/bind-employee` | 用户-解绑员工 |

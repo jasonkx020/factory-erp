@@ -148,6 +148,8 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		return s.batchImportEmployees(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/hr/departments"):
 		return s.handleDepartments(c, method, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/hr/job-titles"):
+		return s.handleJobTitles(c, method, action, openapiPath)
 	case strings.HasPrefix(openapiPath, "/api/v1/hr/work-teams"):
 		return s.handleWorkTeams(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/hr/onboards"):

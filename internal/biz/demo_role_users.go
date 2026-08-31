@@ -108,7 +108,7 @@ func presetRoleGrant(roleCode string) presetGrant {
 		}
 	case "hr":
 		return presetGrant{
-			edits: pair("人事管理", "员工档案", "公司架构", "角色管理"),
+			edits: pair("人事管理", "员工档案", "公司架构", "角色管理", "岗位管理"),
 		}
 	case "payroll":
 		return presetGrant{
@@ -179,6 +179,7 @@ func EnsureDemoRoleUsers(db *sql.DB) {
 		return
 	}
 	ensureFactoryOrgTree(db)
+	ensureFactoryJobTitles(db)
 	ensureLineWorkerSeeds(db)
 	for _, u := range demoRoleUserSeeds() {
 		ensureOneDemoRoleUser(db, u)
@@ -195,12 +196,13 @@ func ensureLineWorkerSeeds(db *sql.DB) {
 }
 
 func ensureLineWorker(db *sql.DB, empNo, name, empType, job, mobile, idCard, badge string, deptID, teamID int64, payType string, monthly float64, bank, tax string) {
-	_, _ = db.Exec(`INSERT INTO hr_employee(emp_no, name, org_id, dept_id, team_id, job_title, emp_type, mobile, badge_code, id_card_no, status)
+	jobTitleID := ensureJobTitleRow(db, job, empType, "", 0)
+	_, _ = db.Exec(`INSERT INTO hr_employee(emp_no, name, org_id, dept_id, team_id, job_title_id, emp_type, mobile, badge_code, id_card_no, status)
 		VALUES(?,?,1,?,?,?,?,?,?,?,'active')
 		ON CONFLICT (emp_no) DO UPDATE SET
-			name=EXCLUDED.name, dept_id=EXCLUDED.dept_id, team_id=EXCLUDED.team_id, job_title=EXCLUDED.job_title,
+			name=EXCLUDED.name, dept_id=EXCLUDED.dept_id, team_id=EXCLUDED.team_id, job_title_id=EXCLUDED.job_title_id,
 			emp_type=EXCLUDED.emp_type, mobile=EXCLUDED.mobile, badge_code=EXCLUDED.badge_code, id_card_no=EXCLUDED.id_card_no, status='active'`,
-		empNo, name, nullIf0(deptID), nullIf0(teamID), job, empType, mobile, badge, idCard)
+		empNo, name, nullIf0(deptID), nullIf0(teamID), nullIf0(jobTitleID), empType, mobile, badge, idCard)
 	var empID int64
 	_ = db.QueryRow(`SELECT id FROM hr_employee WHERE emp_no=? LIMIT 1`, empNo).Scan(&empID)
 	if empID == 0 {
@@ -263,12 +265,13 @@ func ensureOneDemoRoleUser(db *sql.DB, u demoRoleUser) {
 	if badge == "" {
 		badge = fmtBadge(u.EmpNo)
 	}
-	_, _ = db.Exec(`INSERT INTO hr_employee(emp_no, name, org_id, dept_id, team_id, job_title, emp_type, mobile, badge_code, id_card_no, status)
+	jobTitleID := ensureJobTitleRow(db, u.JobTitle, u.EmpType, "", 0)
+	_, _ = db.Exec(`INSERT INTO hr_employee(emp_no, name, org_id, dept_id, team_id, job_title_id, emp_type, mobile, badge_code, id_card_no, status)
 		VALUES(?,?,1,?,?,?,?,?,?,?,'active')
 		ON CONFLICT (emp_no) DO UPDATE SET
-			name=EXCLUDED.name, dept_id=EXCLUDED.dept_id, team_id=EXCLUDED.team_id, job_title=EXCLUDED.job_title,
+			name=EXCLUDED.name, dept_id=EXCLUDED.dept_id, team_id=EXCLUDED.team_id, job_title_id=EXCLUDED.job_title_id,
 			emp_type=EXCLUDED.emp_type, mobile=EXCLUDED.mobile, badge_code=EXCLUDED.badge_code, id_card_no=EXCLUDED.id_card_no, status='active'`,
-		u.EmpNo, u.Name, nullIf0(deptID), nullIf0(teamID), u.JobTitle, u.EmpType, u.Mobile, badge, u.IDCard)
+		u.EmpNo, u.Name, nullIf0(deptID), nullIf0(teamID), nullIf0(jobTitleID), u.EmpType, u.Mobile, badge, u.IDCard)
 
 	var empID int64
 	_ = db.QueryRow(`SELECT id FROM hr_employee WHERE emp_no=? LIMIT 1`, u.EmpNo).Scan(&empID)

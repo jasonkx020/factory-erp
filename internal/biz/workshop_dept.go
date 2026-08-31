@@ -140,6 +140,172 @@ func (s *Services) listWorkTeamsByDept(deptID int64) []gin.H {
 	return out
 }
 
+func (s *Services) listTeamMemberIDs(teamID int64) []int64 {
+	if teamID <= 0 {
+		return nil
+	}
+	rows, err := s.DB.Query(`SELECT id FROM hr_employee
+		WHERE team_id=? AND COALESCE(is_deleted,0)=0 AND COALESCE(status,'')<>'left'
+		ORDER BY emp_no, id`, teamID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	return scanInt64RowsMust(rows)
+}
+
+func scanInt64RowsMust(rows *sql.Rows) []int64 {
+	out := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err == nil && id > 0 {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+func (s *Services) listWorkTeamsWithMembers(deptID int64) []gin.H {
+	teams := s.listWorkTeamsByDept(deptID)
+	for i, t := range teams {
+		tid, _ := asInt64(t["id"])
+		ids := s.listTeamMemberIDs(tid)
+		t["employee_ids"] = ids
+		teams[i] = t
+	}
+	return teams
+}
+
+type teamMemberBatch struct {
+	TeamID      int64
+	TeamCode    string
+	EmployeeIDs []int64
+}
+
+func parseTeamMembersBody(body map[string]interface{}) []teamMemberBatch {
+	raw, ok := body["team_members"].([]interface{})
+	if !ok {
+		return nil
+	}
+	out := []teamMemberBatch{}
+	for _, item := range raw {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		tid, _ := asInt64(m["team_id"])
+		code := strings.TrimSpace(strOr(m["team_code"]))
+		empIDs, _ := int64SliceFromBody(m, "employee_ids")
+		if tid <= 0 && code == "" {
+			continue
+		}
+		out = append(out, teamMemberBatch{TeamID: tid, TeamCode: code, EmployeeIDs: empIDs})
+	}
+	return out
+}
+
+func (s *Services) applyWorkshopTeamMembers(deptID int64, assigns []teamMemberBatch) error {
+	if deptID <= 0 || len(assigns) == 0 {
+		return nil
+	}
+	teams := s.listWorkTeamsByDept(deptID)
+	teamByID := map[int64]struct{}{}
+	teamByCode := map[string]int64{}
+	for _, t := range teams {
+		tid, _ := asInt64(t["id"])
+		if tid <= 0 {
+			continue
+		}
+		teamByID[tid] = struct{}{}
+		if code := strings.TrimSpace(strOr(t["code"])); code != "" {
+			teamByCode[code] = tid
+		}
+	}
+	desired := map[int64]int64{}
+	for _, a := range assigns {
+		tid := a.TeamID
+		if tid <= 0 && a.TeamCode != "" {
+			tid = teamByCode[a.TeamCode]
+		}
+		if tid <= 0 {
+			continue
+		}
+		if _, ok := teamByID[tid]; !ok {
+			return fmt.Errorf("TEAM_NOT_IN_WORKSHOP")
+		}
+		for _, eid := range a.EmployeeIDs {
+			if eid > 0 {
+				desired[eid] = tid
+			}
+		}
+	}
+	memberSet := map[int64]struct{}{}
+	for _, eid := range s.listDeptMemberIDs(deptID) {
+		memberSet[eid] = struct{}{}
+	}
+	touch := map[int64]struct{}{}
+	for eid := range memberSet {
+		touch[eid] = struct{}{}
+	}
+	teamIDList := make([]int64, 0, len(teamByID))
+	for tid := range teamByID {
+		teamIDList = append(teamIDList, tid)
+	}
+	if len(teamIDList) > 0 {
+		placeholders := strings.Repeat("?,", len(teamIDList))
+		placeholders = placeholders[:len(placeholders)-1]
+		q := fmt.Sprintf(`SELECT id FROM hr_employee WHERE COALESCE(is_deleted,0)=0 AND team_id IN (%s)`, placeholders)
+		args := make([]interface{}, len(teamIDList))
+		for i, tid := range teamIDList {
+			args[i] = tid
+		}
+		rows, err := s.DB.Query(q, args...)
+		if err == nil {
+			for rows.Next() {
+				var eid int64
+				if rows.Scan(&eid) == nil && eid > 0 {
+					touch[eid] = struct{}{}
+				}
+			}
+			rows.Close()
+		}
+	}
+	for eid := range touch {
+		newTeam := desired[eid]
+		if newTeam > 0 {
+			if _, ok := memberSet[eid]; !ok {
+				continue
+			}
+		}
+		var cur int64
+		_ = s.DB.QueryRow(`SELECT COALESCE(team_id,0) FROM hr_employee WHERE id=? AND COALESCE(is_deleted,0)=0`, eid).Scan(&cur)
+		if newTeam == 0 {
+			if _, ok := teamByID[cur]; !ok {
+				continue
+			}
+		}
+		if cur == newTeam {
+			continue
+		}
+		if _, err := s.DB.Exec(`UPDATE hr_employee SET team_id=?, updated_at=NOW() WHERE id=?`, nullIf0(newTeam), eid); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Services) listDeptMemberIDs(deptID int64) []int64 {
+	ensureEmployeeDeptTable(s.DB)
+	rows, err := s.DB.Query(`SELECT ed.employee_id FROM hr_employee_department ed
+		JOIN hr_employee e ON e.id=ed.employee_id
+		WHERE ed.dept_id=? AND COALESCE(e.is_deleted,0)=0 AND COALESCE(e.status,'')<>'left'`, deptID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	return scanInt64RowsMust(rows)
+}
+
 func (s *Services) syncDeptTeams(deptID int64, raw []interface{}) error {
 	if deptID <= 0 {
 		return nil

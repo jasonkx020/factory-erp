@@ -840,9 +840,10 @@ func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
 	switch action {
 	case "list":
 		rows, err := s.DB.Query(`SELECT e.id, e.emp_no, e.name, COALESCE(e.org_id,0), COALESCE(e.dept_id,0), COALESCE(e.team_id,0),
-			COALESCE(e.job_title,''), e.emp_type, e.status, COALESCE(e.user_id,0), COALESCE(e.badge_code,''), COALESCE(e.mobile,''),
+			COALESCE(e.job_title_id,0), COALESCE(j.name,''), e.emp_type, e.status, COALESCE(e.user_id,0), COALESCE(e.badge_code,''), COALESCE(e.mobile,''),
 			COALESCE(e.id_card_no,''), COALESCE(u.login_name,''), COALESCE(p.bank_account,''), COALESCE(p.tax_no,'')
 			FROM hr_employee e
+			LEFT JOIN hr_job_title j ON j.id=e.job_title_id AND COALESCE(j.is_deleted,0)=0
 			LEFT JOIN iam_user u ON u.id=e.user_id AND COALESCE(u.is_deleted,0)=0
 			LEFT JOIN pay_worker_profile p ON p.employee_id=e.id
 			WHERE COALESCE(e.is_deleted,0)=0 ORDER BY e.id`)
@@ -853,16 +854,17 @@ func (s *Services) handleEmployees(c *gin.Context, method, action string) bool {
 		defer rows.Close()
 		list := []gin.H{}
 		for rows.Next() {
-			var id, org, dept, team, uid int64
-			var no, name, job, typ, status, badge, mobile, idCard, login, bank, tax string
-			_ = rows.Scan(&id, &no, &name, &org, &dept, &team, &job, &typ, &status, &uid, &badge, &mobile, &idCard, &login, &bank, &tax)
+			var id, org, dept, team, uid, jobTitleID int64
+			var no, name, jobTitleName, typ, status, badge, mobile, idCard, login, bank, tax string
+			_ = rows.Scan(&id, &no, &name, &org, &dept, &team, &jobTitleID, &jobTitleName, &typ, &status, &uid, &badge, &mobile, &idCard, &login, &bank, &tax)
 			if login == "" && uid > 0 {
 				_ = s.DB.QueryRow(`SELECT COALESCE(login_name,'') FROM iam_user WHERE employee_id=? AND COALESCE(is_deleted,0)=0 LIMIT 1`, id).Scan(&login)
 			}
 			badge = s.ensureEmployeeBadge(id, no, badge)
 			row := gin.H{
 				"id": id, "emp_no": no, "name": name, "org_id": org, "dept_id": dept, "team_id": team,
-				"job_title": job, "emp_type": typ, "status": status, "user_id": uid, "badge_code": badge, "mobile": mobile,
+				"job_title_id": jobTitleID, "job_title_name": jobTitleName,
+				"emp_type": typ, "status": status, "user_id": uid, "badge_code": badge, "mobile": mobile,
 				"id_card_no": idCard, "login_name": login, "has_account": uid > 0 || login != "",
 				"bank_account": bank, "tax_no": tax,
 			}

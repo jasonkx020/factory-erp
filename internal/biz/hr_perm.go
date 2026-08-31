@@ -250,11 +250,12 @@ func (s *Services) handleOnboards(c *gin.Context, method, action string) bool {
 			SELECT o.id, o.employee_id, COALESCE(o.status,'draft'), COALESCE(o.remark,''), COALESCE(o.onboard_date,''),
 			       COALESCE(o.need_account,1), COALESCE(o.login_name,''), COALESCE(o.role_ids_json,'[]'), o.created_at,
 			       COALESCE(e.emp_no,''), COALESCE(e.name,''), COALESCE(e.emp_type,''), COALESCE(e.status,''),
-			       COALESCE(e.dept_id,0), COALESCE(e.team_id,0), COALESCE(e.job_title,''),
+			       COALESCE(e.dept_id,0), COALESCE(e.team_id,0), COALESCE(e.job_title_id,0), COALESCE(j.name,''),
 			       COALESCE(e.mobile,''), COALESCE(e.badge_code,''), COALESCE(e.user_id,0), COALESCE(e.id_card_no,''),
 			       COALESCE(p.bank_account,''), COALESCE(p.tax_no,'')
 			FROM hr_onboard o
 			LEFT JOIN hr_employee e ON e.id = o.employee_id
+			LEFT JOIN hr_job_title j ON j.id=e.job_title_id AND COALESCE(j.is_deleted,0)=0
 			LEFT JOIN pay_worker_profile p ON p.employee_id = o.employee_id
 			WHERE 1=1`
 		args := []interface{}{}
@@ -272,11 +273,11 @@ func (s *Services) handleOnboards(c *gin.Context, method, action string) bool {
 		list := []gin.H{}
 		var draftN, confirmedN, cancelledN int
 		for rows.Next() {
-			var id, empID, needAcc, dept, team, uid int64
+			var id, empID, needAcc, dept, team, uid, jobTitleID int64
 			var st, remark, onboardDate, login, roleJSON, created string
-			var empNo, empName, empType, empStatus, job, mobile, badge, idCard, bank, tax string
+			var empNo, empName, empType, empStatus, jobTitleName, mobile, badge, idCard, bank, tax string
 			_ = rows.Scan(&id, &empID, &st, &remark, &onboardDate, &needAcc, &login, &roleJSON, &created,
-				&empNo, &empName, &empType, &empStatus, &dept, &team, &job, &mobile, &badge, &uid, &idCard, &bank, &tax)
+				&empNo, &empName, &empType, &empStatus, &dept, &team, &jobTitleID, &jobTitleName, &mobile, &badge, &uid, &idCard, &bank, &tax)
 			switch st {
 			case "confirmed":
 				confirmedN++
@@ -289,7 +290,7 @@ func (s *Services) handleOnboards(c *gin.Context, method, action string) bool {
 				"id": id, "employee_id": empID, "status": st, "remark": remark, "onboard_date": onboardDate,
 				"need_account": needAcc == 1, "login_name": login, "role_ids": parseJSONIntArr(roleJSON), "created_at": created,
 				"emp_no": empNo, "name": empName, "emp_type": empType, "emp_status": empStatus,
-				"dept_id": dept, "team_id": team, "job_title": job,
+				"dept_id": dept, "team_id": team, "job_title_id": jobTitleID, "job_title_name": jobTitleName,
 				"mobile": mobile, "badge_code": badge, "id_card_no": idCard, "user_id": uid, "has_account": uid > 0,
 				"bank_account": bank, "tax_no": tax,
 			})
@@ -490,22 +491,24 @@ func (s *Services) loadOnboardDetail(id int64) gin.H {
 }
 
 func (s *Services) loadEmployeeMap(id int64) gin.H {
-	var no, name, typ, status, job, mobile, badge, idCard, bank, tax string
-	var org, dept, team, uid int64
+	var no, name, typ, status, jobTitleName, mobile, badge, idCard, bank, tax string
+	var org, dept, team, uid, jobTitleID int64
 	err := s.DB.QueryRow(`SELECT e.emp_no, e.name, COALESCE(e.org_id,0), COALESCE(e.dept_id,0), COALESCE(e.team_id,0),
-		COALESCE(e.job_title,''), COALESCE(e.emp_type,''), COALESCE(e.mobile,''), COALESCE(e.badge_code,''), COALESCE(e.id_card_no,''),
+		COALESCE(e.job_title_id,0), COALESCE(j.name,''), COALESCE(e.emp_type,''), COALESCE(e.mobile,''), COALESCE(e.badge_code,''), COALESCE(e.id_card_no,''),
 		COALESCE(e.status,''), COALESCE(e.user_id,0),
 		COALESCE(p.bank_account,''), COALESCE(p.tax_no,'')
 		FROM hr_employee e
+		LEFT JOIN hr_job_title j ON j.id=e.job_title_id AND COALESCE(j.is_deleted,0)=0
 		LEFT JOIN pay_worker_profile p ON p.employee_id=e.id
 		WHERE e.id=?`, id).
-		Scan(&no, &name, &org, &dept, &team, &job, &typ, &mobile, &badge, &idCard, &status, &uid, &bank, &tax)
+		Scan(&no, &name, &org, &dept, &team, &jobTitleID, &jobTitleName, &typ, &mobile, &badge, &idCard, &status, &uid, &bank, &tax)
 	if err != nil {
 		return gin.H{"id": id}
 	}
 	return gin.H{
 		"id": id, "emp_no": no, "name": name, "org_id": org, "dept_id": dept, "team_id": team,
-		"job_title": job, "emp_type": typ, "mobile": mobile, "badge_code": badge, "id_card_no": idCard, "status": status,
+		"job_title_id": jobTitleID, "job_title_name": jobTitleName,
+		"emp_type": typ, "mobile": mobile, "badge_code": badge, "id_card_no": idCard, "status": status,
 		"user_id": uid, "has_account": uid > 0, "bank_account": bank, "tax_no": tax,
 	}
 }
@@ -711,12 +714,15 @@ func (s *Services) createEmployeeFromBody(body map[string]interface{}, status st
 		deptIDs = []int64{1}
 	}
 	teamID, _ := asInt64(body["team_id"])
-	job := strOr(body["job_title"])
+	jobTitleID := parseJobTitleIDFromBody(body, nil)
+	if msg := s.validateJobTitleID(jobTitleID, typ); msg != "" {
+		return 0, msg
+	}
 	// 工牌由系统自动生成
 	badge := s.allocBadgeCode(no, 0)
-	res, err := s.DB.Exec(`INSERT INTO hr_employee(emp_no, name, org_id, dept_id, team_id, job_title, emp_type, mobile, badge_code, id_card_no, status)
+	res, err := s.DB.Exec(`INSERT INTO hr_employee(emp_no, name, org_id, dept_id, team_id, job_title_id, emp_type, mobile, badge_code, id_card_no, status)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-		no, name, orgID, nullIf0(primaryDept), nullIf0(teamID), job, typ, mobile, badge, idCard, status)
+		no, name, orgID, nullIf0(primaryDept), nullIf0(teamID), nullIf0(jobTitleID), typ, mobile, badge, idCard, status)
 	if err != nil {
 		return 0, "DB_ERROR:" + err.Error()
 	}
@@ -744,7 +750,12 @@ func (s *Services) updateEmployeeFromBody(id int64, body map[string]interface{})
 	if !typOK {
 		return "INVALID_EMP_TYPE", fmt.Errorf("invalid emp_type")
 	}
-	job := strOrDef(body["job_title"], fmt.Sprint(cur["job_title"]))
+	jobTitleID := parseJobTitleIDFromBody(body, cur)
+	if jobTitleID > 0 {
+		if msg := s.validateJobTitleID(jobTitleID, typ); msg != "" {
+			return msg, fmt.Errorf("%s", msg)
+		}
+	}
 	mobile := normalizeMobile(strOrDef(body["mobile"], fmt.Sprint(cur["mobile"])))
 	if mobile != "" && !validMobileCN(mobile) {
 		return "MOBILE_INVALID", fmt.Errorf("mobile invalid")
@@ -778,9 +789,9 @@ func (s *Services) updateEmployeeFromBody(id int64, body map[string]interface{})
 	if !ok {
 		teamID, _ = asInt64(cur["team_id"])
 	}
-	_, err := s.DB.Exec(`UPDATE hr_employee SET name=?, emp_type=?, job_title=?, mobile=?, badge_code=?, id_card_no=?,
+	_, err := s.DB.Exec(`UPDATE hr_employee SET name=?, emp_type=?, job_title_id=?, mobile=?, badge_code=?, id_card_no=?,
 		dept_id=?, team_id=?, updated_at=NOW() WHERE id=?`,
-		name, typ, job, mobile, badge, idCard, nullIf0(primaryDept), nullIf0(teamID), id)
+		name, typ, nullIf0(jobTitleID), mobile, badge, idCard, nullIf0(primaryDept), nullIf0(teamID), id)
 	if err == nil {
 		s.syncEmployeePayProfile(id, body, typ)
 		if _, ok := int64SliceFromBody(body, "dept_ids"); ok || body["dept_id"] != nil || body["primary_dept_id"] != nil {

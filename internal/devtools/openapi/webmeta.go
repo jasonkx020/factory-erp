@@ -68,7 +68,7 @@ var preferredList = map[[2]string]string{
 	{"工资管理", "工人信息管理"}:     "/payroll/worker-profiles",
 	{"工资管理", "销售提成"}:       "/payroll/commission-rules",
 	{"人事管理", "角色管理"}:       "/iam/roles",
-	{"人事管理", "员工"}:         "/hr/employees",
+	{"人事管理", "岗位管理"}:       "/hr/job-titles",
 	{"人事管理", "员工档案"}:       "/hr/employees",
 	{"人事管理", "公司架构"}:       "/hr/departments",
 	{"人事管理", "入职登记"}:       "/hr/onboards",

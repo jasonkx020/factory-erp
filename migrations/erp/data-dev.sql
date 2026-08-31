@@ -148,8 +148,25 @@ INSERT INTO iam_menu_custom(role_id, domain, module, menu_key, visible, sort_no)
  (8, '工资管理', '工序工资', '工资管理:工序工资', 1, 30)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO hr_employee(id, emp_no, name, org_id, dept_id, team_id, job_title, emp_type, mobile, badge_code, id_card_no, status) VALUES
- (1, 'E0001', '系统管理员', 1, 1, NULL, '系统管理员', 'office', '13800001001', 'EMP-ADMIN', '450103198001011011', 'active')
+INSERT INTO hr_job_title(id, code, name, emp_type, sort_no) VALUES
+ (1, 'JT-SYS-ADMIN', '系统管理员', '', 1),
+ (2, 'JT-PURCHASE', '采购员', 'office', 3),
+ (3, 'JT-QC', '质检员', 'office', 4),
+ (4, 'JT-WH', '仓管员', 'warehouse', 5),
+ (5, 'JT-FOREMAN', '车间主任', 'office', 6),
+ (6, 'JT-PEEL-PC', '去皮计件工', 'piece', 21),
+ (7, 'JT-RECEIVE-FX', '收货固定工', 'fixed', 31),
+ (8, 'JT-FINANCE', '会计', 'office', 10),
+ (9, 'JT-BOSS', '总经理', 'office', 2),
+ (10, 'JT-PLANNER', '生产计划员', 'office', 7),
+ (11, 'JT-HR', '人事专员', 'office', 8),
+ (12, 'JT-PAYROLL', '薪资员', 'office', 9),
+ (13, 'JT-PEEL', '去皮工', 'piece', 20),
+ (14, 'JT-RECEIVE', '收货员', 'fixed', 30)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO hr_employee(id, emp_no, name, org_id, dept_id, team_id, job_title_id, emp_type, mobile, badge_code, id_card_no, status) VALUES
+ (1, 'E0001', '系统管理员', 1, 1, NULL, 1, 'office', '13800001001', 'EMP-ADMIN', '450103198001011011', 'active')
 ON CONFLICT DO NOTHING;
 
 -- bcrypt(admin123) cost=10
@@ -165,18 +182,18 @@ INSERT INTO iam_admin_group_user(group_id, user_id) VALUES (1, 1)
 ON CONFLICT DO NOTHING;
 
 -- 各角色演示账号（密码均为 admin123，与 admin 相同 bcrypt）
-INSERT INTO hr_employee(id, emp_no, name, org_id, dept_id, team_id, job_title, emp_type, mobile, badge_code, id_card_no, status) VALUES
- (10, 'E-PUR', '李采购', 1, 5, NULL, '采购员', 'office', '13800001010', 'EMP-PUR', '450103199104121010', 'active'),
- (11, 'E-QC', '孙质检', 1, 7, NULL, '质检员', 'office', '13800001011', 'EMP-QC', '450103199211091011', 'active'),
- (12, 'E-WH', '黄仓管', 1, 4, NULL, '仓管员', 'warehouse', '13800001012', 'EMP-WH', '450103199006081012', 'active'),
- (13, 'E-FM', '赵主任', 1, 3, NULL, '车间主任', 'office', '13800001013', 'EMP-FM', '450103198703221013', 'active'),
- (14, 'E-PC', '陈计件', 1, 2, 1, '去皮计件工', 'piece', '13800001014', 'EMP-PC', '450103199505051014', 'active'),
- (15, 'E-FX', '刘固定', 1, 2, 2, '收货固定工', 'fixed', '13800001015', 'EMP-FX', '450103199408181015', 'active'),
- (17, 'E-FN', '钱会计', 1, 9, NULL, '会计', 'office', '13800001017', 'EMP-FN', '450103198909091017', 'active'),
- (18, 'E-BS', '韦建国', 1, 1, NULL, '总经理', 'office', '13800001018', 'EMP-BS', '450103197501011018', 'active'),
- (19, 'E-PL', '吴计划', 1, 3, NULL, '生产计划员', 'office', '13800001019', 'EMP-PL', '450103198812011019', 'active'),
- (20, 'E-HR', '郑人事', 1, 8, NULL, '人事专员', 'office', '13800001020', 'EMP-HR', '450103199109211020', 'active'),
- (21, 'E-PAY', '冯薪资', 1, 9, NULL, '薪资员', 'office', '13800001021', 'EMP-PAY', '450103199307011021', 'active');
+INSERT INTO hr_employee(id, emp_no, name, org_id, dept_id, team_id, job_title_id, emp_type, mobile, badge_code, id_card_no, status) VALUES
+ (10, 'E-PUR', '李采购', 1, 5, NULL, 2, 'office', '13800001010', 'EMP-PUR', '450103199104121010', 'active'),
+ (11, 'E-QC', '孙质检', 1, 7, NULL, 3, 'office', '13800001011', 'EMP-QC', '450103199211091011', 'active'),
+ (12, 'E-WH', '黄仓管', 1, 4, NULL, 4, 'warehouse', '13800001012', 'EMP-WH', '450103199006081012', 'active'),
+ (13, 'E-FM', '赵主任', 1, 3, NULL, 5, 'office', '13800001013', 'EMP-FM', '450103198703221013', 'active'),
+ (14, 'E-PC', '陈计件', 1, 2, 1, 6, 'piece', '13800001014', 'EMP-PC', '450103199505051014', 'active'),
+ (15, 'E-FX', '刘固定', 1, 2, 2, 7, 'fixed', '13800001015', 'EMP-FX', '450103199408181015', 'active'),
+ (17, 'E-FN', '钱会计', 1, 9, NULL, 8, 'office', '13800001017', 'EMP-FN', '450103198909091017', 'active'),
+ (18, 'E-BS', '韦建国', 1, 1, NULL, 9, 'office', '13800001018', 'EMP-BS', '450103197501011018', 'active'),
+ (19, 'E-PL', '吴计划', 1, 3, NULL, 10, 'office', '13800001019', 'EMP-PL', '450103198812011019', 'active'),
+ (20, 'E-HR', '郑人事', 1, 8, NULL, 11, 'office', '13800001020', 'EMP-HR', '450103199109211020', 'active'),
+ (21, 'E-PAY', '冯薪资', 1, 9, NULL, 12, 'office', '13800001021', 'EMP-PAY', '450103199307011021', 'active');
 
 INSERT INTO iam_user(id, login_name, password_hash, employee_id, user_type, status) VALUES
  (10, 'u_purchase', '$2a$10$ZxLeZ1b51sNokCeBa.g24On0pDDLD2hL8xP9g74fa/k1hTxxT7V0.', 10, 'biz', 'active'),
@@ -303,9 +320,9 @@ INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name
  (3, 5, 11, 'S5', '入库-成品库销售', 0, 0, 0, 1, 0, 3, 2)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO hr_employee(id, emp_no, name, org_id, dept_id, team_id, job_title, emp_type, mobile, badge_code, id_card_no, status) VALUES
- (2, 'E0301', '陈某', 1, 2, 1, '去皮工', 'piece', '13800001002', 'EMP0301', '450103199601011002', 'active'),
- (3, 'E0205', '固定工甲', 1, 2, 2, '收货员', 'fixed', '13800001003', 'EMP0205', '450103199702021003', 'active')
+INSERT INTO hr_employee(id, emp_no, name, org_id, dept_id, team_id, job_title_id, emp_type, mobile, badge_code, id_card_no, status) VALUES
+ (2, 'E0301', '陈某', 1, 2, 1, 13, 'piece', '13800001002', 'EMP0301', '450103199601011002', 'active'),
+ (3, 'E0205', '固定工甲', 1, 2, 2, 14, 'fixed', '13800001003', 'EMP0205', '450103199702021003', 'active')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO inv_box_code(id, code, product_id, warehouse_id, batch_no, qty, weight, current_process_id, current_step_id, status) VALUES
@@ -374,6 +391,7 @@ INSERT INTO pay_worker_profile(employee_id, pay_type, monthly_base, bank_account
 ON CONFLICT DO NOTHING;
 
 -- Reset sequences after explicit id inserts
+SELECT setval(pg_get_serial_sequence('hr_job_title', 'id'), COALESCE((SELECT MAX(id) FROM hr_job_title), 1));
 SELECT setval(pg_get_serial_sequence('hr_employee', 'id'), COALESCE((SELECT MAX(id) FROM hr_employee), 1));
 SELECT setval(pg_get_serial_sequence('iam_admin_group', 'id'), COALESCE((SELECT MAX(id) FROM iam_admin_group), 1));
 SELECT setval(pg_get_serial_sequence('iam_login_policy', 'id'), COALESCE((SELECT MAX(id) FROM iam_login_policy), 1));

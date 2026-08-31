@@ -3,9 +3,12 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { hrApi, iamApi } from '@erp/shared'
 import OrgChartNode from './OrgChartNode.vue'
+import DeptMemberKanban from '../../components/hr/DeptMemberKanban.vue'
+import DeptRoleKanban from '../../components/hr/DeptRoleKanban.vue'
+import WorkshopTeamAssign from '../../components/hr/WorkshopTeamAssign.vue'
 
 type Row = Record<string, unknown>
-type Member = { id: number; emp_no: string; name: string; job_title?: string; login_name?: string; has_account?: boolean }
+type Member = { id: number; emp_no: string; name: string; job_title_name?: string; login_name?: string; has_account?: boolean }
 type TreeNode = Row & { children?: TreeNode[] }
 
 const loading = ref(false)
@@ -28,6 +31,7 @@ const form = reactive({
   role_ids: [] as number[],
   teams: [] as { id?: number; code: string; name: string }[],
 })
+const teamMembers = ref<Record<number, number[]>>({})
 
 const errLabel: Record<string, string> = {
   NAME_REQUIRED: '请填写部门名称',
@@ -41,6 +45,7 @@ const errLabel: Record<string, string> = {
   WORKSHOP_PARENT_REQUIRED: '车间必须挂在行政部门下',
   WORKSHOP_PARENT_MUST_BE_NORMAL: '车间的上级必须是行政部门',
   WORKSHOP_NO_CHILDREN: '车间节点不能再挂子部门，班组请在车间内维护',
+  TEAM_NOT_IN_WORKSHOP: '班组不属于当前车间',
   NOT_FOUND: '部门不存在',
 }
 
@@ -54,31 +59,6 @@ const levelStats = computed(() => {
   }
   return stats
 })
-
-const employeeOptions = computed(() =>
-  employees.value
-    .filter((e) => String(e.status || '') !== 'left')
-    .map((e) => {
-      const deptIds = ((e.dept_ids as number[]) || []).map(Number)
-      const inCurrent = editingId.value ? deptIds.includes(editingId.value) : false
-      const otherNames = deptIds
-        .filter((id) => id !== editingId.value)
-        .map((id) => String(flatList.value.find((d) => Number(d.id) === id)?.name || `#${id}`))
-      return {
-        value: Number(e.id),
-        label: `${e.emp_no || ''} ${e.name || ''}`.trim(),
-        dept_id: Number(e.dept_id || 0),
-        otherDepts: !inCurrent && otherNames.length ? otherNames.join('、') : '',
-      }
-    }),
-)
-
-const roleOptions = computed(() =>
-  roles.value.map((r) => ({
-    value: Number(r.id),
-    label: `${r.name || r.code || ''} (${r.code || ''})`,
-  })),
-)
 
 const descendantIds = computed(() => {
   if (!editingId.value) return new Set<number>()
@@ -150,6 +130,29 @@ async function load() {
   }
 }
 
+function resetTeamMembers() {
+  teamMembers.value = {}
+}
+
+function loadTeamMembersFromTeams(teams: Row[]) {
+  const m: Record<number, number[]> = {}
+  for (const t of teams) {
+    const id = Number(t.id) || 0
+    if (id > 0) m[id] = ((t.employee_ids as number[]) || []).map(Number)
+  }
+  teamMembers.value = m
+}
+
+function buildTeamMembersBody() {
+  return form.teams
+    .filter((t) => Number(t.id) > 0)
+    .map((t) => ({
+      team_id: Number(t.id),
+      team_code: t.code,
+      employee_ids: teamMembers.value[Number(t.id)] || [],
+    }))
+}
+
 function resetForm(parentId = 0) {
   Object.assign(form, {
     code: '',
@@ -161,6 +164,7 @@ function resetForm(parentId = 0) {
     role_ids: [],
     teams: [],
   })
+  resetTeamMembers()
 }
 
 function isWorkshopNode(row: Row) {
@@ -195,12 +199,13 @@ async function openEdit(row: Row) {
     dept_type: String(data.dept_type || 'normal'),
     employee_ids: ((data.members as Member[]) || []).map((m) => Number(m.id)),
     role_ids: ((data.role_ids as number[]) || []).map(Number),
-    teams: ((data.teams as { id?: number; code: string; name: string }[]) || []).map((t) => ({
+    teams: ((data.teams as { id?: number; code: string; name: string; employee_ids?: number[] }[]) || []).map((t) => ({
       id: Number(t.id) || undefined,
       code: String(t.code || ''),
       name: String(t.name || ''),
     })),
   })
+  loadTeamMembersFromTeams((data.teams as Row[]) || [])
   dlg.value = true
 }
 
@@ -224,6 +229,7 @@ async function save() {
   }
   if (form.dept_type === 'workshop') {
     body.teams = form.teams.filter((t) => t.name.trim())
+    body.team_members = buildTeamMembersBody()
   }
   let res
   if (editingId.value) {
@@ -353,7 +359,7 @@ onMounted(async () => {
     <el-dialog
       v-model="dlg"
       :title="editingId ? '编辑部门' : (form.parent_id ? '新建子部门' : '新建一级部门')"
-      width="580px"
+      width="min(920px, 96vw)"
     >
       <el-form label-width="108px">
         <el-form-item label="上级部门">
@@ -383,14 +389,22 @@ onMounted(async () => {
           </el-radio-group>
           <p class="hint">车间必须挂在行政部门下，不能再挂子部门；班组在车间内维护。</p>
         </el-form-item>
-        <el-form-item v-if="form.dept_type === 'workshop'" label="班组">
-          <div v-for="(t, i) in form.teams" :key="i" class="team-row">
-            <el-input v-model="t.code" placeholder="编码" style="width:120px" />
-            <el-input v-model="t.name" placeholder="班组名称" />
-            <el-button link type="danger" @click="form.teams.splice(i, 1)">删除</el-button>
-          </div>
-          <el-button link type="primary" @click="form.teams.push({ code: '', name: '' })">添加班组</el-button>
-          <p class="hint">班组挂在车间下，不进入第 4 级组织树。</p>
+        <el-form-item label="部门成员">
+          <DeptMemberKanban
+            v-model="form.employee_ids"
+            :employees="employees"
+            :flat-list="flatList"
+            :editing-dept-id="editingId"
+          />
+        </el-form-item>
+        <el-form-item v-if="form.dept_type === 'workshop'" label="班组与成员">
+          <WorkshopTeamAssign
+            v-model:teams="form.teams"
+            v-model:team-members="teamMembers"
+            :workshop-member-ids="form.employee_ids"
+            :employees="employees"
+          />
+          <p class="hint">Tab 右侧 + 添加班组；在各班组 Tab 内拖拽分配成员，最后统一保存车间。</p>
         </el-form-item>
         <el-form-item v-if="editingId" label="状态">
           <el-select v-model="form.status" style="width:100%">
@@ -398,37 +412,8 @@ onMounted(async () => {
             <el-option label="停用" value="inactive" />
           </el-select>
         </el-form-item>
-        <el-form-item label="部门成员">
-          <el-select
-            v-model="form.employee_ids"
-            multiple
-            filterable
-            collapse-tags
-            collapse-tags-tooltip
-            placeholder="选择直属本部门的员工"
-            style="width:100%"
-          >
-            <el-option
-              v-for="opt in employeeOptions"
-              :key="opt.value"
-              :label="opt.label + (opt.otherDepts ? ` · 还在：${opt.otherDepts}` : '')"
-              :value="opt.value"
-            />
-          </el-select>
-        </el-form-item>
         <el-form-item label="本级基础角色">
-          <el-select
-            v-model="form.role_ids"
-            multiple
-            filterable
-            collapse-tags
-            collapse-tags-tooltip
-            placeholder="仅本部门直属角色"
-            style="width:100%"
-          >
-            <el-option v-for="opt in roleOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-          </el-select>
-          <p class="hint">上级部门会自动继承全部子部门角色；此处只配置本部门直属权限。</p>
+          <DeptRoleKanban v-model="form.role_ids" :roles="roles" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -504,7 +489,7 @@ onMounted(async () => {
         <el-table :data="(detail.members as Member[]) || []" border stripe empty-text="暂无直属成员" size="small">
           <el-table-column prop="emp_no" label="工号" width="100" />
           <el-table-column prop="name" label="姓名" min-width="100" />
-          <el-table-column prop="job_title" label="岗位" min-width="100" />
+          <el-table-column prop="job_title_name" label="岗位" min-width="100" />
           <el-table-column label="账号" min-width="120">
             <template #default="{ row }">
               <span v-if="row.has_account">{{ row.login_name || '已开户' }}</span>

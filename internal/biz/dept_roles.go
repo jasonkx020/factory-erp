@@ -82,11 +82,12 @@ func (s *Services) setDeptRoleIDs(deptID int64, roleIDs []int64) error {
 
 func (s *Services) listDeptMembers(deptID int64) ([]gin.H, error) {
 	ensureEmployeeDeptTable(s.DB)
-	rows, err := s.DB.Query(`SELECT e.id, COALESCE(e.emp_no,''), COALESCE(e.name,''), COALESCE(e.job_title,''),
+	rows, err := s.DB.Query(`SELECT e.id, COALESCE(e.emp_no,''), COALESCE(e.name,''), COALESCE(e.job_title_id,0), COALESCE(j.name,''),
 		COALESCE(e.emp_type,''), COALESCE(e.status,'active'), COALESCE(e.user_id,0), COALESCE(u.login_name,''),
 		COALESCE(ed.is_primary,0)
 		FROM hr_employee_department ed
 		JOIN hr_employee e ON e.id=ed.employee_id
+		LEFT JOIN hr_job_title j ON j.id=e.job_title_id AND COALESCE(j.is_deleted,0)=0
 		LEFT JOIN iam_user u ON u.id=e.user_id AND COALESCE(u.is_deleted,0)=0
 		WHERE ed.dept_id=? AND COALESCE(e.is_deleted,0)=0 AND COALESCE(e.status,'')<>'left'
 		ORDER BY ed.is_primary DESC, e.emp_no, e.id`, deptID)
@@ -96,14 +97,14 @@ func (s *Services) listDeptMembers(deptID int64) ([]gin.H, error) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var id, uid int64
-		var no, name, job, typ, status, login string
+		var id, uid, jobTitleID int64
+		var no, name, jobTitleName, typ, status, login string
 		var isPrimary int
-		if err := rows.Scan(&id, &no, &name, &job, &typ, &status, &uid, &login, &isPrimary); err != nil {
+		if err := rows.Scan(&id, &no, &name, &jobTitleID, &jobTitleName, &typ, &status, &uid, &login, &isPrimary); err != nil {
 			continue
 		}
 		out = append(out, gin.H{
-			"id": id, "emp_no": no, "name": name, "job_title": job, "emp_type": typ,
+			"id": id, "emp_no": no, "name": name, "job_title_id": jobTitleID, "job_title_name": jobTitleName, "emp_type": typ,
 			"status": status, "user_id": uid, "login_name": login, "has_account": uid > 0,
 			"is_primary_dept": isPrimary == 1,
 		})

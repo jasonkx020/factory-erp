@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
 import '../../core/id_card_ocr.dart';
 
@@ -21,10 +22,11 @@ class _HrOnboardPageState extends State<HrOnboardPage> {
   final _idCard = TextEditingController();
   final _mobile = TextEditingController();
   final _login = TextEditingController();
-  final _job = TextEditingController();
   final _workshop = TextEditingController(text: '1');
   final _dept = TextEditingController(text: '1');
   String _empType = 'piece';
+  int? _jobTitleId;
+  List<Map<String, dynamic>> _jobTitles = [];
   bool _needAccount = true;
   String _msg = '';
   bool _busy = false;
@@ -42,6 +44,7 @@ class _HrOnboardPageState extends State<HrOnboardPage> {
     final suffix = DateTime.now().millisecondsSinceEpoch.toString().substring(5);
     _empNo.text = 'E$suffix';
     _login.text = _empNo.text;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadJobTitles());
   }
 
   @override
@@ -51,10 +54,32 @@ class _HrOnboardPageState extends State<HrOnboardPage> {
     _idCard.dispose();
     _mobile.dispose();
     _login.dispose();
-    _job.dispose();
     _workshop.dispose();
     _dept.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadJobTitles() async {
+    final api = context.read<AuthState>().api;
+    final res = await api.get('/hr/job-titles?emp_type=$_empType');
+    if (!mounted) return;
+    final list = ApiClient.listOf(res.data);
+    setState(() {
+      _jobTitles = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      if (_jobTitleId != null && !_jobTitles.any((j) => j['id'] == _jobTitleId)) {
+        _jobTitleId = null;
+      }
+    });
+  }
+
+  Future<int?> _ensureJobTitle(String name) async {
+    final api = context.read<AuthState>().api;
+    final res = await api.post('/hr/job-titles/ensure', {'name': name, 'emp_type': _empType});
+    if (!res.ok || res.data is! Map) return null;
+    final id = int.tryParse('${(res.data as Map)['id']}');
+    if (id == null || id <= 0) return null;
+    await _loadJobTitles();
+    return id;
   }
 
   IdCardOcr _ocr() {
@@ -116,7 +141,7 @@ class _HrOnboardPageState extends State<HrOnboardPage> {
       'dept_id': int.tryParse(_dept.text.trim()) ?? 1,
       'workshop_id': int.tryParse(_workshop.text.trim()) ?? 1,
       'team_id': 0,
-      'job_title': _job.text.trim(),
+      if (_jobTitleId != null && _jobTitleId! > 0) 'job_title_id': _jobTitleId,
       'mobile': _mobile.text.trim(),
       'id_card_no': _idCard.text.trim(),
       'onboard_date': DateTime.now().toIso8601String().substring(0, 10),
@@ -197,13 +222,49 @@ class _HrOnboardPageState extends State<HrOnboardPage> {
           const SizedBox(height: 8),
           TextField(controller: _mobile, decoration: const InputDecoration(labelText: '手机', border: OutlineInputBorder())),
           const SizedBox(height: 8),
-          TextField(controller: _job, decoration: const InputDecoration(labelText: '岗位', border: OutlineInputBorder())),
-          const SizedBox(height: 8),
           DropdownButtonFormField<String>(
             initialValue: _empType,
             decoration: const InputDecoration(labelText: '员工类型', border: OutlineInputBorder()),
             items: [for (final t in _types) DropdownMenuItem(value: t.$1, child: Text(t.$2))],
-            onChanged: (v) => setState(() => _empType = v ?? 'piece'),
+            onChanged: (v) async {
+              setState(() => _empType = v ?? 'piece');
+              await _loadJobTitles();
+            },
+          ),
+          const SizedBox(height: 8),
+          Autocomplete<String>(
+            optionsBuilder: (text) {
+              final q = text.text.trim().toLowerCase();
+              final names = _jobTitles.map((j) => '${j['name']}').where((n) => n != 'null');
+              if (q.isEmpty) return names;
+              return names.where((n) => n.toLowerCase().contains(q));
+            },
+            onSelected: (v) {
+              final hit = _jobTitles.cast<Map<String, dynamic>?>().firstWhere(
+                    (j) => j?['name'] == v,
+                    orElse: () => null,
+                  );
+              setState(() => _jobTitleId = int.tryParse('${hit?['id']}'));
+            },
+            fieldViewBuilder: (ctx, controller, focusNode, onFieldSubmitted) {
+              return TextFormField(
+                controller: controller,
+                focusNode: focusNode,
+                decoration: const InputDecoration(labelText: '岗位', border: OutlineInputBorder(), hintText: '选择或输入新岗位'),
+                onFieldSubmitted: (v) async {
+                  final trimmed = v.trim();
+                  if (trimmed.isEmpty) return;
+                  final hit = _jobTitles.where((j) => j['name'] == trimmed).toList();
+                  if (hit.isNotEmpty) {
+                    setState(() => _jobTitleId = int.tryParse('${hit.first['id']}'));
+                    return;
+                  }
+                  final id = await _ensureJobTitle(trimmed);
+                  if (!mounted) return;
+                  setState(() => _jobTitleId = id);
+                },
+              );
+            },
           ),
           const SizedBox(height: 8),
           TextField(
