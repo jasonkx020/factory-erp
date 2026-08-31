@@ -79,7 +79,9 @@ var resourceDomainModule = map[string]domainModule{
 	"finance/arap": {"财务管理", "往来调整单"}, "finance/approvals": {"财务管理", "财务审批"},
 	"finance/funds": {"财务管理", "资金管理"}, "finance/fund-accounts": {"财务管理", "资金管理"},
 	"finance/fund-transfers": {"财务管理", "资金管理"}, "finance/statements": {"财务管理", "财务报表"},
+	"finance/ledger-entries": {"财务管理", "交易流水账"},
 	"finance/cost-traces": {"财务管理", "成本明细溯源表"}, "finance/month-closes": {"财务管理", "月度结转"},
+	"finance/cost-period-preview": {"财务管理", "成本核算"},
 	// hr / payroll
 	"hr/employees": {"人事管理", "员工档案"}, "hr/onboards": {"人事管理", "入职登记"},
 	"hr/departments": {"人事管理", "公司架构"}, "hr/work-teams": {"人事管理", "员工档案"},
@@ -140,7 +142,7 @@ var allDomainMenus = []struct {
 	{"产品管理", []string{"产品档案", "产品单位管理", "生产规格绑定"}},
 	{"工资管理", []string{"工人信息管理", "工资批量管理", "工序工资", "薪酬核算", "员工工作台账"}},
 	{"人事管理", []string{"员工档案", "公司架构", "角色管理"}},
-	{"财务管理", []string{"成本核算", "成本明细溯源表"}},
+	{"财务管理", []string{"成本核算", "成本明细溯源表", "资金管理", "交易流水账", "农户应付"}},
 	{"统计报表", []string{
 		"生产看板", "生产实况", "三仓库存概览",
 		"日经营快照", "原料入场日报", "计件日结汇总",

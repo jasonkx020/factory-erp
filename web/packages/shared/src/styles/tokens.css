@@ -1,18 +1,34 @@
 :root {
-  --bg: #eef1f4;
+  /* Cassava plant / factory palette */
+  --bg: #eef4f0;
   --panel: #ffffff;
-  --sidebar: #1a2b34;
-  --sidebar-2: #243b47;
-  --accent: #0d7a6f;
-  --accent-soft: #e6f5f3;
-  --accent-dark: #0a5c54;
+  --sidebar: #14352a;
+  --sidebar-2: #1a4535;
+  --accent: #1f7a4d;
+  --accent-soft: #e8f5ee;
+  --accent-dark: #145c38;
+  --accent-soil: #a67c3d;
+  --accent-leaf: #3d9b6a;
   --warn: #c47a12;
   --danger: #c0392b;
   --ok: #1f7a3f;
-  --text: #1e2a32;
-  --muted: #5c6b75;
-  --border: #d5dde3;
+  --text: #1a2e24;
+  --muted: #5a6e64;
+  --border: #cfdcd4;
   --radius: 8px;
+  --topnav: #14352a;
+  --topnav-2: #0f2a21;
+  --shadow-soft: 0 8px 24px rgba(20, 53, 42, 0.08);
+
+  /* Element Plus bridge */
+  --el-color-primary: var(--accent);
+  --el-color-primary-light-3: #4a9a70;
+  --el-color-primary-light-5: #7bb598;
+  --el-color-primary-light-7: #acd0bf;
+  --el-color-primary-light-8: #c7dfd3;
+  --el-color-primary-light-9: var(--accent-soft);
+  --el-color-primary-dark-2: var(--accent-dark);
+  --el-border-radius-base: var(--radius);
 }
 
 * { box-sizing: border-box; }
@@ -23,3 +39,24 @@ body {
   color: var(--text);
 }
 a { color: var(--accent); text-decoration: none; }
+
+/* Shared utility accents used across hubs */
+.meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-size: 12px;
+}
+.form-tip {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.hint, .muted {
+  color: var(--muted);
+  font-size: 12px;
+}

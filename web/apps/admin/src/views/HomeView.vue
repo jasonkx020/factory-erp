@@ -7,6 +7,15 @@ const perm = usePermStore()
 const router = useRouter()
 const stats = ref({ tasks: 0, approval: 0, balances: 0 })
 
+const processChain = [
+  { name: '清洗', run: true },
+  { name: '去皮', run: true },
+  { name: '切段', run: true },
+  { name: '去芯', run: true },
+  { name: '切片', run: true },
+  { name: '烘干', run: false },
+]
+
 onMounted(async () => {
   const [t, a, b] = await Promise.all([
     productionApi.listTasks(),
@@ -29,54 +38,153 @@ function open(domain: string, module: string) {
 </script>
 
 <template>
-  <div>
-    <h2>管理端工作台</h2>
-    <p class="desc">菜单与第 3 章核心功能表对应；现场台账与运维页已挂入各域菜单。</p>
+  <div class="home">
+    <header class="hero factory-panel">
+      <div class="hero-main">
+        <div class="hero-top">
+          <p class="eyebrow">木薯加工厂 · 产线管控台</p>
+          <span class="factory-status run">产线运行</span>
+        </div>
+        <h2>管理端工作台</h2>
+        <p class="desc">鲜薯入厂 → 六工序加工 → 烘干成品。菜单对应业务域；现场领退料在员工 App 完成。</p>
+      </div>
+      <div class="factory-conveyor" aria-label="木薯加工工序">
+        <div
+          v-for="(s, i) in processChain"
+          :key="s.name"
+          class="node"
+          :class="{ active: s.run }"
+        >
+          <div class="seq">S{{ i + 1 }}</div>
+          <div class="nm">{{ s.name }}</div>
+        </div>
+      </div>
+    </header>
+
     <div class="stats">
-      <div class="stat"><div class="label">生产任务</div><div class="value">{{ stats.tasks }}</div></div>
-      <div class="stat"><div class="label">审批任务</div><div class="value">{{ stats.approval }}</div></div>
-      <div class="stat"><div class="label">库存行</div><div class="value">{{ stats.balances }}</div></div>
-      <div class="stat click" @click="open('系统管理','业务闭环')"><div class="label">业务闭环</div><div class="value">演示</div></div>
+      <div class="factory-kpi">
+        <div class="label">生产任务</div>
+        <div class="value">{{ stats.tasks }}</div>
+      </div>
+      <div class="factory-kpi warn">
+        <div class="label">审批待办</div>
+        <div class="value">{{ stats.approval }}</div>
+      </div>
+      <div class="factory-kpi ok">
+        <div class="label">库存行</div>
+        <div class="value">{{ stats.balances }}</div>
+      </div>
+      <div class="factory-kpi idle click" @click="open('系统管理','业务闭环')">
+        <div class="label">业务闭环</div>
+        <div class="value" style="font-size:16px">演示</div>
+      </div>
     </div>
-    <el-card style="margin:16px 0">
-      <template #header>权限中心快捷入口</template>
-      <div class="quick-actions">
+
+    <section class="factory-panel quick-panel">
+      <div class="factory-panel-head">
+        <h3 class="title">权限中心快捷入口</h3>
+      </div>
+      <div class="factory-panel-body quick-actions">
         <el-button type="primary" @click="open('人事管理','角色管理')">角色管理</el-button>
         <el-button @click="open('系统管理','自定义权限')">自定义权限</el-button>
         <el-button @click="open('系统管理','自定义菜单')">自定义菜单</el-button>
         <el-button @click="open('系统管理','登录控制')">登录控制</el-button>
         <el-button @click="open('系统管理','账户冻结')">账户冻结</el-button>
       </div>
-    </el-card>
-    <h3>十三大核心功能</h3>
-    <div class="stats">
+    </section>
+
+    <h3 class="section-title">业务功能域</h3>
+    <div class="stats domains">
       <div
         v-for="d in perm.visibleMenus"
         :key="d.domain"
-        class="stat click"
+        class="domain-card"
         @click="open(d.domain, d.modules[0])"
       >
         <div class="label">{{ d.domain }}</div>
-        <div class="value" style="font-size:16px">{{ d.modules.length }} 模块</div>
+        <div class="mods">{{ d.modules.length }} 模块</div>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.desc { color: #5c6b75; }
-.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
-.stat {
-  background: #fff; border: 1px solid #d5dde3; border-radius: 8px; padding: 14px;
+.home { max-width: 1100px; }
+.hero {
+  margin-bottom: 16px;
+  padding: 16px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
-.stat.click { cursor: pointer; }
-.stat.click:hover { border-color: #0d7a6f; }
-.label { color: #5c6b75; font-size: 12px; }
-.value { font-size: 24px; font-weight: 600; color: #0d7a6f; margin-top: 4px; }
+.hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.eyebrow {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--accent, #1f7a4d);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+h2 {
+  margin: 8px 0 6px;
+  font-size: 22px;
+  color: var(--sidebar, #14352a);
+}
+.desc {
+  margin: 0;
+  max-width: 56ch;
+  color: var(--muted, #5a6e64);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.factory-kpi.click { cursor: pointer; }
+.factory-kpi.click:hover { border-color: var(--accent, #1f7a4d); }
+.quick-panel { margin-bottom: 18px; }
 .quick-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.section-title {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--sidebar, #14352a);
+  letter-spacing: 0.02em;
+}
+.domain-card {
+  background: var(--panel, #fff);
+  border: 1px solid var(--border, #cfdcd4);
+  border-radius: 8px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.domain-card:hover {
+  border-color: var(--accent, #1f7a4d);
+  box-shadow: var(--shadow-soft);
+}
+.domain-card .label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text, #1a2e24);
+}
+.domain-card .mods {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted, #5a6e64);
+  font-variant-numeric: tabular-nums;
+}
 @media (max-width: 768px) {
   .stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  .stat { padding: 12px; }
-  .value { font-size: 20px; }
 }
 </style>

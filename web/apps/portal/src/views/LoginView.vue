@@ -47,12 +47,12 @@ async function onSubmit() {
   justify-content: center;
   padding: 16px;
   background:
-    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(13, 122, 111, 0.18), transparent),
-    linear-gradient(180deg, #f4f7f8 0%, #e8eef1 100%);
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(31, 122, 77, 0.16), transparent),
+    linear-gradient(180deg, #f2f8f4 0%, #e6efe9 100%);
 }
 .card { width: min(400px, 100%); }
-.back { color: #0d7a6f; font-size: 13px; text-decoration: none; }
+.back { color: var(--accent, #1f7a4d); font-size: 13px; text-decoration: none; }
 h2 { margin: 10px 0 6px; font-size: 22px; }
-.hint { margin: 0 0 16px; color: #5c6b75; font-size: 13px; line-height: 1.5; }
+.hint { margin: 0 0 16px; color: var(--muted, #5a6e64); font-size: 13px; line-height: 1.5; }
 code { background: rgba(0,0,0,.05); padding: 1px 5px; border-radius: 3px; }
 </style>

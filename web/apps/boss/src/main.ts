@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import '@erp/shared/styles/tokens.css'
+import '@erp/shared/styles/factory.css'
 import App from './App.vue'
 import router from './router'
 createApp(App).use(createPinia()).use(router).use(ElementPlus).mount('#app')

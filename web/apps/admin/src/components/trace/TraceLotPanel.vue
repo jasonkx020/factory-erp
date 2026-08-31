@@ -39,14 +39,14 @@ function mediaUrl(raw: unknown): string {
 }
 
 const STEP_META = computed(() => ({
-  trace_lot: { label: '溯源批次', color: '#0d7a6f' },
-  arrival: { label: '到货登记', color: '#409eff' },
-  weigh: { label: '过磅收货', color: '#e6a23c' },
-  box: { label: '分板入库', color: '#67c23a' },
-  boxes: { label: '已分板明细', color: '#67c23a' },
-  box_family: { label: `关联${codeLabel.value}`, color: '#909399' },
-  farmer_settlement: { label: '农户结算', color: '#f56c6c' },
-  audit: { label: '审计纠错', color: '#909399' },
+  trace_lot: { label: '溯源批次', color: '#1f7a4d' },
+  arrival: { label: '到货登记', color: '#3d9b6a' },
+  weigh: { label: '过磅收货', color: '#a67c3d' },
+  box: { label: '分板入库', color: '#1f7a3f' },
+  boxes: { label: '已分板明细', color: '#1f7a3f' },
+  box_family: { label: `关联${codeLabel.value}`, color: '#6b7f74' },
+  farmer_settlement: { label: '农户结算', color: '#c0392b' },
+  audit: { label: '审计纠错', color: '#6b7f74' },
 }))
 
 const STATUS_MAP: Record<string, string> = {

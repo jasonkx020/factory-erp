@@ -127,9 +127,35 @@ func EnsureFinanceSchema(db *sql.DB) {
 	}
 }
 
+// financeCassavaLivePrefixes 产线版「结算财务」白名单：成本 + 资金账本（非完整总账）。
+var financeCassavaLivePrefixes = []string{
+	"/api/v1/finance/cost-accountings",
+	"/api/v1/finance/cost-traces",
+	"/api/v1/finance/cost-period-preview",
+	"/api/v1/finance/fund-accounts",
+	"/api/v1/finance/fund-transfers",
+	"/api/v1/finance/ledger-entries",
+	"/api/v1/finance/income-expenses",
+}
+
+func isFinanceCassavaLive(openapiPath string) bool {
+	for _, p := range financeCassavaLivePrefixes {
+		if openapiPath == p || strings.HasPrefix(openapiPath, p+"/") || strings.HasPrefix(openapiPath, p+"{") {
+			return true
+		}
+		// OpenAPI 风格：/api/v1/finance/fund-accounts/{id}
+		if strings.HasPrefix(openapiPath, p) {
+			rest := openapiPath[len(p):]
+			if rest == "" || rest[0] == '/' || rest[0] == '{' {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (s *Services) handleFinanceDomain(c *gin.Context, method, openapiPath, action string) bool {
-	if !strings.HasPrefix(openapiPath, "/api/v1/finance/cost-accountings") &&
-		!strings.HasPrefix(openapiPath, "/api/v1/finance/cost-traces") {
+	if !isFinanceCassavaLive(openapiPath) {
 		api.FailJSON(c, "FEATURE_REMOVED:finance_full_ledger")
 		return true
 	}
@@ -139,8 +165,8 @@ func (s *Services) handleFinanceDomain(c *gin.Context, method, openapiPath, acti
 		return true
 	}
 	switch {
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/account-subjects"):
-		return s.handleFinSubjects(c, method, action)
+	case openapiPath == "/api/v1/finance/cost-period-preview" || strings.HasPrefix(openapiPath, "/api/v1/finance/cost-period-preview"):
+		return s.handleFinCostPeriodPreview(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/finance/fund-accounts"):
 		return s.handleFinFundAccounts(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/finance/fund-transfers"):
@@ -149,46 +175,13 @@ func (s *Services) handleFinanceDomain(c *gin.Context, method, openapiPath, acti
 		return s.handleFinLedger(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/finance/income-expenses"):
 		return s.handleFinIncomeExpenses(c)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/vouchers"):
-		return s.handleFinVouchers(c, method, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/invoices"):
-		return s.handleFinInvoices(c, method, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/receipt-writeoffs"):
-		return s.handleFinWriteoffs(c, method, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/fx-settlements"):
-		return s.handleFinFX(c, method, openapiPath, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/cost-allocations"):
-		return s.handleFinAllocations(c, method, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/receipt-alerts"):
-		return s.handleFinAlerts(c, method, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/cashier-reconciles"):
-		return s.handleFinReconciles(c, method, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/prepay-prepaids"):
-		return s.handleFinPrepays(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/finance/cost-accountings"):
 		return s.handleFinCostAccountings(c, method, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/contract-profits"):
-		return s.handleFinContractProfits(c, method, openapiPath, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/payment-recognitions"):
-		return s.handleFinRecognitions(c, method, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/sales-return-finances"):
-		return s.handleFinReturnFinances(c, method, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/arap-adjusts"):
-		return s.handleFinArap(c, method, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/approvals"):
-		return s.handleFinApprovals(c, method, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/statements"):
-		return s.handleFinStatements(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/finance/cost-traces"):
 		return s.handleFinCostTraces(c, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/month-closes"):
-		return s.handleFinMonthCloses(c, method, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/miniprogram-bills"):
-		return s.handleFinMiniprogram(c, method, openapiPath, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/orders"):
-		return s.handleFinOrders(c, action)
 	default:
-		return false
+		api.FailJSON(c, "FEATURE_REMOVED:finance_full_ledger")
+		return true
 	}
 }
 
@@ -1199,6 +1192,111 @@ func (s *Services) handleFinPrepays(c *gin.Context, method, action string) bool 
 }
 
 // ---------- cost / contract / returns / arap ----------
+
+type finCostPeriodAgg struct {
+	Period            string  `json:"period"`
+	MaterialCost      float64 `json:"material_cost"`
+	LaborCost         float64 `json:"labor_cost"`
+	RequisitionCost   float64 `json:"requisition_cost"`
+	FarmerPaid        float64 `json:"farmer_paid"`
+	FarmerPending     float64 `json:"farmer_pending"`
+	FarmerPaidCount   int     `json:"farmer_paid_count"`
+	FarmerPendingCnt  int     `json:"farmer_pending_count"`
+	PieceworkAmount   float64 `json:"piecework_amount"`
+	PieceworkCount    int     `json:"piecework_count"`
+	SuggestedMaterial float64 `json:"suggested_material"`
+	SuggestedLabor    float64 `json:"suggested_labor"`
+	SuggestedTotal    float64 `json:"suggested_total"`
+	Traces            []gin.H `json:"traces"`
+}
+
+func (s *Services) aggregateCostPeriod(period string, productID int64) finCostPeriodAgg {
+	if period == "" {
+		period = time.Now().Format("2006-01")
+	}
+	like := period + "%"
+	agg := finCostPeriodAgg{Period: period, Traces: []gin.H{}}
+
+	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0), COUNT(1) FROM pur_farmer_settlement
+		WHERE status IN ('settle_paid','paid') AND biz_date LIKE ?`, like).Scan(&agg.FarmerPaid, &agg.FarmerPaidCount)
+	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0), COUNT(1) FROM pur_farmer_settlement
+		WHERE status NOT IN ('settle_paid','paid','void') AND biz_date LIKE ?`, like).Scan(&agg.FarmerPending, &agg.FarmerPendingCnt)
+	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0), COUNT(1) FROM pd_piecework_summary WHERE biz_date LIKE ?`, like).
+		Scan(&agg.PieceworkAmount, &agg.PieceworkCount)
+
+	if productID > 0 {
+		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(l.qty * COALESCE(p.cost_price,0)),0)
+			FROM pd_material_requisition_line l
+			LEFT JOIN prd_product p ON p.id=l.product_id
+			LEFT JOIN pd_material_requisition r ON r.id=l.requisition_id
+			WHERE l.product_id=? AND COALESCE(r.is_deleted,0)=0 AND COALESCE(r.created_at,'') LIKE ?`,
+			productID, like).Scan(&agg.RequisitionCost)
+		if agg.RequisitionCost <= 0 {
+			_ = s.DB.QueryRow(`SELECT COALESCE(SUM(l.qty * COALESCE(p.cost_price,0)),0)
+				FROM pd_material_requisition_line l LEFT JOIN prd_product p ON p.id=l.product_id
+				WHERE l.product_id=?`, productID).Scan(&agg.RequisitionCost)
+		}
+	}
+
+	agg.MaterialCost = agg.FarmerPaid
+	if agg.MaterialCost <= 0 && agg.RequisitionCost > 0 {
+		agg.MaterialCost = agg.RequisitionCost
+	}
+	agg.LaborCost = agg.PieceworkAmount
+	agg.SuggestedMaterial = agg.MaterialCost
+	agg.SuggestedLabor = agg.LaborCost
+	agg.SuggestedTotal = agg.SuggestedMaterial + agg.SuggestedLabor
+
+	if agg.FarmerPaid > 0 {
+		agg.Traces = append(agg.Traces, gin.H{
+			"source_type": "farmer_settlement", "source_id": 0, "amount": agg.FarmerPaid,
+			"label": fmt.Sprintf("农户已付货款 %d 笔", agg.FarmerPaidCount),
+		})
+	}
+	if agg.PieceworkAmount > 0 {
+		agg.Traces = append(agg.Traces, gin.H{
+			"source_type": "piecework_day", "source_id": 0, "amount": agg.PieceworkAmount,
+			"label": fmt.Sprintf("计件日结 %d 条", agg.PieceworkCount),
+		})
+	}
+	if agg.RequisitionCost > 0 && agg.FarmerPaid <= 0 {
+		agg.Traces = append(agg.Traces, gin.H{
+			"source_type": "requisition", "source_id": productID, "amount": agg.RequisitionCost,
+			"label": "领料成本",
+		})
+	}
+	return agg
+}
+
+func (s *Services) handleFinCostPeriodPreview(c *gin.Context) bool {
+	body := bindBody(c)
+	period := strOrDef(body["period"], c.Query("period"))
+	if period == "" {
+		period = time.Now().Format("2006-01")
+	}
+	pid, _ := asInt64(body["product_id"])
+	if pid == 0 {
+		pid, _ = asInt64(c.Query("product_id"))
+	}
+	agg := s.aggregateCostPeriod(period, pid)
+	api.OK(c, gin.H{
+		"period":             agg.Period,
+		"material_cost":      agg.SuggestedMaterial,
+		"labor_cost":         agg.SuggestedLabor,
+		"overhead":           0,
+		"total_cost":         agg.SuggestedTotal,
+		"farmer_paid":        agg.FarmerPaid,
+		"farmer_pending":     agg.FarmerPending,
+		"farmer_paid_count":  agg.FarmerPaidCount,
+		"farmer_pending_count": agg.FarmerPendingCnt,
+		"piecework_amount":   agg.PieceworkAmount,
+		"piecework_count":    agg.PieceworkCount,
+		"requisition_cost":   agg.RequisitionCost,
+		"traces":             agg.Traces,
+	})
+	return true
+}
+
 func (s *Services) handleFinCostAccountings(c *gin.Context, method, action string) bool {
 	_ = method
 	switch action {
@@ -1235,17 +1333,50 @@ func (s *Services) handleFinCostAccountings(c *gin.Context, method, action strin
 	case "create":
 		body := bindBody(c)
 		docNo := strOrDef(body["doc_no"], finDocNo("COST"))
+		period := strOrDef(body["period"], time.Now().Format("2006-01"))
+		productID := nullInt64Or(body["product_id"])
+		mat, _ := asFloat(body["material_cost"])
+		labor, _ := asFloat(body["labor_cost"])
+		oh, _ := asFloat(body["overhead"])
+		autoFill := false
+		if v, ok := body["auto_fill"]; ok {
+			switch t := v.(type) {
+			case bool:
+				autoFill = t
+			case string:
+				autoFill = t == "1" || strings.EqualFold(t, "true")
+			}
+		}
+		if autoFill || (mat <= 0 && labor <= 0) {
+			pid, _ := asInt64(body["product_id"])
+			agg := s.aggregateCostPeriod(period, pid)
+			if mat <= 0 {
+				mat = agg.SuggestedMaterial
+			}
+			if labor <= 0 {
+				labor = agg.SuggestedLabor
+			}
+		}
+		total := mat + labor + oh
+		if v, ok := body["total_cost"]; ok {
+			if t, ok2 := asFloat(v); ok2 && t > 0 {
+				total = t
+			}
+		}
 		res, err := s.DB.Exec(`INSERT INTO fin_cost_accounting(doc_no, period, task_id, product_id, material_cost, labor_cost, overhead, total_cost, status)
 			VALUES(?,?,?,?,?,?,?,?,?)`,
-			docNo, strOrDef(body["period"], time.Now().Format("2006-01")), nullInt64Or(body["task_id"]), nullInt64Or(body["product_id"]),
-			nullFloat(body["material_cost"]), nullFloat(body["labor_cost"]), nullFloat(body["overhead"]),
-			nullFloat(body["total_cost"]), strOrDef(body["status"], "draft"))
+			docNo, period, nullInt64Or(body["task_id"]), productID,
+			mat, labor, oh, total, strOrDef(body["status"], "draft"))
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
 		}
 		id, _ := res.LastInsertId()
-		api.OK(c, gin.H{"id": id, "doc_no": docNo})
+		api.OK(c, gin.H{
+			"id": id, "doc_no": docNo, "period": period,
+			"material_cost": mat, "labor_cost": labor,
+			"overhead": oh, "total_cost": total, "status": "draft",
+		})
 		return true
 	case "update", "replace":
 		id := paramID(c)
@@ -1258,43 +1389,64 @@ func (s *Services) handleFinCostAccountings(c *gin.Context, method, action strin
 		id := paramID(c)
 		var mat, labor, oh float64
 		var productID, taskID sql.NullInt64
-		var period string
-		_ = s.DB.QueryRow(`SELECT COALESCE(material_cost,0), COALESCE(labor_cost,0), COALESCE(overhead,0), product_id, task_id, COALESCE(period,'')
-			FROM fin_cost_accounting WHERE id=?`, id).Scan(&mat, &labor, &oh, &productID, &taskID, &period)
+		var period, status string
+		err := s.DB.QueryRow(`SELECT COALESCE(material_cost,0), COALESCE(labor_cost,0), COALESCE(overhead,0), product_id, task_id, COALESCE(period,''), COALESCE(status,'')
+			FROM fin_cost_accounting WHERE id=?`, id).Scan(&mat, &labor, &oh, &productID, &taskID, &period, &status)
+		if err != nil {
+			api.FailJSON(c, "NOT_FOUND")
+			return true
+		}
+		if status != "draft" && status != "calculated" {
+			api.FailJSON(c, "STATUS_NOT_ALLOW_CALC")
+			return true
+		}
 		if period == "" {
 			period = time.Now().Format("2006-01")
 		}
-		like := period + "%"
-		if labor <= 0 {
-			_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM pd_piecework_summary WHERE biz_date LIKE ?`, like).Scan(&labor)
-			if labor > 0 {
-				_, _ = s.DB.Exec(`INSERT INTO fin_cost_trace_line(cost_id, source_type, source_id, amount) VALUES(?,?,?,?)`,
-					id, "piecework_day", 0, labor)
+		pid := int64(0)
+		if productID.Valid {
+			pid = productID.Int64
+		}
+		agg := s.aggregateCostPeriod(period, pid)
+		body := bindBody(c)
+		force := false
+		if v, ok := body["force_refresh"]; ok {
+			switch t := v.(type) {
+			case bool:
+				force = t
+			case string:
+				force = t == "1" || strings.EqualFold(t, "true")
 			}
 		}
-		if mat <= 0 {
-			_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM pur_farmer_settlement WHERE status IN ('settle_paid','paid') AND biz_date LIKE ?`, like).Scan(&mat)
-			if mat > 0 {
-				_, _ = s.DB.Exec(`INSERT INTO fin_cost_trace_line(cost_id, source_type, source_id, amount) VALUES(?,?,?,?)`,
-					id, "farmer_settlement", 0, mat)
-			}
+		if force || mat <= 0 {
+			mat = agg.SuggestedMaterial
 		}
-		if mat <= 0 && productID.Valid {
-			var reqCost float64
-			_ = s.DB.QueryRow(`SELECT COALESCE(SUM(l.qty * COALESCE(p.cost_price,0)),0)
-				FROM pd_material_requisition_line l LEFT JOIN prd_product p ON p.id=l.product_id
-				WHERE l.product_id=?`, productID.Int64).Scan(&reqCost)
-			if reqCost > 0 {
-				mat = reqCost
-				_, _ = s.DB.Exec(`INSERT INTO fin_cost_trace_line(cost_id, source_type, source_id, amount) VALUES(?,?,?,?)`,
-					id, "requisition", productID.Int64, reqCost)
-			}
+		if force || labor <= 0 {
+			labor = agg.SuggestedLabor
 		}
 		_ = taskID
+		_, _ = s.DB.Exec(`DELETE FROM fin_cost_trace_line WHERE cost_id=?`, id)
+		for _, tr := range agg.Traces {
+			srcType, _ := tr["source_type"].(string)
+			srcID, _ := asInt64(tr["source_id"])
+			amt, _ := asFloat(tr["amount"])
+			if amt <= 0 {
+				continue
+			}
+			_, _ = s.DB.Exec(`INSERT INTO fin_cost_trace_line(cost_id, source_type, source_id, amount) VALUES(?,?,?,?)`,
+				id, srcType, srcID, amt)
+		}
+		if oh > 0 {
+			_, _ = s.DB.Exec(`INSERT INTO fin_cost_trace_line(cost_id, source_type, source_id, amount) VALUES(?,?,?,?)`,
+				id, "overhead_manual", 0, oh)
+		}
 		total := mat + labor + oh
 		_, _ = s.DB.Exec(`UPDATE fin_cost_accounting SET material_cost=?, labor_cost=?, overhead=?, total_cost=?, status='calculated' WHERE id=?`,
 			mat, labor, oh, total, id)
-		api.OK(c, gin.H{"id": id, "material_cost": mat, "labor_cost": labor, "overhead": oh, "total_cost": total, "status": "calculated"})
+		api.OK(c, gin.H{
+			"id": id, "material_cost": mat, "labor_cost": labor, "overhead": oh, "total_cost": total,
+			"status": "calculated", "farmer_pending": agg.FarmerPending, "traces": agg.Traces,
+		})
 		return true
 	}
 	return true
@@ -1318,6 +1470,7 @@ func (s *Services) handleFinCostTraces(c *gin.Context, action string) bool {
 			_ = rows.Scan(&id, &costID, &srcType, &srcID, &amt, &docNo, &period)
 			list = append(list, gin.H{
 				"id": id, "cost_id": costID, "source_type": srcType, "source_id": srcID,
+				"source_label": finCostSourceLabel(srcType),
 				"amount": amt, "doc_no": docNo, "period": period,
 			})
 		}
@@ -1335,10 +1488,33 @@ func (s *Services) handleFinCostTraces(c *gin.Context, action string) bool {
 		}
 		defer rows.Close()
 		list, _ := rowsToMaps(rows)
+		for _, row := range list {
+			if st, ok := row["source_type"].(string); ok {
+				row["source_label"] = finCostSourceLabel(st)
+			}
+		}
 		api.OK(c, gin.H{"cost_id": costID, "list": list, "total": len(list)})
 		return true
 	}
 	return true
+}
+
+func finCostSourceLabel(srcType string) string {
+	switch srcType {
+	case "farmer_settlement":
+		return "农户货款"
+	case "piecework_day":
+		return "计件日结"
+	case "requisition":
+		return "领料成本"
+	case "overhead_manual":
+		return "制造费用"
+	default:
+		if srcType == "" {
+			return "其他"
+		}
+		return srcType
+	}
 }
 
 func (s *Services) handleFinContractProfits(c *gin.Context, method, openapiPath, action string) bool {

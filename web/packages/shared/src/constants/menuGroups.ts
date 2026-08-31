@@ -21,7 +21,10 @@ export const ERP_MENU_GROUPS: Record<string, MenuGroup[]> = {
     { title: '现场台账', modules: ['工序流水', '计件工资', '退库未用完还仓'] },
   ],
   产品管理: [{ title: '产品主数据', modules: ['产品档案', '产品单位管理', '生产规格绑定'] }],
-  财务管理: [{ title: '成本', modules: ['成本核算', '成本明细溯源表'] }],
+  财务管理: [
+    { title: '结算与资金', modules: ['农户应付', '资金管理', '交易流水账'] },
+    { title: '成本', modules: ['成本核算', '成本明细溯源表'] },
+  ],
   工资管理: [
     { title: '工价与档案', modules: ['工人信息管理', '工序工资'] },
     { title: '核算发放', modules: ['工资批量管理', '薪酬核算', '员工工作台账'] },

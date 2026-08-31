@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore, reportApi, productionApi, approvalApi, portalHomeUrl } from '@erp/shared'
+import { useAuthStore, reportApi, productionApi, approvalApi, purchaseApi, financeApi, portalHomeUrl } from '@erp/shared'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -11,19 +11,38 @@ const tasks = ref<Record<string, unknown>[]>([])
 const approvals = ref(0)
 const processes = ref<Record<string, unknown>[]>([])
 const bossData = ref<Record<string, unknown>>({})
+const farmerPendingAmt = ref(0)
+const fundBalance = ref(0)
+
+function money(v: unknown) {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return '-'
+  return n.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+}
 
 async function load() {
   if (!auth.isLoggedIn) await auth.login('admin', 'admin123', 'boss')
-  const [t, a, p, b] = await Promise.all([
+  const [t, a, p, b, fs, fa] = await Promise.all([
     productionApi.listTasks(),
     approvalApi.tasks(),
     productionApi.processes(),
     reportApi.boss(),
+    purchaseApi.farmerSettlements().catch(() => ({ code: 0, data: { list: [] } })),
+    financeApi.fundAccounts().catch(() => ({ code: 0, data: { list: [] } })),
   ])
   tasks.value = ((t.data as { list?: Record<string, unknown>[] })?.list) || []
   approvals.value = (((a.data as { list?: unknown[] })?.list) || []).length
   processes.value = ((p.data as { list?: Record<string, unknown>[] })?.list) || []
   bossData.value = (b.data as Record<string, unknown>) || {}
+  const settles = ((fs.data as { list?: Record<string, unknown>[] })?.list) || []
+  farmerPendingAmt.value = settles
+    .filter((r) => {
+      const st = String(r.status || '')
+      return st !== 'settle_paid' && st !== 'paid' && st !== 'void'
+    })
+    .reduce((s, r) => s + (Number(r.amount) || 0), 0)
+  const funds = ((fa.data as { list?: Record<string, unknown>[] })?.list) || []
+  fundBalance.value = funds.reduce((s, r) => s + (Number(r.balance) || 0), 0)
 }
 
 onMounted(load)
@@ -44,8 +63,8 @@ onMounted(load)
     <div v-if="view==='boss'" class="grid">
       <div class="kpi"><div class="l">生产任务</div><div class="v">{{ tasks.length }}</div></div>
       <div class="kpi"><div class="l">待办审批</div><div class="v">{{ approvals }}</div></div>
-      <div class="kpi"><div class="l">工序数</div><div class="v">{{ processes.length }}</div></div>
-      <div class="kpi"><div class="l">看板数据</div><div class="v">{{ Object.keys(bossData).length }}</div></div>
+      <div class="kpi warn"><div class="l">农户待付</div><div class="v">{{ money(farmerPendingAmt) }}</div></div>
+      <div class="kpi ok"><div class="l">资金余额</div><div class="v">{{ money(fundBalance) }}</div></div>
       <div class="box wide">
         <h3>任务一览</h3>
         <el-table :data="tasks.slice(0,8)" size="small" dark>
@@ -73,17 +92,57 @@ onMounted(load)
 </template>
 
 <style scoped>
-.dash { min-height: 100vh; background: #0b1418; color: #e8eef1; padding: 12px 16px; }
+.dash {
+  min-height: 100vh;
+  background:
+    linear-gradient(rgba(31, 122, 77, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(31, 122, 77, 0.04) 1px, transparent 1px),
+    #0c1a14;
+  background-size: 28px 28px, 28px 28px, auto;
+  color: #e8f5ee;
+  padding: 12px 16px;
+}
 header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-h1 { margin: 0; font-size: 18px; color: #7ad4c6; }
-.tabs button { margin-right: 6px; background: #1a2b34; border: 0; color: #9fb0ba; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
-.tabs button.active { background: #0d7a6f; color: #fff; }
+h1 { margin: 0; font-size: 18px; color: #7dcea0; letter-spacing: 0.02em; }
+.tabs button { margin-right: 6px; background: #14352a; border: 1px solid rgba(61, 155, 106, 0.2); color: #a8c4b4; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+.tabs button.active { background: var(--accent, #1f7a4d); color: #fff; border-color: transparent; }
 .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-.kpi, .box { background: #16252d; border-radius: 8px; padding: 14px; }
-.kpi .l { font-size: 12px; color: #9fb0ba; }
-.kpi .v { font-size: 28px; color: #7ad4c6; font-weight: 600; }
+.kpi, .box {
+  background: #12291f;
+  border-radius: 8px;
+  padding: 14px;
+  border: 1px solid rgba(61, 155, 106, 0.18);
+  position: relative;
+  overflow: hidden;
+}
+.kpi::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--accent-leaf, #3d9b6a);
+}
+.kpi .l { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #a8c4b4; }
+.kpi .v { font-size: 28px; color: #7dcea0; font-weight: 700; font-variant-numeric: tabular-nums; font-family: var(--factory-mono, monospace); }
+.kpi.warn::before { background: var(--factory-warn, #c47a12); }
+.kpi.warn .v { color: #e8b86d; }
+.kpi.ok::before { background: #3d9b6a; }
 .wide { grid-column: span 4; }
-.flow { display: flex; flex-wrap: wrap; gap: 8px; }
-.flow span { background: #1a2b34; padding: 6px 10px; border-radius: 4px; }
-.flow span.on { outline: 2px solid #0d7a6f; }
+.flow { display: flex; flex-wrap: wrap; gap: 0; }
+.flow span {
+  background: #14352a;
+  padding: 8px 12px;
+  border: 1px solid rgba(61, 155, 106, 0.2);
+  border-right-width: 0;
+  font-size: 13px;
+}
+.flow span:first-child { border-radius: 6px 0 0 6px; }
+.flow span:last-child { border-right-width: 1px; border-radius: 0 6px 6px 0; }
+.flow span.on {
+  outline: none;
+  background: rgba(31, 122, 77, 0.35);
+  border-color: var(--accent-leaf, #3d9b6a);
+  color: #fff;
+  font-weight: 600;
+}
 </style>

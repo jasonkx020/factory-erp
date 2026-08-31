@@ -62,7 +62,7 @@ export const CASSAVA_PRODUCT_SCOPE: ProductScopeEntry[] = [
   },
   {
     domain: '财务管理',
-    modules: ['成本核算', '成本明细溯源表'],
+    modules: ['成本核算', '成本明细溯源表', '资金管理', '交易流水账', '农户应付'],
   },
   {
     domain: '统计报表',

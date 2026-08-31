@@ -124,10 +124,19 @@ func presetRoleGrant(roleCode string) presetGrant {
 	case "finance":
 		return presetGrant{
 			views: append(
-				pair("财务管理", "成本核算", "成本明细溯源表"),
+				append(
+					pair("财务管理", "成本核算", "成本明细溯源表", "资金管理", "交易流水账", "农户应付"),
+					pair("采购管理", "农户结算")...,
+				),
 				pair("统计报表", "日经营快照", "成本期间汇总", "农户结算对账汇总")...,
 			),
-			edits: pair("工资管理", "工资批量管理", "薪酬核算", "员工工作台账"),
+			edits: append(
+				append(
+					pair("财务管理", "成本核算", "资金管理", "交易流水账", "农户应付"),
+					pair("采购管理", "农户结算")...,
+				),
+				pair("工资管理", "工资批量管理", "薪酬核算", "员工工作台账")...,
+			),
 		}
 	default:
 		return presetGrant{}

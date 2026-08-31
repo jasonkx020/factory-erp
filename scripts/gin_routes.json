@@ -1009,6 +1009,10 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/finance/cost-period-preview"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/finance/contract-profits"
   },
   {
@@ -2810,6 +2814,10 @@
   {
     "method": "POST",
     "path": "/api/v1/finance/cost-allocations/:id/revoke"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/finance/cost-period-preview"
   },
   {
     "method": "POST",

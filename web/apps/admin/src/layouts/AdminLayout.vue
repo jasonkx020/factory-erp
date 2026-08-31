@@ -91,6 +91,16 @@ const domainIcons: Record<string, string> = {
   系统管理: '⚙️',
 }
 
+/** Fixed cassava plant line shown under top nav (factory identity). */
+const plantLine = [
+  { name: '清洗', run: true },
+  { name: '去皮', run: true },
+  { name: '切段', run: true },
+  { name: '去芯', run: true },
+  { name: '切片', run: true },
+  { name: '烘干', run: false, end: true },
+]
+
 const crumb = computed(() => {
   if (route.path === '/account') return '个人中心'
   const d = route.params.domain as string
@@ -275,8 +285,8 @@ function openSideDrawer() {
       </button>
 
       <button type="button" class="brand" @click="goHome" title="工作台">
-        <span class="brand-mark">ERP</span>
-        <span v-if="!isMobile" class="brand-text">加工厂</span>
+        <span class="brand-mark">木薯</span>
+        <span v-if="!isMobile" class="brand-text">加工厂 ERP</span>
       </button>
 
       <nav ref="topMenusEl" class="top-menus">
@@ -373,6 +383,16 @@ function openSideDrawer() {
       </div>
     </header>
 
+    <div class="factory-line-strip" aria-label="木薯加工产线">
+      <span class="line-label">产线</span>
+      <span
+        v-for="s in plantLine"
+        :key="s.name"
+        class="station"
+        :class="{ run: s.run, end: s.end }"
+      >{{ s.name }}</span>
+    </div>
+
     <div class="body">
       <!-- Desktop fixed sidebar -->
       <aside v-if="showSidebar && !isMobile" class="side-nav">
@@ -411,9 +431,11 @@ function openSideDrawer() {
 
       <div class="main">
         <div class="crumb-bar">
+          <span class="crumb-ico" aria-hidden="true">🏭</span>
           <span class="crumb">{{ crumb }}</span>
+          <span class="crumb-tag">现场管控</span>
         </div>
-        <main class="content" :class="{ 'full-width': !showSidebar || isMobile }">
+        <main class="content factory-floor" :class="{ 'full-width': !showSidebar || isMobile }">
           <router-view />
         </main>
       </div>
@@ -471,7 +493,7 @@ function openSideDrawer() {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  background: #e9ecef;
+  background: var(--bg);
 }
 
 .top-nav {
@@ -479,16 +501,16 @@ function openSideDrawer() {
   flex-shrink: 0;
   display: flex;
   align-items: stretch;
-  background: #2c3e50;
+  background: linear-gradient(90deg, var(--topnav) 0%, var(--sidebar-2) 100%);
   color: #ecf0f1;
   z-index: 20;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 1px 0 rgba(61, 155, 106, 0.25), 0 2px 8px rgba(15, 42, 33, 0.35);
 }
 .menu-toggle {
   width: 44px;
   flex-shrink: 0;
   border: 0;
-  background: #1a252f;
+  background: var(--topnav-2);
   color: #fff;
   font-size: 20px;
   cursor: pointer;
@@ -499,19 +521,20 @@ function openSideDrawer() {
   gap: 8px;
   padding: 0 14px;
   border: 0;
-  background: #1a252f;
+  background: var(--topnav-2);
   color: #fff;
   cursor: pointer;
   flex-shrink: 0;
 }
 .brand-mark {
-  background: #714b67;
+  background: linear-gradient(135deg, var(--accent-leaf), var(--accent));
   color: #fff;
   font-size: 11px;
   font-weight: 700;
-  padding: 3px 6px;
-  border-radius: 3px;
+  padding: 3px 7px;
+  border-radius: 4px;
   letter-spacing: 0.5px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
 }
 .brand-text {
   font-size: 13px;
@@ -547,20 +570,20 @@ function openSideDrawer() {
   padding: 4px 10px;
   border: 0;
   background: transparent;
-  color: #bdc3c7;
+  color: rgba(232, 245, 238, 0.72);
   cursor: pointer;
   flex-shrink: 0;
   border-bottom: 3px solid transparent;
   transition: background 0.15s, color 0.15s;
 }
 .top-item:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(61, 155, 106, 0.18);
   color: #fff;
 }
 .top-item.active {
-  background: rgba(113, 75, 103, 0.45);
+  background: rgba(31, 122, 77, 0.4);
   color: #fff;
-  border-bottom-color: #c39bd3;
+  border-bottom-color: var(--accent-leaf);
 }
 .top-item .ico {
   font-size: 16px;
@@ -593,14 +616,14 @@ function openSideDrawer() {
   flex-shrink: 0;
   position: relative;
   z-index: 2;
-  background: #2c3e50;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  border-left: 1px solid rgba(232, 245, 238, 0.12);
 }
 .portal-link {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: #aeb6bf;
+  color: rgba(232, 245, 238, 0.75);
   font-size: 12px;
   text-decoration: none;
   white-space: nowrap;
@@ -646,26 +669,28 @@ function openSideDrawer() {
 .side-nav {
   width: 220px;
   flex-shrink: 0;
-  background: #f8f9fa;
-  border-right: 1px solid #dee2e6;
+  background:
+    linear-gradient(180deg, rgba(232, 245, 238, 0.65) 0%, transparent 120px),
+    #f7fbf8;
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 .side-head {
   padding: 12px 12px 8px;
-  border-bottom: 1px solid #e9ecef;
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 .drawer-head {
   padding: 0 0 12px;
-  border-bottom: 1px solid #e9ecef;
+  border-bottom: 1px solid var(--border);
   margin-bottom: 8px;
 }
 .side-domain {
   font-size: 14px;
   font-weight: 700;
-  color: #2c3e50;
+  color: var(--sidebar);
   margin-bottom: 8px;
 }
 .side-search :deep(.el-input__wrapper) {
@@ -689,14 +714,14 @@ function openSideDrawer() {
   padding: 10px 14px 4px;
   font-size: 13px;
   font-weight: 700;
-  color: #343a40;
+  color: var(--sidebar);
 }
 .group-title::before {
   content: '';
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #714b67;
+  background: var(--accent);
   flex-shrink: 0;
 }
 .side-link {
@@ -705,7 +730,7 @@ function openSideDrawer() {
   justify-content: space-between;
   gap: 6px;
   padding: 6px 14px 6px 26px;
-  color: #5c6b75;
+  color: var(--muted);
   text-decoration: none;
   font-size: 13px;
   border-radius: 0;
@@ -734,16 +759,16 @@ function openSideDrawer() {
   color: #fff;
 }
 .side-link:hover {
-  background: #eef1f4;
-  color: #1a252f;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
 }
 .side-link.active {
-  background: #714b67;
+  background: var(--accent);
   color: #fff;
   font-weight: 500;
 }
 .side-link.iam:not(.active) {
-  color: #9a7b2f;
+  color: var(--accent-soil);
 }
 .side-empty {
   padding: 24px 14px;
@@ -757,20 +782,43 @@ function openSideDrawer() {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: #f0f2f5;
+  background:
+    radial-gradient(ellipse 70% 40% at 100% 0%, rgba(61, 155, 106, 0.08), transparent),
+    var(--bg);
 }
 .crumb-bar {
   height: 40px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  gap: 8px;
   padding: 0 16px;
-  background: #fff;
-  border-bottom: 1px solid #e2e8ec;
+  background: rgba(255, 255, 255, 0.92);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(6px);
+}
+.crumb-ico {
+  font-size: 13px;
+  line-height: 1;
 }
 .crumb {
   font-size: 13px;
-  color: #5c6b75;
+  color: var(--muted);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.crumb-tag {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  letter-spacing: 0.04em;
 }
 .content {
   flex: 1;
@@ -823,8 +871,8 @@ function openSideDrawer() {
   line-height: 1;
 }
 .admin-more-domains-popper .is-overflow-active {
-  color: #714b67;
+  color: var(--accent-dark, #145c38);
   font-weight: 600;
-  background: #f3eaf2;
+  background: var(--accent-soft, #e8f5ee);
 }
 </style>

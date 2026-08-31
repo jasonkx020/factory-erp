@@ -27,18 +27,26 @@ function cardHref(key: (typeof linkCards)[number]['key']) {
   return terminalUrl(key)
 }
 
-const flow = ['鲜木薯入库', '清洗', '去皮计件', '收货卡点', '切断去芯', '切块装袋', '成品出库']
+const flow = ['鲜薯入库', '清洗', '去皮', '切段', '去芯', '切片', '烘干']
 </script>
 
 <template>
   <div class="page">
     <header class="hero">
-      <p class="eyebrow">木薯加工 · 计件产线</p>
+      <p class="eyebrow">木薯加工 · 工厂产线</p>
       <h1 class="brand">木薯加工厂 ERP</h1>
       <p class="lead">选择终端登录。员工现场作业仅使用 Flutter App；管理后台与老板驾驶舱为 Web。客户自助走 Portal <code>/shop</code>。</p>
-      <ol class="flow" aria-label="产线节点">
-        <li v-for="(step, i) in flow" :key="step" :class="{ accent: i === 2 || i === 3 }">{{ step }}</li>
-      </ol>
+      <div class="factory-conveyor portal-line" aria-label="产线节点">
+        <div
+          v-for="(step, i) in flow"
+          :key="step"
+          class="node"
+          :class="{ active: i === 2 || i === flow.length - 1 }"
+        >
+          <div class="seq">{{ String(i + 1).padStart(2, '0') }}</div>
+          <div class="nm">{{ step }}</div>
+        </div>
+      </div>
     </header>
 
     <section class="terminals">
@@ -75,11 +83,11 @@ const flow = ['鲜木薯入库', '清洗', '去皮计件', '收货卡点', '切�
 <style scoped>
 .page {
   min-height: 100vh;
-  color: #1a2b34;
+  color: var(--text, #1a2e24);
   background:
-    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(13, 122, 111, 0.18), transparent),
-    radial-gradient(ellipse 60% 40% at 90% 10%, rgba(47, 107, 69, 0.12), transparent),
-    linear-gradient(180deg, #f4f7f8 0%, #e8eef1 100%);
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(31, 122, 77, 0.16), transparent),
+    radial-gradient(ellipse 60% 40% at 90% 10%, rgba(166, 124, 61, 0.1), transparent),
+    linear-gradient(180deg, #f2f8f4 0%, #e6efe9 100%);
   font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 .hero {
@@ -92,7 +100,7 @@ const flow = ['鲜木薯入库', '清洗', '去皮计件', '收货卡点', '切�
   font-size: 13px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #0d7a6f;
+  color: var(--accent, #1f7a4d);
   font-weight: 600;
 }
 .brand {
@@ -104,34 +112,21 @@ const flow = ['鲜木薯入库', '清洗', '去皮计件', '收货卡点', '切�
 .lead {
   margin: 0 0 20px;
   max-width: 52ch;
-  color: #44555e;
+  color: var(--muted, #5a6e64);
   line-height: 1.55;
   font-size: 15px;
 }
 .lead code {
   font-size: 13px;
-  background: rgba(0, 0, 0, 0.05);
+  background: rgba(20, 53, 42, 0.06);
   padding: 1px 5px;
   border-radius: 3px;
 }
-.flow {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+.portal-line {
+  margin-top: 4px;
 }
-.flow li {
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(26, 43, 52, 0.06);
-  color: #3a4a52;
-}
-.flow li.accent {
-  background: #0d7a6f;
-  color: #fff;
+.portal-line .node {
+  background: #fff;
 }
 .terminals {
   max-width: 960px;
@@ -141,7 +136,7 @@ const flow = ['鲜木薯入库', '清洗', '去皮计件', '收货卡点', '切�
 .section-title {
   font-size: 14px;
   font-weight: 600;
-  color: #5c6b75;
+  color: var(--muted, #5a6e64);
   margin: 0 0 14px;
 }
 .grid {
@@ -156,28 +151,28 @@ const flow = ['鲜木薯入库', '清洗', '去皮计件', '收货卡点', '切�
   background: #fff;
   border-radius: 14px;
   padding: 18px 18px 16px;
-  border: 1px solid rgba(26, 43, 52, 0.08);
-  box-shadow: 0 8px 24px rgba(15, 28, 34, 0.06);
+  border: 1px solid rgba(20, 53, 42, 0.08);
+  box-shadow: 0 8px 24px rgba(20, 53, 42, 0.06);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 28px rgba(15, 28, 34, 0.1);
+  box-shadow: 0 12px 28px rgba(20, 53, 42, 0.1);
 }
 .card-static {
   cursor: default;
 }
 .card-static:hover {
   transform: none;
-  box-shadow: 0 8px 24px rgba(15, 28, 34, 0.06);
+  box-shadow: 0 8px 24px rgba(20, 53, 42, 0.06);
 }
 .badge {
   display: inline-block;
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 4px;
-  background: #e8f5f2;
-  color: #0d7a6f;
+  background: var(--accent-soft, #e8f5ee);
+  color: var(--accent-dark, #145c38);
   margin-bottom: 10px;
 }
 .card h3 {
@@ -188,19 +183,19 @@ const flow = ['鲜木薯入库', '清洗', '去皮计件', '收货卡点', '切�
   margin: 0 0 14px;
   font-size: 13px;
   line-height: 1.5;
-  color: #5c6b75;
+  color: var(--muted, #5a6e64);
   min-height: 3.9em;
 }
 .card code {
   font-size: 11px;
-  background: rgba(0, 0, 0, 0.05);
+  background: rgba(20, 53, 42, 0.05);
   padding: 1px 4px;
   border-radius: 3px;
 }
 .enter {
   font-size: 13px;
   font-weight: 600;
-  color: #0d7a6f;
+  color: var(--accent, #1f7a4d);
 }
 .enter.muted {
   color: #7a8a94;
@@ -213,7 +208,7 @@ const flow = ['鲜木薯入库', '清洗', '去皮计件', '收货卡点', '切�
   color: #7a8a94;
 }
 .foot code {
-  background: rgba(0, 0, 0, 0.05);
+  background: rgba(20, 53, 42, 0.05);
   padding: 1px 5px;
   border-radius: 3px;
 }

@@ -874,7 +874,15 @@ export const financeApi = {
   // 成本 / 合同利润 / 退货财务
   costAccountings: () => api.get<PageData>('/finance/cost-accountings'),
   createCostAccounting: (body: Record<string, unknown>) => api.post('/finance/cost-accountings', body),
-  calcCost: (id: number) => api.post(`/finance/cost-accountings/${id}/calc`, {}),
+  calcCost: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/finance/cost-accountings/${id}/calc`, body || {}),
+  previewCostPeriod: (body?: Record<string, unknown>) => {
+    const q = new URLSearchParams()
+    if (body?.period) q.set('period', String(body.period))
+    if (body?.product_id != null && body.product_id !== '') q.set('product_id', String(body.product_id))
+    const qs = q.toString()
+    return api.get(`/finance/cost-period-preview${qs ? `?${qs}` : ''}`)
+  },
   costTraces: () => api.get<PageData>('/finance/cost-traces'),
   contractProfits: () => api.get<PageData>('/finance/contract-profits'),
   recalcContractProfit: (body?: Record<string, unknown>) =>
