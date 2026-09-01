@@ -814,6 +814,25 @@ export const purchaseApi = {
   completeTask: (id: number) => api.post(`/purchase/tasks/${id}/complete`, {}),
 }
 
+export const plantingApi = {
+  dashboard: () => api.get('/planting/dashboard/overview'),
+  plots: (params?: string) => api.get<PageData>(`/planting/plots${params ? `?${params}` : ''}`),
+  createPlot: (body: Record<string, unknown>) => api.post('/planting/plots', body),
+  getPlot: (id: number) => api.get(`/planting/plots/${id}`),
+  updatePlot: (id: number, body: Record<string, unknown>) => api.put(`/planting/plots/${id}`, body),
+  removePlot: (id: number) => api.del(`/planting/plots/${id}`),
+  contracts: (params?: string) => api.get<PageData>(`/planting/contracts${params ? `?${params}` : ''}`),
+  createContract: (body: Record<string, unknown>) => api.post('/planting/contracts', body),
+  updateContract: (id: number, body: Record<string, unknown>) => api.put(`/planting/contracts/${id}`, body),
+  fieldLogs: (params?: string) => api.get<PageData>(`/planting/field-logs${params ? `?${params}` : ''}`),
+  createFieldLog: (body: Record<string, unknown>) => api.post('/planting/field-logs', body),
+  harvestPlans: (params?: string) => api.get<PageData>(`/planting/harvest-plans${params ? `?${params}` : ''}`),
+  createHarvestPlan: (body: Record<string, unknown>) => api.post('/planting/harvest-plans', body),
+  updateHarvestPlan: (id: number, body: Record<string, unknown>) => api.put(`/planting/harvest-plans/${id}`, body),
+  confirmHarvestPlan: (id: number) => api.post(`/planting/harvest-plans/${id}/confirm`, {}),
+  harvestPlanToArrival: (id: number) => api.post(`/planting/harvest-plans/${id}/to-arrival`, {}),
+}
+
 export const financeApi = {
   // 账目
   subjects: () => api.get<PageData>('/finance/account-subjects'),

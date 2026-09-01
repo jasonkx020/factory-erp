@@ -23,6 +23,10 @@ export const ERP_MENUS: Array<{ domain: string; modules: string[] }> = [
     ],
   },
   {
+    domain: '种植管理',
+    modules: ['木薯种植管理', '地块档案', '种植合同', '田间作业', '采收计划'],
+  },
+  {
     domain: '生产管理',
     modules: [
       '多单整合管理', '生产任务单', '图纸分发', '工序定义', '工艺流程', '产线班次',
@@ -99,6 +103,7 @@ export const DOMAIN_LIST_PATH: Record<string, string> = {
   客户管理: '/crm/hub/customers',
   销售管理: '/sales/hub/orders',
   采购管理: '/purchase/hub/weigh',
+  种植管理: '/planting/hub/overview',
   统计报表: '/report/hub/boss',
   财务管理: '/finance/hub/vouchers',
   固定资产管理: '/asset/hub/fixed-assets',

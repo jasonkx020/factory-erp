@@ -2955,6 +2955,72 @@ ALTER TABLE fin_prepay_prepaid ADD COLUMN IF NOT EXISTS fund_account_id INTEGER;
 ALTER TABLE fin_sales_return_finance ADD COLUMN IF NOT EXISTS fund_account_id INTEGER;
 ALTER TABLE sl_sales_order ADD COLUMN IF NOT EXISTS received_amount DOUBLE PRECISION NOT NULL DEFAULT 0;
 
+CREATE TABLE IF NOT EXISTS plant_plot (
+  id BIGSERIAL PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  farmer_id BIGINT NOT NULL DEFAULT 0,
+  area_mu DOUBLE PRECISION NOT NULL DEFAULT 0,
+  location TEXT,
+  soil_type TEXT,
+  irrigation_type TEXT,
+  variety TEXT NOT NULL DEFAULT '鲜木薯',
+  status TEXT NOT NULL DEFAULT 'active',
+  remark TEXT,
+  created_at TEXT NOT NULL DEFAULT NOW(),
+  updated_at TEXT NOT NULL DEFAULT NOW(),
+  is_deleted INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS plant_contract (
+  id BIGSERIAL PRIMARY KEY,
+  doc_no TEXT NOT NULL UNIQUE,
+  farmer_id BIGINT NOT NULL,
+  plot_id BIGINT NOT NULL DEFAULT 0,
+  variety TEXT NOT NULL DEFAULT '鲜木薯',
+  area_mu DOUBLE PRECISION NOT NULL DEFAULT 0,
+  unit_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+  start_date TEXT NOT NULL,
+  end_date TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  remark TEXT,
+  created_at TEXT NOT NULL DEFAULT NOW(),
+  updated_at TEXT NOT NULL DEFAULT NOW(),
+  is_deleted INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS plant_field_log (
+  id BIGSERIAL PRIMARY KEY,
+  doc_no TEXT NOT NULL UNIQUE,
+  plot_id BIGINT NOT NULL,
+  farmer_id BIGINT NOT NULL DEFAULT 0,
+  log_type TEXT NOT NULL DEFAULT 'other',
+  biz_date TEXT NOT NULL,
+  operator_name TEXT,
+  content TEXT,
+  qty DOUBLE PRECISION NOT NULL DEFAULT 0,
+  unit TEXT,
+  remark TEXT,
+  created_at TEXT NOT NULL DEFAULT NOW(),
+  is_deleted INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS plant_harvest_plan (
+  id BIGSERIAL PRIMARY KEY,
+  doc_no TEXT NOT NULL UNIQUE,
+  plot_id BIGINT NOT NULL,
+  farmer_id BIGINT NOT NULL,
+  variety TEXT NOT NULL DEFAULT '鲜木薯',
+  plan_date TEXT NOT NULL,
+  estimate_weight DOUBLE PRECISION NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'draft',
+  arrival_id BIGINT NOT NULL DEFAULT 0,
+  remark TEXT,
+  created_at TEXT NOT NULL DEFAULT NOW(),
+  updated_at TEXT NOT NULL DEFAULT NOW(),
+  is_deleted INTEGER NOT NULL DEFAULT 0
+);
+
 INSERT INTO erp_schema_migration (version, description, checksum)
 VALUES ('v1.0.0', 'postgresql baseline', '')
 ON CONFLICT (version) DO NOTHING;

@@ -169,6 +169,8 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		return s.handleIAM(c, method, action, openapiPath)
 	case strings.HasPrefix(openapiPath, "/api/v1/crm/"):
 		return s.handleCRM(c, method, openapiPath, action)
+	case strings.HasPrefix(openapiPath, "/api/v1/planting/"):
+		return s.handlePlanting(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/"):
 		return s.handlePurchase(c, method, openapiPath, resourceKey, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/finance/"):

@@ -38,6 +38,11 @@ var resourceDomainModule = map[string]domainModule{
 	"purchase/plans": {"采购管理", "采购计划单"}, "purchase/inbounds": {"采购管理", "采购入库"},
 	"purchase/qcs": {"采购管理", "来料质检"}, "purchase/returns": {"采购管理", "采购退货"},
 	"purchase/tasks": {"采购管理", "采购任务管理"},
+	"planting/dashboard": {"种植管理", "木薯种植管理"},
+	"planting/plots":     {"种植管理", "地块档案"},
+	"planting/contracts": {"种植管理", "种植合同"},
+	"planting/field-logs": {"种植管理", "田间作业"},
+	"planting/harvest-plans": {"种植管理", "采收计划"},
 	// production
 	"production/tasks": {"生产管理", "生产任务单"}, "production/processes": {"生产管理", "工序定义"},
 	"production/shifts":     {"生产管理", "产线班次"},
@@ -107,7 +112,7 @@ var modulePermAliases = map[string][]string{
 }
 
 var domainPrefixCN = map[string]string{
-	"sales": "销售管理", "purchase": "采购管理", "production": "生产管理",
+	"sales": "销售管理", "purchase": "采购管理", "planting": "种植管理", "production": "生产管理",
 	"inventory": "库存管理", "finance": "财务管理", "hr": "人事管理",
 	"payroll": "工资管理", "crm": "客户管理", "system": "系统管理",
 	"iam": "系统管理", "approval": "审批管理", "report": "统计报表",
@@ -132,6 +137,7 @@ var allDomainMenus = []struct {
 	{"人事管理", []string{"员工档案", "公司架构", "角色管理", "入职登记", "离职登记", "人事调动", "工具领还", "考勤管理", "班次管理", "绩效管理", "请假管理", "考勤明细", "加班补卡统计", "考勤月度统计", "考勤绩效汇总", "外访明细", "备忘录管理", "员工日志"}},
 	{"统计报表", []string{"企业报表", "老板驾驶舱", "生产看板", "生产实况", "客户询价查询", "CRM统计", "日统计报表", "毛利润统计", "质检报表", "账目统计", "出入库查询", "收发存明细", "跟进记录查询", "销售重量统计", "产品销售查询", "系统物流查询", "成本利润表", "资产负债表", "现金流量表", "利润表"}},
 	{"审批管理", []string{"任务管理", "单据审核", "费用财务审批", "询价财务审批", "询价明细审批", "采购审批", "采购计划单审批", "事务申请审批", "费用申请", "考勤审批"}},
+	{"种植管理", []string{"木薯种植管理", "地块档案", "种植合同", "田间作业", "采收计划"}},
 }
 
 func resolveDomainModule(resourceKey string) (domainModule, bool) {

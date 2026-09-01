@@ -101,6 +101,7 @@ func New(cfgPath string) (*App, error) {
 	apigen.RegisterInventoryExtra(v1, engine)
 	apigen.RegisterFinanceExtra(v1, engine)
 	apigen.RegisterWorkflowExtra(v1, engine)
+	apigen.RegisterPlantingExtra(v1, engine)
 
 	stop := make(chan struct{})
 	go notifySvc.StartPublisher(stop)

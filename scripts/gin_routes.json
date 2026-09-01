@@ -485,6 +485,42 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/planting/plots"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/planting/plots/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/planting/contracts"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/planting/contracts/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/planting/field-logs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/planting/field-logs/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/planting/harvest-plans"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/planting/harvest-plans/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/planting/dashboard/overview"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/system/doc-approve-switches"
   },
   {
@@ -2085,6 +2121,30 @@
   },
   {
     "method": "POST",
+    "path": "/api/v1/planting/harvest-plans"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/planting/harvest-plans/:id/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/planting/harvest-plans/:id/to-arrival"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/planting/plots"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/planting/contracts"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/planting/field-logs"
+  },
+  {
+    "method": "POST",
     "path": "/api/v1/sales/pre-shipments"
   },
   {
@@ -2989,6 +3049,74 @@
   },
   {
     "method": "DELETE",
+    "path": "/api/v1/production/boms/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/production/drawing-links/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/production/flow-graphs/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/production/processes/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/production/routings/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/production/shifts/:id/members/:memberId"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/product/products/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/product/specs/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/planting/plots/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/planting/contracts/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/planting/field-logs/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/planting/harvest-plans/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/purchase/farmers/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/purchase/suppliers/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/purchase/weigh-varieties/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/payroll/commission-rules/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/payroll/wage-rates/:id"
+  },
+  {
+    "method": "DELETE",
     "path": "/api/v1/system/announcements/:id"
   },
   {
@@ -3038,58 +3166,6 @@
   {
     "method": "DELETE",
     "path": "/api/v1/sales/price-locks/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/boms/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/drawing-links/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/flow-graphs/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/processes/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/routings/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/production/shifts/:id/members/:memberId"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/product/products/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/product/specs/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/purchase/farmers/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/purchase/suppliers/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/purchase/weigh-varieties/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/payroll/commission-rules/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/payroll/wage-rates/:id"
   },
   {
     "method": "DELETE",
@@ -3322,6 +3398,18 @@
   {
     "method": "PUT",
     "path": "/api/v1/payroll/sheets/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/planting/plots/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/planting/contracts/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/planting/harvest-plans/:id"
   },
   {
     "method": "PUT",

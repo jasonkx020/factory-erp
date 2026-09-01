@@ -42,6 +42,12 @@ const router = createRouter({
           props: (r) => ({ section: r.params.section }),
         },
         {
+          path: 'planting/hub/:section?',
+          name: 'planting-hub',
+          component: () => import('./views/planting/PlantingHubView.vue'),
+          props: (r) => ({ section: r.params.section }),
+        },
+        {
           path: 'production/hub/:section?',
           name: 'production-hub',
           component: () => import('./views/production/ProductionHubView.vue'),
