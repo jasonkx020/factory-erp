@@ -4,6 +4,14 @@ import "github.com/gin-gonic/gin"
 
 // RegisterHRExtra mounts HR delivery routes not yet in OpenAPI gen.
 func RegisterHRExtra(r *gin.RouterGroup, h Handler) {
+	// 岗位管理：实现已在 biz；挂在 extra，避免 gen-routes 覆盖 routes_gen 时丢失
+	r.GET("/hr/job-titles", h.Dispatch("GET", "/api/v1/hr/job-titles", "/hr/job-titles", "hr/job-titles", "list"))
+	r.POST("/hr/job-titles", h.Dispatch("POST", "/api/v1/hr/job-titles", "/hr/job-titles", "hr/job-titles", "create"))
+	r.POST("/hr/job-titles/ensure", h.Dispatch("POST", "/api/v1/hr/job-titles/ensure", "/hr/job-titles/ensure", "hr/job-titles", "ensure"))
+	r.GET("/hr/job-titles/:id", h.Dispatch("GET", "/api/v1/hr/job-titles/{id}", "/hr/job-titles/:id", "hr/job-titles", "get"))
+	r.PUT("/hr/job-titles/:id", h.Dispatch("PUT", "/api/v1/hr/job-titles/{id}", "/hr/job-titles/:id", "hr/job-titles", "update"))
+	r.DELETE("/hr/job-titles/:id", h.Dispatch("DELETE", "/api/v1/hr/job-titles/{id}", "/hr/job-titles/:id", "hr/job-titles", "remove"))
+
 	r.POST("/hr/leave-requests/:id/approve", h.Dispatch("POST", "/api/v1/hr/leave-requests/{id}/approve", "/hr/leave-requests/:id/approve", "hr/leave-requests", "action:approve"))
 	r.POST("/hr/leave-requests/:id/reject", h.Dispatch("POST", "/api/v1/hr/leave-requests/{id}/reject", "/hr/leave-requests/:id/reject", "hr/leave-requests", "action:reject"))
 	r.POST("/hr/overtime-patches/:id/approve", h.Dispatch("POST", "/api/v1/hr/overtime-patches/{id}/approve", "/hr/overtime-patches/:id/approve", "hr/overtime-patches", "action:approve"))

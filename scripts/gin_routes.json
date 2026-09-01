@@ -1265,14 +1265,6 @@
   },
   {
     "method": "GET",
-    "path": "/api/v1/hr/job-titles"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/hr/job-titles/:id"
-  },
-  {
-    "method": "GET",
     "path": "/api/v1/hr/visits"
   },
   {
@@ -1286,6 +1278,14 @@
   {
     "method": "GET",
     "path": "/api/v1/hr/tool-issues"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/job-titles"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/hr/job-titles/:id"
   },
   {
     "method": "GET",
@@ -3741,11 +3741,11 @@
   },
   {
     "method": "PUT",
-    "path": "/api/v1/hr/job-titles/:id"
+    "path": "/api/v1/hr/visits/:id"
   },
   {
     "method": "PUT",
-    "path": "/api/v1/hr/visits/:id"
+    "path": "/api/v1/hr/job-titles/:id"
   },
   {
     "method": "PUT",
