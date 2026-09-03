@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore, portalHomeUrl } from '@erp/shared'
+import { useAuthStore, portalHomeUrl, productionApi } from '@erp/shared'
 import { ElMessage } from 'element-plus'
 
 const auth = useAuthStore()
@@ -9,6 +9,25 @@ const router = useRouter()
 const form = reactive({ login_name: 'admin', password: 'admin123' })
 const loading = ref(false)
 const portalUrl = portalHomeUrl()
+const chipFlow = ref<string[]>([])
+const chipHint = ref('未配置工艺')
+
+onMounted(async () => {
+  try {
+    const res = await productionApi.plantLinePreview()
+    const steps = (res.data as { steps?: Array<{ name: string }>; message?: string })?.steps
+    if (Array.isArray(steps) && steps.length) {
+      chipFlow.value = steps.map((s) => s.name).filter(Boolean)
+      chipHint.value = ''
+    } else {
+      chipFlow.value = []
+      chipHint.value = (res.data as { message?: string })?.message || '未配置工艺'
+    }
+  } catch {
+    chipFlow.value = []
+    chipHint.value = '未配置工艺'
+  }
+})
 
 async function onSubmit() {
   loading.value = true
@@ -43,12 +62,10 @@ async function onSubmit() {
         </div>
       </div>
       <ol class="chip-flow" aria-label="产线摘要">
-        <li>清洗</li>
-        <li>去皮</li>
-        <li>切段</li>
-        <li>去芯</li>
-        <li>切片</li>
-        <li class="end">烘干</li>
+        <template v-if="chipFlow.length">
+          <li v-for="(name, i) in chipFlow" :key="name" :class="{ end: i === chipFlow.length - 1 }">{{ name }}</li>
+        </template>
+        <li v-else class="end">{{ chipHint }}</li>
       </ol>
       <el-form label-position="top" @submit.prevent="onSubmit">
         <el-form-item label="用户名">

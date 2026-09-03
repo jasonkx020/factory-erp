@@ -53,6 +53,7 @@ class _QcShellState extends State<QcShell> {
     final name = (auth.name?.isNotEmpty == true) ? auth.name! : (auth.loginName ?? '质检');
 
     return Scaffold(
+      extendBody: true,
       body: IndexedStack(
         index: _index,
         children: [

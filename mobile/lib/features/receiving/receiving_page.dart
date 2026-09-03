@@ -13,6 +13,7 @@ import '../../widgets/form_row.dart';
 import '../../widgets/form_section_header.dart';
 import '../../widgets/form_sticky_actions.dart';
 import '../../widgets/hub_entry_tile.dart';
+import '../../widgets/tab_safe_padding.dart';
 import '../../widgets/trace_code_field.dart';
 import 'gate_inbound_wizard.dart';
 import 'trace_code_qr_sheet.dart';
@@ -1229,7 +1230,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
       case 'await_gate':
         return Colors.orange.shade700;
       case 'await_stockin':
-        return Colors.indigo.shade700;
+        return const Color(0xFF1F7A4D);
       case 'await_warehouse':
         return Colors.orange.shade700;
       case 'await_finance':
@@ -1238,7 +1239,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
       case 'stocked_done':
         return Colors.green.shade700;
       case 'pending_bind':
-        return Colors.blue;
+        return const Color(0xFF3D9B6A);
       case 'returned_by_warehouse':
         return Colors.red.shade700;
       default:
@@ -1249,11 +1250,11 @@ class _ReceivingPageState extends State<ReceivingPage> {
         return Colors.orange;
       case 'qc_pass':
       case 'pending_confirm':
-        return Colors.blue;
+        return const Color(0xFF3D9B6A);
       case 'weighed':
         return Colors.orange.shade700;
       case 'gate_accepted':
-        return Colors.indigo.shade700;
+        return const Color(0xFF1F7A4D);
       case 'returned':
         return Colors.red.shade700;
       case 'stocked':
@@ -1490,7 +1491,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
 
   Widget _kindChooser() {
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, widget.asTab ? 40 : 16, 16, 16),
+      padding: EdgeInsets.fromLTRB(16, widget.asTab ? 40 : 16, 16, tabShellBottomPadding(context, asTab: widget.asTab)),
       children: [
         const Text('采购', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
         const SizedBox(height: 4),
@@ -1867,7 +1868,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
                         if (handoff != null)
                           Text(
                             '交予：$handoff',
-                            style: TextStyle(fontSize: 12, color: Colors.indigo.shade700),
+                            style: TextStyle(fontSize: 12, color: const Color(0xFF1F7A4D)),
                           ),
                         if (when.isNotEmpty)
                           Text(when, style: const TextStyle(fontSize: 11, color: Colors.black45)),
@@ -1997,7 +1998,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
                                     padding: const EdgeInsets.only(top: 2),
                                     child: Text(
                                       '下一步：$next',
-                                      style: TextStyle(fontSize: 12, color: Colors.indigo.shade700),
+                                      style: TextStyle(fontSize: 12, color: const Color(0xFF1F7A4D)),
                                     ),
                                   );
                                 }),

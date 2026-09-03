@@ -21,6 +21,17 @@ func (s *Services) handleProcessWip(c *gin.Context, openapiPath, action string) 
 }
 
 func (s *Services) resolveWipRoutingID(c *gin.Context) (int64, string, string) {
+	if v := strings.TrimSpace(c.Query("trace_code")); v != "" {
+		rid := s.resolveTraceSessionRoutingID(v)
+		if rid <= 0 {
+			rid = s.resolveRoutingIDForTrace(v, s.resolveTraceProductID(v))
+		}
+		if rid <= 0 {
+			return 0, "", "ROUTING_REQUIRED"
+		}
+		code, _, _ := s.loadRoutingMeta(rid)
+		return rid, code, ""
+	}
 	productID := int64(0)
 	if v := strings.TrimSpace(c.Query("product_id")); v != "" {
 		fmt.Sscanf(v, "%d", &productID)
@@ -29,30 +40,28 @@ func (s *Services) resolveWipRoutingID(c *gin.Context) (int64, string, string) {
 	if v := strings.TrimSpace(c.Query("routing_id")); v != "" {
 		fmt.Sscanf(v, "%d", &routingID)
 	}
-	code, name := "", ""
-	if productID > 0 {
-		_ = s.DB.QueryRow(`SELECT id, COALESCE(code,''), COALESCE(name,'') FROM pd_routing
-			WHERE product_id=? AND status='active' AND COALESCE(is_deleted,0)=0 ORDER BY id DESC LIMIT 1`, productID).
-			Scan(&routingID, &code, &name)
-		if routingID <= 0 {
-			return 0, "", "ROUTING_REQUIRED"
+	code := ""
+	if routingID > 0 {
+		_ = s.DB.QueryRow(`SELECT COALESCE(code,'') FROM pd_routing WHERE id=? AND COALESCE(is_deleted,0)=0`, routingID).Scan(&code)
+		if code == "" && routingID > 0 {
+			// still accept explicit id even if code empty
+			var ok int
+			_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_routing WHERE id=? AND COALESCE(is_deleted,0)=0`, routingID).Scan(&ok)
+			if ok <= 0 {
+				return 0, "", "ROUTING_NOT_FOUND"
+			}
 		}
 		return routingID, code, ""
 	}
-	if routingID > 0 {
-		_ = s.DB.QueryRow(`SELECT COALESCE(code,''), COALESCE(name,'') FROM pd_routing WHERE id=?`, routingID).Scan(&code, &name)
+	if productID > 0 {
+		routingID = s.resolveRoutingID(0, productID)
+		if routingID <= 0 {
+			return 0, "", "ROUTING_REQUIRED"
+		}
+		code, _, _ = s.loadRoutingMeta(routingID)
 		return routingID, code, ""
 	}
-	_ = s.DB.QueryRow(`SELECT id, COALESCE(code,''), COALESCE(name,'') FROM pd_routing
-		WHERE code='RT-CASSAVA-RAW' AND COALESCE(is_deleted,0)=0 ORDER BY id LIMIT 1`).Scan(&routingID, &code, &name)
-	if routingID <= 0 {
-		_ = s.DB.QueryRow(`SELECT id, COALESCE(code,''), COALESCE(name,'') FROM pd_routing
-			WHERE status='active' AND COALESCE(is_deleted,0)=0 ORDER BY id LIMIT 1`).Scan(&routingID, &code, &name)
-	}
-	if routingID <= 0 {
-		return 0, "", "ROUTING_REQUIRED"
-	}
-	return routingID, code, ""
+	return 0, "", "ROUTING_REQUIRED"
 }
 
 func (s *Services) getProcessWip(c *gin.Context) bool {

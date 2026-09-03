@@ -198,21 +198,30 @@ func (s *Services) resolveRoutingID(taskID, productID int64) int64 {
 	}
 	if productID > 0 {
 		var rid int64
+		// Prefer product-spec default routing when configured.
+		_ = s.DB.QueryRow(`SELECT COALESCE(routing_id,0) FROM prd_product_spec
+			WHERE product_id=? AND COALESCE(is_deleted,0)=0 AND COALESCE(routing_id,0)>0
+			  AND COALESCE(status,'active')='active'
+			ORDER BY id DESC LIMIT 1`, productID).Scan(&rid)
+		if rid > 0 {
+			var ok int
+			_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_routing WHERE id=? AND status='active' AND COALESCE(is_deleted,0)=0`, rid).Scan(&ok)
+			if ok > 0 {
+				return rid
+			}
+		}
 		_ = s.DB.QueryRow(`SELECT id FROM pd_routing WHERE product_id=? AND status='active' AND COALESCE(is_deleted,0)=0 ORDER BY id DESC LIMIT 1`, productID).Scan(&rid)
 		if rid > 0 {
 			return rid
 		}
 	}
 	var rid int64
-	_ = s.DB.QueryRow(`SELECT COALESCE(routing_id,0) FROM pd_flow_graph WHERE kind='production' AND status='active' AND COALESCE(is_deleted,0)=0 ORDER BY id DESC LIMIT 1`).Scan(&rid)
+	_ = s.DB.QueryRow(`SELECT COALESCE(routing_id,0) FROM pd_flow_graph WHERE kind='production' AND status='active' AND COALESCE(is_deleted,0)=0
+		AND COALESCE(routing_id,0)>0 ORDER BY id DESC LIMIT 1`).Scan(&rid)
 	if rid > 0 {
 		return rid
 	}
-	_ = s.DB.QueryRow(`SELECT id FROM pd_routing WHERE code='RT-CASSAVA' AND COALESCE(is_deleted,0)=0 ORDER BY id LIMIT 1`).Scan(&rid)
-	if rid > 0 {
-		return rid
-	}
-	return 1
+	return 0
 }
 
 func (s *Services) stepByProcess(routingID, processID int64) *routingStep {

@@ -65,22 +65,30 @@ class _ProcessStockInApplyPageState extends State<ProcessStockInApplyPage> {
     }
     setState(() {
       _processes = list;
-      if (_processId != null && !list.any((p) => (p['id'] as num?)?.toInt() == _processId)) {
-        _processId = null;
-      }
-      if (_processId == null && savedProc != null && savedProc > 0 && list.any((p) => (p['id'] as num?)?.toInt() == savedProc)) {
+      if (savedProc != null && savedProc > 0) {
         _processId = savedProc;
       }
-      if (_processId == null && list.isNotEmpty) {
-        _processId = (list.first['id'] as num?)?.toInt();
-      }
     });
+    final trace = (_selectedTraceCode ?? '').trim();
+    if (trace.isNotEmpty) {
+      await _loadWipForTrace();
+    } else {
+      setState(() {
+        _processes = [];
+        _processId = null;
+        _wipSteps = [];
+      });
+    }
   }
 
   Future<void> _loadWipForTrace() async {
     final trace = (_selectedTraceCode ?? '').trim();
     if (trace.isEmpty) {
-      setState(() => _wipSteps = []);
+      setState(() {
+        _wipSteps = [];
+        _processes = [];
+        _processId = null;
+      });
       return;
     }
     setState(() => _loadingWip = true);
@@ -88,7 +96,11 @@ class _ProcessStockInApplyPageState extends State<ProcessStockInApplyPage> {
     if (!mounted) return;
     setState(() => _loadingWip = false);
     if (!r.ok || r.data is! Map) {
-      setState(() => _wipSteps = []);
+      setState(() {
+        _wipSteps = [];
+        _processes = [];
+        _processId = null;
+      });
       return;
     }
     final data = Map<String, dynamic>.from(r.data as Map);
@@ -99,16 +111,44 @@ class _ProcessStockInApplyPageState extends State<ProcessStockInApplyPage> {
         if (e is Map) steps.add(Map<String, dynamic>.from(e));
       }
     }
+    final routing = data['routing_steps'];
+    final filtered = <Map<String, dynamic>>[];
+    if (routing is List && routing.isNotEmpty) {
+      for (final e in routing) {
+        if (e is! Map) continue;
+        final m = Map<String, dynamic>.from(e);
+        final pid = (m['process_id'] as num?)?.toInt();
+        if (pid == null || pid <= 0) continue;
+        filtered.add({
+          'id': pid,
+          'name': m['step_name'] ?? m['process_name'] ?? pid,
+          'code': m['step_code'] ?? '',
+        });
+      }
+    }
     final stockable = steps.where((s) => s['can_stock_in'] == true || ((s['wip_kg'] as num?)?.toDouble() ?? 0) > 0).toList();
     int? pid = _processId;
-    if (pid != null && !stockable.any((s) => (s['process_id'] as num?)?.toInt() == pid)) {
+    final candidates = filtered.isNotEmpty ? filtered : _processes;
+    if (pid != null && !candidates.any((p) => (p['id'] as num?)?.toInt() == pid)) {
+      pid = null;
+    }
+    if (pid != null && stockable.isNotEmpty && !stockable.any((s) => (s['process_id'] as num?)?.toInt() == pid)) {
       pid = null;
     }
     if (pid == null && stockable.isNotEmpty) {
-      pid = (stockable.first['process_id'] as num?)?.toInt();
+      final stockIds = stockable.map((s) => (s['process_id'] as num?)?.toInt()).whereType<int>().toSet();
+      for (final p in candidates) {
+        final id = (p['id'] as num?)?.toInt();
+        if (id != null && stockIds.contains(id)) {
+          pid = id;
+          break;
+        }
+      }
+      pid ??= (stockable.first['process_id'] as num?)?.toInt();
     }
     setState(() {
       _wipSteps = steps;
+      _processes = filtered;
       _processId = pid;
     });
   }
@@ -119,7 +159,7 @@ class _ProcessStockInApplyPageState extends State<ProcessStockInApplyPage> {
   }
 
   List<Map<String, dynamic>> get _stockableProcesses {
-    if (_wipSteps.isEmpty) return _processes;
+    if (_wipSteps.isEmpty) return [];
     final ids = _wipSteps
         .where((s) => s['can_stock_in'] == true || ((s['wip_kg'] as num?)?.toDouble() ?? 0) > 0)
         .map((s) => (s['process_id'] as num?)?.toInt())
@@ -204,9 +244,10 @@ class _ProcessStockInApplyPageState extends State<ProcessStockInApplyPage> {
                 ? _processId
                 : null,
             decoration: InputDecoration(
-              labelText: '当前工序（须有在制）',
+              labelText: '当前工序（本批工艺 · 须有在制）',
               border: const OutlineInputBorder(),
               isDense: true,
+              helperText: (_selectedTraceCode ?? '').isEmpty ? '请先选择进行中的溯源生产' : null,
               suffixIcon: _loadingProc
                   ? const Padding(
                       padding: EdgeInsets.all(12),

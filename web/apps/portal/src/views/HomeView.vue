@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { terminalUrl } from '@erp/shared'
+import { onMounted, ref } from 'vue'
+import { terminalUrl, productionApi } from '@erp/shared'
 
 const linkCards = [
   {
@@ -27,7 +28,25 @@ function cardHref(key: (typeof linkCards)[number]['key']) {
   return terminalUrl(key)
 }
 
-const flow = ['鲜薯入库', '清洗', '去皮', '切段', '去芯', '切片', '烘干']
+const flow = ref<string[]>([])
+const flowHint = ref('未配置工艺')
+
+onMounted(async () => {
+  try {
+    const res = await productionApi.plantLinePreview()
+    const steps = (res.data as { steps?: Array<{ name: string }>; message?: string })?.steps
+    if (Array.isArray(steps) && steps.length) {
+      flow.value = steps.map((s) => s.name).filter(Boolean)
+      flowHint.value = ''
+    } else {
+      flow.value = []
+      flowHint.value = (res.data as { message?: string })?.message || '未配置工艺'
+    }
+  } catch {
+    flow.value = []
+    flowHint.value = '未配置工艺'
+  }
+})
 </script>
 
 <template>
@@ -37,14 +56,20 @@ const flow = ['鲜薯入库', '清洗', '去皮', '切段', '去芯', '切片', 
       <h1 class="brand">木薯加工厂 ERP</h1>
       <p class="lead">选择终端登录。员工现场作业仅使用 Flutter App；管理后台与老板驾驶舱为 Web。客户自助走 Portal <code>/shop</code>。</p>
       <div class="factory-conveyor portal-line" aria-label="产线节点">
-        <div
-          v-for="(step, i) in flow"
-          :key="step"
-          class="node"
-          :class="{ active: i === 2 || i === flow.length - 1 }"
-        >
-          <div class="seq">{{ String(i + 1).padStart(2, '0') }}</div>
-          <div class="nm">{{ step }}</div>
+        <template v-if="flow.length">
+          <div
+            v-for="(step, i) in flow"
+            :key="step"
+            class="node"
+            :class="{ active: i === Math.min(2, flow.length - 1) || i === flow.length - 1 }"
+          >
+            <div class="seq">{{ String(i + 1).padStart(2, '0') }}</div>
+            <div class="nm">{{ step }}</div>
+          </div>
+        </template>
+        <div v-else class="node">
+          <div class="seq">—</div>
+          <div class="nm">{{ flowHint }}</div>
         </div>
       </div>
     </header>

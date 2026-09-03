@@ -94,3 +94,57 @@ func TestResolveTraceSessionRoutingLocked(t *testing.T) {
 		t.Fatalf("expected routing steps")
 	}
 }
+
+func TestResolveRoutingIDNoSilentCassavaFallback(t *testing.T) {
+	s := &Services{DB: openSmokeDB(t)}
+	// Unknown product must not silently fall back to RT-CASSAVA / id=1.
+	got := s.resolveRoutingID(0, 999999001)
+	if got != 0 {
+		t.Fatalf("want 0 without product routing, got %d", got)
+	}
+}
+
+func TestAssertProcessInSessionRouting(t *testing.T) {
+	s := &Services{DB: openSmokeDB(t)}
+	ensureTraceProductionRoutingCols(t, s.DB)
+
+	const trace = "T-PROC-IN-ROUTING"
+	const productID int64 = 1
+	_, _ = s.DB.Exec(`DELETE FROM pd_trace_production WHERE UPPER(trace_code)=?`, trace)
+
+	var routingID, processID int64
+	_ = s.DB.QueryRow(`SELECT r.id, rs.process_id FROM pd_routing r
+		JOIN pd_routing_step rs ON rs.routing_id=r.id
+		WHERE r.product_id=? AND r.status='active' AND COALESCE(r.is_deleted,0)=0
+		ORDER BY r.id, rs.seq_no LIMIT 1`, productID).Scan(&routingID, &processID)
+	if routingID <= 0 || processID <= 0 {
+		t.Skip("no routing steps for product 1")
+	}
+
+	_, err := s.DB.Exec(`INSERT INTO pd_trace_production(trace_code, status, routing_id, product_id)
+		VALUES(?, 'in_progress', ?, ?)`, trace, routingID, productID)
+	if err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+	if code := s.assertProcessInSessionRouting(trace, processID); code != "" {
+		t.Fatalf("in-routing process: %s", code)
+	}
+	if code := s.assertProcessInSessionRouting(trace, processID+999999); code != "PROCESS_NOT_IN_ROUTING" {
+		t.Fatalf("want PROCESS_NOT_IN_ROUTING got %q", code)
+	}
+}
+
+func TestPlantLinePreviewHasConfiguredSteps(t *testing.T) {
+	s := &Services{DB: openSmokeDB(t)}
+	var cnt int
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_routing WHERE status='active' AND COALESCE(is_deleted,0)=0`).Scan(&cnt)
+	if cnt <= 0 {
+		t.Skip("no active routing")
+	}
+	var rid int64
+	_ = s.DB.QueryRow(`SELECT id FROM pd_routing WHERE status='active' AND COALESCE(is_deleted,0)=0 ORDER BY id DESC LIMIT 1`).Scan(&rid)
+	steps := s.loadRoutingStepsByID(rid)
+	if len(steps) == 0 {
+		t.Fatalf("active routing %d should have steps for plant-line preview", rid)
+	}
+}

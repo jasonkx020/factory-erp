@@ -73,6 +73,10 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/production/plant-line-preview"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/production/trace-productions"
   },
   {

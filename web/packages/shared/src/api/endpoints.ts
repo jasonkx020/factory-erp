@@ -174,6 +174,15 @@ export const productionApi = {
     api.get(routingId ? `/production/flow-rules?routing_id=${routingId}` : '/production/flow-rules'),
   saveFlowRules: (body: Record<string, unknown>) => api.put('/production/flow-rules', body),
   listRoutings: () => api.get<PageData>('/production/routings'),
+  plantLinePreview: () =>
+    api.get<{
+      routing_id?: number
+      routing_code?: string
+      routing_name?: string
+      source?: string
+      message?: string
+      steps?: Array<{ name: string; run?: boolean; end?: boolean; process_id?: number; seq_no?: number }>
+    }>('/production/plant-line-preview'),
   getRouting: (id: number) => api.get(`/production/routings/${id}`),
   createRouting: (body: Record<string, unknown>) => api.post('/production/routings', body),
   updateRouting: (id: number, body: Record<string, unknown>) => api.put(`/production/routings/${id}`, body),

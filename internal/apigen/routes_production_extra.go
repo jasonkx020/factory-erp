@@ -2,6 +2,13 @@ package apigen
 
 import "github.com/gin-gonic/gin"
 
+// RegisterProductionPublic mounts unauthenticated production preview endpoints (JWT permit list).
+func RegisterProductionPublic(r *gin.RouterGroup, e *Engine) {
+	r.GET("/production/plant-line-preview", func(c *gin.Context) {
+		e.Biz.GetPlantLinePreview(c)
+	})
+}
+
 // RegisterProductionExtra mounts production delivery actions beyond OpenAPI gen.
 func RegisterProductionExtra(r *gin.RouterGroup, h Handler) {
 	r.POST("/production/consignments/:id/progress", h.Dispatch("POST", "/api/v1/production/consignments/{id}/progress", "/production/consignments/:id/progress", "production/consignments", "action:progress"))

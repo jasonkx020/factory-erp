@@ -5,7 +5,7 @@ import FlowGraphEditorView from './FlowGraphEditorView.vue'
 <template>
   <div class="page">
     <h2>工艺流程编排</h2>
-    <p class="sub">拖拽节点连线配置生产工序；保存生产类流程时自动编译为工艺步骤供报工引擎使用。</p>
+    <p class="sub">维护生产工艺流程；列表中点「编辑」进入画布编排工序。发布后将编译为过站步骤。</p>
     <FlowGraphEditorView kind-filter="production" />
   </div>
 </template>

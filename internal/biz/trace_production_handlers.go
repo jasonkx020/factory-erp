@@ -191,6 +191,34 @@ func (s *Services) getTraceProductionRoutingOptions(c *gin.Context) bool {
 	_, pname, _ := s.productMeta(productID)
 	options := s.listRoutingsForProduct(productID)
 	suggested := s.resolveRoutingID(0, productID)
+	// Ensure suggested appears in options when product-spec / product default resolves.
+	if suggested > 0 {
+		found := false
+		for _, opt := range options {
+			if asInt64Or0(opt["id"]) == suggested {
+				found = true
+				break
+			}
+		}
+		if !found {
+			code, name, _ := s.loadRoutingMeta(suggested)
+			steps := s.loadRoutingStepsByID(suggested)
+			preview := make([]string, 0, len(steps))
+			for _, st := range steps {
+				label := st.StepName
+				if label == "" {
+					label = st.ProcessName
+				}
+				if label != "" {
+					preview = append(preview, label)
+				}
+			}
+			options = append([]gin.H{{
+				"id": suggested, "code": code, "name": name, "version_no": "", "status": "active",
+				"step_count": len(steps), "steps_preview": preview, "from_product_spec": true,
+			}}, options...)
+		}
+	}
 	api.OK(c, gin.H{
 		"trace_code": trace, "product_id": productID, "product_name": pname,
 		"suggested_routing_id": suggested, "routing_options": options,

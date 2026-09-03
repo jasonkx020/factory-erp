@@ -11,6 +11,7 @@ import '../../widgets/form_row.dart';
 import '../../widgets/form_section_header.dart';
 import '../../widgets/form_sticky_actions.dart';
 import '../../widgets/hub_entry_tile.dart';
+import '../../widgets/tab_safe_padding.dart';
 import '../../widgets/trace_code_field.dart';
 import '../workshop/process_return_page.dart';
 import 'process_pending_approve_page.dart';
@@ -792,7 +793,7 @@ class _WarehousePageState extends State<WarehousePage> {
 
   Widget _buildHome() {
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, widget.asTab ? 40 : 16, 16, 16),
+      padding: EdgeInsets.fromLTRB(16, widget.asTab ? 40 : 16, 16, tabShellBottomPadding(context, asTab: widget.asTab)),
       children: [
         const Text('仓管作业', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
         const SizedBox(height: 4),

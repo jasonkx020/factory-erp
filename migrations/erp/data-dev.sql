@@ -30,6 +30,10 @@ INSERT INTO inv_warehouse(id, org_id, code, name, warehouse_type) VALUES
  (3, 1, 'WH-FG', '成品冷库', 'finished')
 ON CONFLICT DO NOTHING;
 
+-- upgrade v1.0.21 先于 data-dev 写入 GATE_IN/SLICE/OUT_RAW 并占用自增 id，
+-- 会使下方固定 id 的工序种子被 ON CONFLICT 跳过，进而导致 routing_step.process_id 外键失败。
+DELETE FROM pd_process WHERE code IN ('GATE_IN', 'SLICE', 'OUT_RAW');
+
 INSERT INTO pd_process(id, code, name, process_type, is_piecework, is_handover_point) VALUES
  (1, 'PEEL', '去皮', 'peel', 1, 0),
  (2, 'HANDOVER', '收货卡点', 'other', 0, 1),
@@ -41,7 +45,9 @@ INSERT INTO pd_process(id, code, name, process_type, is_piecework, is_handover_p
  (8, 'IN_RAW', '原料入库', 'inbound', 0, 0),
  (9, 'IN_SEMI', '半成品入库', 'inbound', 0, 0),
  (10, 'OUT_DICE', '出库切块', 'outbound', 1, 0),
- (11, 'IN_FG', '成品入库', 'inbound', 0, 0)
+ (11, 'IN_FG', '成品入库', 'inbound', 0, 0),
+ (12, 'SLICE', '切片', 'slice', 1, 0),
+ (13, 'DRY', '烘干', 'dry', 0, 0)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO iam_login_policy(
@@ -224,7 +230,13 @@ ON CONFLICT DO NOTHING;
 INSERT INTO prd_product(id, code, name, product_type, cost_price, sale_price, status) VALUES
  (1, 'RM-CASSAVA', '鲜木薯', 'raw', 1.2, NULL, 'active'),
  (2, 'SF-COREOUT', '去芯薯肉', 'semi', 2.5, 3.0, 'active'),
- (3, 'FG-DICED', '袋装木薯丁', 'finished', 4.0, 7.0, 'active')
+ (3, 'FG-DICED', '袋装木薯丁', 'finished', 4.0, 7.0, 'active'),
+ (4, 'SF-CASSAVA-WASH', '清洗木薯', 'semi', 1.5, NULL, 'active'),
+ (5, 'SF-CASSAVA-PEEL', '去皮木薯', 'semi', 2.0, NULL, 'active'),
+ (6, 'SF-CASSAVA-CUT', '切段木薯', 'semi', 2.3, NULL, 'active'),
+ (7, 'SF-CASSAVA-CORE', '去芯木薯', 'semi', 2.6, NULL, 'active'),
+ (8, 'SF-CASSAVA-SLICE', '切片木薯', 'semi', 2.9, NULL, 'active'),
+ (9, 'FG-CASSAVA-DRY', '烘干木薯丁', 'finished', 3.8, 5.5, 'active')
 ON CONFLICT DO NOTHING;
 
 -- 过磅品种（与产品绑定；新装 schema 已写入时此处幂等）
@@ -259,7 +271,9 @@ VALUES
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO prd_product_unit(product_id, unit_name, is_base, factor_to_base) VALUES
- (1, 'kg', 1, 1), (2, 'kg', 1, 1), (3, 'kg', 1, 1)
+ (1, 'kg', 1, 1), (2, 'kg', 1, 1), (3, 'kg', 1, 1),
+ (4, 'kg', 1, 1), (5, 'kg', 1, 1), (6, 'kg', 1, 1),
+ (7, 'kg', 1, 1), (8, 'kg', 1, 1), (9, 'kg', 1, 1)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO inv_balance(warehouse_id, product_id, batch_no, qty) VALUES
@@ -280,11 +294,13 @@ WHERE NOT EXISTS (
   SELECT 1 FROM pay_process_wage_rate r WHERE r.process_id = v.process_id AND r.status = 'active'
 );
 
--- 木薯产线 12 步工艺路线（对齐 pic）
+-- 木薯产线 12 步工艺路线（对齐 pic）+ 鲜木薯完整现场工序（清洗→烘干）
 INSERT INTO pd_routing(id, code, name, product_id, version_no, status) VALUES
  (1, 'RT-CASSAVA', '木薯丁产线', 3, 'V1', 'active'),
  (2, 'RT-CASSAVA-RAW', '鲜木薯入厂产线', 1, 'V1', 'active'),
- (3, 'RT-CASSAVA-SEMI', '去芯薯肉入厂产线', 2, 'V1', 'active');
+ (3, 'RT-CASSAVA-SEMI', '去芯薯肉入厂产线', 2, 'V1', 'active'),
+ (4, 'RT-CASSAVA-FRESH', '鲜木薯完整加工', 1, 'V1', 'active')
+ON CONFLICT DO NOTHING;
 
 INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id) VALUES
  (1, 1, 8, 'S1', '入库-原料', 0, 0, 1, 1, 0, 1, 2),
@@ -319,6 +335,27 @@ INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name
  (3, 4, 6, 'S4', '过滤装袋', 0, 0, 1, 0, 0, NULL, 2),
  (3, 5, 11, 'S5', '入库-成品库销售', 0, 0, 0, 1, 0, 3, 2)
 ON CONFLICT DO NOTHING;
+
+-- 鲜木薯完整现场工序：清洗→去皮→切段→去芯→切片→烘干
+INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, workshop_dept_id, output_product_id) VALUES
+ (4, 1, 7, 'F1', '清洗', 0, 0, 1, 0, 0, 1, 2, 4),
+ (4, 2, 1, 'F2', '去皮', 1, 0, 1, 0, 0, 1, 2, 5),
+ (4, 3, 3, 'F3', '切段', 0, 0, 1, 0, 0, NULL, 2, 6),
+ (4, 4, 4, 'F4', '去芯', 1, 0, 1, 0, 0, NULL, 2, 7),
+ (4, 5, 12, 'F5', '切片', 1, 0, 1, 0, 0, NULL, 2, 8),
+ (4, 6, 13, 'F6', '烘干', 0, 0, 0, 1, 0, 3, 2, 9)
+ON CONFLICT DO NOTHING;
+
+-- 鲜木薯完整加工工艺流程图（与 routing 4 对应：清洗→去皮→切段→去芯→切片→烘干）
+INSERT INTO pd_flow_graph(code, name, kind, status, routing_id, graph_json, version_no) VALUES
+('FLOW-CASSAVA-FRESH', '鲜木薯完整加工', 'production', 'active', 4,
+'{"nodes":[{"id":"start","type":"start","position":{"x":40,"y":120},"data":{"label":"开始"}},{"id":"ps1","type":"process_step","position":{"x":180,"y":120},"data":{"label":"清洗","process_id":7,"step_code":"F1","step_name":"清洗","auto_next":true,"is_piecework":false,"output_product_id":4,"warehouse_id":1}},{"id":"ps2","type":"process_step","position":{"x":320,"y":120},"data":{"label":"去皮","process_id":1,"step_code":"F2","step_name":"去皮","auto_next":true,"is_piecework":true,"output_product_id":5,"warehouse_id":1}},{"id":"ps3","type":"process_step","position":{"x":460,"y":120},"data":{"label":"切段","process_id":3,"step_code":"F3","step_name":"切段","auto_next":true,"is_piecework":false,"output_product_id":6}},{"id":"ps4","type":"process_step","position":{"x":600,"y":120},"data":{"label":"去芯","process_id":4,"step_code":"F4","step_name":"去芯","auto_next":true,"is_piecework":true,"output_product_id":7}},{"id":"ps5","type":"process_step","position":{"x":740,"y":120},"data":{"label":"切片","process_id":12,"step_code":"F5","step_name":"切片","auto_next":true,"is_piecework":true,"output_product_id":8}},{"id":"ps6","type":"process_step","position":{"x":880,"y":120},"data":{"label":"烘干","process_id":13,"step_code":"F6","step_name":"烘干","auto_next":false,"is_piecework":false,"auto_stock_in":true,"output_product_id":9,"warehouse_id":3}},{"id":"end","type":"end","position":{"x":1020,"y":120},"data":{"label":"结束"}}],"edges":[{"id":"e_start_ps1","source":"start","target":"ps1","data":{"is_default":true}},{"id":"e_ps1_ps2","source":"ps1","target":"ps2","data":{"is_default":true}},{"id":"e_ps2_ps3","source":"ps2","target":"ps3","data":{"is_default":true}},{"id":"e_ps3_ps4","source":"ps3","target":"ps4","data":{"is_default":true}},{"id":"e_ps4_ps5","source":"ps4","target":"ps5","data":{"is_default":true}},{"id":"e_ps5_ps6","source":"ps5","target":"ps6","data":{"is_default":true}},{"id":"e_ps6_end","source":"ps6","target":"end","data":{"is_default":true}}],"meta":{"product_id":1}}',
+'V1')
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO prd_product_spec(product_id, spec_code, routing_id, remark, status)
+SELECT 1, 'DEFAULT', 4, '鲜木薯完整加工默认工艺', 'active'
+WHERE NOT EXISTS (SELECT 1 FROM prd_product_spec WHERE product_id=1 AND spec_code='DEFAULT' AND COALESCE(is_deleted,0)=0);
 
 INSERT INTO hr_employee(id, emp_no, name, org_id, dept_id, team_id, job_title_id, emp_type, mobile, badge_code, id_card_no, status) VALUES
  (2, 'E0301', '陈某', 1, 2, 1, 13, 'piece', '13800001002', 'EMP0301', '450103199601011002', 'active'),
@@ -401,6 +438,7 @@ SELECT setval(pg_get_serial_sequence('inv_box_code', 'id'), COALESCE((SELECT MAX
 SELECT setval(pg_get_serial_sequence('inv_warehouse', 'id'), COALESCE((SELECT MAX(id) FROM inv_warehouse), 1));
 SELECT setval(pg_get_serial_sequence('pd_process', 'id'), COALESCE((SELECT MAX(id) FROM pd_process), 1));
 SELECT setval(pg_get_serial_sequence('pd_routing', 'id'), COALESCE((SELECT MAX(id) FROM pd_routing), 1));
+SELECT setval(pg_get_serial_sequence('pd_flow_graph', 'id'), COALESCE((SELECT MAX(id) FROM pd_flow_graph), 1));
 SELECT setval(pg_get_serial_sequence('pd_work_team', 'id'), COALESCE((SELECT MAX(id) FROM pd_work_team), 1));
 SELECT setval(pg_get_serial_sequence('prd_product', 'id'), COALESCE((SELECT MAX(id) FROM prd_product), 1));
 SELECT setval(pg_get_serial_sequence('pur_farmer', 'id'), COALESCE((SELECT MAX(id) FROM pur_farmer), 1));

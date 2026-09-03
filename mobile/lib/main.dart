@@ -10,7 +10,7 @@ import 'core/notify_service.dart';
 import 'core/role_codes.dart';
 import 'features/assets/assets_page.dart';
 import 'features/auth/login_page.dart';
-import 'features/collab/collab_finance_page.dart';
+import 'features/finance/finance_hub_page.dart';
 import 'features/hr/hr_onboard_page.dart';
 import 'features/hr/ticket_create_page.dart';
 import 'features/hr/tickets_page.dart';
@@ -22,13 +22,14 @@ import 'features/notify/inbox_page.dart';
 import 'features/receiving/receiving_page.dart';
 import 'features/sales/sales_page.dart';
 import 'features/shell/factory_shell.dart';
-import 'features/shell/main_shell.dart';
+import 'features/shell/finance_shell.dart';
 import 'features/shell/qc_shell.dart';
 import 'features/station/station_pass_page.dart';
 import 'features/station/trace_production_page.dart';
 import 'features/ticket/ticket_widgets.dart';
 import 'features/warehouse/warehouse_page.dart';
 import 'features/workshop/workshop_page.dart';
+import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -101,10 +102,7 @@ class ErpEmployeeApp extends StatelessWidget {
       child: MaterialApp(
         title: '加工厂员工端',
         navigatorKey: appNavigatorKey,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0D7A6F)),
-          useMaterial3: true,
-        ),
+        theme: AppTheme.light,
         home: Consumer<AuthState>(
           builder: (context, a, login) {
             if (!a.isLoggedIn) return login!;
@@ -126,7 +124,8 @@ class ErpEmployeeApp extends StatelessWidget {
           '/warehouse': (_) => const WarehousePage(),
           '/sales': (_) => const SalesPage(),
           '/assets': (_) => const AssetsPage(),
-          '/collab': (_) => const CollabFinancePage(),
+          '/collab': (_) => const FinanceHubPage(),
+          '/finance': (_) => const FinanceHubPage(),
           '/knowledge': (_) => const KnowledgePage(),
           '/mine': (_) => const MinePage(),
           '/account': (_) => const AccountCenterPage(),
@@ -167,7 +166,7 @@ class _ShellWithLaunchLinkState extends State<_ShellWithLaunchLink> {
       return const QcShell();
     }
     if (auth.primaryRole == WorkbenchRole.collab) {
-      return const MainShell();
+      return const FinanceShell();
     }
     return const FactoryShell();
   }

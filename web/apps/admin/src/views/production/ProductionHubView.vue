@@ -590,8 +590,14 @@ async function refresh() {
         return
       }
       case 'process-wip': {
-        const qs = wipProductId.value ? `product_id=${wipProductId.value}` : ''
-        res = await productionApi.processWip(qs || undefined)
+        if (!wipProductId.value) {
+          wipSummary.value = null
+          list.value = []
+          ElMessage.info('请先选择产品以加载对应工艺在制')
+          return
+        }
+        const qs = `product_id=${wipProductId.value}`
+        res = await productionApi.processWip(qs)
         if (res.code !== 1) return ElMessage.error(res.msg || '加载失败')
         wipSummary.value = (res.data as Row) || null
         list.value = ((res.data as { steps?: Row[] })?.steps) || []
@@ -2187,14 +2193,15 @@ onMounted(async () => {
           <p class="form-tip mb">
             溯源码 <strong>{{ traceProdCode }}</strong>
             <span v-if="traceStartProductName"> · 原料 {{ traceStartProductName }}</span>
+            · 同产品可有多套工艺，请确认建议项或改选后开工
           </p>
           <el-form label-width="88px">
             <el-form-item label="工艺流程" required>
-              <el-select v-model="traceStartSelectedRoutingId" placeholder="选择工艺" style="width:100%">
+              <el-select v-model="traceStartSelectedRoutingId" placeholder="选择工艺（优先建议默认）" style="width:100%">
                 <el-option
                   v-for="opt in traceStartOptions"
                   :key="Number(opt.id)"
-                  :label="`${opt.code} · ${opt.name}（${opt.step_count} 道工序）`"
+                  :label="`${opt.code} · ${opt.name}（${opt.step_count} 道工序）${Number(opt.id) === Number(traceStartSuggestedId) ? ' · 建议' : ''}`"
                   :value="Number(opt.id)"
                 />
               </el-select>

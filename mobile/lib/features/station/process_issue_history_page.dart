@@ -35,8 +35,8 @@ _IssueStatusStyle _statusStyleFor(Map<String, dynamic> row) {
     case 'work_done':
       return const _IssueStatusStyle(
         label: '已结束',
-        color: Color(0xFF546E7A),
-        background: Color(0xFFECEFF1),
+        color: Color(0xFF8A9A90),
+        background: Color(0xFFF4F7F5),
         icon: Icons.check_circle_outline,
       );
     case 'issue_rejected':
@@ -57,15 +57,15 @@ _IssueStatusStyle _statusStyleFor(Map<String, dynamic> row) {
       if (status == 'closed') {
         return const _IssueStatusStyle(
           label: '已结束',
-          color: Color(0xFF546E7A),
-          background: Color(0xFFECEFF1),
+          color: Color(0xFF8A9A90),
+          background: Color(0xFFF4F7F5),
           icon: Icons.check_circle_outline,
         );
       }
       return const _IssueStatusStyle(
         label: '进行中',
-        color: Color(0xFF0D7A6F),
-        background: Color(0xFFE0F2F1),
+        color: Color(0xFF1F7A4D),
+        background: Color(0xFFE8F5EE),
         icon: Icons.play_circle_outline,
       );
   }
@@ -95,8 +95,8 @@ class _StatusLegend extends StatelessWidget {
         runSpacing: 4,
         children: [
           dot(const Color(0xFFE65100), '待仓管确认'),
-          dot(const Color(0xFF0D7A6F), '进行中'),
-          dot(const Color(0xFF546E7A), '已结束'),
+          dot(const Color(0xFF1F7A4D), '进行中'),
+          dot(const Color(0xFF8A9A90), '已结束'),
         ],
       ),
     );

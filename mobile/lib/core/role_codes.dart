@@ -68,7 +68,7 @@ String workbenchRoleLabel(WorkbenchRole r) {
     case WorkbenchRole.sales:
       return '销售外勤';
     case WorkbenchRole.collab:
-      return '收款协同';
+      return '结算财务';
     case WorkbenchRole.admin:
       return '全部模块';
     case WorkbenchRole.none:

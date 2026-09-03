@@ -11,6 +11,7 @@ import {
   buildSidebarGroups,
   isDeliveryOnlineModule,
   OFFLINE_MENU_BADGE,
+  productionApi,
 } from '@erp/shared'
 import { ElMessage } from 'element-plus'
 import NotifyBell from '../components/NotifyBell.vue'
@@ -36,6 +37,27 @@ const domainWidths = ref<number[]>([])
 
 let menusRo: ResizeObserver | null = null
 
+/** Plant line strip from published / session routing (API), not a hardcoded chain. */
+const plantLine = ref<Array<{ name: string; run?: boolean; end?: boolean }>>([])
+const plantLineEmpty = ref('未配置工艺')
+
+async function loadPlantLine() {
+  try {
+    const res = await productionApi.plantLinePreview()
+    const steps = (res.data as { steps?: Array<{ name: string; run?: boolean; end?: boolean }>; message?: string })?.steps
+    if (Array.isArray(steps) && steps.length) {
+      plantLine.value = steps.map((s) => ({ name: s.name, run: !!s.run, end: !!s.end }))
+      plantLineEmpty.value = ''
+    } else {
+      plantLine.value = []
+      plantLineEmpty.value = (res.data as { message?: string })?.message || '未配置工艺'
+    }
+  } catch {
+    plantLine.value = []
+    plantLineEmpty.value = '未配置工艺'
+  }
+}
+
 function measureItems() {
   const nav = topMenusEl.value
   const row = measureEl.value
@@ -57,6 +79,7 @@ function measureItems() {
 
 onMounted(() => {
   void loadCarrierCodeUnit()
+  void loadPlantLine()
   if (auth.accessToken && (!auth.roles.length || !auth.permissions.length)) {
     void auth.fetchMe()
   }
@@ -90,16 +113,6 @@ const domainIcons: Record<string, string> = {
   审批管理: '✅',
   系统管理: '⚙️',
 }
-
-/** Fixed cassava plant line shown under top nav (factory identity). */
-const plantLine = [
-  { name: '清洗', run: true },
-  { name: '去皮', run: true },
-  { name: '切段', run: true },
-  { name: '去芯', run: true },
-  { name: '切片', run: true },
-  { name: '烘干', run: false, end: true },
-]
 
 const crumb = computed(() => {
   if (route.path === '/account') return '个人中心'
@@ -383,14 +396,17 @@ function openSideDrawer() {
       </div>
     </header>
 
-    <div class="factory-line-strip" aria-label="木薯加工产线">
+    <div class="factory-line-strip" aria-label="产线工艺预览">
       <span class="line-label">产线</span>
-      <span
-        v-for="s in plantLine"
-        :key="s.name"
-        class="station"
-        :class="{ run: s.run, end: s.end }"
-      >{{ s.name }}</span>
+      <template v-if="plantLine.length">
+        <span
+          v-for="s in plantLine"
+          :key="s.name"
+          class="station"
+          :class="{ run: s.run, end: s.end }"
+        >{{ s.name }}</span>
+      </template>
+      <span v-else class="station idle">{{ plantLineEmpty || '未配置工艺' }}</span>
     </div>
 
     <div class="body">

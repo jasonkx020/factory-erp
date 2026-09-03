@@ -7,24 +7,27 @@ const perm = usePermStore()
 const router = useRouter()
 const stats = ref({ tasks: 0, approval: 0, balances: 0 })
 
-const processChain = [
-  { name: '清洗', run: true },
-  { name: '去皮', run: true },
-  { name: '切段', run: true },
-  { name: '去芯', run: true },
-  { name: '切片', run: true },
-  { name: '烘干', run: false },
-]
+const processChain = ref<Array<{ name: string; run?: boolean }>>([])
+const processChainHint = ref('未配置工艺')
 
 onMounted(async () => {
-  const [t, a, b] = await Promise.all([
+  const [t, a, b, line] = await Promise.all([
     productionApi.listTasks(),
     approvalApi.tasks(),
     inventoryApi.balances(),
+    productionApi.plantLinePreview(),
   ])
   stats.value.tasks = ((t.data as { list?: unknown[] })?.list || []).length
   stats.value.approval = ((a.data as { list?: unknown[] })?.list || []).length
   stats.value.balances = ((b.data as { list?: unknown[] })?.list || []).length
+  const steps = (line.data as { steps?: Array<{ name: string; run?: boolean }>; message?: string })?.steps
+  if (Array.isArray(steps) && steps.length) {
+    processChain.value = steps.map((s) => ({ name: s.name, run: !!s.run }))
+    processChainHint.value = ''
+  } else {
+    processChain.value = []
+    processChainHint.value = (line.data as { message?: string })?.message || '未配置工艺'
+  }
 })
 
 function open(domain: string, module: string) {
@@ -46,17 +49,23 @@ function open(domain: string, module: string) {
           <span class="factory-status run">产线运行</span>
         </div>
         <h2>管理端工作台</h2>
-        <p class="desc">鲜薯入厂 → 六工序加工 → 烘干成品。菜单对应业务域；现场领退料在员工 App 完成。</p>
+        <p class="desc">鲜薯入厂 → 工艺流程加工 → 成品入库。菜单对应业务域；现场领退料在员工 App 完成。工艺在「工艺流程」维护，开工时选择。</p>
       </div>
-      <div class="factory-conveyor" aria-label="木薯加工工序">
-        <div
-          v-for="(s, i) in processChain"
-          :key="s.name"
-          class="node"
-          :class="{ active: s.run }"
-        >
-          <div class="seq">S{{ i + 1 }}</div>
-          <div class="nm">{{ s.name }}</div>
+      <div class="factory-conveyor" aria-label="工艺步骤预览">
+        <template v-if="processChain.length">
+          <div
+            v-for="(s, i) in processChain"
+            :key="s.name"
+            class="node"
+            :class="{ active: s.run }"
+          >
+            <div class="seq">S{{ i + 1 }}</div>
+            <div class="nm">{{ s.name }}</div>
+          </div>
+        </template>
+        <div v-else class="node">
+          <div class="seq">—</div>
+          <div class="nm">{{ processChainHint }}</div>
         </div>
       </div>
     </header>

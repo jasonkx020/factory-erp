@@ -5,6 +5,8 @@ import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
 import '../../core/carrier_code_labels.dart';
 import '../../core/employee_modules.dart';
+import '../../widgets/factory_kpi_card.dart';
+import '../../widgets/tab_safe_padding.dart';
 import '../hr/hr_onboard_page.dart';
 import 'account_center_page.dart';
 import 'badge_show_page.dart';
@@ -61,7 +63,7 @@ class _MinePageState extends State<MinePage> {
               ],
             ),
       body: ListView(
-        padding: EdgeInsets.fromLTRB(16, widget.asTab ? 40 : 16, 16, 24),
+        padding: EdgeInsets.fromLTRB(16, widget.asTab ? 40 : 16, 16, tabShellBottomPadding(context, asTab: widget.asTab, extra: 24)),
         children: [
           Container(
             decoration: BoxDecoration(
@@ -132,76 +134,42 @@ class _MinePageState extends State<MinePage> {
             ),
           ),
           const SizedBox(height: 12),
-          Card(
-            color: Colors.teal.shade50,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.payments_outlined, color: scheme.primary),
-                      const SizedBox(width: 8),
-                      const Text('今日产量与工钱', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    '已日结 ¥${(_dailyWage?['total_amount'] as num?)?.toDouble() ?? 0}',
-                    style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '产量 ${_dailyWage?['total_output_weight'] ?? _dailyWage?['total_qty'] ?? 0} kg',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: Colors.black87),
-                  ),
-                  Builder(builder: (context) {
-                    final pendingKg = (_dailyWage?['pending_locked_kg'] as num?)?.toDouble() ?? 0;
-                    final pendingAmt = (_dailyWage?['pending_locked_amount'] as num?)?.toDouble() ?? 0;
-                    final locks = ApiClient.listOf(_dailyWage?['pending_locks']);
-                    if (pendingKg <= 0.0005 && pendingAmt <= 0.0005 && locks.isEmpty) {
-                      return const SizedBox.shrink();
-                    }
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 12),
-                        Text(
-                          '预估待日结 ¥${pendingAmt.toStringAsFixed(2)} · ${pendingKg.toStringAsFixed(2)} kg',
-                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-                        ),
-                        if (locks.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          for (final raw in locks)
-                            if (raw is Map)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 2),
-                                child: Text(
-                                  '${raw['process_name'] ?? raw['process_id'] ?? '-'} · '
-                                  '${((raw['locked_kg'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)} kg / '
-                                  '¥${((raw['locked_wage_amount'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)}',
-                                  style: theme.textTheme.bodySmall?.copyWith(color: Colors.black54),
-                                ),
-                              ),
-                        ],
-                      ],
-                    );
-                  }),
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: OutlinedButton.icon(
-                      onPressed: _loadDailyWage,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('刷新核对'),
-                    ),
-                  ),
-                ],
+          Row(
+            children: [
+              Expanded(
+                child: FactoryKpiCard(
+                  label: '今日工钱',
+                  value: '¥${((_dailyWage?['total_amount'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)}',
+                  tone: FactoryKpiTone.ok,
+                ),
               ),
-            ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FactoryKpiCard(
+                  label: '今日产量',
+                  value: '${_dailyWage?['total_output_weight'] ?? _dailyWage?['total_qty'] ?? 0} kg',
+                ),
+              ),
+            ],
           ),
+          Builder(builder: (context) {
+            final pendingKg = (_dailyWage?['pending_locked_kg'] as num?)?.toDouble() ?? 0;
+            final pendingAmt = (_dailyWage?['pending_locked_amount'] as num?)?.toDouble() ?? 0;
+            final locks = ApiClient.listOf(_dailyWage?['pending_locks']);
+            if (pendingKg <= 0.0005 && pendingAmt <= 0.0005 && locks.isEmpty) {
+              return const SizedBox.shrink();
+            }
+            return Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: FactoryKpiCard(
+                label: '预估待日结',
+                value: '¥${pendingAmt.toStringAsFixed(2)}',
+                subtitle: '${pendingKg.toStringAsFixed(2)} kg',
+                tone: FactoryKpiTone.warn,
+              ),
+            );
+          }),
+          const SizedBox(height: 16),
           const SizedBox(height: 12),
           _sectionTitle('常用功能'),
           const SizedBox(height: 8),

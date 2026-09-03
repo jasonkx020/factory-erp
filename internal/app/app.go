@@ -57,6 +57,7 @@ func New(cfgPath string) (*App, error) {
 		"/api/v1/mqtt/auth",
 		"/api/v1/mqtt/superuser",
 		"/api/v1/mqtt/acl",
+		"/api/v1/production/plant-line-preview",
 		"/files",
 	}
 	eng.Use(middleware.Metrics())
@@ -71,6 +72,9 @@ func New(cfgPath string) (*App, error) {
 	if cfg.Seed.DemoEnabled() {
 		biz.EnsureCleanDevWageRates(db.SQL)
 		biz.EnsureDemoData(db.SQL)
+	} else {
+		// Builtin plant routing seed (no showcase timeline) so Admin/开工可选完整鲜木薯工艺。
+		biz.EnsureFreshCassavaRouting(db.SQL)
 	}
 	biz.EnsureFounderSuperuser(db.SQL)
 
@@ -96,6 +100,7 @@ func New(cfgPath string) (*App, error) {
 	apigen.RegisterPayrollExtra(v1, engine)
 	apigen.RegisterApprovalExtra(v1, engine)
 	apigen.RegisterPurchaseExtra(v1, engine)
+	apigen.RegisterProductionPublic(v1, engine)
 	apigen.RegisterProductionExtra(v1, engine)
 	apigen.RegisterSalesExtra(v1, engine)
 	apigen.RegisterInventoryExtra(v1, engine)

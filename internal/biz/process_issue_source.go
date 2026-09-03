@@ -84,6 +84,10 @@ func (s *Services) handleBoardIssueHTTP(c *gin.Context) bool {
 			api.FailJSON(c, fail)
 			return true
 		}
+		if fail = s.assertProcessInSessionRouting(trace, processID); fail != "" {
+			api.FailJSON(c, fail)
+			return true
+		}
 		photo := strings.TrimSpace(strOrDef(body["photo_url"], strOr(body["image_url"])))
 		out, fail = s.createWarehouseIssuePending(trace, workerID, processID, stepID, kg, opEmpID, photo)
 		if fail != "" {
@@ -111,6 +115,16 @@ func (s *Services) handleBoardIssueHTTP(c *gin.Context) bool {
 		}
 		if fromProcessID <= 0 {
 			fromProcessID = toProcessID
+		}
+		if fail = s.assertProcessInSessionRouting(trace, toProcessID); fail != "" {
+			api.FailJSON(c, fail)
+			return true
+		}
+		if fromProcessID != toProcessID {
+			if fail = s.assertProcessInSessionRouting(trace, fromProcessID); fail != "" {
+				api.FailJSON(c, fail)
+				return true
+			}
 		}
 		out, fail = s.issueTraceProcessKg(trace, workerID, fromProcessID, toProcessID, stepID, kg, opEmpID)
 		if fail != "" {

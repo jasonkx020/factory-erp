@@ -8,6 +8,7 @@ import '../../widgets/form_sticky_actions.dart';
 import '../../widgets/form_section_header.dart';
 import '../../widgets/form_row.dart';
 import '../../widgets/hub_entry_tile.dart';
+import '../../widgets/tab_safe_padding.dart';
 import '../../core/notify_service.dart';
 import 'process_return_page.dart';
 
@@ -269,7 +270,7 @@ class _WorkshopPageState extends State<WorkshopPage> {
   Widget _homeBody() {
     final mqtt = context.watch<NotifyService>().mqttStatus;
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, widget.asTab ? 40 : 16, 16, 16),
+      padding: EdgeInsets.fromLTRB(16, widget.asTab ? 40 : 16, 16, tabShellBottomPadding(context, asTab: widget.asTab)),
       children: [
         const Text('班组工作台', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
         const SizedBox(height: 4),

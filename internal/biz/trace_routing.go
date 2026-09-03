@@ -411,6 +411,28 @@ func (s *Services) assertTraceProcessCanComplete(trace string, processID int64, 
 	return ""
 }
 
+// assertProcessInSessionRouting rejects process_id outside the locked routing when a session has routing_id.
+func (s *Services) assertProcessInSessionRouting(trace string, processID int64) string {
+	trace = strings.ToUpper(strings.TrimSpace(trace))
+	if processID <= 0 {
+		return "PROCESS_REQUIRED"
+	}
+	rid := s.resolveTraceSessionRoutingID(trace)
+	if rid <= 0 {
+		return ""
+	}
+	steps := s.loadRoutingStepsByID(rid)
+	if len(steps) == 0 {
+		return "ROUTING_STEPS_REQUIRED"
+	}
+	for _, st := range steps {
+		if st.ProcessID == processID {
+			return ""
+		}
+	}
+	return "PROCESS_NOT_IN_ROUTING"
+}
+
 func (s *Services) assertPriorRoutingStepsDone(trace string, targetProcessID int64) string {
 	_, _, _, steps := s.resolveTraceRoutingSteps(trace)
 	if len(steps) == 0 {

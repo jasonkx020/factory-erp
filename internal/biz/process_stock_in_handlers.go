@@ -46,6 +46,10 @@ func (s *Services) createProcessStockIn(c *gin.Context) bool {
 		api.FailJSON(c, "PROCESS_REQUIRED")
 		return true
 	}
+	if fail := s.assertProcessInSessionRouting(trace, processID); fail != "" {
+		api.FailJSON(c, fail)
+		return true
+	}
 	if fail := s.assertTraceProcessWip(trace, processID, 0, true); fail != "" {
 		api.FailJSON(c, fail)
 		return true

@@ -4,7 +4,7 @@ import { VueFlow, type Edge, type Node, type Connection } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { productionApi, inventoryApi, productApi } from '@erp/shared'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
@@ -19,7 +19,29 @@ const props = withDefaults(
 
 type Row = Record<string, unknown>
 
+type ChainNode = {
+  id: string
+  kind: 'start' | 'end' | 'process_step' | 'role_task' | 'gateway_xor' | 'unknown'
+  label: string
+  seq?: number
+  badges?: string[]
+}
+
+type GraphNode = {
+  id: string
+  type?: string
+  position?: { x?: number; y?: number }
+  data?: Row
+}
+
+type GraphEdge = {
+  source: string
+  target: string
+  data?: Row
+}
+
 const graphs = ref<Row[]>([])
+const mode = ref<'list' | 'edit'>('list')
 const currentId = ref<number | null>(null)
 const meta = ref({
   code: '',
@@ -68,6 +90,154 @@ const filteredKinds = computed(() => {
   }
   return kindOptions.filter((k) => k.value === props.kindFilter || k.value.startsWith(props.kindFilter))
 })
+
+function kindLabel(k: string) {
+  return kindOptions.find((o) => o.value === k)?.label || k
+}
+
+function statusLabel(s: string) {
+  if (s === 'active') return '启用'
+  if (s === 'draft') return '草稿'
+  return s || '-'
+}
+
+function stepCountFromGraph(raw: unknown): number {
+  try {
+    const obj = typeof raw === 'string' ? JSON.parse(raw || '{}') : raw
+    const nodes = ((obj as { nodes?: Array<{ type?: string; data?: Row }> })?.nodes) || []
+    return nodes.filter((n) => {
+      const t = n.type || (n.data as Row)?._nodeType
+      return t === 'process_step'
+    }).length
+  } catch {
+    return 0
+  }
+}
+
+function productName(id: number) {
+  if (!id) return '-'
+  const hit = products.value.find((p) => Number(p.id) === id)
+  return hit ? String(hit.name || hit.code || id) : `#${id}`
+}
+
+function productIdFromGraph(raw: unknown): number {
+  try {
+    const obj = typeof raw === 'string' ? JSON.parse(raw || '{}') : raw
+    return Number((obj as { meta?: { product_id?: number } })?.meta?.product_id || 0)
+  } catch {
+    return 0
+  }
+}
+
+function parseGraphRaw(raw: unknown): { nodes: GraphNode[]; edges: GraphEdge[] } {
+  try {
+    const obj = typeof raw === 'string' ? JSON.parse(raw || '{}') : raw
+    const g = obj as { nodes?: GraphNode[]; edges?: GraphEdge[] }
+    return { nodes: g.nodes || [], edges: g.edges || [] }
+  } catch {
+    return { nodes: [], edges: [] }
+  }
+}
+
+function graphNodeKind(n: GraphNode): ChainNode['kind'] {
+  const t = String(n.type && n.type !== 'default' ? n.type : (n.data as Row)?._nodeType || '')
+  if (t === 'start' || t === 'end' || t === 'process_step' || t === 'role_task' || t === 'gateway_xor') {
+    return t
+  }
+  if (n.id === 'start') return 'start'
+  if (n.id === 'end') return 'end'
+  return 'unknown'
+}
+
+function chainNodeFromGraph(n: GraphNode, seq?: number): ChainNode {
+  const kind = graphNodeKind(n)
+  const data = (n.data || {}) as Row
+  const label = String(data.label || data.step_name || data.step_code || n.id)
+  const item: ChainNode = { id: n.id, kind, label }
+
+  if (kind === 'start') item.label = '开始'
+  else if (kind === 'end') item.label = '结束'
+  else if (kind === 'gateway_xor') item.label = '分支网关'
+  else if (kind === 'process_step') {
+    item.seq = seq
+    const badges: string[] = []
+    if (data.is_piecework) badges.push('计件')
+    if (data.is_inbound_checkpoint) badges.push('卡点')
+    if (data.auto_stock_in) badges.push('自动入库')
+    if (data.auto_stock_out) badges.push('自动出库')
+    const outPid = Number(data.output_product_id || 0)
+    if (outPid) badges.push(`产出:${productName(outPid)}`)
+    if (badges.length) item.badges = badges
+  } else if (kind === 'role_task') {
+    const role = roleOptions.find((r) => r.value === data.role_code)
+    const action = actionOptions.find((a) => a.value === data.action)
+    item.badges = [role?.label || String(data.role_code || '岗位')]
+    if (action?.label) item.badges.push(action.label)
+  }
+  return item
+}
+
+function buildFlowChain(raw: unknown): ChainNode[] {
+  const { nodes, edges } = parseGraphRaw(raw)
+  if (!nodes.length) return []
+
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]))
+  const start =
+    nodes.find((n) => graphNodeKind(n) === 'start')
+    || nodes.find((n) => n.id === 'start')
+  if (!start) {
+    const steps = nodes
+      .filter((n) => graphNodeKind(n) === 'process_step')
+      .sort((a, b) => Number(a.position?.x || 0) - Number(b.position?.x || 0))
+    if (!steps.length) return []
+    let seq = 0
+    return [
+      { id: '__start', kind: 'start', label: '开始' },
+      ...steps.map((n) => chainNodeFromGraph(n, ++seq)),
+      { id: '__end', kind: 'end', label: '结束' },
+    ]
+  }
+
+  const chain: ChainNode[] = []
+  const visited = new Set<string>()
+  let current: string | undefined = start.id
+  let stepSeq = 0
+
+  while (current && !visited.has(current)) {
+    visited.add(current)
+    const n = nodeMap.get(current)
+    if (!n) break
+    const kind = graphNodeKind(n)
+    const seq = kind === 'process_step' ? ++stepSeq : undefined
+    chain.push(chainNodeFromGraph(n, seq))
+    if (kind === 'end') break
+
+    const outEdges = edges.filter((e) => e.source === current)
+    const defaultEdge =
+      outEdges.find((e) => (e.data as Row)?.is_default !== false)
+      || outEdges[0]
+    if (!defaultEdge?.target) break
+    current = defaultEdge.target
+  }
+
+  return chain
+}
+
+function chainSummary(chain: ChainNode[]): string {
+  const names = chain
+    .filter((n) => n.kind === 'process_step' || n.kind === 'role_task')
+    .map((n) => n.label)
+  if (!names.length) return '未配置工序'
+  if (names.length <= 4) return names.join(' → ')
+  return `${names.slice(0, 3).join(' → ')} … → ${names[names.length - 1]}`
+}
+
+const graphListItems = computed(() =>
+  graphs.value.map((row) => {
+    const chain = buildFlowChain(row.graph_json)
+    return { row, chain, summary: chainSummary(chain) }
+  }),
+)
 
 function onConnectHandler(params: Connection) {
   if (!params.source || !params.target) return
@@ -125,9 +295,6 @@ async function loadLists() {
     processes.value = ((p.data as { list?: Row[] })?.list) || []
     warehouses.value = ((w.data as { list?: Row[] })?.list) || []
     products.value = ((prod.data as { list?: Row[] })?.list) || []
-    if (graphs.value.length && !currentId.value) {
-      await openGraph(Number(graphs.value[0].id))
-    }
   } finally {
     loading.value = false
   }
@@ -184,6 +351,7 @@ async function openGraph(id: number) {
   if (res.code !== 1) return ElMessage.error(res.msg)
   const d = (res.data || {}) as Row
   currentId.value = id
+  mode.value = 'edit'
   let graphProductId = Number(d.product_id || 0)
   try {
     const raw = typeof d.graph_json === 'string' ? JSON.parse(String(d.graph_json || '{}')) : (d.graph_json || {})
@@ -364,6 +532,22 @@ function buildGraphJSON() {
   return { nodes: outNodes, edges: outEdges, meta: { product_id: meta.value.product_id || 0 } }
 }
 
+function publishErrorText(msg: string): string {
+  const m = String(msg || '')
+  if (m.includes('ROUTING_STEP_OUTPUT_REQUIRED')) {
+    const code = m.split(':')[1] || ''
+    return `发布失败：工序${code ? `「${code}」` : ''}须配置「产出产物」`
+  }
+  if (m.includes('ROUTING_FINAL_OUTPUT_REQUIRED')) return '发布失败：最后一道工序须配置产出产物'
+  if (m.includes('ROUTING_FINAL_PRODUCT_MISMATCH')) return '发布失败：最后工序产出产物须与绑定产品一致'
+  if (m.includes('ROUTING_OUTPUT_PRODUCT_DUPLICATE')) return '发布失败：工序产出产物不能重复'
+  if (m.includes('WAREHOUSE_REQUIRED')) return '发布失败：启用自动入库/出库的工序须选择仓库'
+  if (m.includes('PROCESS_ID_REQUIRED')) return '发布失败：工序节点须绑定具体工序'
+  if (m.includes('GRAPH_START_END_REQUIRED')) return '发布失败：流程须包含一个开始节点和一个结束节点'
+  if (m.includes('GRAPH_CYCLE')) return '发布失败：流程存在环路'
+  return m
+}
+
 async function save(publish = false) {
   if (!meta.value.code || !meta.value.name) return ElMessage.warning('请填写编码与名称')
   saving.value = true
@@ -384,7 +568,7 @@ async function save(publish = false) {
     } else {
       res = await productionApi.createFlowGraph(body)
     }
-    if (res.code !== 1) return ElMessage.error(res.msg)
+    if (res.code !== 1) return ElMessage.error(publish ? publishErrorText(res.msg) : res.msg)
     ElMessage.success(publish ? '已发布并编译工艺步骤' : '已保存（草稿不编译过站步骤）')
     const id = Number((res.data as Row)?.id || currentId.value)
     await loadLists()
@@ -394,9 +578,33 @@ async function save(publish = false) {
   }
 }
 
+function backToList() {
+  mode.value = 'list'
+  currentId.value = null
+  selected.value = null
+  selectedEdge.value = null
+  compiledSteps.value = []
+}
+
+async function removeGraph(row: Row) {
+  const id = Number(row.id)
+  if (!id) return
+  try {
+    await ElMessageBox.confirm(`确定删除工艺流程「${row.name || row.code}」？`, '删除确认', { type: 'warning' })
+  } catch {
+    return
+  }
+  const res = await productionApi.removeFlowGraph(id)
+  if (res.code !== 1) return ElMessage.error(res.msg)
+  ElMessage.success('已删除')
+  if (currentId.value === id) backToList()
+  await loadLists()
+}
+
 async function createNew() {
   const kind = filteredKinds.value[0]?.value || 'production'
   currentId.value = null
+  mode.value = 'edit'
   meta.value = {
     code: `FLOW_${Date.now().toString().slice(-6)}`,
     name: '新建流程',
@@ -431,7 +639,7 @@ async function createNew() {
 watch(
   () => props.kindFilter,
   () => {
-    currentId.value = null
+    backToList()
     loadLists()
   },
 )
@@ -448,13 +656,90 @@ onBeforeUnmount(() => {
 
 <template>
   <DesktopOnlyGate message="工艺流程图编辑需在桌面浏览器操作。">
-  <div class="flow-editor" v-loading="loading">
+  <div v-loading="loading">
+    <div v-if="mode === 'list'" class="flow-list">
+      <div class="list-toolbar">
+        <span class="list-hint">每条工艺以链路展示默认流转路径，点「编辑」进入画布调整。</span>
+        <el-button type="primary" @click="createNew">新建工艺流程</el-button>
+      </div>
+
+      <div v-if="graphListItems.length" class="flow-cards">
+        <article
+          v-for="{ row, chain, summary } in graphListItems"
+          :key="String(row.id)"
+          class="flow-card factory-panel"
+          :class="{ 'is-active': row.status === 'active' }"
+        >
+          <header class="flow-card-head factory-panel-head">
+            <div class="flow-card-title-wrap">
+              <h3 class="flow-card-title">{{ row.name || row.code }}</h3>
+              <span class="flow-card-code">{{ row.code }}</span>
+              <el-tag size="small" :type="row.status === 'active' ? 'success' : 'info'">
+                {{ statusLabel(String(row.status || '')) }}
+              </el-tag>
+              <span class="flow-card-kind">{{ kindLabel(String(row.kind || '')) }}</span>
+            </div>
+            <div class="flow-card-meta">
+              <span v-if="row.version_no">版本 {{ row.version_no }}</span>
+              <span v-if="row.routing_id">工艺 #{{ row.routing_id }}</span>
+              <span v-if="productIdFromGraph(row.graph_json)">
+                产品 {{ productName(productIdFromGraph(row.graph_json)) }}
+              </span>
+              <span>{{ stepCountFromGraph(row.graph_json) }} 道工序</span>
+              <span class="flow-card-updated">{{ row.updated_at }}</span>
+            </div>
+            <div class="flow-card-actions">
+              <el-button type="primary" size="small" @click="openGraph(Number(row.id))">编辑</el-button>
+              <el-button size="small" @click="removeGraph(row)">删除</el-button>
+            </div>
+          </header>
+
+          <div class="flow-card-body factory-panel-body">
+            <div v-if="chain.length" class="chain-scroll">
+              <div class="factory-conveyor flow-chain">
+                <div
+                  v-for="node in chain"
+                  :key="`${row.id}-${node.id}`"
+                  class="node"
+                  :class="{
+                    active: node.kind === 'process_step',
+                    start: node.kind === 'start',
+                    end: node.kind === 'end',
+                    gateway: node.kind === 'gateway_xor',
+                    role: node.kind === 'role_task',
+                  }"
+                >
+                  <div v-if="node.kind === 'start'" class="seq">▶</div>
+                  <div v-else-if="node.kind === 'end'" class="seq">■</div>
+                  <div v-else-if="node.seq" class="seq">{{ String(node.seq).padStart(2, '0') }}</div>
+                  <div v-else class="seq">·</div>
+                  <div class="nm">{{ node.label }}</div>
+                  <div v-if="node.badges?.length" class="node-badges">
+                    <span v-for="badge in node.badges" :key="badge" class="node-badge">{{ badge }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p v-else class="chain-empty">尚未配置工序链路，点击「编辑」开始编排</p>
+            <p class="chain-summary" :title="summary">{{ summary }}</p>
+          </div>
+        </article>
+      </div>
+
+      <el-empty v-if="!graphs.length && !loading" description="暂无工艺流程，点击上方「新建工艺流程」" />
+    </div>
+
+    <div v-else class="flow-editor">
     <aside class="left">
       <div class="toolbar">
+        <el-button size="small" @click="backToList">返回列表</el-button>
         <el-button type="primary" size="small" @click="createNew">新建</el-button>
-        <el-button size="small" :loading="saving" @click="save(false)">保存</el-button>
+        <el-button size="small" :loading="saving" @click="save(false)">保存草稿</el-button>
         <el-button type="success" size="small" :loading="saving" @click="save(true)">发布</el-button>
       </div>
+      <p v-if="meta.kind === 'production'" class="save-hint">
+        <strong>保存草稿</strong>：仅保存流程图，不过站生效。<strong>发布</strong>：编译为工艺步骤并启用，同类型其它流程自动降为草稿。
+      </p>
       <el-form label-position="top" size="small" class="meta">
         <el-form-item label="编码"><el-input v-model="meta.code" /></el-form-item>
         <el-form-item label="名称"><el-input v-model="meta.name" /></el-form-item>
@@ -502,17 +787,6 @@ onBeforeUnmount(() => {
           </el-table-column>
         </el-table>
       </div>
-      <el-table
-        :data="graphs"
-        size="small"
-        highlight-current-row
-        height="280"
-        @current-change="(r: Row | null) => r && openGraph(Number(r.id))"
-      >
-        <el-table-column prop="name" label="流程" />
-        <el-table-column prop="kind" label="类型" width="100" />
-        <el-table-column prop="status" label="状态" width="70" />
-      </el-table>
       <div class="palette">
         <div class="ph">节点库（点击添加）</div>
         <el-button size="small" @click="addNode('start')">开始</el-button>
@@ -575,7 +849,7 @@ onBeforeUnmount(() => {
               </el-select>
             </el-form-item>
             <el-form-item label="产出产物">
-              <el-select v-model="(selected.data as Row).output_product_id" clearable filterable style="width:100%" placeholder="选择产物" @change="syncSelectedData">
+              <el-select v-model="(selected.data as Row).output_product_id" filterable style="width:100%" placeholder="发布必填" @change="syncSelectedData">
                 <el-option
                   v-for="p in products"
                   :key="String(p.id)"
@@ -622,11 +896,161 @@ onBeforeUnmount(() => {
       </template>
       <p v-else class="hint">点击节点或连线编辑；Delete 删除选中项；删线后可重新拖拽连线。</p>
     </aside>
+    </div>
   </div>
   </DesktopOnlyGate>
 </template>
 
 <style scoped>
+.flow-list {
+  min-height: 480px;
+}
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.list-hint {
+  color: #64748b;
+  font-size: 13px;
+}
+.flow-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.flow-card.is-active {
+  border-color: rgba(31, 122, 77, 0.45);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8), 0 4px 16px rgba(31, 122, 77, 0.08);
+}
+.flow-card-head {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.flow-card-title-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 200px;
+}
+.flow-card-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #14352a;
+}
+.flow-card-code {
+  font-family: var(--factory-mono, monospace);
+  font-size: 12px;
+  color: #64748b;
+  padding: 2px 8px;
+  background: #f1f5f3;
+  border-radius: 4px;
+}
+.flow-card-kind {
+  font-size: 12px;
+  color: #64748b;
+}
+.flow-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #64748b;
+}
+.flow-card-updated {
+  margin-left: auto;
+}
+.flow-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.flow-card-body {
+  padding-top: 14px;
+}
+.chain-scroll {
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 8px;
+}
+.flow-chain.factory-conveyor {
+  flex-wrap: nowrap;
+  width: max-content;
+  min-width: 100%;
+}
+.flow-chain .node {
+  min-width: 96px;
+  max-width: 160px;
+  flex: 0 0 auto;
+}
+.flow-chain .node.start,
+.flow-chain .node.end {
+  min-width: 72px;
+  max-width: 88px;
+  background: #eef4f0;
+}
+.flow-chain .node.start .nm,
+.flow-chain .node.end .nm {
+  color: #145c38;
+}
+.flow-chain .node.gateway {
+  background: #fff8eb;
+  border-color: #e8c88a;
+}
+.flow-chain .node.role {
+  background: #f0f4ff;
+  border-color: #b8c8ef;
+}
+.node-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.node-badge {
+  font-size: 10px;
+  line-height: 1.2;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(31, 122, 77, 0.1);
+  color: #145c38;
+}
+.flow-chain .node.role .node-badge {
+  background: rgba(59, 99, 200, 0.1);
+  color: #2d4a9a;
+}
+.chain-empty {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 13px;
+}
+.chain-summary {
+  margin: 0;
+  font-size: 12px;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 768px) {
+  .flow-card-head {
+    flex-direction: column;
+  }
+  .flow-card-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .flow-card-updated {
+    margin-left: 0;
+  }
+}
 .flow-editor {
   display: grid;
   grid-template-columns: 260px 1fr 260px;
@@ -648,6 +1072,13 @@ onBeforeUnmount(() => {
   min-height: 560px;
 }
 .toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.save-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #64748b;
+}
+.save-hint strong { color: #334155; }
 .meta { margin-bottom: 8px; }
 .palette { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
 .ph { width: 100%; font-size: 12px; color: #64748b; margin-bottom: 4px; }

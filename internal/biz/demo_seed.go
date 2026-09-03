@@ -15,6 +15,7 @@ func EnsureDemoData(db *sql.DB) {
 	if db == nil {
 		return
 	}
+	EnsureFreshCassavaRouting(db)
 	ensureDemoFarmers(db)
 	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT)`)
 	var ver string

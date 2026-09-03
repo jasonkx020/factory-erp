@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/api_client.dart';
 import '../../core/auth_state.dart';
 
 const ticketStatusLabel = {
@@ -583,6 +584,21 @@ Future<void> _settlePayDialog(
   String evidenceUrl = '';
   String err = '';
   bool uploading = false;
+  int fundAccountId = 0;
+  List<Map<String, dynamic>> funds = [];
+
+  try {
+    final fr = await context.read<AuthState>().api.get('/finance/fund-accounts');
+    if (fr.ok) {
+      funds = ApiClient.listOf(fr.data)
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      if (funds.isNotEmpty) {
+        fundAccountId = (funds.first['id'] as num?)?.toInt() ?? 0;
+      }
+    }
+  } catch (_) {}
 
   final ok = await showDialog<bool>(
     context: context,
@@ -595,6 +611,23 @@ Future<void> _settlePayDialog(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (funds.isNotEmpty)
+                  DropdownButtonFormField<int>(
+                    // ignore: deprecated_member_use
+                    value: fundAccountId > 0 ? fundAccountId : null,
+                    decoration: const InputDecoration(labelText: '资金账户 *'),
+                    items: [
+                      for (final f in funds)
+                        DropdownMenuItem(
+                          value: (f['id'] as num?)?.toInt(),
+                          child: Text('${f['name']}（余额 ${f['balance'] ?? 0}）'),
+                        ),
+                    ],
+                    onChanged: (v) => setLocal(() => fundAccountId = v ?? 0),
+                  )
+                else
+                  const Text('未拉到资金账户，请确认财务资金接口已开放', style: TextStyle(color: Colors.orange, fontSize: 13)),
+                const SizedBox(height: 8),
                 TextField(
                   controller: transfer,
                   decoration: const InputDecoration(labelText: '转账号 *'),
@@ -736,6 +769,10 @@ Future<void> _settlePayDialog(
               onPressed: uploading
                   ? null
                   : () {
+                      if (fundAccountId <= 0) {
+                        setLocal(() => err = '请选择资金账户');
+                        return;
+                      }
                       if (transfer.text.trim().isEmpty) {
                         setLocal(() => err = '请填写转账号');
                         return;
@@ -761,6 +798,7 @@ Future<void> _settlePayDialog(
     d,
     'settle_pay',
     extra: {
+      'fund_account_id': fundAccountId,
       'transfer_no': transferNo,
       'pay_evidence_url': evidenceUrl,
     },

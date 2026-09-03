@@ -7,6 +7,7 @@ import '../../core/auth_state.dart';
 import '../../core/carrier_code_labels.dart';
 import '../../core/debug_demo_accounts.dart';
 import '../../core/notify_service.dart';
+import '../../theme/plant_colors.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -147,23 +148,59 @@ class _LoginPageState extends State<LoginPage> {
     final loading = context.watch<AuthState>().loading;
     final portHint = _scheme == 'https' ? '443' : '80';
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('员工端', style: Theme.of(context).textTheme.headlineMedium),
-                  const SizedBox(height: 8),
-                  Text(
-                    '登录后按角色展示作业步骤 · client_type=mobile',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 16),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              PlantColors.forest,
+              Color(0xFF1A3D30),
+              PlantColors.bg,
+            ],
+            stops: [0.0, 0.28, 0.55],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      '木薯 · 加工厂',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: PlantColors.onForest,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '员工端 · 现场作业',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: PlantColors.onForest.withValues(alpha: 0.78),
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: PlantColors.border),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
                   SegmentedButton<String>(
                     segments: const [
                       ButtonSegment(value: 'http', label: Text('http')),
@@ -290,7 +327,7 @@ class _LoginPageState extends State<LoginPage> {
                   FilledButton(
                     onPressed: loading ? null : _submit,
                     child: loading
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                         : const Text('账号登录'),
                   ),
                   const SizedBox(height: 12),
@@ -299,7 +336,11 @@ class _LoginPageState extends State<LoginPage> {
                     icon: const Icon(Icons.chat_bubble_outline),
                     label: const Text('第三方登录'),
                   ),
-                ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

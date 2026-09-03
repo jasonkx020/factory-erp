@@ -10,6 +10,7 @@ import '../../widgets/form_row.dart';
 import '../../widgets/form_section_header.dart';
 import '../../widgets/form_sticky_actions.dart';
 import '../../widgets/hub_entry_tile.dart';
+import '../../widgets/tab_safe_padding.dart';
 import '../../widgets/active_trace_dropdown.dart';
 import '../../widgets/trace_code_field.dart';
 import 'trace_production_page.dart';
@@ -60,6 +61,7 @@ class _StationPassPageState extends State<StationPassPage> {
   bool _msgIsError = false;
   bool _busy = false;
   Map<String, dynamic>? _preview;
+  List<Map<String, dynamic>> _allProcesses = [];
   List<Map<String, dynamic>> _processes = [];
   int? _processId;
   String? _selectedTraceCode;
@@ -158,14 +160,17 @@ class _StationPassPageState extends State<StationPassPage> {
       }
     }
     setState(() {
-      _processes = list;
-      if (_processId != null && !list.any((p) => (p['id'] as num?)?.toInt() == _processId)) {
-        _processId = null;
-      }
-      if (_processId == null && list.isNotEmpty) {
-        _processId = (list.first['id'] as num?)?.toInt();
-      }
+      _allProcesses = list;
     });
+    final trace = (_selectedTraceCode ?? '').trim();
+    if (trace.isNotEmpty) {
+      await _applyRoutingProcessHint(trace);
+    } else {
+      setState(() {
+        _processes = [];
+        _processId = null;
+      });
+    }
   }
 
   Map<String, dynamic>? _selectedTraceRow() => _selectedTraceRowData;
@@ -236,27 +241,52 @@ class _StationPassPageState extends State<StationPassPage> {
 
   Future<void> _applyRoutingProcessHint(String trace) async {
     final r = await context.read<AuthState>().api.get('/production/trace-productions/${Uri.encodeComponent(trace)}/wip');
-    if (!mounted || !r.ok || r.data is! Map) return;
+    if (!mounted || !r.ok || r.data is! Map) {
+      setState(() {
+        _processes = [];
+        _processId = null;
+      });
+      return;
+    }
     final data = Map<String, dynamic>.from(r.data as Map);
     final steps = data['routing_steps'];
-    if (steps is! List || steps.isEmpty) return;
+    final filtered = <Map<String, dynamic>>[];
     int? hint;
-    for (final e in steps) {
-      if (e is! Map) continue;
-      final st = '${e['step_status']}';
-      final pid = (e['process_id'] as num?)?.toInt();
-      if (pid == null || pid <= 0) continue;
-      if (st == 'in_progress' || st == 'ready') {
-        hint = pid;
-        break;
-      }
-      if (st == 'pending' && hint == null) {
-        hint = pid;
+    if (steps is List && steps.isNotEmpty) {
+      for (final e in steps) {
+        if (e is! Map) continue;
+        final m = Map<String, dynamic>.from(e);
+        final pid = (m['process_id'] as num?)?.toInt();
+        if (pid == null || pid <= 0) continue;
+        final st = '${m['step_status']}';
+        if (st == 'in_progress' || st == 'ready') {
+          hint ??= pid;
+        } else if (st == 'pending' && hint == null) {
+          hint = pid;
+        }
+        final fromAll = _allProcesses.where((p) => (p['id'] as num?)?.toInt() == pid).toList();
+        if (fromAll.isNotEmpty) {
+          filtered.add(fromAll.first);
+        } else {
+          filtered.add({
+            'id': pid,
+            'name': m['step_name'] ?? m['process_name'] ?? pid,
+            'code': m['step_code'] ?? '',
+          });
+        }
       }
     }
-    if (hint != null && _processes.any((p) => (p['id'] as num?)?.toInt() == hint)) {
-      setState(() => _processId = hint);
-    }
+    setState(() {
+      _processes = filtered;
+      if (_processId != null && !filtered.any((p) => (p['id'] as num?)?.toInt() == _processId)) {
+        _processId = null;
+      }
+      if (hint != null && filtered.any((p) => (p['id'] as num?)?.toInt() == hint)) {
+        _processId = hint;
+      } else if (_processId == null && filtered.isNotEmpty) {
+        _processId = (filtered.first['id'] as num?)?.toInt();
+      }
+    });
   }
 
   void _onTraceSelected(String? code, Map<String, dynamic>? row) {
@@ -264,6 +294,15 @@ class _StationPassPageState extends State<StationPassPage> {
       _selectedTraceCode = code;
       _selectedTraceRowData = row;
     });
+    if ((code ?? '').trim().isEmpty) {
+      setState(() {
+        _processes = [];
+        _processId = null;
+        _sources = [];
+        _selectedSourceKey = null;
+      });
+      return;
+    }
     _loadMaterialSources();
   }
 
@@ -618,7 +657,7 @@ class _StationPassPageState extends State<StationPassPage> {
 
   Widget _buildHome() {
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, widget.asTab ? 40 : 16, 16, 16),
+      padding: EdgeInsets.fromLTRB(16, widget.asTab ? 40 : 16, 16, tabShellBottomPadding(context, asTab: widget.asTab)),
       children: [
         const Text('生产', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
         const SizedBox(height: 4),
@@ -733,7 +772,14 @@ class _StationPassPageState extends State<StationPassPage> {
         child: DropdownButtonFormField<int>(
           key: ValueKey('proc-${_processId ?? 0}-${_processes.length}'),
           initialValue: _processId != null && _processes.any((p) => (p['id'] as num?)?.toInt() == _processId) ? _processId : null,
-          decoration: const InputDecoration(labelText: '领入工序', border: OutlineInputBorder(), isDense: true),
+          decoration: InputDecoration(
+            labelText: '领入工序（本批工艺）',
+            border: const OutlineInputBorder(),
+            isDense: true,
+            helperText: (_selectedTraceCode ?? '').isEmpty
+                ? '请先选择进行中的溯源生产'
+                : (_processes.isEmpty ? '该批次未锁定工艺或无可选工序' : null),
+          ),
           items: _processes
               .map((p) {
                 final id = (p['id'] as num?)?.toInt();
@@ -742,7 +788,7 @@ class _StationPassPageState extends State<StationPassPage> {
               })
               .whereType<DropdownMenuItem<int>>()
               .toList(),
-          onChanged: (v) => setState(() => _processId = v),
+          onChanged: _processes.isEmpty ? null : (v) => setState(() => _processId = v),
         ),
       ),
       const FormSectionHeader('领料人'),

@@ -280,10 +280,10 @@ func (s *Services) compileProductionGraph(routingID int64, code, name, gjson str
 			_, _ = s.DB.Exec(`UPDATE pd_routing SET product_id=? WHERE id=?`, productID, routingID)
 		}
 	}
-	if errMsg := s.upsertRoutingSteps(routingID, steps); errMsg != "" {
+	if errMsg := s.validateRoutingOutputProducts(routingID, steps, productID); errMsg != "" {
 		return 0, errMsg
 	}
-	if errMsg := s.validateRoutingOutputProducts(routingID, steps, productID); errMsg != "" {
+	if errMsg := s.upsertRoutingSteps(routingID, steps); errMsg != "" {
 		return 0, errMsg
 	}
 	return routingID, ""
@@ -327,7 +327,7 @@ func (s *Services) upsertRoutingSteps(routingID int64, steps []compiledStep) str
 			_, err := s.DB.Exec(`UPDATE pd_routing_step SET seq_no=?, process_id=?, step_code=?, step_name=?,
 				is_piecework=?, is_inbound_checkpoint=?, checkpoint_bind_warehouse=?, auto_next=?, auto_stock_in=?, auto_stock_out=?, warehouse_id=?, output_product_id=? WHERE id=?`,
 				st.Seq, st.ProcessID, st.Code, st.Name, boolToInt(st.Piece), boolToInt(st.Checkpoint), boolToInt(st.CheckpointBind),
-				boolToInt(st.AutoNext), boolToInt(st.StockIn), boolToInt(st.StockOut), nullIf0(st.WarehouseID), nullIf0(st.OutputProductID), id)
+				boolToInt(st.AutoNext), boolToInt(st.StockIn), boolToInt(st.StockOut), nullIf0(st.WarehouseID), st.OutputProductID, id)
 			if err != nil {
 				return "DB_ERROR:" + err.Error()
 			}
@@ -337,7 +337,7 @@ func (s *Services) upsertRoutingSteps(routingID int64, steps []compiledStep) str
 		res, err := s.DB.Exec(`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, checkpoint_bind_warehouse, auto_next, auto_stock_in, auto_stock_out, warehouse_id, output_product_id)
 			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			routingID, st.Seq, st.ProcessID, st.Code, st.Name, boolToInt(st.Piece), boolToInt(st.Checkpoint), boolToInt(st.CheckpointBind),
-			boolToInt(st.AutoNext), boolToInt(st.StockIn), boolToInt(st.StockOut), nullIf0(st.WarehouseID), nullIf0(st.OutputProductID))
+			boolToInt(st.AutoNext), boolToInt(st.StockIn), boolToInt(st.StockOut), nullIf0(st.WarehouseID), st.OutputProductID)
 		if err != nil {
 			return "DB_ERROR:" + err.Error()
 		}

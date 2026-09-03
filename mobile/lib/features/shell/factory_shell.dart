@@ -102,6 +102,7 @@ class _FactoryShellState extends State<FactoryShell> {
 
     final switchable = auth.switchableRoles;
     return Scaffold(
+      extendBody: true,
       body: Stack(
         children: [
           IndexedStack(
