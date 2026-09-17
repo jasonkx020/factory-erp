@@ -172,7 +172,7 @@ class _LoginPageState extends State<LoginPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const Text(
-                      '木薯 · 加工厂',
+                      '加工厂 ERP',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: PlantColors.onForest,

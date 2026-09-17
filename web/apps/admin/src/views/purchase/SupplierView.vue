@@ -55,17 +55,21 @@ const priceCols: MobileCardColumn[] = [
 const loading = ref(false)
 const list = ref<Row[]>([])
 const total = ref(0)
-const filter = reactive({ status: '', supplier_type: '', q: '' })
+const filter = reactive({ status: '', supplier_type: '', party_kind: '', q: '' })
 const alerts = ref<Row[]>([])
 const dialog = ref(false)
 const detailTab = ref('profile')
 const currentId = ref<number | null>(null)
 const form = reactive<Row>({
+  party_kind: 'enterprise',
   code: '', name: '', short_name: '', supplier_type: 'raw', status: 'potential', rating: 'B',
   is_preferred: false, settle_method: 'monthly', payment_days: 30, currency: 'CNY',
+  mobile: '', origin: '', trace_code_prefix: '', default_unit_price: 0,
   contact_json: [{ name: '', mobile: '', is_primary: true }],
   remark: '',
 })
+const kindPickDlg = ref(false)
+const pendingKind = ref<'person' | 'enterprise'>('enterprise')
 const licenses = ref<Row[]>([])
 const supplyItems = ref<Row[]>([])
 const prices = ref<Row[]>([])
@@ -74,8 +78,15 @@ const analytics = ref<Row[]>([])
 
 const statusLabel: Record<string, string> = {
   potential: '潜在', qualified: '合格', frozen: '冻结', blacklist: '黑名单', eliminated: '淘汰',
+  active: '启用',
 }
 
+const partyKindLabel: Record<string, string> = { person: '个人', enterprise: '企业' }
+const partyKindTagType: Record<string, 'info' | 'warning' | 'success'> = {
+  person: 'info', enterprise: 'warning',
+}
+
+const isPerson = computed(() => String(form.party_kind || 'enterprise') === 'person')
 const editing = computed(() => currentId.value != null)
 
 async function loadList() {
@@ -86,6 +97,7 @@ async function loadList() {
     qs.set('page_size', '50')
     if (filter.status) qs.set('status', filter.status)
     if (filter.supplier_type) qs.set('supplier_type', filter.supplier_type)
+    if (filter.party_kind) qs.set('party_kind', filter.party_kind)
     if (filter.q) qs.set('q', filter.q)
     const res = await purchaseApi.suppliers(qs.toString())
     if (res.code !== 1) return ElMessage.error(res.msg)
@@ -101,12 +113,17 @@ async function loadList() {
   }
 }
 
-function resetForm() {
+function resetForm(kind: 'person' | 'enterprise' = 'enterprise') {
+  const personCode = `P${Date.now().toString().slice(-10)}`
   Object.assign(form, {
-    code: `SUP${Date.now().toString().slice(-6)}`, name: '', short_name: '', supplier_type: 'raw',
-    status: 'potential', rating: 'B', is_preferred: false, settle_method: 'monthly', payment_days: 30,
+    party_kind: kind,
+    code: kind === 'person' ? personCode : `SUP${Date.now().toString().slice(-6)}`,
+    name: '', short_name: '', supplier_type: 'raw',
+    status: kind === 'person' ? 'qualified' : 'potential',
+    rating: 'B', is_preferred: false, settle_method: 'monthly', payment_days: 30,
     currency: 'CNY', uscc: '', legal_person: '', register_address: '', invoice_title: '', tax_no: '',
     bank_name: '', bank_account: '', lead_time_days: 3, moq: 0, default_warehouse_id: 1, remark: '',
+    mobile: '', origin: '', trace_code_prefix: '', default_unit_price: 0,
     contact_json: [{ name: '', mobile: '', is_primary: true }],
   })
   licenses.value = []
@@ -118,16 +135,22 @@ function resetForm() {
 
 function openCreate() {
   currentId.value = null
-  resetForm()
+  kindPickDlg.value = true
+}
+
+function confirmKindPick() {
+  resetForm(pendingKind.value)
+  kindPickDlg.value = false
   dialog.value = true
 }
 
 async function openEdit(row: Row) {
   currentId.value = Number(row.id)
-  resetForm()
+  resetForm(String(row.party_kind || 'enterprise') === 'person' ? 'person' : 'enterprise')
   const res = await purchaseApi.getSupplier(currentId.value)
   if (res.code !== 1) return ElMessage.error(res.msg)
   Object.assign(form, res.data || {})
+  if (!form.party_kind) form.party_kind = 'enterprise'
   if (!Array.isArray(form.contact_json)) form.contact_json = [{ name: '', mobile: '', is_primary: true }]
   await loadDetailTabs()
   dialog.value = true
@@ -150,6 +173,14 @@ async function loadDetailTabs() {
 
 async function save() {
   const body = { ...form }
+  if (isPerson.value) {
+    body.party_kind = 'person'
+    if (!String(body.code || '').trim()) {
+      body.code = `P${Date.now().toString().slice(-10)}`
+    }
+  } else {
+    body.party_kind = 'enterprise'
+  }
   let res
   if (editing.value && currentId.value) {
     res = await purchaseApi.updateSupplier(currentId.value, body)
@@ -238,6 +269,10 @@ onMounted(loadList)
         <el-option label="委外" value="outsource" />
         <el-option label="服务" value="service" />
       </el-select>
+      <el-select v-model="filter.party_kind" clearable placeholder="形态" style="width:110px" @change="loadList">
+        <el-option label="个人" value="person" />
+        <el-option label="企业" value="enterprise" />
+      </el-select>
       <el-input v-model="filter.q" placeholder="编码/名称" clearable style="width:180px" @keyup.enter="loadList" />
       <el-button type="primary" @click="openCreate">新建供应商</el-button>
       <el-button @click="loadList">刷新</el-button>
@@ -247,7 +282,20 @@ onMounted(loadList)
     <TableOrCards :data="list" :loading="loading" :columns="supplierCols">
       <el-table :data="list" border stripe>
         <el-table-column prop="code" label="编码" width="120" />
-        <el-table-column prop="name" label="名称" min-width="160" />
+        <el-table-column prop="name" label="名称" min-width="180">
+          <template #default="{ row }">
+            <span>{{ row.name }}</span>
+            <el-tag
+              v-if="row.party_kind"
+              size="small"
+              :type="partyKindTagType[String(row.party_kind)] || 'info'"
+              style="margin-left:6px"
+            >{{ partyKindLabel[String(row.party_kind)] || row.party_kind }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="party_kind" label="形态" width="80">
+          <template #default="{ row }">{{ partyKindLabel[String(row.party_kind)] || row.party_kind || '企业' }}</template>
+        </el-table-column>
         <el-table-column prop="supplier_type" label="类型" width="90" />
         <el-table-column prop="status" label="状态" width="90">
           <template #default="{ row }">{{ statusLabel[String(row.status)] || row.status }}</template>
@@ -265,6 +313,12 @@ onMounted(loadList)
           </template>
         </el-table-column>
       </el-table>
+      <template #field-name="{ row }">
+        {{ row.name }}
+        <el-tag v-if="row.party_kind" size="small" :type="partyKindTagType[String(row.party_kind)] || 'info'" style="margin-left:4px">
+          {{ partyKindLabel[String(row.party_kind)] || row.party_kind }}
+        </el-tag>
+      </template>
       <template #field-status="{ row }">{{ statusLabel[String(row.status)] || row.status }}</template>
       <template #actions="{ row }">
         <el-button link type="primary" @click="openEdit(row)">详情</el-button>
@@ -289,46 +343,84 @@ onMounted(loadList)
       </TableOrCards>
     </el-card>
 
-    <el-dialog v-model="dialog" :title="editing ? '供应商详情' : '新建供应商'" width="860px" destroy-on-close>
+    <el-dialog v-model="kindPickDlg" title="新建供应商" width="420px" destroy-on-close>
+      <p class="desc">请先选择供应商形态，个人与企业字段不同。</p>
+      <el-radio-group v-model="pendingKind" style="display:flex;flex-direction:column;gap:12px">
+        <el-radio value="person">个人 — 过磅入场、产地溯源、默认单价</el-radio>
+        <el-radio value="enterprise">企业 — 证照、结算、可供物料与绩效</el-radio>
+      </el-radio-group>
+      <template #footer>
+        <el-button @click="kindPickDlg=false">取消</el-button>
+        <el-button type="primary" @click="confirmKindPick">下一步</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="dialog" :title="editing ? '供应商详情' : (isPerson ? '新建个人供应商' : '新建企业供应商')" width="860px" destroy-on-close>
       <el-tabs v-model="detailTab">
         <el-tab-pane label="档案" name="profile">
           <el-form label-width="110px">
-            <el-row :gutter="12">
-              <el-col :span="12"><el-form-item label="编码"><el-input v-model="form.code" :disabled="editing" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="名称"><el-input v-model="form.name" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="简称"><el-input v-model="form.short_name" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="类型">
-                <el-select v-model="form.supplier_type" style="width:100%">
-                  <el-option label="原料" value="raw" /><el-option label="辅料" value="aux" />
-                  <el-option label="包材" value="pack" /><el-option label="物流" value="logistics" />
-                  <el-option label="委外" value="outsource" /><el-option label="服务" value="service" />
-                </el-select>
-              </el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="等级"><EnumSelect v-model="form.rating" :options="SUPPLIER_RATING_OPTIONS" :clearable="false" style="width:100%" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="首选"><el-switch v-model="form.is_preferred" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="信用代码"><el-input v-model="form.uscc" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="法人"><el-input v-model="form.legal_person" /></el-form-item></el-col>
-              <el-col :span="24"><el-form-item label="注册地址"><el-input v-model="form.register_address" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="结算方式"><EnumSelect v-model="form.settle_method" :options="SETTLE_METHOD_OPTIONS" :clearable="false" style="width:100%" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="账期天"><el-input-number v-model="form.payment_days" :min="0" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="币种"><EnumSelect v-model="form.currency" :options="CURRENCY_OPTIONS" :clearable="false" style="width:100%" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="默认仓库"><WarehouseSelect v-model="form.default_warehouse_id" style="width:100%" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="开户行"><el-input v-model="form.bank_name" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="账号"><el-input v-model="form.bank_account" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="税号"><el-input v-model="form.tax_no" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="交期天"><el-input-number v-model="form.lead_time_days" :min="0" /></el-form-item></el-col>
-              <el-col :span="24"><el-form-item label="备注"><el-input v-model="form.remark" type="textarea" /></el-form-item></el-col>
-            </el-row>
-            <div class="sub">联系人</div>
-            <div v-for="(c,i) in (form.contact_json as Row[])" :key="i" class="contact-row">
-              <el-input v-model="c.name" placeholder="姓名" />
-              <el-input v-model="c.mobile" placeholder="手机" />
-              <el-switch v-model="c.is_primary" active-text="主" />
-            </div>
-            <el-button size="small" @click="addContact">加联系人</el-button>
+            <template v-if="isPerson">
+              <el-row :gutter="12">
+                <el-col :span="12"><el-form-item label="编码"><el-input v-model="form.code" :disabled="editing" placeholder="可留空自动生成" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="姓名" required><el-input v-model="form.name" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="手机"><el-input v-model="form.mobile" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="产地"><el-input v-model="form.origin" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="溯源前缀"><el-input v-model="form.trace_code_prefix" placeholder="如 TR" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="默认单价"><el-input-number v-model="form.default_unit_price" :min="0" :step="0.1" style="width:100%" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="状态">
+                  <el-select v-model="form.status" style="width:100%">
+                    <el-option v-for="(lab,k) in statusLabel" :key="k" :label="lab" :value="k" />
+                  </el-select>
+                </el-form-item></el-col>
+                <el-col :span="24"><el-form-item label="备注"><el-input v-model="form.remark" type="textarea" /></el-form-item></el-col>
+              </el-row>
+            </template>
+            <template v-else>
+              <div class="sub">企业信息</div>
+              <el-row :gutter="12">
+                <el-col :span="12"><el-form-item label="编码"><el-input v-model="form.code" :disabled="editing" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="名称"><el-input v-model="form.name" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="简称"><el-input v-model="form.short_name" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="类型">
+                  <el-select v-model="form.supplier_type" style="width:100%">
+                    <el-option label="原料" value="raw" /><el-option label="辅料" value="aux" />
+                    <el-option label="包材" value="pack" /><el-option label="物流" value="logistics" />
+                    <el-option label="委外" value="outsource" /><el-option label="服务" value="service" />
+                  </el-select>
+                </el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="等级"><EnumSelect v-model="form.rating" :options="SUPPLIER_RATING_OPTIONS" :clearable="false" style="width:100%" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="首选"><el-switch v-model="form.is_preferred" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="信用代码"><el-input v-model="form.uscc" /></el-form-item></el-col>
+                <el-col :span="24"><el-form-item label="注册地址"><el-input v-model="form.register_address" /></el-form-item></el-col>
+              </el-row>
+              <div class="sub">法人与联系人</div>
+              <el-row :gutter="12">
+                <el-col :span="12"><el-form-item label="法人"><el-input v-model="form.legal_person" /></el-form-item></el-col>
+              </el-row>
+              <div v-for="(c,i) in (form.contact_json as Row[])" :key="i" class="contact-row">
+                <el-input v-model="c.name" placeholder="姓名" />
+                <el-input v-model="c.mobile" placeholder="手机" />
+                <el-switch v-model="c.is_primary" active-text="主" />
+              </div>
+              <el-button size="small" @click="addContact">加联系人</el-button>
+              <div class="sub">结算与证照</div>
+              <el-row :gutter="12">
+                <el-col :span="12"><el-form-item label="结算方式"><EnumSelect v-model="form.settle_method" :options="SETTLE_METHOD_OPTIONS" :clearable="false" style="width:100%" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="账期天"><el-input-number v-model="form.payment_days" :min="0" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="币种"><EnumSelect v-model="form.currency" :options="CURRENCY_OPTIONS" :clearable="false" style="width:100%" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="默认仓库"><WarehouseSelect v-model="form.default_warehouse_id" style="width:100%" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="开户行"><el-input v-model="form.bank_name" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="账号"><el-input v-model="form.bank_account" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="税号"><el-input v-model="form.tax_no" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="发票抬头"><el-input v-model="form.invoice_title" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="交期天"><el-input-number v-model="form.lead_time_days" :min="0" /></el-form-item></el-col>
+                <el-col :span="24"><el-form-item label="备注"><el-input v-model="form.remark" type="textarea" /></el-form-item></el-col>
+              </el-row>
+              <p class="hint-inline">证照明细请在保存后切换「证照」页签维护。</p>
+            </template>
           </el-form>
         </el-tab-pane>
-        <el-tab-pane label="证照" name="licenses" :disabled="!editing">
+        <el-tab-pane v-if="!isPerson" label="证照" name="licenses" :disabled="!editing">
           <el-button size="small" @click="addLicense">新增</el-button>
           <el-button size="small" type="primary" @click="saveLicenses">保存证照</el-button>
           <TableOrCards :data="licenses" :columns="licenseCols" style="margin-top:8px">
@@ -346,7 +438,7 @@ onMounted(loadList)
             </template>
           </TableOrCards>
         </el-tab-pane>
-        <el-tab-pane label="可供物料" name="supply" :disabled="!editing">
+        <el-tab-pane v-if="!isPerson" label="可供物料" name="supply" :disabled="!editing">
           <el-button size="small" @click="addSupply">新增</el-button>
           <el-button size="small" type="primary" @click="saveSupply">保存</el-button>
           <TableOrCards :data="supplyItems" :columns="supplyCols" style="margin-top:8px">
@@ -366,7 +458,7 @@ onMounted(loadList)
             <template #field-last_price="{ row }"><el-input-number v-model="row.last_price" :min="0" :step="0.01" /></template>
           </TableOrCards>
         </el-tab-pane>
-        <el-tab-pane label="价格历史" name="prices" :disabled="!editing">
+        <el-tab-pane v-if="!isPerson" label="价格历史" name="prices" :disabled="!editing">
           <TableOrCards :data="prices" :columns="priceCols">
             <el-table :data="prices" size="small" border>
               <el-table-column prop="product_id" label="物料" />
@@ -376,7 +468,7 @@ onMounted(loadList)
             </el-table>
           </TableOrCards>
         </el-tab-pane>
-        <el-tab-pane label="绩效" name="perf" :disabled="!editing">
+        <el-tab-pane v-if="!isPerson" label="绩效" name="perf" :disabled="!editing">
           <el-descriptions v-if="perf" :column="2" border size="small">
             <el-descriptions-item label="采购额">{{ perf.purchase_amount }}</el-descriptions-item>
             <el-descriptions-item label="采购量">{{ perf.purchase_qty }}</el-descriptions-item>
@@ -401,6 +493,7 @@ onMounted(loadList)
 .desc { margin: 0 0 12px; color: #5c6b75; font-size: 13px; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
 .muted { color: #5c6b75; font-size: 13px; margin-left: auto; }
-.sub { font-weight: 600; margin: 8px 0; }
+.sub { font-weight: 600; margin: 12px 0 8px; }
+.hint-inline { margin: 8px 0 0; color: #5c6b75; font-size: 12px; }
 .contact-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-bottom: 8px; }
 </style>

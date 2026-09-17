@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { iamApi, ERP_MENUS } from '@erp/shared'
+import { iamApi, getErpMenus } from '@erp/shared'
 import HrPermView from './HrPermView.vue'
 import AccountFreezePanel from './AccountFreezePanel.vue'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
@@ -92,7 +92,7 @@ function rebuildMenuDraft() {
   const byKey = new Map(existing.map((x) => [`${x.domain}|${x.module}`, x]))
   const rows: Row[] = []
   let sort = 10
-  for (const d of ERP_MENUS) {
+  for (const d of getErpMenus()) {
     for (const mod of d.modules) {
       const key = `${d.domain}|${mod}`
       const old = byKey.get(key)

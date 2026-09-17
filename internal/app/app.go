@@ -57,6 +57,7 @@ func New(cfgPath string) (*App, error) {
 		"/api/v1/mqtt/auth",
 		"/api/v1/mqtt/superuser",
 		"/api/v1/mqtt/acl",
+		"/api/v1/pay/alipay/notify",
 		"/api/v1/production/plant-line-preview",
 		"/files",
 	}
@@ -69,14 +70,21 @@ func New(cfgPath string) (*App, error) {
 	// Schema is owned by migrations/erp (erp-db / init_schema). Do not Ensure DDL at startup.
 	biz.EnsureDomainPermissions(db.SQL)
 	biz.EnsureDemoRoleUsers(db.SQL)
+	biz.EnsureExtraRoleMigrated(db.SQL)
+	biz.EnsureFactoryCoreColumns(db.SQL)
+	biz.EnsureDefaultPlant(db.SQL)
+	if cfg.Product.IsCassavaPack() {
+		biz.EnsureCassavaIndustryPack(db.SQL)
+	}
 	if cfg.Seed.DemoEnabled() {
 		biz.EnsureCleanDevWageRates(db.SQL)
 		biz.EnsureDemoData(db.SQL)
-	} else {
-		// Builtin plant routing seed (no showcase timeline) so Admin/开工可选完整鲜木薯工艺。
+	} else if cfg.Product.IsCassavaPack() {
+		// Builtin plant routing seed when cassava pack enabled (no showcase timeline).
 		biz.EnsureFreshCassavaRouting(db.SQL)
 	}
 	biz.EnsureFounderSuperuser(db.SQL)
+	biz.EnsureOrgBrandDefaults(db.SQL, cfg.Product.IsCassavaPack())
 
 	hub := erpmqtt.NewHub(cfg)
 	notifySvc := notify.New(db.SQL, cfg, hub)
@@ -95,6 +103,9 @@ func New(cfgPath string) (*App, error) {
 	engine.Biz.OCREnabled = cfg.OCR.Enabled
 	engine.Biz.OCRProvider = cfg.OCR.Provider
 	engine.Biz.Notify = notifySvc
+	engine.Biz.ProductProfile = cfg.Product.NormalizedProfile()
+	engine.Biz.IndustryPack = cfg.Product.NormalizedIndustryPack()
+	biz.EnsurePurchaseFlowGraphMeta(db.SQL, engine.Biz.IndustryPack)
 	apigen.RegisterGenerated(v1, engine)
 	apigen.RegisterHRExtra(v1, engine)
 	apigen.RegisterPayrollExtra(v1, engine)
@@ -105,7 +116,9 @@ func New(cfgPath string) (*App, error) {
 	apigen.RegisterSalesExtra(v1, engine)
 	apigen.RegisterInventoryExtra(v1, engine)
 	apigen.RegisterFinanceExtra(v1, engine)
+	apigen.RegisterPaymentSystemExtra(v1, engine)
 	apigen.RegisterWorkflowExtra(v1, engine)
+	apigen.RegisterSystemFactoryExtra(v1, engine)
 
 	stop := make(chan struct{})
 	go notifySvc.StartPublisher(stop)

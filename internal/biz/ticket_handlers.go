@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 import (
 	"database/sql"
@@ -29,13 +29,9 @@ func seedTicketCategories(db *sql.DB) {
 		schema := marshalFormSchema(seed.Fields)
 		_, _ = db.Exec(`INSERT INTO wf_ticket_category(code, name, remark, form_schema_json, biz_hint) VALUES(?,?,?,?,?)`,
 			seed.Code, seed.Name, seed.Remark, schema, seed.BizHint)
-		_, _ = db.Exec(`UPDATE wf_ticket_category SET form_schema_json=?, biz_hint=COALESCE(NULLIF(biz_hint,''), ?), name=?, remark=?
-			WHERE code=? AND (form_schema_json IS NULL OR form_schema_json='' OR form_schema_json='[]' OR form_schema_json='null')`,
+		// 强制覆盖 form_schema，消除前端硬编码工序选项残留
+		_, _ = db.Exec(`UPDATE wf_ticket_category SET form_schema_json=?, biz_hint=?, name=?, remark=? WHERE code=?`,
 			schema, seed.BizHint, seed.Name, seed.Remark, seed.Code)
-		if seed.Code == "tool_issue" || seed.Code == "tool_return" || seed.Code == "farm_inbound" || seed.Code == "stock_inbound" {
-			_, _ = db.Exec(`UPDATE wf_ticket_category SET form_schema_json=?, biz_hint=?, name=?, remark=? WHERE code=?`,
-				schema, seed.BizHint, seed.Name, seed.Remark, seed.Code)
-		}
 		var catID int64
 		_ = db.QueryRow(`SELECT id FROM wf_ticket_category WHERE code=?`, seed.Code).Scan(&catID)
 		if catID <= 0 {
@@ -919,9 +915,12 @@ func (s *Services) actionTicketBody(c *gin.Context, id int64, body map[string]in
 				return false
 			}
 			var sid int64
-			_ = s.DB.QueryRow(`SELECT id FROM pur_farmer_settlement WHERE weigh_ticket_id=? ORDER BY id DESC LIMIT 1`, bizID).Scan(&sid)
+			_ = s.DB.QueryRow(`SELECT id FROM pur_supplier_settlement WHERE weigh_ticket_id=? ORDER BY id DESC LIMIT 1`, bizID).Scan(&sid)
 			if sid <= 0 {
 				api.FailJSON(c, "SETTLEMENT_NOT_FOUND")
+				return false
+			}
+			if s.blockManualPayIfOnlinePending(c, sid) {
 				return false
 			}
 			transferNo := strOr(body["transfer_no"])
@@ -935,7 +934,7 @@ func (s *Services) actionTicketBody(c *gin.Context, id int64, body map[string]in
 				return false
 			}
 			var st string
-			_ = s.DB.QueryRow(`SELECT status FROM pur_farmer_settlement WHERE id=?`, sid).Scan(&st)
+			_ = s.DB.QueryRow(`SELECT status FROM pur_supplier_settlement WHERE id=?`, sid).Scan(&st)
 			if st == "settle_paid" {
 				api.FailJSON(c, "ALREADY_PAID")
 				return false
@@ -946,7 +945,7 @@ func (s *Services) actionTicketBody(c *gin.Context, id int64, body map[string]in
 				return false
 			}
 			_, _ = s.addEvidence(c, "farmer_settlement", sid, "pay_receipt", payURL, gin.H{"transfer_no": transferNo})
-			_, err := s.DB.Exec(`UPDATE pur_farmer_settlement SET status='settle_paid', transfer_no=?, paid_at=NOW(), pay_evidence_url=? WHERE id=?`,
+			_, err := s.DB.Exec(`UPDATE pur_supplier_settlement SET status='settle_paid', transfer_no=?, paid_at=NOW(), pay_evidence_url=? WHERE id=?`,
 				transferNo, payURL, sid)
 			if err != nil {
 				api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -967,7 +966,7 @@ func (s *Services) actionTicketBody(c *gin.Context, id int64, body map[string]in
 		case "approve", "close":
 			var sid int64
 			var stPay string
-			_ = s.DB.QueryRow(`SELECT id, status FROM pur_farmer_settlement WHERE weigh_ticket_id=? ORDER BY id DESC LIMIT 1`, bizID).Scan(&sid, &stPay)
+			_ = s.DB.QueryRow(`SELECT id, status FROM pur_supplier_settlement WHERE weigh_ticket_id=? ORDER BY id DESC LIMIT 1`, bizID).Scan(&sid, &stPay)
 			if sid > 0 && stPay != "settle_paid" && claimsHasAnyRole(cl, "finance") {
 				api.FailJSON(c, "SETTLE_PAY_REQUIRED")
 				return false

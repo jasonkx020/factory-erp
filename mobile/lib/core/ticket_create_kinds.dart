@@ -36,8 +36,8 @@ class CreatableTicketKind {
 const weighTicketKinds = [
   CreatableTicketKind(
     code: 'farm_inbound',
-    title: '过磅入厂',
-    subtitle: '与「采购·入厂」同一套向导',
+    title: '采购入厂',
+    subtitle: '与「采购」同一套向导',
     receiveKind: 'gate',
   ),
 ];
@@ -145,7 +145,7 @@ Future<bool> pickAndCreateTicket(BuildContext context) async {
                   const Text('创建工单', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
                   const Text(
-                    '过磅入厂走收货向导；其它类型按管理端配置的字段填报',
+                    '采购入厂走收货向导；其它类型按管理端配置的字段填报',
                     style: TextStyle(color: Colors.black54, fontSize: 13),
                   ),
                   const SizedBox(height: 8),

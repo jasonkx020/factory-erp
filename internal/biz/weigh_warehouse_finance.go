@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 import (
 	"encoding/json"
@@ -178,11 +178,11 @@ func (s *Services) ensureGateSettlement(weighID int64, m gin.H, settleNetOverrid
 		return 0, nil, ""
 	}
 	var existID int64
-	_ = s.DB.QueryRow(`SELECT id FROM pur_farmer_settlement WHERE weigh_ticket_id=? ORDER BY id DESC LIMIT 1`, weighID).Scan(&existID)
+	_ = s.DB.QueryRow(`SELECT id FROM pur_supplier_settlement WHERE weigh_ticket_id=? ORDER BY id DESC LIMIT 1`, weighID).Scan(&existID)
 	if existID > 0 {
 		return existID, s.settlementBreakdownFromRow(existID), ""
 	}
-	farmerID := asInt64Or0(m["farmer_id"])
+	farmerID := asInt64Or0(m["supplier_id"])
 	net := asFloatOr0(m["net_weight"])
 	remark := "auto from weigh net_weight"
 	if settleNetOverride != nil {
@@ -197,7 +197,7 @@ func (s *Services) ensureGateSettlement(weighID int64, m gin.H, settleNetOverrid
 		if up := asFloatOr0(m["unit_price"]); up > 0 {
 			unitPrice = up
 		} else {
-			_ = s.DB.QueryRow(`SELECT COALESCE(default_unit_price,0) FROM pur_farmer WHERE id=?`, farmerID).Scan(&unitPrice)
+			_ = s.DB.QueryRow(`SELECT COALESCE(default_unit_price,0) FROM pur_supplier WHERE id=?`, farmerID).Scan(&unitPrice)
 		}
 	}
 	freight := asFloatOr0(m["freight_fee"])
@@ -205,7 +205,7 @@ func (s *Services) ensureGateSettlement(weighID int64, m gin.H, settleNetOverrid
 	weighFee := asFloatOr0(m["weigh_fee"])
 	goods, total := settleAmount(net, unitPrice, freight, loading, weighFee)
 	docNo := fmt.Sprintf("FS%d%04d", weighID, weighID%10000)
-	res, err := s.DB.Exec(`INSERT INTO pur_farmer_settlement(doc_no, farmer_id, weigh_ticket_id, biz_date, net_weight, unit_price, amount, status, remark,
+	res, err := s.DB.Exec(`INSERT INTO pur_supplier_settlement(doc_no, supplier_id, weigh_ticket_id, biz_date, net_weight, unit_price, amount, status, remark,
 		freight_fee, loading_fee, weigh_fee, goods_amount)
 		VALUES(?,?,?,?,?,?,?,'settle_pending',?,?,?,?,?)`,
 		docNo, farmerID, weighID, bizDate, net, unitPrice, total, remark,
@@ -217,7 +217,10 @@ func (s *Services) ensureGateSettlement(weighID int64, m gin.H, settleNetOverrid
 	bd := gin.H{
 		"settlement_id": sid, "doc_no": docNo, "net_weight": net, "unit_price": unitPrice,
 		"goods_amount": goods, "freight_fee": freight, "loading_fee": loading, "weigh_fee": weighFee,
-		"amount": total, "farmer_id": farmerID, "farmer_name": m["farmer_name"], "status": "settle_pending",
+		"amount": total, "supplier_id": farmerID, "farmer_name": m["farmer_name"], "status": "settle_pending",
+	}
+	if payID, _ := s.maybeCreatePaymentOrderForSettlement(sid); payID > 0 {
+		bd["payment_order_id"] = payID
 	}
 	return sid, bd, ""
 }
@@ -226,12 +229,12 @@ func (s *Services) settlementBreakdownFromRow(id int64) gin.H {
 	var farmerID int64
 	var docNo, status, farmerName string
 	var net, price, amt, freight, loading, weighFee, goods float64
-	_ = s.DB.QueryRow(`SELECT s.doc_no, s.farmer_id, COALESCE(f.name,''), s.net_weight, s.unit_price, s.amount, s.status,
+	_ = s.DB.QueryRow(`SELECT s.doc_no, s.supplier_id, COALESCE(f.name,''), s.net_weight, s.unit_price, s.amount, s.status,
 		COALESCE(s.freight_fee,0), COALESCE(s.loading_fee,0), COALESCE(s.weigh_fee,0), COALESCE(s.goods_amount,0)
-		FROM pur_farmer_settlement s LEFT JOIN pur_farmer f ON f.id=s.farmer_id WHERE s.id=?`, id).
+		FROM pur_supplier_settlement s LEFT JOIN pur_supplier f ON f.id=s.supplier_id WHERE s.id=?`, id).
 		Scan(&docNo, &farmerID, &farmerName, &net, &price, &amt, &status, &freight, &loading, &weighFee, &goods)
 	return gin.H{
-		"settlement_id": id, "doc_no": docNo, "farmer_id": farmerID, "farmer_name": farmerName,
+		"settlement_id": id, "doc_no": docNo, "supplier_id": farmerID, "farmer_name": farmerName,
 		"net_weight": net, "unit_price": price, "goods_amount": goods, "freight_fee": freight,
 		"loading_fee": loading, "weigh_fee": weighFee, "amount": amt, "status": status,
 	}

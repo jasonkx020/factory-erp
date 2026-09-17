@@ -66,7 +66,7 @@ const SETTINGS: Record<string, { title: string; fields: FieldDef[] }> = {
       { key: 'enable_mqtt_notify', label: 'MQTT 通知', type: 'switch' },
       {
         key: 'farmer_settle_point',
-        label: '农户结算环节',
+        label: '供应商结算环节',
         type: 'select',
         options: [
           { value: 'gate', label: '入厂确认后（按票净重）' },
@@ -160,11 +160,45 @@ const SETTINGS: Record<string, { title: string; fields: FieldDef[] }> = {
       { key: 'default_operator', label: '默认逻辑', type: 'select', options: LOGIC_OPTIONS },
     ],
   },
-  财审管控: {
+	财审管控: {
     title: '财审管控',
     fields: [
       { key: 'require_finance_approve', label: '需财务审批', type: 'switch' },
       { key: 'amount_threshold', label: '金额阈值', type: 'number' },
+    ],
+  },
+  支付配置: {
+    title: '供应商在线支付',
+    fields: [
+      { key: 'online_enabled', label: '开启在线支付', type: 'switch' },
+      {
+        key: 'default_channel',
+        label: '默认通道',
+        type: 'select',
+        options: [
+          { value: 'alipay_bank', label: '支付宝转银行卡' },
+          { value: 'mock', label: '模拟出款(联调)' },
+          { value: 'bank_direct', label: '银企直联(二期)' },
+        ],
+      },
+      { key: 'require_boss_approve', label: '需总经理审批', type: 'switch' },
+      { key: 'boss_amount_threshold', label: '超此金额需总经理(0=全部)', type: 'number' },
+      { key: 'alipay_app_id', label: '支付宝 AppID' },
+      { key: 'alipay_private_key_pem', label: '支付宝应用私钥', type: 'textarea' },
+      { key: 'alipay_public_key', label: '支付宝公钥', type: 'textarea' },
+      { key: 'alipay_notify_url', label: '支付宝回调 URL' },
+      { key: 'sms_enabled', label: '支付成功发短信', type: 'switch' },
+      {
+        key: 'sms_provider',
+        label: '短信通道',
+        type: 'select',
+        options: [{ value: 'aliyun', label: '阿里云' }],
+      },
+      { key: 'sms_access_key', label: '短信 AccessKey' },
+      { key: 'sms_access_secret', label: '短信 AccessSecret', type: 'textarea' },
+      { key: 'sms_sign_name', label: '短信签名' },
+      { key: 'sms_template_pay_success', label: '支付成功模板码' },
+      { key: 'bank_direct_code', label: '银企银行代码(二期)' },
     ],
   },
 }
@@ -290,6 +324,24 @@ async function load() {
       const row = rows[0] || {}
       Object.keys(settingForm).forEach((k) => delete settingForm[k])
       Object.assign(settingForm, row)
+      if (props.module === '支付配置') {
+        const alipay = (row.alipay as Row) || {}
+        const sms = (row.sms as Row) || {}
+        const bank = (row.bank_direct as Row) || {}
+        Object.assign(settingForm, {
+          alipay_app_id: alipay.app_id ?? row.alipay_app_id ?? '',
+          alipay_private_key_pem: alipay.private_key_pem ?? row.alipay_private_key_pem ?? '',
+          alipay_public_key: alipay.alipay_public_key ?? row.alipay_public_key ?? '',
+          alipay_notify_url: alipay.notify_url ?? row.alipay_notify_url ?? '',
+          sms_enabled: sms.enabled ?? row.sms_enabled ?? false,
+          sms_provider: sms.provider ?? row.sms_provider ?? 'aliyun',
+          sms_access_key: sms.access_key ?? row.sms_access_key ?? '',
+          sms_access_secret: sms.access_secret ?? row.sms_access_secret ?? '',
+          sms_sign_name: sms.sign_name ?? row.sms_sign_name ?? '',
+          sms_template_pay_success: sms.template_pay_success ?? row.sms_template_pay_success ?? '',
+          bank_direct_code: bank.bank_code ?? row.bank_direct_code ?? '',
+        })
+      }
       for (const f of settingFields.value) {
         if (settingForm[f.key] === undefined) {
           settingForm[f.key] = f.type === 'switch' ? false : (f.type === 'number' || f.type === 'ref') ? 0 : ''
@@ -312,6 +364,34 @@ async function saveSetting() {
   delete body.carrier_code_short
   delete body.carrier_code_manage_title
   delete body.carrier_code_split_verb
+  if (props.module === '支付配置') {
+    const nested = {
+      online_enabled: !!body.online_enabled,
+      default_channel: String(body.default_channel || 'alipay_bank'),
+      require_boss_approve: body.require_boss_approve !== false,
+      boss_amount_threshold: Number(body.boss_amount_threshold || 0),
+      alipay: {
+        app_id: String(body.alipay_app_id || ''),
+        private_key_pem: String(body.alipay_private_key_pem || ''),
+        alipay_public_key: String(body.alipay_public_key || ''),
+        notify_url: String(body.alipay_notify_url || ''),
+      },
+      sms: {
+        enabled: !!body.sms_enabled,
+        provider: String(body.sms_provider || 'aliyun'),
+        access_key: String(body.sms_access_key || ''),
+        access_secret: String(body.sms_access_secret || ''),
+        sign_name: String(body.sms_sign_name || ''),
+        template_pay_success: String(body.sms_template_pay_success || ''),
+      },
+      bank_direct: { bank_code: String(body.bank_direct_code || '') },
+    }
+    const r = await moduleReplace(props.listPath, nested)
+    if (r.code !== 1) return ElMessage.error(r.msg || '保存失败')
+    ElMessage.success('已保存')
+    await load()
+    return
+  }
   const r = await moduleReplace(props.listPath, body)
   if (r.code !== 1) return ElMessage.error(r.msg || '保存失败')
   if (props.module === '基础设置') {

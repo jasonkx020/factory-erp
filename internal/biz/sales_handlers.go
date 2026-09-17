@@ -15,6 +15,9 @@ import (
 
 func (s *Services) handleSales(c *gin.Context, method, openapiPath, action string) bool {
 	s.ensureSalesLoopColumns()
+	if needWrite(action, method) && s.RequireSetupReady(c, "warehouse_fg", "product") {
+		return true
+	}
 	if !s.bindPortalCustomer(c) {
 		return true
 	}

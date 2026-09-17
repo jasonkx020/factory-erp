@@ -255,8 +255,6 @@ CREATE TABLE IF NOT EXISTS pd_process (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   code TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
-  process_type TEXT,
-  is_piecework INTEGER NOT NULL DEFAULT 0,
   is_handover_point INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),

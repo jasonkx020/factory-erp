@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed } from 'vue'
 import { useAuthStore } from './auth'
-import { ERP_MENUS } from '../constants/menus'
+import { getErpMenus } from '../constants/menus'
 import { systemPermCode } from '../constants/systemPerms'
 import type { ModuleMeta } from '../types'
 import { MODULES } from '../generated/modules'
@@ -61,9 +61,10 @@ export const usePermStore = defineStore('perm', () => {
 
   /** 13 域菜单：管理员全量；否则按菜单裁剪 ∪ 权限码 */
   const visibleMenus = computed(() => {
-    if (isFullAdmin.value) return ERP_MENUS
+    const menus = getErpMenus()
+    if (isFullAdmin.value) return menus
 
-    return ERP_MENUS.map((d) => ({
+    return menus.map((d) => ({
       domain: d.domain,
       modules: d.modules.filter((m) => canSeeModule(d.domain, m)),
     })).filter((d) => d.modules.length > 0)
@@ -82,7 +83,7 @@ export const usePermStore = defineStore('perm', () => {
   }
 
   function isFarmerInboundModule(module: string) {
-    return module === '农户档案' || module === '过磅收货' || module === '农户结算'
+    return module === '采购记录' || module === '过磅收货' || module === '供应商结算'
   }
 
   function isOnboardModule(module: string) {
@@ -113,7 +114,7 @@ export const usePermStore = defineStore('perm', () => {
       '基础设置', '自定义打印', '表格自定义', '公式设置', '销售设置', '生产设置',
       '物流信息管理', '审批流程设定', '人事调动', '批量改价', '批量核算工资',
       '单据审批', '单据锁定', '单据通知', '单据编辑', '单据删除', '事项提醒',
-      '多条件检索', '财审管控', '学堂管理', '知识库', '图纸管理', '文档管理',
+      '多条件检索', '财审管控', '支付配置', '学堂管理', '知识库', '图纸管理', '文档管理',
       '公告设置', '备忘录',
     ].includes(module)
   }

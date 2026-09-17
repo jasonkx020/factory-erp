@@ -1,14 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   productionApi,
   productApi,
   hrApi,
-  PROCESS_TYPE_OPTIONS,
-  PROCESS_PAY_MODE_OPTIONS,
-  STATUS_ACTIVE_OPTIONS,
   STATION_FLOW_EVENT_OPTIONS,
   formOptionLabel,
   QC_TYPE_OPTIONS,
@@ -41,9 +38,7 @@ const { codeLabel, ensureLoaded: ensureCarrierLabel } = useCarrierCodeLabel()
 const processCols: MobileCardColumn[] = [
   { prop: 'name', label: '名称', primary: true },
   { prop: 'code', label: '编码' },
-  { prop: 'process_type_label', label: '类型' },
-  { prop: 'pay_mode_label', label: '计费' },
-  { prop: 'status_label', label: '状态' },
+  { prop: 'status_label', label: '启用' },
 ]
 const shiftCols: MobileCardColumn[] = [
   { prop: 'doc_no', label: '班次号', primary: true },
@@ -209,6 +204,7 @@ const costHideCols: MobileCardColumn[] = [
 ]
 
 const route = useRoute()
+const router = useRouter()
 const TITLE_MAP: Record<string, string> = {
   processes: '工序定义',
   'process-mgmt': '工序定义',
@@ -483,10 +479,10 @@ const workbenchDisplay = computed(() =>
 const taskForm = reactive({ product_id: 3, qty: 1000, routing_id: 1, workshop_dept_id: 0, remark: '' })
 const multiLines = ref<{ product_id: number; qty: number }[]>([{ product_id: 3, qty: 100 }])
 const processEditDlg = ref(false)
-const processEditForm = reactive({ id: 0, code: '', name: '', process_type: 'other', pay_mode: 'none', status: 'active' })
+const processEditForm = reactive({ id: 0, code: '', name: '', has_wage: false })
 const dispatchForm = reactive({ task_id: null as number | null, process_id: null as number | null, worker_id: null as number | null, qty: 100 })
 const reqForm = reactive({ product_id: 1, qty: 100, warehouse_id: 1 })
-const processForm = reactive({ code: '', name: '', process_type: 'other', pay_mode: 'none', status: 'active' })
+const processForm = reactive({ code: '', name: '' })
 const processDlg = ref(false)
 const bomForm = reactive({ product_id: 3, name: '生产BOM', component_product_id: 1, qty: 1.2, scrap_rate: 0.05 })
 const scrapForm = reactive({ product_id: 1, qty: 10, scrap_type: 'cut_defect', process_id: 1, remark: '' })
@@ -876,31 +872,27 @@ async function payPiece(id: number) {
   await refresh()
 }
 
-function processTypeLabel(v: unknown) {
-  return formOptionLabel(PROCESS_TYPE_OPTIONS, v)
-}
-function processPayModeLabel(v: unknown) {
-  return formOptionLabel(PROCESS_PAY_MODE_OPTIONS, v)
-}
-function processStatusLabel(v: unknown) {
-  return formOptionLabel(STATUS_ACTIVE_OPTIONS, v)
-}
-
 const processDisplayList = computed(() =>
-  list.value.map((row) => ({
-    ...row,
-    process_type_label: processTypeLabel(row.process_type),
-    pay_mode_label: processPayModeLabel(row.pay_mode || (row.is_piecework ? 'weight' : 'none')),
-    status_label: processStatusLabel(row.status || 'active'),
-  })),
+  list.value.map((row) => {
+    const hasWage = row.has_wage === true || row.has_wage === 1 || String(row.status || '') === 'active'
+    return {
+      ...row,
+      has_wage: hasWage,
+      status: hasWage ? 'active' : 'inactive',
+      status_label: hasWage ? '已启用' : '未启用',
+    }
+  }),
 )
+
+const inactiveProcessCount = computed(() => processDisplayList.value.filter((r) => !r.has_wage).length)
+
+function goProcessWageRates() {
+  router.push('/payroll/wage-rates')
+}
 
 function resetProcessForm() {
   processForm.code = ''
   processForm.name = ''
-  processForm.process_type = 'other'
-  processForm.pay_mode = 'none'
-  processForm.status = 'active'
 }
 
 function openCreateProcess() {
@@ -914,12 +906,9 @@ async function createProcess() {
   const res = await productionApi.createProcess({
     code,
     name: processForm.name.trim(),
-    process_type: processForm.process_type,
-    pay_mode: processForm.pay_mode,
-    status: processForm.status,
   })
   if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success('工序已创建')
+  ElMessage.success('工序已创建（请到工资管理 → 工序工资配置工价后自动启用）')
   processDlg.value = false
   resetProcessForm()
   await loadMeta()
@@ -930,9 +919,7 @@ function openEditProcess(row: Row) {
   processEditForm.id = Number(row.id)
   processEditForm.code = String(row.code || '')
   processEditForm.name = String(row.name || '')
-  processEditForm.process_type = String(row.process_type || 'other')
-  processEditForm.pay_mode = String(row.pay_mode || (row.is_piecework ? 'weight' : 'none'))
-  processEditForm.status = String(row.status || 'active')
+  processEditForm.has_wage = row.has_wage === true || row.has_wage === 1
   processEditDlg.value = true
 }
 
@@ -942,9 +929,6 @@ async function saveEditProcess() {
   const res = await productionApi.updateProcess(processEditForm.id, {
     code: processEditForm.code.trim(),
     name: processEditForm.name.trim(),
-    process_type: processEditForm.process_type,
-    pay_mode: processEditForm.pay_mode,
-    status: processEditForm.status,
   })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success('工序已更新')
@@ -1249,8 +1233,22 @@ onMounted(async () => {
       <!-- 工序定义：新建 + 维护 -->
       <template v-if="active==='processes' || active==='process-mgmt'">
         <p class="mode-hint">
-          计费：不计费 / 按重量 / 按件。仅「按重量|按件 × 计件工」才预估与日结金额（当前均按 kg×工价）。App 过站须手动指定工序。
+          本页只维护工序编码与名称。「启用」由是否已配置工序工价决定，不可在此单独开关。
         </p>
+        <el-alert
+          v-if="inactiveProcessCount > 0"
+          type="warning"
+          show-icon
+          :closable="false"
+          class="mb"
+          title="有工序尚未启用"
+        >
+          <template #default>
+            共 {{ inactiveProcessCount }} 条为「未启用」。请到
+            <el-button link type="primary" @click="goProcessWageRates">工资管理 → 工序工资</el-button>
+            配置工价后将自动启用。
+          </template>
+        </el-alert>
         <el-card class="mb">
           <div class="row" style="justify-content:space-between;margin-bottom:8px">
             <strong>工序列表</strong>
@@ -1260,18 +1258,24 @@ onMounted(async () => {
             <el-table :data="processDisplayList" size="small" stripe>
               <el-table-column prop="code" label="编码" width="120" />
               <el-table-column prop="name" label="名称" min-width="140" />
-              <el-table-column prop="process_type_label" label="类型" width="100" />
-              <el-table-column prop="pay_mode_label" label="计费" width="100">
+              <el-table-column prop="status_label" label="启用" min-width="200">
                 <template #default="{ row }">
-                  <el-tag
+                  <el-tooltip
+                    v-if="!row.has_wage"
+                    content="请到工资管理 → 工序工资配置工价后自动启用"
+                    placement="top"
+                  >
+                    <el-tag size="small" type="info">未启用</el-tag>
+                  </el-tooltip>
+                  <el-tag v-else size="small" type="success">已启用</el-tag>
+                  <el-button
+                    v-if="!row.has_wage"
+                    link
+                    type="primary"
                     size="small"
-                    :type="row.pay_mode === 'weight' ? 'warning' : row.pay_mode === 'piece' ? 'success' : 'info'"
-                  >{{ row.pay_mode_label }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="status_label" label="状态" width="90">
-                <template #default="{ row }">
-                  <el-tag size="small" :type="row.status === 'inactive' ? 'danger' : 'success'">{{ row.status_label }}</el-tag>
+                    style="margin-left:8px"
+                    @click="goProcessWageRates"
+                  >去配置工价</el-button>
                 </template>
               </el-table-column>
               <el-table-column label="操作" width="100" fixed="right">
@@ -1281,9 +1285,10 @@ onMounted(async () => {
               </el-table-column>
             </el-table>
             <template #extra="{ row }">
-              <el-tag size="small" :type="row.status === 'inactive' ? 'danger' : 'success'">{{ row.status_label }}</el-tag>
+              <el-tag size="small" :type="row.has_wage ? 'success' : 'info'">{{ row.status_label }}</el-tag>
             </template>
             <template #actions="{ row }">
+              <el-button v-if="!row.has_wage" link type="warning" @click="goProcessWageRates">去配置工价</el-button>
               <el-button link type="primary" @click="openEditProcess(row)">配置</el-button>
             </template>
           </TableOrCards>
@@ -2647,12 +2652,9 @@ onMounted(async () => {
         <el-form label-width="90px">
           <el-form-item label="编码"><el-input v-model="processForm.code" placeholder="可空，自动生成" /></el-form-item>
           <el-form-item label="名称" required><el-input v-model="processForm.name" placeholder="如：去皮、切断" /></el-form-item>
-          <el-form-item label="类型"><EnumSelect v-model="processForm.process_type" :options="PROCESS_TYPE_OPTIONS" style="width:100%" /></el-form-item>
-          <el-form-item label="计费">
-            <EnumSelect v-model="processForm.pay_mode" :options="PROCESS_PAY_MODE_OPTIONS" style="width:100%" />
-            <p class="hint" style="margin:6px 0 0">不计费 / 按重量 / 按件；按件与按重量目前均按 kg×工价核算</p>
-          </el-form-item>
-          <el-form-item label="状态"><EnumSelect v-model="processForm.status" :options="STATUS_ACTIVE_OPTIONS" style="width:100%" /></el-form-item>
+          <el-alert type="info" :closable="false" show-icon>
+            新建后为「未启用」。请到「工资管理 → 工序工资」配置工价后自动启用。
+          </el-alert>
         </el-form>
         <template #footer>
           <el-button @click="processDlg = false">取消</el-button>
@@ -2664,12 +2666,21 @@ onMounted(async () => {
         <el-form label-width="90px">
           <el-form-item label="编码"><el-input v-model="processEditForm.code" /></el-form-item>
           <el-form-item label="名称" required><el-input v-model="processEditForm.name" /></el-form-item>
-          <el-form-item label="类型"><EnumSelect v-model="processEditForm.process_type" :options="PROCESS_TYPE_OPTIONS" style="width:100%" /></el-form-item>
-          <el-form-item label="计费">
-            <EnumSelect v-model="processEditForm.pay_mode" :options="PROCESS_PAY_MODE_OPTIONS" style="width:100%" />
-            <p class="hint" style="margin:6px 0 0">不计费 / 按重量 / 按件</p>
-          </el-form-item>
-          <el-form-item label="状态"><EnumSelect v-model="processEditForm.status" :options="STATUS_ACTIVE_OPTIONS" style="width:100%" /></el-form-item>
+          <el-alert
+            v-if="!processEditForm.has_wage"
+            type="warning"
+            :closable="false"
+            show-icon
+            title="当前未启用"
+          >
+            <template #default>
+              请到「工资管理 → 工序工资」配置本工序工价后自动启用。
+              <el-button link type="primary" @click="goProcessWageRates">前往配置</el-button>
+            </template>
+          </el-alert>
+          <el-alert v-else type="success" :closable="false" show-icon title="已启用">
+            已配置启用中工价。停用工价后将自动变为未启用。
+          </el-alert>
         </el-form>
         <template #footer>
           <el-button @click="processEditDlg = false">取消</el-button>

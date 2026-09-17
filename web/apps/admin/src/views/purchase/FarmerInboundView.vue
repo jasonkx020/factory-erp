@@ -15,17 +15,9 @@ type Row = Record<string, unknown>
 
 const { codeLabel, ensureLoaded: ensureCarrierLabel } = useCarrierCodeLabel()
 
-const farmerCols: MobileCardColumn[] = [
-  { prop: 'name', label: '姓名', primary: true },
-  { prop: 'id', label: 'ID' },
-  { prop: 'mobile', label: '电话' },
-  { prop: 'origin', label: '产地' },
-  { prop: 'default_unit_price', label: '默认单价' },
-  { prop: 'status', label: '状态' },
-]
 const arrivalCols: MobileCardColumn[] = [
   { prop: 'doc_no', label: '单号', primary: true },
-  { prop: 'farmer_name', label: '农户' },
+  { prop: 'farmer_name', label: '供应商' },
   { prop: 'estimate_weight', label: '估重' },
   { prop: 'qc_result', label: '质检' },
   { prop: 'grade', label: '等级' },
@@ -36,7 +28,7 @@ const ticketCols = computed<MobileCardColumn[]>(() => [
   { prop: 'receive_kind', label: '模式' },
   { prop: 'batch_no', label: '溯源批号' },
   { prop: 'party_name', label: '姓名' },
-  { prop: 'farmer_name', label: '农户' },
+  { prop: 'farmer_name', label: '供应商' },
   { prop: 'gross_weight', label: '入场重量' },
   { prop: 'net_weight', label: '净重' },
   { prop: 'settle_amount', label: '结算' },
@@ -47,7 +39,7 @@ const ticketCols = computed<MobileCardColumn[]>(() => [
 ])
 const settlementCols: MobileCardColumn[] = [
   { prop: 'doc_no', label: '结算单', primary: true },
-  { prop: 'farmer_name', label: '农户' },
+  { prop: 'farmer_name', label: '供应商' },
   { prop: 'net_weight', label: '净重' },
   { prop: 'goods_amount', label: '货款' },
   { prop: 'freight_fee', label: '运费' },
@@ -60,40 +52,36 @@ const settlementCols: MobileCardColumn[] = [
 
 const props = withDefaults(defineProps<{ section?: string }>(), { section: 'all' })
 
-const showFarmers = computed(() => ['all', 'farmers'].includes(props.section || 'all'))
-const showWeigh = computed(() => ['all', 'weigh'].includes(props.section || 'all'))
+const showWeigh = computed(() => ['all', 'weigh', 'records'].includes(props.section || 'all'))
+const recordsReadonly = computed(() => props.section === 'records' || props.section === 'weigh')
 const showSettlements = computed(() => ['all', 'settlements'].includes(props.section || 'all'))
 const showTrace = computed(() => ['all', 'trace'].includes(props.section || 'all'))
 
 const pageTitle = computed(() => {
   switch (props.section) {
-    case 'farmers': return '农户档案'
-    case 'weigh': return '过磅收货'
-    case 'settlements': return '农户结算'
+    case 'weigh':
+    case 'records': return '采购记录'
+    case 'settlements': return '供应商结算'
     case 'trace': return '原料溯源'
-    default: return '农户采购闭环'
+    default: return '供应商采购闭环'
   }
 })
 
 const headStats = computed(() => {
   const items = [
-    showFarmers.value ? { label: '农户档案', value: farmers.value.length, tone: 'primary' } : null,
-    showWeigh.value ? { label: '到货单', value: arrivals.value.length, tone: 'warning' } : null,
-    showWeigh.value ? { label: '过磅单', value: tickets.value.length, tone: 'success' } : null,
+    showWeigh.value ? { label: '采购单', value: tickets.value.length, tone: 'success' } : null,
     showSettlements.value ? { label: '结算单', value: settlements.value.length, tone: 'info' } : null,
   ].filter(Boolean) as { label: string; value: number; tone: string }[]
   return items
 })
 
-const farmers = ref<Row[]>([])
+const personSuppliers = ref<Row[]>([])
 const arrivals = ref<Row[]>([])
 const tickets = ref<Row[]>([])
 const settlements = ref<Row[]>([])
 const loading = ref(false)
-const farmerDlg = ref(false)
-const farmerForm = reactive({ name: '', mobile: '', origin: '', remark: '', default_unit_price: 1 })
 const arrivalForm = reactive({
-  farmer_id: 0,
+  supplier_id: 0,
   origin: '',
   variety: '鲜木薯',
   estimate_weight: 1000,
@@ -111,7 +99,7 @@ const arrivalForm = reactive({
 const weighForm = reactive({
   receive_kind: 'gate' as 'gate' | 'stockin',
   arrival_id: 0,
-  farmer_id: 0,
+  supplier_id: 0,
   channel: 'internal',
   gross_weight: 1000,
   deduct_rate: 0.05,
@@ -139,12 +127,12 @@ const weighForm = reactive({
   weigh_fee: 0,
 })
 const batchValid = ref(false)
-const batchBoundFarmer = ref('')
+const batchBoundSupplier = ref('')
 const batchInputMode = ref<'scan' | 'manual'>('manual')
-const farmerOptions = ref<Row[]>([])
-const farmerSearchLoading = ref(false)
-const onsiteFarmerDlg = ref(false)
-const onsiteFarmer = reactive({ name: '', mobile: '', origin: '' })
+const supplierOptions = ref<Row[]>([])
+const supplierSearchLoading = ref(false)
+const onsiteSupplierDlg = ref(false)
+const onsiteSupplier = reactive({ name: '', mobile: '', origin: '' })
 const varieties = ref<Row[]>([])
 const confirmDlg = ref(false)
 const confirmTicket = ref<Row | null>(null)
@@ -168,7 +156,7 @@ const selectedTraceTicketId = ref<number | null>(null)
 const traceTicketCols: MobileCardColumn[] = [
   { prop: 'doc_no', label: '单号', primary: true },
   { prop: 'trace_code', label: '溯源码' },
-  { prop: 'farmer_name', label: '农户' },
+  { prop: 'farmer_name', label: '供应商' },
   { prop: 'net_weight', label: '净重' },
   { prop: 'status_label', label: '状态' },
 ]
@@ -218,7 +206,7 @@ const labelPreviewFields = computed(() => {
     kv('批号', m.batch_no),
     kv('品种', m.variety || m.product_name),
     kv('净重', m.net_weight != null ? `${m.net_weight} kg` : null),
-    kv('农户', m.farmer_name || m.party_name),
+    kv('供应商', m.farmer_name || m.party_name),
     kv('单号', m.doc_no),
   ].filter(Boolean) as { label: string; value: string }[]
 })
@@ -236,21 +224,21 @@ const ocrDraft = computed(() => {
 async function refresh() {
   loading.value = true
   try {
-    const [f, a, t, s, v] = await Promise.all([
-      purchaseApi.farmers(),
+    const [s, a, t, st, v] = await Promise.all([
+      purchaseApi.farmers('page_size=100'),
       purchaseApi.arrivals(),
       purchaseApi.weighTickets(),
-      purchaseApi.farmerSettlements(),
+      purchaseApi.supplierSettlements(),
       purchaseApi.weighVarieties('status=active'),
     ])
-    farmers.value = ((f.data as { list?: Row[] })?.list) || []
-    farmerOptions.value = farmers.value.slice(0, 30)
+    personSuppliers.value = ((s.data as { list?: Row[] })?.list) || []
+    supplierOptions.value = personSuppliers.value.slice(0, 30)
     arrivals.value = ((a.data as { list?: Row[] })?.list) || []
     tickets.value = ((t.data as { list?: Row[] })?.list) || []
-    settlements.value = ((s.data as { list?: Row[] })?.list) || []
+    settlements.value = ((st.data as { list?: Row[] })?.list) || []
     varieties.value = ((v.data as { list?: Row[] })?.list) || []
-    if (farmers.value.length) {
-      if (!arrivalForm.farmer_id) arrivalForm.farmer_id = Number(farmers.value[0].id)
+    if (personSuppliers.value.length) {
+      if (!arrivalForm.supplier_id) arrivalForm.supplier_id = Number(personSuppliers.value[0].id)
     }
     if (varieties.value.length && !weighForm.variety_id) {
       onVarietyChange(Number(varieties.value[0].id))
@@ -260,26 +248,8 @@ async function refresh() {
   }
 }
 
-async function createFarmer() {
-  if (!farmerForm.name) return ElMessage.warning('请填写农户姓名')
-  const res = await purchaseApi.createFarmer({ ...farmerForm })
-  if (res.code !== 1) return ElMessage.error(res.msg)
-  ElMessage.success('农户已建档')
-  farmerDlg.value = false
-  farmerForm.name = ''
-  farmerForm.mobile = ''
-  farmerForm.origin = ''
-  farmerForm.remark = ''
-  farmerForm.default_unit_price = 1
-  await refresh()
-}
-
-function openFarmerDialog() {
-  farmerDlg.value = true
-}
-
 async function createArrival() {
-  if (!arrivalForm.farmer_id) return ElMessage.warning('请选择农户')
+  if (!arrivalForm.supplier_id) return ElMessage.warning('请选择供应商')
   const res = await purchaseApi.createArrival({ ...arrivalForm })
   if (res.code !== 1) return ElMessage.error(res.msg)
   ElMessage.success('到货单已创建，请质检定级')
@@ -301,30 +271,30 @@ async function qcArrival(id: number, pass: boolean) {
   await refresh()
 }
 
-async function searchFarmers(q: string) {
+async function searchSuppliers(q: string) {
   const kw = String(q || '').trim()
   if (!kw) {
-    farmerOptions.value = farmers.value.slice(0, 30)
+    supplierOptions.value = personSuppliers.value.slice(0, 30)
     return
   }
-  farmerSearchLoading.value = true
+  supplierSearchLoading.value = true
   try {
     let params = `page_size=30&keyword=${encodeURIComponent(kw)}`
     if (/^\d+$/.test(kw) && kw.length <= 6) params = `page_size=30&id=${encodeURIComponent(kw)}`
     else if (/^1\d{10}$/.test(kw) || /^\d{7,}$/.test(kw)) params = `page_size=30&mobile=${encodeURIComponent(kw)}`
     const res = await purchaseApi.farmers(params)
-    farmerOptions.value = ((res.data as { list?: Row[] })?.list) || []
+    supplierOptions.value = ((res.data as { list?: Row[] })?.list) || []
   } finally {
-    farmerSearchLoading.value = false
+    supplierSearchLoading.value = false
   }
 }
 
-function applyFarmer(row: Row | undefined) {
+function applySupplier(row: Row | undefined) {
   if (!row) {
-    weighForm.farmer_id = 0
+    weighForm.supplier_id = 0
     return
   }
-  weighForm.farmer_id = Number(row.id || 0)
+  weighForm.supplier_id = Number(row.id || 0)
   weighForm.party_name = String(row.name || '')
   weighForm.party_mobile = String(row.mobile || '')
   weighForm.origin = String(row.origin || weighForm.origin || '')
@@ -332,38 +302,38 @@ function applyFarmer(row: Row | undefined) {
   if (price > 0) weighForm.unit_price = price
 }
 
-function onFarmerSelect(id: number) {
-  const row = farmerOptions.value.find((x) => Number(x.id) === id) || farmers.value.find((x) => Number(x.id) === id)
-  applyFarmer(row)
+function onSupplierSelect(id: number) {
+  const row = supplierOptions.value.find((x) => Number(x.id) === id) || personSuppliers.value.find((x) => Number(x.id) === id)
+  applySupplier(row)
 }
 
-function openOnsiteFarmer() {
-  onsiteFarmer.name = weighForm.party_name || ''
-  onsiteFarmer.mobile = weighForm.party_mobile || ''
-  onsiteFarmer.origin = weighForm.origin || ''
-  onsiteFarmerDlg.value = true
+function openOnsiteSupplier() {
+  onsiteSupplier.name = weighForm.party_name || ''
+  onsiteSupplier.mobile = weighForm.party_mobile || ''
+  onsiteSupplier.origin = weighForm.origin || ''
+  onsiteSupplierDlg.value = true
 }
 
-async function saveOnsiteFarmer() {
-  if (!onsiteFarmer.name.trim()) return ElMessage.warning('请填写农户姓名')
+async function saveOnsiteSupplier() {
+  if (!onsiteSupplier.name.trim()) return ElMessage.warning('请填写供应商姓名')
   const res = await purchaseApi.createFarmer({
-    name: onsiteFarmer.name.trim(),
-    mobile: onsiteFarmer.mobile.trim(),
-    origin: onsiteFarmer.origin.trim(),
+    name: onsiteSupplier.name.trim(),
+    mobile: onsiteSupplier.mobile.trim(),
+    origin: onsiteSupplier.origin.trim(),
   })
   if (res.code !== 1) return ElMessage.error(res.msg)
   const row = (res.data as Row) || {}
-  farmerOptions.value = [row, ...farmerOptions.value]
-  farmers.value = [row, ...farmers.value]
-  applyFarmer(row)
-  onsiteFarmerDlg.value = false
+  supplierOptions.value = [row, ...supplierOptions.value]
+  personSuppliers.value = [row, ...personSuppliers.value]
+  applySupplier(row)
+  onsiteSupplierDlg.value = false
   ElMessage.success(`已现场建档并关联 #${row.id}`)
 }
 
 async function validateBatch() {
   const code = String(weighForm.batch_no || '').trim().toUpperCase()
   weighForm.batch_no = code
-  batchBoundFarmer.value = ''
+  batchBoundSupplier.value = ''
   if (!code) {
     batchValid.value = false
     return ElMessage.warning('请填写溯源批号')
@@ -375,19 +345,19 @@ async function validateBatch() {
   batchValid.value = res.code === 1
   if (res.code !== 1) return ElMessage.error(res.msg)
   const data = (res.data || {}) as Row
-  batchBoundFarmer.value = String(data.farmer_name || data.party_name || '')
+  batchBoundSupplier.value = String(data.farmer_name || data.party_name || '')
   ElMessage.success(
-    weighForm.receive_kind === 'stockin' && batchBoundFarmer.value
-      ? `批号校验通过 · 关联农户 ${batchBoundFarmer.value}`
+    weighForm.receive_kind === 'stockin' && batchBoundSupplier.value
+      ? `批号校验通过 · 关联供应商 ${batchBoundSupplier.value}`
       : '批号校验通过',
   )
 }
 
 function onReceiveKindChange() {
   batchValid.value = false
-  batchBoundFarmer.value = ''
+  batchBoundSupplier.value = ''
   if (weighForm.receive_kind === 'stockin') {
-    weighForm.farmer_id = 0
+    weighForm.supplier_id = 0
     weighForm.party_name = ''
     weighForm.party_mobile = ''
     weighForm.origin = ''
@@ -424,8 +394,8 @@ async function createWeigh() {
   }
   if (!weighForm.image_url) return ElMessage.warning('请上传现场照片')
   if (!weighForm.variety_id && !weighForm.variety) return ElMessage.warning('请选择过磅品种')
-  if (!weighForm.farmer_id && !String(weighForm.party_name || '').trim()) {
-    return ElMessage.warning('入厂须选择或现场录入农户')
+  if (!weighForm.supplier_id && !String(weighForm.party_name || '').trim()) {
+    return ElMessage.warning('入厂须选择或现场录入供应商')
   }
   const body: Record<string, unknown> = {
     receive_kind: 'gate',
@@ -441,7 +411,7 @@ async function createWeigh() {
     reject_weight: weighForm.reject_weight,
   }
   if (weighForm.arrival_id) body.arrival_id = weighForm.arrival_id
-  body.farmer_id = weighForm.farmer_id || 0
+  body.supplier_id = weighForm.supplier_id || 0
   body.party_name = weighForm.party_name
   body.party_mobile = weighForm.party_mobile
   body.origin = weighForm.origin
@@ -467,7 +437,7 @@ async function createWeigh() {
   weighForm.image_url = ''
   weighForm.image_urls = []
   batchValid.value = false
-  batchBoundFarmer.value = ''
+  batchBoundSupplier.value = ''
   await refresh()
 }
 
@@ -636,8 +606,11 @@ watch(
     <section class="page-head">
       <div>
         <h2 class="page-title">{{ pageTitle }}</h2>
-        <p class="hint">
-          到货拍照质检定级 → 过磅图+自动预填 → 对照原图确认出码贴标 → 仓管扫码入库 → 财务转账回单关单。业务可查可改不可删。
+        <p class="hint" v-if="recordsReadonly">
+          查看每笔采购入厂单进度（建单 → 质检 → 入库/分板 → 结算）。现场建单请在 App「采购」完成。
+        </p>
+        <p class="hint" v-else>
+          到货拍照质检定级 → 对照确认 → 仓管扫码入库 → 财务关单。业务可查可改不可删。
         </p>
       </div>
       <div v-if="headStats.length" class="head-stats">
@@ -647,10 +620,12 @@ watch(
         </div>
       </div>
     </section>
-    <el-alert v-if="showWeigh" type="warning" show-icon :closable="false" class="mb" style="margin-bottom:12px"
-      title="日常过磅收货请优先使用 Flutter App「过磅收货」。管理端用于审核、查询与补单。" />
+    <el-alert v-if="showWeigh && recordsReadonly" type="info" show-icon :closable="false" class="mb" style="margin-bottom:12px"
+      title="采购记录为只读台账。日常采购入厂请使用 Flutter App「采购」模块。" />
+    <el-alert v-else-if="showWeigh" type="warning" show-icon :closable="false" class="mb" style="margin-bottom:12px"
+      title="日常采购请优先使用 Flutter App。管理端用于审核、查询与补单。" />
 
-    <el-row v-if="showWeigh" :gutter="16" class="top-panels">
+    <el-row v-if="showWeigh && !recordsReadonly" :gutter="16" class="top-panels">
       <template v-if="showWeigh">
         <el-col :span="12" :xs="24">
           <el-card class="section-card" shadow="hover">
@@ -661,9 +636,9 @@ watch(
               </div>
             </template>
             <el-form label-width="90px" size="small" class="stack-form">
-              <el-form-item label="农户">
-                <el-select v-model="arrivalForm.farmer_id" style="width:100%">
-                  <el-option v-for="f in farmers" :key="String(f.id)" :label="String(f.name)" :value="Number(f.id)" />
+              <el-form-item label="供应商">
+                <el-select v-model="arrivalForm.supplier_id" style="width:100%">
+                  <el-option v-for="f in personSuppliers" :key="String(f.id)" :label="String(f.name)" :value="Number(f.id)" />
                 </el-select>
               </el-form-item>
               <el-form-item label="估重"><el-input-number v-model="arrivalForm.estimate_weight" :min="0" /></el-form-item>
@@ -693,12 +668,12 @@ watch(
                 :closable="false"
                 show-icon
                 class="mb"
-                title="入厂后由仓管扫溯源分板入库；农户结算环节可在「系统管理 → 基础设置」配置"
+                title="入厂后由仓管扫溯源分板入库；供应商结算环节可在「系统管理 → 基础设置」配置"
                 style="margin-bottom:12px"
               />
               <el-form-item label="溯源批号">
                 <div style="width:100%">
-                  <el-radio-group v-model="batchInputMode" size="small" style="margin-bottom:8px" @change="batchValid = false; batchBoundFarmer = ''">
+                  <el-radio-group v-model="batchInputMode" size="small" style="margin-bottom:8px" @change="batchValid = false; batchBoundSupplier = ''">
                     <el-radio-button value="scan">扫描输入</el-radio-button>
                     <el-radio-button value="manual">手动输入</el-radio-button>
                   </el-radio-group>
@@ -710,7 +685,7 @@ watch(
                           ? '扫码枪扫入后回车校验'
                           : '手输批号后点校验'
                       "
-                      @change="batchValid = false; batchBoundFarmer = ''"
+                      @change="batchValid = false; batchBoundSupplier = ''"
                       @keyup.enter="onBatchScanEnter"
                     />
                     <el-button @click="validateBatch">校验</el-button>
@@ -729,28 +704,28 @@ watch(
                 </el-select>
               </el-form-item>
               <template>
-                <el-form-item label="农户搜索">
+                <el-form-item label="供应商搜索">
                   <div style="display:flex;gap:8px;width:100%">
                     <el-select
-                      v-model="weighForm.farmer_id"
+                      v-model="weighForm.supplier_id"
                       filterable
                       remote
                       clearable
                       reserve-keyword
                       placeholder="手机号 / 姓名 / ID"
-                      :remote-method="searchFarmers"
-                      :loading="farmerSearchLoading"
+                      :remote-method="searchSuppliers"
+                      :loading="supplierSearchLoading"
                       style="flex:1"
-                      @change="onFarmerSelect"
+                      @change="onSupplierSelect"
                     >
                       <el-option
-                        v-for="f in farmerOptions"
+                        v-for="f in supplierOptions"
                         :key="String(f.id)"
                         :label="`${f.name} ${f.mobile || ''} (#${f.id})`"
                         :value="Number(f.id)"
                       />
                     </el-select>
-                    <el-button @click="openOnsiteFarmer">现场录入</el-button>
+                    <el-button @click="openOnsiteSupplier">现场录入</el-button>
                   </div>
                 </el-form-item>
                 <el-form-item label="姓名"><el-input v-model="weighForm.party_name" /></el-form-item>
@@ -801,39 +776,17 @@ watch(
       </template>
     </el-row>
 
-    <el-card v-if="showFarmers" class="section-card" shadow="hover" style="margin-top:16px">
-      <template #header>
-        <div class="card-head card-head-row">
-          <div>
-            <span>农户列表</span>
-            <small>快速查看建档状态与默认单价</small>
-          </div>
-          <el-button type="primary" plain size="small" @click="openFarmerDialog">新建农户</el-button>
-        </div>
-      </template>
-      <TableOrCards :data="farmers" :loading="loading" :columns="farmerCols">
-        <el-table :data="farmers" size="small">
-          <el-table-column prop="id" label="ID" width="70" />
-          <el-table-column prop="name" label="姓名" width="120" />
-          <el-table-column prop="mobile" label="电话" width="130" />
-          <el-table-column prop="origin" label="产地" />
-          <el-table-column prop="default_unit_price" label="默认单价" width="100" />
-          <el-table-column prop="status" label="状态" width="90" />
-        </el-table>
-      </TableOrCards>
-    </el-card>
-
-    <el-card v-if="showWeigh" class="section-card" shadow="hover" style="margin-top:16px">
+    <el-card v-if="showWeigh && !recordsReadonly" class="section-card" shadow="hover" style="margin-top:16px">
       <template #header>
         <div class="card-head">
           <span>到货质检</span>
-          <small>定级后才能进入后续过磅流程</small>
+          <small>定级后才能进入后续采购流程</small>
         </div>
       </template>
       <TableOrCards :data="arrivals" :loading="loading" :columns="arrivalCols">
         <el-table :data="arrivals" size="small">
           <el-table-column prop="doc_no" label="单号" width="150" />
-          <el-table-column prop="farmer_name" label="农户" width="100" />
+          <el-table-column prop="farmer_name" label="供应商" width="100" />
           <el-table-column prop="estimate_weight" label="估重" width="80" />
           <el-table-column prop="qc_result" label="质检" width="70" />
           <el-table-column prop="grade" label="等级" width="60" />
@@ -855,11 +808,11 @@ watch(
     <el-card v-if="showWeigh" class="section-card" shadow="hover" style="margin-top:16px">
       <template #header>
         <div class="card-head">
-          <span>过磅确认 / 出码</span>
-          <small>入库仍需到仓管待办继续处理</small>
+          <span>{{ recordsReadonly ? '采购单进度' : '采购确认 / 出码' }}</span>
+          <small>{{ recordsReadonly ? '只读查看进度与溯源' : '入库仍需到仓管待办继续处理' }}</small>
         </div>
       </template>
-      <p class="hint">确认出码后系统将溯源码与单号推送给仓管；仓管确认后方为采购完成。</p>
+      <p class="hint" v-if="!recordsReadonly">确认出码后系统将溯源码与单号推送给仓管；仓管确认后方为采购完成。</p>
       <TableOrCards :data="ticketsView" :loading="loading" :columns="ticketCols">
         <el-table :data="ticketsView" size="small">
           <el-table-column prop="doc_no" label="单号" width="150" />
@@ -868,7 +821,7 @@ watch(
           </el-table-column>
           <el-table-column prop="batch_no" label="溯源批号" min-width="160" />
           <el-table-column prop="party_name" label="姓名" width="90" />
-          <el-table-column prop="farmer_name" label="农户" width="90" />
+          <el-table-column prop="farmer_name" label="供应商" width="90" />
           <el-table-column prop="gross_weight" label="入场重量" width="90" />
           <el-table-column prop="net_weight" label="净重" width="70" />
           <el-table-column prop="settle_amount" label="结算" width="80" />
@@ -878,12 +831,12 @@ watch(
               <el-image v-if="row.image_url" :src="String(row.image_url)" style="width:36px;height:36px" fit="cover" :preview-src-list="[String(row.image_url)]" />
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="100">
+          <el-table-column label="进度" width="120">
             <template #default="{ row }">{{ weighTicketStatusLabel(row) }}</template>
           </el-table-column>
           <el-table-column prop="trace_code" label="溯源码" min-width="160" />
           <el-table-column prop="box_code" :label="codeLabel" min-width="120" />
-          <el-table-column label="操作" width="280" fixed="right">
+          <el-table-column v-if="!recordsReadonly" label="操作" width="280" fixed="right">
             <template #default="{ row }">
               <el-button v-if="row.status==='draft' || row.status==='qc_pass'" link type="primary" @click="openConfirm(row)">对照确认出码</el-button>
               <el-button v-if="row.status==='weighed'" link type="info" disabled>{{ row.receive_kind === 'stockin' ? '等待仓管确认入库' : '待入厂' }}</el-button>
@@ -893,7 +846,7 @@ watch(
             </template>
           </el-table-column>
         </el-table>
-        <template #actions="{ row }">
+        <template v-if="!recordsReadonly" #actions="{ row }">
           <el-button v-if="row.status==='draft' || row.status==='qc_pass'" link type="primary" @click="openConfirm(row)">对照确认出码</el-button>
           <el-button v-if="row.status==='weighed'" link type="info" disabled>{{ row.receive_kind === 'stockin' ? '等待仓管确认入库' : '待入厂' }}</el-button>
           <el-button v-if="row.status==='gate_accepted'" link type="warning" disabled>待入库</el-button>
@@ -924,7 +877,7 @@ watch(
           <el-input
             v-model="traceListKeyword"
             clearable
-            placeholder="过滤单号/溯源码/农户"
+            placeholder="过滤单号/溯源码/供应商"
             size="small"
             style="margin-bottom:10px"
           />
@@ -938,7 +891,7 @@ watch(
             >
               <el-table-column prop="doc_no" label="单号" min-width="120" show-overflow-tooltip />
               <el-table-column prop="trace_code" label="溯源码" min-width="140" show-overflow-tooltip />
-              <el-table-column label="农户" width="90">
+              <el-table-column label="供应商" width="90">
                 <template #default="{ row }">{{ row.farmer_name || row.party_name || '-' }}</template>
               </el-table-column>
               <el-table-column prop="net_weight" label="净重" width="70" />
@@ -975,14 +928,14 @@ watch(
         <el-card class="section-card" shadow="hover">
           <template #header>
             <div class="card-head">
-              <span>农户结算</span>
+              <span>供应商结算</span>
               <small>财务支付需补齐转账单号与回单凭证</small>
             </div>
           </template>
           <TableOrCards :data="settlements" :loading="loading" :columns="settlementCols">
             <el-table :data="settlements" size="small">
               <el-table-column prop="doc_no" label="结算单" width="140" />
-              <el-table-column prop="farmer_name" label="农户" width="90" />
+              <el-table-column prop="farmer_name" label="供应商" width="90" />
               <el-table-column prop="net_weight" label="净重" width="80" />
               <el-table-column prop="goods_amount" label="货款" width="80" />
               <el-table-column prop="freight_fee" label="运费" width="70" />
@@ -1075,27 +1028,15 @@ watch(
         <el-button type="warning" @click="doCorrect">提交纠错</el-button>
       </template>
     </el-dialog>
-    <el-dialog v-model="onsiteFarmerDlg" title="现场录入农户（平台共享）" width="480px">
+    <el-dialog v-model="onsiteSupplierDlg" title="现场录入供应商（平台共享）" width="480px">
       <el-form label-width="90px">
-        <el-form-item label="姓名" required><el-input v-model="onsiteFarmer.name" /></el-form-item>
-        <el-form-item label="手机号"><el-input v-model="onsiteFarmer.mobile" /></el-form-item>
-        <el-form-item label="产地地址"><el-input v-model="onsiteFarmer.origin" /></el-form-item>
+        <el-form-item label="姓名" required><el-input v-model="onsiteSupplier.name" /></el-form-item>
+        <el-form-item label="手机号"><el-input v-model="onsiteSupplier.mobile" /></el-form-item>
+        <el-form-item label="产地地址"><el-input v-model="onsiteSupplier.origin" /></el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="onsiteFarmerDlg = false">取消</el-button>
-        <el-button type="primary" @click="saveOnsiteFarmer">保存并关联</el-button>
-      </template>
-    </el-dialog>
-    <el-dialog v-model="farmerDlg" title="新建农户" width="460px">
-      <el-form label-width="90px" class="stack-form">
-        <el-form-item label="姓名" required><el-input v-model="farmerForm.name" /></el-form-item>
-        <el-form-item label="电话"><el-input v-model="farmerForm.mobile" /></el-form-item>
-        <el-form-item label="产地"><el-input v-model="farmerForm.origin" /></el-form-item>
-        <el-form-item label="默认单价"><el-input-number v-model="farmerForm.default_unit_price" :min="0" :step="0.1" /></el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="farmerDlg = false">取消</el-button>
-        <el-button type="primary" @click="createFarmer">保存</el-button>
+        <el-button @click="onsiteSupplierDlg = false">取消</el-button>
+        <el-button type="primary" @click="saveOnsiteSupplier">保存并关联</el-button>
       </template>
     </el-dialog>
   </div>

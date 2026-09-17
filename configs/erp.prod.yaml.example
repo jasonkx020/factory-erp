@@ -3,6 +3,9 @@
 # 数据库：先 erp-db baseline/upgrade，再启动 API（init_schema 必须为 false）
 seed:
   demo: false
+product:
+  profile: extended
+  industry_pack: cassava
 server:
   addr: ":18080"
 database:

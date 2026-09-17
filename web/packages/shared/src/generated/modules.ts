@@ -277,18 +277,7 @@ export const MODULES: ModuleMeta[] = [
   },
   {
     domain: '采购管理',
-    module: '农户档案',
-    phase: 2,
-    list: '/purchase/farmers',
-    create: '/purchase/farmers',
-    detail: '/purchase/farmers/{id}',
-    update: '/purchase/farmers/{id}',
-    remove: '/purchase/farmers/{id}',
-    actions: [],
-  },
-  {
-    domain: '采购管理',
-    module: '过磅收货',
+    module: '采购记录',
     phase: 2,
     list: '/purchase/weigh-tickets',
     create: '/purchase/weigh-tickets',
@@ -298,14 +287,14 @@ export const MODULES: ModuleMeta[] = [
   },
   {
     domain: '采购管理',
-    module: '过磅流程编排',
+    module: '采购流程编排',
     phase: 1,
     list: '',
     actions: [],
   },
   {
     domain: '采购管理',
-    module: '过磅品种',
+    module: '采购品种',
     phase: 1,
     list: '',
     actions: [],
@@ -319,10 +308,10 @@ export const MODULES: ModuleMeta[] = [
   },
   {
     domain: '采购管理',
-    module: '农户结算',
+    module: '供应商结算',
     phase: 2,
-    list: '/purchase/farmer-settlements',
-    create: '/purchase/farmer-settlements',
+    list: '/purchase/supplier-settlements',
+    create: '/purchase/supplier-settlements',
     actions: [],
   },
   {
@@ -1069,6 +1058,13 @@ export const MODULES: ModuleMeta[] = [
   },
   {
     domain: '财务管理',
+    module: '在线支付审批',
+    phase: 1,
+    list: '/finance/payment-orders',
+    actions: ['approve-finance', 'approve-boss', 'reject', 'retry'],
+  },
+  {
+    domain: '财务管理',
     module: '财务报表',
     phase: 3,
     list: '/finance/statements',
@@ -1697,6 +1693,13 @@ export const MODULES: ModuleMeta[] = [
     module: '财审管控',
     phase: 3,
     list: '/system/finance-audit-controls',
+    actions: [],
+  },
+  {
+    domain: '系统管理',
+    module: '支付配置',
+    phase: 3,
+    list: '/system/payment-settings',
     actions: [],
   },
   {

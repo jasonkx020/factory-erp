@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 import (
 	"fmt"
@@ -303,7 +303,7 @@ func (s *Services) listProcessWipBoxes(c *gin.Context) bool {
 
 	q := `SELECT b.id, b.code, COALESCE(b.product_id,0), COALESCE(p.name,''), COALESCE(b.warehouse_id,0),
 		COALESCE(b.qty,0), COALESCE(b.weight,0), COALESCE(b.status,''), COALESCE(b.trace_code,''),
-		COALESCE(b.receive_date,''), COALESCE(b.farmer_id,0), COALESCE(b.current_process_id,0), COALESCE(b.current_step_id,0)
+		COALESCE(b.receive_date,''), COALESCE(b.supplier_id,0), COALESCE(b.current_process_id,0), COALESCE(b.current_step_id,0)
 		FROM inv_box_code b
 		LEFT JOIN prd_product p ON p.id=b.product_id
 		WHERE COALESCE(b.is_deleted,0)=0 AND b.status IN ('open','active')
@@ -358,7 +358,7 @@ func (s *Services) listProcessWipBoxes(c *gin.Context) bool {
 		list = append(list, gin.H{
 			"id": id, "code": code, "product_id": productID, "product_name": productName,
 			"warehouse_id": wh, "qty": qty, "weight": weight, "available_kg": avail, "status": status,
-			"trace_code": trace, "receive_date": recvDate, "farmer_id": farmerID,
+			"trace_code": trace, "receive_date": recvDate, "supplier_id": farmerID,
 			"current_process_id": procID, "current_step_id": curStep,
 			"occupancies": []gin.H{}, "occupied_kg": 0.0, "wip_kg": roundKg(wip),
 		})

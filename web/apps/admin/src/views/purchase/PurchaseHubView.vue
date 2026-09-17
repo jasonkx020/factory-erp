@@ -87,12 +87,12 @@ const route = useRoute()
 
 const TITLE_MAP: Record<string, string> = {
   suppliers: '供应商管理',
-  farmers: '农户档案',
-  weigh: '过磅收货',
-  'flow-graphs': '过磅流程编排',
-  varieties: '过磅品种',
+  records: '采购记录',
+  weigh: '采购记录',
+  'flow-graphs': '采购流程编排',
+  varieties: '采购品种',
   'trace-batches': '溯源批号',
-  settlements: '农户结算',
+  settlements: '供应商结算',
   trace: '原料溯源',
   requests: '采购申请',
   plans: '采购计划单',
@@ -104,9 +104,12 @@ const TITLE_MAP: Record<string, string> = {
   tasks: '采购任务管理',
 }
 
-const active = computed(() => String(route.params.section || 'suppliers'))
+const active = computed(() => {
+  const s = String(route.params.section || 'suppliers')
+  return s === 'weigh' ? 'records' : s
+})
 const title = computed(() => TITLE_MAP[active.value] || '采购管理')
-const isFarmerSection = computed(() => ['farmers', 'weigh', 'settlements', 'trace'].includes(active.value))
+const isFarmerSection = computed(() => ['records', 'weigh', 'settlements', 'trace'].includes(active.value))
 const isFlowGraphSection = computed(() => active.value === 'flow-graphs')
 const isVarietySection = computed(() => active.value === 'varieties')
 const isTraceBatchSection = computed(() => active.value === 'trace-batches')
@@ -415,8 +418,8 @@ onMounted(async () => {
     <TraceBatchView v-else-if="isTraceBatchSection" />
     <FarmerInboundView v-else-if="isFarmerSection" :section="active" />
     <div v-else-if="isFlowGraphSection" class="page">
-      <h2>过磅流程编排</h2>
-      <p class="hint">配置入厂/入库过磅岗序；运行时按图推送下一角色待办。</p>
+      <h2>采购流程编排</h2>
+      <p class="hint">配置采购入厂/入库岗序与是否需要过磅；运行时按图推送下一角色待办。</p>
       <FlowGraphEditorView kind-filter="purchase" />
     </div>
 
@@ -424,7 +427,7 @@ onMounted(async () => {
       <div class="head">
         <h2>{{ title }}</h2>
         <p class="hint">
-          工厂采购双轨：农户过磅闭环 + 供应商正式采购（申请→计划→入库过账→质检/退货）。仓管入库见「库存管理/仓管待入库」。
+          工厂采购双轨：个人供应商过磅闭环 + 企业供应商正式采购（申请→计划→入库过账→质检/退货）。仓管入库见「库存管理/仓管待入库」。
         </p>
       </div>
 

@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 import (
 	"fmt"
@@ -55,7 +55,7 @@ func (s *Services) handleTraceBatchCodes(c *gin.Context, method, action string) 
 
 func (s *Services) listTraceBatchCodes(c *gin.Context) bool {
 	pageNum, pageSize := sqlutil.Page(c)
-	farmerID, _ := asInt64(c.Query("farmer_id"))
+	farmerID, _ := asInt64(c.Query("supplier_id"))
 	status := strings.TrimSpace(c.Query("status"))
 	if status == "used" {
 		status = "in_progress"
@@ -68,12 +68,12 @@ func (s *Services) listTraceBatchCodes(c *gin.Context) bool {
 	args := []interface{}{}
 	if farmerID > 0 {
 		// 倒查：池表锁定农户，或曾挂过该农户的 gate 过磅单
-		where += ` AND (COALESCE(c.farmer_id,0)=? OR EXISTS (
+		where += ` AND (COALESCE(c.supplier_id,0)=? OR EXISTS (
 			SELECT 1 FROM pur_weigh_ticket w
 			WHERE UPPER(w.batch_no)=UPPER(c.code)
 			  AND LOWER(COALESCE(w.receive_kind,''))='gate'
 			  AND COALESCE(w.is_deleted,0)=0
-			  AND COALESCE(w.farmer_id,0)=?
+			  AND COALESCE(w.supplier_id,0)=?
 		))`
 		args = append(args, farmerID, farmerID)
 		if bd := strings.TrimSpace(c.Query("biz_date")); bd != "" {
@@ -105,10 +105,10 @@ func (s *Services) listTraceBatchCodes(c *gin.Context) bool {
 	args = append(args, pageSize, (pageNum-1)*pageSize)
 	rows, err := s.DB.Query(`SELECT c.id, c.code, c.biz_date, c.seq_no, c.lot_no, c.status,
 		COALESCE(c.weigh_ticket_id,0), COALESCE(c.first_weigh_ticket_id,0),
-		COALESCE(c.farmer_id,0), COALESCE(f.name,''), COALESCE(c.product_id,0), COALESCE(p.name,''),
+		COALESCE(c.supplier_id,0), COALESCE(f.name,''), COALESCE(c.product_id,0), COALESCE(p.name,''),
 		COALESCE(c.variety,''), c.created_at, COALESCE(c.used_at,''), COALESCE(c.ended_at,'')
 		FROM pur_trace_batch_code c
-		LEFT JOIN pur_farmer f ON f.id=c.farmer_id
+		LEFT JOIN pur_supplier f ON f.id=c.supplier_id
 		LEFT JOIN prd_product p ON p.id=c.product_id
 		`+where+` ORDER BY `+orderBy+` LIMIT ? OFFSET ?`, args...)
 	if err != nil {
@@ -128,7 +128,7 @@ func (s *Services) listTraceBatchCodes(c *gin.Context) bool {
 			"status": st, "status_label": traceBatchStatusLabel(st),
 			"can_append": canAppend, "selectable": canAppend,
 			"weigh_ticket_id": wtID, "first_weigh_ticket_id": firstID,
-			"farmer_id": fid, "farmer_name": farmerName,
+			"supplier_id": fid, "farmer_name": farmerName,
 			"product_id": productID, "product_name": productName, "variety": variety,
 			"created_at": created, "used_at": used, "ended_at": ended,
 		})
@@ -204,13 +204,13 @@ func (s *Services) mergeTraceBindingInto(out gin.H, code string) {
 		// pool-level lock as fallback
 		var farmerID, productID int64
 		var variety, farmerName, productName string
-		_ = s.DB.QueryRow(`SELECT COALESCE(c.farmer_id,0), COALESCE(f.name,''), COALESCE(c.product_id,0), COALESCE(p.name,''), COALESCE(c.variety,'')
+		_ = s.DB.QueryRow(`SELECT COALESCE(c.supplier_id,0), COALESCE(f.name,''), COALESCE(c.product_id,0), COALESCE(p.name,''), COALESCE(c.variety,'')
 			FROM pur_trace_batch_code c
-			LEFT JOIN pur_farmer f ON f.id=c.farmer_id
+			LEFT JOIN pur_supplier f ON f.id=c.supplier_id
 			LEFT JOIN prd_product p ON p.id=c.product_id
 			WHERE c.code=?`, code).Scan(&farmerID, &farmerName, &productID, &productName, &variety)
 		if farmerID > 0 {
-			out["farmer_id"] = farmerID
+			out["supplier_id"] = farmerID
 			out["farmer_name"] = farmerName
 			out["party_name"] = farmerName
 			out["product_id"] = productID
@@ -329,7 +329,7 @@ func (s *Services) validateTraceBatchForStockin(code string) (gin.H, string) {
 	out := gin.H{
 		"code": code, "valid": true, "status": status, "status_label": traceBatchStatusLabel(status),
 		"receive_kind": "stockin",
-		"gate_ticket_id": bind["gate_ticket_id"], "farmer_id": bind["farmer_id"],
+		"gate_ticket_id": bind["gate_ticket_id"], "supplier_id": bind["supplier_id"],
 		"farmer_name": bind["farmer_name"], "party_name": bind["party_name"],
 		"party_mobile": bind["party_mobile"], "origin": bind["origin"],
 		"channel": bind["channel"], "product_id": bind["product_id"],
@@ -349,18 +349,18 @@ func (s *Services) resolveGateBindingByBatch(batchNo string) (gin.H, string) {
 	// Prefer pool-level lock when present
 	var lockFarmer, lockProduct, firstTicket int64
 	var lockVariety string
-	_ = s.DB.QueryRow(`SELECT COALESCE(farmer_id,0), COALESCE(product_id,0), COALESCE(variety,''), COALESCE(first_weigh_ticket_id,0)
+	_ = s.DB.QueryRow(`SELECT COALESCE(supplier_id,0), COALESCE(product_id,0), COALESCE(variety,''), COALESCE(first_weigh_ticket_id,0)
 		FROM pur_trace_batch_code WHERE code=?`, batchNo).Scan(&lockFarmer, &lockProduct, &lockVariety, &firstTicket)
 
 	var gateID, farmerID, productID int64
 	var partyName, partyMobile, origin, channel, farmerName, variety, grade, plate, recvAddr string
 	var unitPrice float64
-	err := s.DB.QueryRow(`SELECT w.id, COALESCE(w.farmer_id,0), COALESCE(w.party_name,''), COALESCE(w.party_mobile,''),
+	err := s.DB.QueryRow(`SELECT w.id, COALESCE(w.supplier_id,0), COALESCE(w.party_name,''), COALESCE(w.party_mobile,''),
 		COALESCE(w.origin,''), COALESCE(w.channel,''), COALESCE(f.name,''),
 		COALESCE(w.product_id,0), COALESCE(w.variety,''), COALESCE(w.grade,''),
 		COALESCE(w.unit_price,0), COALESCE(w.plate_no,''), COALESCE(w.receive_address,'')
 		FROM pur_weigh_ticket w
-		LEFT JOIN pur_farmer f ON f.id=w.farmer_id
+		LEFT JOIN pur_supplier f ON f.id=w.supplier_id
 		WHERE UPPER(w.batch_no)=? AND LOWER(COALESCE(w.receive_kind,''))='gate'
 		  AND COALESCE(w.is_deleted,0)=0
 		ORDER BY CASE WHEN LOWER(w.status) IN ('weighed','stocked','gate_accepted') THEN 0 ELSE 1 END, w.id DESC
@@ -370,7 +370,7 @@ func (s *Services) resolveGateBindingByBatch(batchNo string) (gin.H, string) {
 	if err != nil || gateID <= 0 {
 		if lockFarmer > 0 {
 			var fn string
-			_ = s.DB.QueryRow(`SELECT COALESCE(name,'') FROM pur_farmer WHERE id=?`, lockFarmer).Scan(&fn)
+			_ = s.DB.QueryRow(`SELECT COALESCE(name,'') FROM pur_supplier WHERE id=?`, lockFarmer).Scan(&fn)
 			farmerID, farmerName, variety, productID = lockFarmer, fn, lockVariety, lockProduct
 			gateID = firstTicket
 		} else {
@@ -386,7 +386,7 @@ func (s *Services) resolveGateBindingByBatch(batchNo string) (gin.H, string) {
 			productID = lockProduct
 		}
 		var fn string
-		_ = s.DB.QueryRow(`SELECT COALESCE(name,'') FROM pur_farmer WHERE id=?`, lockFarmer).Scan(&fn)
+		_ = s.DB.QueryRow(`SELECT COALESCE(name,'') FROM pur_supplier WHERE id=?`, lockFarmer).Scan(&fn)
 		if fn != "" {
 			farmerName = fn
 		}
@@ -396,7 +396,7 @@ func (s *Services) resolveGateBindingByBatch(batchNo string) (gin.H, string) {
 	}
 	if farmerID > 0 {
 		var fo, fm string
-		_ = s.DB.QueryRow(`SELECT COALESCE(origin,''), COALESCE(mobile,'') FROM pur_farmer WHERE id=?`, farmerID).Scan(&fo, &fm)
+		_ = s.DB.QueryRow(`SELECT COALESCE(origin,''), COALESCE(mobile,'') FROM pur_supplier WHERE id=?`, farmerID).Scan(&fo, &fm)
 		if origin == "" {
 			origin = fo
 		}
@@ -413,7 +413,7 @@ func (s *Services) resolveGateBindingByBatch(batchNo string) (gin.H, string) {
 	}
 	return gin.H{
 		"gate_ticket_id":  gateID,
-		"farmer_id":       farmerID,
+		"supplier_id":       farmerID,
 		"farmer_name":     farmerName,
 		"party_name":      partyName,
 		"party_mobile":    partyMobile,
@@ -464,7 +464,7 @@ func (s *Services) occupyTraceBatchCode(code string, ticketID, userID, farmerID,
 	var st string
 	var lockFarmer, lockProduct int64
 	var lockVariety string
-	err := s.DB.QueryRow(`SELECT status, COALESCE(farmer_id,0), COALESCE(product_id,0), COALESCE(variety,'')
+	err := s.DB.QueryRow(`SELECT status, COALESCE(supplier_id,0), COALESCE(product_id,0), COALESCE(variety,'')
 		FROM pur_trace_batch_code WHERE code=?`, code).Scan(&st, &lockFarmer, &lockProduct, &lockVariety)
 	if err != nil {
 		return fmt.Errorf("BATCH_CODE_NOT_FOUND")
@@ -500,7 +500,7 @@ func (s *Services) occupyTraceBatchCode(code string, ticketID, userID, farmerID,
 	// First occupy: available or reserved by current user
 	res, err := s.DB.Exec(`UPDATE pur_trace_batch_code
 		SET status='in_progress', weigh_ticket_id=?, first_weigh_ticket_id=COALESCE(NULLIF(first_weigh_ticket_id,0),?),
-			farmer_id=?, product_id=?, variety=?, used_at=NOW(), reserved_by=NULL, reserved_at=NULL
+			supplier_id=?, product_id=?, variety=?, used_at=NOW(), reserved_by=NULL, reserved_at=NULL
 		WHERE code=? AND (
 			status='available'
 			OR (status='reserved' AND (reserved_by=? OR COALESCE(reserved_by,0)=0))
@@ -525,7 +525,7 @@ func (s *Services) releaseTraceBatchCode(ticketID int64) {
 	if err != nil || code == "" {
 		// fallback: match by ticket column only
 		_, _ = s.DB.Exec(`UPDATE pur_trace_batch_code SET status='available', weigh_ticket_id=NULL, used_at=NULL,
-			reserved_by=NULL, reserved_at=NULL, farmer_id=NULL, product_id=NULL, variety=NULL, first_weigh_ticket_id=NULL
+			reserved_by=NULL, reserved_at=NULL, supplier_id=NULL, product_id=NULL, variety=NULL, first_weigh_ticket_id=NULL
 			WHERE weigh_ticket_id=? AND status IN ('in_progress','used')`, ticketID)
 		return
 	}
@@ -548,7 +548,7 @@ func (s *Services) releaseTraceBatchCode(ticketID int64) {
 		return
 	}
 	_, _ = s.DB.Exec(`UPDATE pur_trace_batch_code SET status='available', weigh_ticket_id=NULL, used_at=NULL,
-		reserved_by=NULL, reserved_at=NULL, farmer_id=NULL, product_id=NULL, variety=NULL,
+		reserved_by=NULL, reserved_at=NULL, supplier_id=NULL, product_id=NULL, variety=NULL,
 		first_weigh_ticket_id=NULL, ended_at=NULL, ended_by=NULL
 		WHERE code=? AND status IN ('in_progress','used')`, code)
 }

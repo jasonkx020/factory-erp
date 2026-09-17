@@ -27,8 +27,11 @@ export async function loadProducts(): Promise<Row[]> {
   return asList(await productApi.list())
 }
 
-export async function loadSuppliers(): Promise<Row[]> {
-  return asList(await purchaseApi.suppliers())
+export async function loadSuppliers(partyKind?: string): Promise<Row[]> {
+  const qs = new URLSearchParams()
+  qs.set('page_size', '200')
+  if (partyKind) qs.set('party_kind', partyKind)
+  return asList(await purchaseApi.suppliers(qs.toString()))
 }
 
 export async function loadEmployees(): Promise<Row[]> {

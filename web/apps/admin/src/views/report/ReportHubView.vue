@@ -26,14 +26,14 @@ const SECTIONS = new Set([
 const TITLE_MAP: Record<string, string> = {
   'production-board': '生产看板',
   live: '生产实况',
-  warehouse: '三仓库存概览',
+  warehouse: '仓库库存概览',
   daily: '日经营快照',
   'inbound-daily': '原料入场日报',
   'piecework-daily': '计件日结汇总',
   'yield-analysis': '工序扣损收率分析',
   'stock-ledger': '收发存明细',
   'trace-progress': '溯源批进度查询',
-  'farmer-settlement-summary': '农户结算对账汇总',
+  'farmer-settlement-summary': '供应商结算对账汇总',
   'payroll-reconcile': '薪酬核算对账',
   'cost-period-summary': '成本期间汇总',
 }
@@ -57,7 +57,7 @@ const warehouseCols: MobileCardColumn[] = [
 ]
 const inboundCols: MobileCardColumn[] = [
   { prop: 'doc_no', label: '过磅单号', primary: true },
-  { prop: 'farmer_name', label: '农户' },
+  { prop: 'farmer_name', label: '供应商' },
   { prop: 'gross_weight', label: '毛重' },
   { prop: 'deduct_weight', label: '扣损' },
   { prop: 'net_weight', label: '净重' },
@@ -95,7 +95,7 @@ const traceCols: MobileCardColumn[] = [
 ]
 const settlementCols: MobileCardColumn[] = [
   { prop: 'doc_no', label: '结算单号', primary: true },
-  { prop: 'farmer_name', label: '农户' },
+  { prop: 'farmer_name', label: '供应商' },
   { prop: 'biz_date', label: '业务日' },
   { prop: 'net_weight', label: '净重' },
   { prop: 'amount', label: '金额' },
@@ -218,8 +218,8 @@ async function refresh() {
         production_output_kg: '产出kg',
         flow_log_kg: '工序过账kg',
         piecework_amount: '计件支出',
-        farmer_payable: '农户应付',
-        farmer_paid: '农户已付',
+        farmer_payable: '供应商应付',
+        farmer_paid: '供应商已付',
         stock_in: '入库量',
         stock_out: '出库量',
       })
@@ -397,7 +397,7 @@ watch(active, refresh)
         <el-descriptions-item label="过磅单">{{ fmt(summary.inbound_tickets) }}</el-descriptions-item>
         <el-descriptions-item label="产出">{{ fmt(summary.production_output_kg) }} kg</el-descriptions-item>
         <el-descriptions-item label="计件支出">{{ fmt(summary.piecework_amount) }}</el-descriptions-item>
-        <el-descriptions-item label="农户应付/已付">{{ fmt(summary.farmer_payable) }} / {{ fmt(summary.farmer_paid) }}</el-descriptions-item>
+        <el-descriptions-item label="供应商应付/已付">{{ fmt(summary.farmer_payable) }} / {{ fmt(summary.farmer_paid) }}</el-descriptions-item>
         <el-descriptions-item label="出入库">入 {{ fmt(summary.stock_in) }} / 出 {{ fmt(summary.stock_out) }}</el-descriptions-item>
       </el-descriptions>
     </template>
@@ -406,7 +406,7 @@ watch(active, refresh)
       <TableOrCards :data="list" :loading="loading" :columns="inboundCols" empty-text="暂无过磅记录">
         <el-table :data="list" size="small" empty-text="暂无过磅记录">
           <el-table-column prop="doc_no" label="过磅单号" width="150" />
-          <el-table-column prop="farmer_name" label="农户" min-width="120" />
+          <el-table-column prop="farmer_name" label="供应商" min-width="120" />
           <el-table-column prop="gross_weight" label="毛重" width="90" />
           <el-table-column prop="deduct_weight" label="扣损" width="90" />
           <el-table-column prop="net_weight" label="净重" width="90" />
@@ -469,7 +469,7 @@ watch(active, refresh)
       <TableOrCards :data="list" :loading="loading" :columns="settlementCols" empty-text="暂无结算单">
         <el-table :data="list" size="small" empty-text="暂无结算单">
           <el-table-column prop="doc_no" label="结算单号" width="150" />
-          <el-table-column prop="farmer_name" label="农户" min-width="120" />
+          <el-table-column prop="farmer_name" label="供应商" min-width="120" />
           <el-table-column prop="biz_date" label="业务日" width="110" />
           <el-table-column prop="net_weight" label="净重" width="90" />
           <el-table-column prop="amount" label="金额" width="100" />

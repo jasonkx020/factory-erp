@@ -278,6 +278,53 @@ func (r *Runner) listPendingUpgrades(applied map[string]struct{}) ([]UpgradeFile
 	return files, nil
 }
 
+// StampAllUpgrades records pending upgrade files as applied without executing SQL.
+// Used after a full schema.sql baseline so erp_schema_migration matches upgrades/*.sql.
+func (r *Runner) StampAllUpgrades(ctx context.Context) (int, error) {
+	status, err := r.Status(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if !status.TableExists {
+		return 0, fmt.Errorf("erp_schema_migration not found; run baseline first")
+	}
+	if len(status.Pending) == 0 {
+		return 0, nil
+	}
+	n := 0
+	err = r.withLock(ctx, func(tx *sqlx.Tx) error {
+		for _, up := range status.Pending {
+			raw, err := os.ReadFile(up.Path)
+			if err != nil {
+				return err
+			}
+			content := string(raw)
+			ver, desc, footerChecksum, ok := ParseMigrationFooter(content)
+			if !ok {
+				return fmt.Errorf("upgrade file missing erp_schema_migration footer: %s", up.Path)
+			}
+			bodyChecksum := BodyChecksum(content)
+			if footerChecksum != "" && footerChecksum != bodyChecksum {
+				return fmt.Errorf("checksum mismatch in %s: footer=%s body=%s", up.Path, footerChecksum, bodyChecksum)
+			}
+			if desc == "" {
+				desc = "stamped with baseline"
+			} else {
+				desc = desc + " (stamped with baseline)"
+			}
+			if _, err := tx.Exec(`
+				INSERT INTO erp_schema_migration (version, description, checksum)
+				VALUES ($1, $2, $3)
+				ON CONFLICT (version) DO NOTHING`, ver, desc, bodyChecksum); err != nil {
+				return fmt.Errorf("stamp %s: %w", ver, err)
+			}
+			n++
+		}
+		return nil
+	})
+	return n, err
+}
+
 func (r *Runner) withLock(ctx context.Context, fn func(tx *sqlx.Tx) error) error {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -348,7 +395,9 @@ END $drop$`)
 	return err
 }
 
-// InitDevDatabase drops existing tables, then runs baseline, all upgrades, and optional seed.
+// InitDevDatabase drops existing tables, then runs baseline + stamps upgrades + optional seed.
+// schema.sql already embeds the latest structure; historical upgrades are for存量库 only and
+// must not be re-executed against a fresh baseline (they reference dropped columns/tables).
 func InitDevDatabase(ctx context.Context, dsn, migrationsRoot, seedPath string) error {
 	opts := Options{Role: RoleERP, DSN: dsn, MigrationsRoot: migrationsRoot}
 	runner, err := NewRunner(opts)
@@ -365,9 +414,11 @@ func InitDevDatabase(ctx context.Context, dsn, migrationsRoot, seedPath string) 
 	if err := runner.Baseline(ctx); err != nil {
 		return fmt.Errorf("baseline: %w", err)
 	}
-	if err := runner.UpgradeAll(ctx); err != nil {
-		return fmt.Errorf("upgrade: %w", err)
+	n, err := runner.StampAllUpgrades(ctx)
+	if err != nil {
+		return fmt.Errorf("stamp upgrades: %w", err)
 	}
+	fmt.Printf("init_schema: stamped %d upgrade version(s) as applied (schema.sql already includes them)\n", n)
 	if seedPath == "" {
 		seedPath = runner.paths.SeedDevFile
 	}

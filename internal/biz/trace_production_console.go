@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 import (
 	"sort"
@@ -88,7 +88,7 @@ func (s *Services) listTraceProductionsConsole(c *gin.Context) bool {
 			"session_id": r.sessionID, "session_status": r.sessionStatus,
 		}
 		if fid > 0 {
-			item["farmer_id"] = fid
+			item["supplier_id"] = fid
 		}
 		if fname != "" {
 			item["farmer_name"] = fname
@@ -125,15 +125,15 @@ func (s *Services) traceFarmerInfo(trace string) (farmerID int64, farmerName str
 	if trace == "" {
 		return 0, ""
 	}
-	_ = s.DB.QueryRow(`SELECT COALESCE(l.farmer_id,0), COALESCE(f.name,'')
-		FROM pur_trace_lot l LEFT JOIN pur_farmer f ON f.id=l.farmer_id
+	_ = s.DB.QueryRow(`SELECT COALESCE(l.supplier_id,0), COALESCE(f.name,'')
+		FROM pur_trace_lot l LEFT JOIN pur_supplier f ON f.id=l.supplier_id
 		WHERE UPPER(COALESCE(l.trace_code,''))=? ORDER BY l.id DESC LIMIT 1`, trace).Scan(&farmerID, &farmerName)
 	if farmerID > 0 {
 		return farmerID, farmerName
 	}
-	_ = s.DB.QueryRow(`SELECT COALESCE(b.farmer_id,0), COALESCE(f.name,'')
-		FROM inv_box_code b LEFT JOIN pur_farmer f ON f.id=b.farmer_id
-		WHERE UPPER(COALESCE(b.trace_code,''))=? AND COALESCE(b.farmer_id,0)>0
+	_ = s.DB.QueryRow(`SELECT COALESCE(b.supplier_id,0), COALESCE(f.name,'')
+		FROM inv_box_code b LEFT JOIN pur_supplier f ON f.id=b.supplier_id
+		WHERE UPPER(COALESCE(b.trace_code,''))=? AND COALESCE(b.supplier_id,0)>0
 		LIMIT 1`, trace).Scan(&farmerID, &farmerName)
 	return farmerID, farmerName
 }

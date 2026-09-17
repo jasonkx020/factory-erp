@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 import (
 	"fmt"
@@ -27,7 +27,7 @@ func (s *Services) stockInNewBoardFrom(old *boardState, warehouseID, processID, 
 	}
 	var farmerID int64
 	var trace, origin, receiveDate, sourceType string
-	_ = s.DB.QueryRow(`SELECT COALESCE(farmer_id,0), COALESCE(trace_code,''), COALESCE(origin,''), COALESCE(receive_date,''), COALESCE(source_type,'')
+	_ = s.DB.QueryRow(`SELECT COALESCE(supplier_id,0), COALESCE(trace_code,''), COALESCE(origin,''), COALESCE(receive_date,''), COALESCE(source_type,'')
 		FROM inv_box_code WHERE id=?`, old.ID).Scan(&farmerID, &trace, &origin, &receiveDate, &sourceType)
 	if trace == "" {
 		trace = old.Trace
@@ -37,7 +37,7 @@ func (s *Services) stockInNewBoardFrom(old *boardState, warehouseID, processID, 
 	}
 	newCode = fmt.Sprintf("BX%d", time.Now().UnixNano()%1e12)
 	res, err := s.DB.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, parent_box_id,
-		current_process_id, current_step_id, task_id, work_order_id, farmer_id, trace_code, origin, receive_date, source_type, status)
+		current_process_id, current_step_id, task_id, work_order_id, supplier_id, trace_code, origin, receive_date, source_type, status)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'open')`,
 		newCode, productID, warehouseID, time.Now().Format("20060102"), qty, qty, old.ID,
 		processID, stepID, nullIf0(old.TaskID), nullIf0(old.WoID),

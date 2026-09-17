@@ -2,6 +2,9 @@
 
 正式研发阶段：**存量库**靠本目录增量脚本升级；**新装**直接执行上级 `schema.sql`（已并入最新结构）。
 
+开发 `init_schema`：drop → baseline(`schema.sql`) → **登记**全部 upgrades 版本（不执行 SQL）→ seed。
+切勿在新装 baseline 后再跑 `upgrade --all`（历史脚本会引用已删除的 `farmer_id` / `pur_farmer` 等）。
+
 ## 命名
 
 ```

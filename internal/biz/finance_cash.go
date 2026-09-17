@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 import (
 	"database/sql"
@@ -25,11 +25,11 @@ type postCashReq struct {
 
 func (s *Services) ensureFinanceCashColumns() {
 	for _, stmt := range []string{
-		`ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS fund_account_id INTEGER`,
-		`ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS goods_amount DOUBLE PRECISION NOT NULL DEFAULT 0`,
-		`ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS freight_fee DOUBLE PRECISION NOT NULL DEFAULT 0`,
-		`ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS loading_fee DOUBLE PRECISION NOT NULL DEFAULT 0`,
-		`ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS weigh_fee DOUBLE PRECISION NOT NULL DEFAULT 0`,
+		`ALTER TABLE pur_supplier_settlement ADD COLUMN IF NOT EXISTS fund_account_id INTEGER`,
+		`ALTER TABLE pur_supplier_settlement ADD COLUMN IF NOT EXISTS goods_amount DOUBLE PRECISION NOT NULL DEFAULT 0`,
+		`ALTER TABLE pur_supplier_settlement ADD COLUMN IF NOT EXISTS freight_fee DOUBLE PRECISION NOT NULL DEFAULT 0`,
+		`ALTER TABLE pur_supplier_settlement ADD COLUMN IF NOT EXISTS loading_fee DOUBLE PRECISION NOT NULL DEFAULT 0`,
+		`ALTER TABLE pur_supplier_settlement ADD COLUMN IF NOT EXISTS weigh_fee DOUBLE PRECISION NOT NULL DEFAULT 0`,
 		`ALTER TABLE fin_prepay_prepaid ADD COLUMN IF NOT EXISTS fund_account_id INTEGER`,
 		`ALTER TABLE fin_sales_return_finance ADD COLUMN IF NOT EXISTS fund_account_id INTEGER`,
 		`ALTER TABLE sl_sales_order ADD COLUMN IF NOT EXISTS received_amount DOUBLE PRECISION NOT NULL DEFAULT 0`,
@@ -165,7 +165,7 @@ func (s *Services) postFarmerSettlementCash(id, fundAccountID int64, transferNo 
 	var amt float64
 	var farmerName string
 	err := s.DB.QueryRow(`SELECT s.status, s.amount, COALESCE(f.name,'')
-		FROM pur_farmer_settlement s LEFT JOIN pur_farmer f ON f.id=s.farmer_id WHERE s.id=?`, id).
+		FROM pur_supplier_settlement s LEFT JOIN pur_supplier f ON f.id=s.supplier_id WHERE s.id=?`, id).
 		Scan(&status, &amt, &farmerName)
 	if err == sql.ErrNoRows {
 		return api.Fail("NOT_FOUND")
@@ -198,7 +198,7 @@ func (s *Services) postFarmerSettlementCash(id, fundAccountID int64, transferNo 
 		return err
 	}
 	acc, _ := s.resolveFundAccountID(fundAccountID)
-	_, _ = s.DB.Exec(`UPDATE pur_farmer_settlement SET fund_account_id=? WHERE id=?`, acc, id)
+	_, _ = s.DB.Exec(`UPDATE pur_supplier_settlement SET fund_account_id=? WHERE id=?`, acc, id)
 	return nil
 }
 

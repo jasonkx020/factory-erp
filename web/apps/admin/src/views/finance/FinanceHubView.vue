@@ -18,11 +18,21 @@ import {
 type Row = Record<string, unknown>
 
 const SECTIONS = [
-  { key: 'payables', title: '农户应付', hintKey: 'payables' },
+  { key: 'payables', title: '供应商应付', hintKey: 'payables' },
+  { key: 'payment-orders', title: '在线支付审批', hintKey: 'payment-orders' },
   { key: 'funds', title: '资金管理', hintKey: 'funds' },
   { key: 'ledger', title: '交易流水账', hintKey: 'ledger' },
   { key: 'cost-accountings', title: '成本核算', hintKey: 'cost-accountings' },
   { key: 'cost-traces', title: '成本明细溯源表', hintKey: 'cost-traces' },
+  { key: 'subjects', title: '账目管理', hintKey: 'subjects' },
+  { key: 'vouchers', title: '凭证管理', hintKey: 'vouchers' },
+  { key: 'invoices', title: '发票管理', hintKey: 'invoices' },
+  { key: 'writeoffs', title: '收款核单', hintKey: 'writeoffs' },
+  { key: 'prepays', title: '预收预付管理', hintKey: 'prepays' },
+  { key: 'arap', title: '往来调整单', hintKey: 'arap' },
+  { key: 'month-closes', title: '月度结转', hintKey: 'month-closes' },
+  { key: 'statements', title: '财务报表', hintKey: 'statements' },
+  { key: 'recognitions', title: '销售认款', hintKey: 'recognitions' },
 ] as const
 
 type SectionKey = (typeof SECTIONS)[number]['key']
@@ -72,16 +82,23 @@ const ledgerCols: MobileCardColumn[] = [
 ]
 const payableCols: MobileCardColumn[] = [
   { prop: 'doc_no', label: '结算单', primary: true },
-  { prop: 'farmer_name', label: '农户' },
+  { prop: 'farmer_name', label: '供应商' },
   { prop: 'biz_date', label: '日期' },
   moneyCol('amount', '应付'),
   statusCol(),
 ]
+const paymentOrderCols: MobileCardColumn[] = [
+  { prop: 'payment_no', label: '支付单号', primary: true },
+  { prop: 'supplier_name', label: '供应商' },
+  moneyCol('amount', '金额'),
+  { prop: 'channel', label: '通道' },
+  statusCol(),
+]
 
 const REPORT_LINKS = [
-  { title: '日经营快照', path: '/report/hub/daily', desc: '入场、产出、计件、农户应付与库存' },
+  { title: '日经营快照', path: '/report/hub/daily', desc: '入场、产出、计件、供应商应付与库存' },
   { title: '计件日结汇总', path: '/report/hub/piecework-daily', desc: '与现场计件核对' },
-  { title: '农户结算对账', path: '/report/hub/farmer-settlement-summary', desc: '原料款已付/待付' },
+  { title: '供应商结算对账', path: '/report/hub/farmer-settlement-summary', desc: '原料款已付/待付' },
   { title: '薪酬核算对账', path: '/report/hub/payroll-reconcile', desc: '月工资 vs 计件差异' },
   { title: '成本期间汇总', path: '/report/hub/cost-period-summary', desc: '按期间汇总成本单' },
 ]
@@ -239,6 +256,10 @@ async function refresh() {
       transferList.value = ((ft.data as { list?: Row[] })?.list) || []
       fundAccounts.value = list.value
       fundBalanceTotal.value = list.value.reduce((s, r) => s + (Number(r.balance) || 0), 0)
+    } else if (active.value === 'payment-orders') {
+      const res = await financeApi.paymentOrders('page_size=100')
+      if (res.code !== 1) return ElMessage.error(finErrMsg(res.msg))
+      list.value = ((res.data as { list?: Row[] })?.list) || []
     } else if (active.value === 'ledger') {
       const res = await financeApi.ledger()
       if (res.code !== 1) return ElMessage.error(finErrMsg(res.msg))
@@ -277,7 +298,7 @@ async function fillFromPeriod() {
     costForm.material_cost = Number(d.material_cost) || 0
     costForm.labor_cost = Number(d.labor_cost) || 0
     ElMessage.success(
-      `已汇入：农户已付 ${money(d.farmer_paid)}（${d.farmer_paid_count}笔），计件 ${money(d.piecework_amount)}`,
+      `已汇入：供应商已付 ${money(d.farmer_paid)}（${d.farmer_paid_count}笔），计件 ${money(d.piecework_amount)}`,
     )
   } finally {
     previewLoading.value = false
@@ -369,12 +390,12 @@ watch(active, refresh)
       <el-input v-model="keyword" clearable placeholder="筛选单号 / 名称 / 期间" style="width:240px" />
     </div>
 
-    <!-- 农户应付 -->
+    <!-- 供应商应付 -->
     <template v-if="active === 'payables'">
       <TableOrCards :data="filteredList" :loading="loading" :columns="payableCols">
         <el-table :data="filteredList" size="small" class="fin-table">
           <el-table-column prop="doc_no" label="结算单" width="150" />
-          <el-table-column prop="farmer_name" label="农户" min-width="120" />
+          <el-table-column prop="farmer_name" label="供应商" min-width="120" />
           <el-table-column prop="biz_date" label="日期" width="110" />
           <el-table-column label="净重" width="90">
             <template #default="{ row }">{{ row.net_weight ?? '-' }}</template>
@@ -397,7 +418,53 @@ watch(active, refresh)
           <el-button link type="primary" @click="openPay(row)">支付关单</el-button>
         </template>
       </TableOrCards>
-      <p class="foot-hint">支付将扣减资金账户余额并写入交易流水；完整列表也可在采购「农户结算」处理。</p>
+      <p class="foot-hint">支付将扣减资金账户余额并写入交易流水；完整列表也可在采购「供应商结算」处理。若已开启在线支付，请到「在线支付审批」。</p>
+    </template>
+
+    <!-- 在线支付审批 -->
+    <template v-else-if="active === 'payment-orders'">
+      <TableOrCards :data="filteredList" :loading="loading" :columns="paymentOrderCols">
+        <el-table :data="filteredList" size="small" class="fin-table">
+          <el-table-column prop="payment_no" label="支付单号" width="160" />
+          <el-table-column prop="supplier_name" label="供应商" min-width="120" />
+          <el-table-column label="金额" width="120">
+            <template #default="{ row }">{{ money(row.amount) }}</template>
+          </el-table-column>
+          <el-table-column prop="channel" label="通道" width="100" />
+          <el-table-column label="状态" width="120">
+            <template #default="{ row }">
+              <el-tag size="small" :type="finStatusType(row.status)">{{ finStatusLabel(row.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="payee_name" label="收款户名" min-width="100" />
+          <el-table-column prop="fail_reason" label="失败原因" min-width="120" show-overflow-tooltip />
+          <el-table-column label="操作" width="220" fixed="right">
+            <template #default="{ row }">
+              <el-button
+                v-if="row.status === 'pending_finance'"
+                link type="primary"
+                @click="run(() => financeApi.approvePaymentFinance(Number(row.id)), '财务已审批')"
+              >财务通过</el-button>
+              <el-button
+                v-if="row.status === 'pending_boss'"
+                link type="warning"
+                @click="run(() => financeApi.approvePaymentBoss(Number(row.id)), '总经理已审批，开始出款')"
+              >总经理通过</el-button>
+              <el-button
+                v-if="['pending_finance','pending_boss','ready_to_pay'].includes(String(row.status))"
+                link type="danger"
+                @click="run(() => financeApi.rejectPaymentOrder(Number(row.id), { reason: '驳回' }), '已驳回')"
+              >驳回</el-button>
+              <el-button
+                v-if="row.status === 'failed'"
+                link type="primary"
+                @click="run(() => financeApi.retryPaymentOrder(Number(row.id)), '已重新发起')"
+              >重试</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </TableOrCards>
+      <p class="foot-hint">系统设置 → 支付配置中开启 online_enabled，并填写支付宝/短信参数。未配置支付宝时使用 mock 模拟出款。</p>
     </template>
 
     <!-- 资金账户 -->
@@ -556,7 +623,7 @@ watch(active, refresh)
           <el-button type="primary" @click="createCost">新建</el-button>
         </el-form>
         <div v-if="preview" class="preview-strip">
-          <span>农户已付 {{ money(preview.farmer_paid) }}（{{ preview.farmer_paid_count }}）</span>
+          <span>供应商已付 {{ money(preview.farmer_paid) }}（{{ preview.farmer_paid_count }}）</span>
           <span>待付 {{ money(preview.farmer_pending) }}（{{ preview.farmer_pending_count }}）</span>
           <span>计件 {{ money(preview.piecework_amount) }}（{{ preview.piecework_count }}）</span>
           <span v-if="Number(preview.requisition_cost)">领料 {{ money(preview.requisition_cost) }}</span>
@@ -622,7 +689,7 @@ watch(active, refresh)
       </TableOrCards>
     </template>
 
-    <el-dialog v-model="payVisible" title="农户货款支付关单" width="480px" destroy-on-close>
+    <el-dialog v-model="payVisible" title="供应商货款支付关单" width="480px" destroy-on-close>
       <el-form label-width="100px" size="small">
         <el-form-item label="结算单">{{ payRow?.doc_no }} · {{ money(payRow?.amount) }}</el-form-item>
         <el-form-item label="资金账户" required>

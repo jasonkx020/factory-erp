@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 import (
 	"encoding/json"
@@ -101,7 +101,7 @@ func (s *Services) handleBoxTrace(c *gin.Context) bool {
 	var boxID, farmerID, productID int64
 	var traceCode, origin, receiveDate, sourceType, status string
 	var weight float64
-	_ = s.DB.QueryRow(`SELECT id, COALESCE(farmer_id,0), COALESCE(product_id,0), COALESCE(trace_code,''), COALESCE(origin,''), COALESCE(receive_date,''), COALESCE(source_type,''),
+	_ = s.DB.QueryRow(`SELECT id, COALESCE(supplier_id,0), COALESCE(product_id,0), COALESCE(trace_code,''), COALESCE(origin,''), COALESCE(receive_date,''), COALESCE(source_type,''),
 		COALESCE(status,''), COALESCE(weight, qty, 0)
 		FROM inv_box_code WHERE code=?`, code).Scan(&boxID, &farmerID, &productID, &traceCode, &origin, &receiveDate, &sourceType, &status, &weight)
 	pname, pcat, pcode := s.productMeta(productID)

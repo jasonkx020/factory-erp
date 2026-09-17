@@ -61,20 +61,22 @@ func lookupFounderUserID(db *sql.DB) int64 {
 	rows, err := db.Query(`
 		SELECT u.id
 		FROM iam_user u
-		LEFT JOIN hr_employee e ON e.id = u.employee_id
-		LEFT JOIN hr_employee e2 ON e2.user_id = u.id
 		WHERE COALESCE(u.is_deleted,0)=0
 		ORDER BY u.id`)
 	if err != nil {
 		return 0
 	}
-	defer rows.Close()
-	var first int64
+	ids := make([]int64, 0, 32)
 	for rows.Next() {
 		var id int64
 		if rows.Scan(&id) != nil || id <= 0 {
 			continue
 		}
+		ids = append(ids, id)
+	}
+	_ = rows.Close()
+	var first int64
+	for _, id := range ids {
 		if first == 0 {
 			first = id
 		}

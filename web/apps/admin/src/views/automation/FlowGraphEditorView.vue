@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { VueFlow, type Edge, type Node, type Connection } from '@vue-flow/core'
+import { VueFlow, useVueFlow, type Edge, type Node, type Connection } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
@@ -51,6 +51,8 @@ const meta = ref({
   routing_id: 0,
   product_id: 0,
   version_no: 'V1',
+  require_weigh: true,
+  field_pack: '' as string,
 })
 const nodes = ref<Node[]>([])
 const edges = ref<Edge[]>([])
@@ -62,11 +64,40 @@ const products = ref<Row[]>([])
 const compiledSteps = ref<Row[]>([])
 const loading = ref(false)
 const saving = ref(false)
+const processFilter = ref('')
+
+/** 与下方 VueFlow id 一致，供拖放坐标转换 */
+const FLOW_EDITOR_ID = 'erp-routing-flow'
+const PROCESS_DND_MIME = 'application/x-erp-process'
+const { screenToFlowCoordinate } = useVueFlow({ id: FLOW_EDITOR_ID })
+
+const usedProcessIds = computed(() => {
+  const ids = new Set<number>()
+  for (const n of nodes.value) {
+    const d = (n.data || {}) as Row
+    const t = String(d._nodeType || '')
+    if (t && t !== 'process_step') continue
+    const pid = Number(d.process_id || 0)
+    if (pid > 0) ids.add(pid)
+  }
+  return ids
+})
+
+const filteredProcesses = computed(() => {
+  const q = processFilter.value.trim().toLowerCase()
+  const list = processes.value.filter((p) => Number(p.is_deleted || 0) === 0)
+  if (!q) return list
+  return list.filter((p) => {
+    const name = String(p.name || '').toLowerCase()
+    const code = String(p.code || '').toLowerCase()
+    return name.includes(q) || code.includes(q)
+  })
+})
 
 const kindOptions = [
   { value: 'production', label: '生产工艺' },
-  { value: 'purchase_gate', label: '过磅入厂' },
-  { value: 'purchase_stockin', label: '过磅入库' },
+  { value: 'purchase_gate', label: '采购入厂' },
+  { value: 'purchase_stockin', label: '采购入库' },
 ]
 
 const roleOptions = [
@@ -353,10 +384,19 @@ async function openGraph(id: number) {
   currentId.value = id
   mode.value = 'edit'
   let graphProductId = Number(d.product_id || 0)
+  let requireWeigh = true
+  let fieldPack = ''
   try {
     const raw = typeof d.graph_json === 'string' ? JSON.parse(String(d.graph_json || '{}')) : (d.graph_json || {})
     const gm = (raw as Row).meta as Row | undefined
     if (!graphProductId && gm?.product_id) graphProductId = Number(gm.product_id)
+    if (gm) {
+      const caps = Array.isArray(gm.capabilities) ? gm.capabilities.map((x) => String(x)) : []
+      if (Object.prototype.hasOwnProperty.call(gm, 'capabilities')) {
+        requireWeigh = caps.includes('weigh')
+      }
+      fieldPack = String(gm.field_pack || '')
+    }
   } catch { /* ignore */ }
   meta.value = {
     code: String(d.code || ''),
@@ -366,6 +406,8 @@ async function openGraph(id: number) {
     routing_id: Number(d.routing_id || 0),
     product_id: graphProductId,
     version_no: String(d.version_no || 'V1'),
+    require_weigh: requireWeigh,
+    field_pack: fieldPack,
   }
   const parsed = parseGraph(d.graph_json)
   nodes.value = parsed.nodes
@@ -450,15 +492,17 @@ function syncSelectedData() {
 }
 
 function addNode(type: string) {
+  if (type === 'process_step') {
+    ElMessage.warning('请从左侧工序列表拖到画布添加工序')
+    return
+  }
   const id = `${type}_${Date.now()}`
   const data: Row =
-    type === 'process_step'
-      ? { label: '工序', process_id: Number(processes.value[0]?.id || 0), auto_next: true, is_piecework: false, is_inbound_checkpoint: false, checkpoint_bind_warehouse: false }
-      : type === 'role_task'
-        ? { label: '岗位任务', role_code: 'qc', action: 'qc_deduct' }
-        : type === 'gateway_xor'
-          ? { label: '网关' }
-          : { label: type === 'start' ? '开始' : type === 'end' ? '结束' : type }
+    type === 'role_task'
+      ? { label: '岗位任务', role_code: 'qc', action: 'qc_deduct' }
+      : type === 'gateway_xor'
+        ? { label: '网关' }
+        : { label: type === 'start' ? '开始' : type === 'end' ? '结束' : type }
   const n: Node = {
     id,
     type: 'default',
@@ -472,6 +516,98 @@ function addNode(type: string) {
   nodes.value = [...nodes.value, n]
   selected.value = n
   selectedEdge.value = null
+}
+
+function processMasterFields(p: Row): Row {
+  const name = String(p.name || '')
+  const code = String(p.code || '')
+  return {
+    label: name || code || '工序',
+    process_id: Number(p.id) || 0,
+    step_code: code,
+    step_name: name || code,
+    auto_next: true,
+    is_piecework: false,
+    is_inbound_checkpoint: false,
+    checkpoint_bind_warehouse: false,
+  }
+}
+
+function addProcessNodeFromMaster(p: Row, position?: { x: number; y: number }) {
+  const pid = Number(p.id) || 0
+  if (pid <= 0) return
+  const data = processMasterFields(p)
+  const pos = position || {
+    x: 120 + nodes.value.length * 40,
+    y: 80 + (nodes.value.length % 5) * 60,
+  }
+  const n: Node = {
+    id: `process_step_${Date.now()}`,
+    type: 'default',
+    position: pos,
+    data: { ...data, _nodeType: 'process_step' },
+    label: String(data.label),
+    style: nodeStyle('process_step'),
+    draggable: true,
+    selectable: true,
+  }
+  nodes.value = [...nodes.value, n]
+  selected.value = n
+  selectedEdge.value = null
+}
+
+function onProcessDragStart(ev: DragEvent, p: Row) {
+  if (!ev.dataTransfer) return
+  const payload = JSON.stringify({ id: Number(p.id), code: String(p.code || ''), name: String(p.name || '') })
+  ev.dataTransfer.setData(PROCESS_DND_MIME, payload)
+  ev.dataTransfer.setData('text/plain', payload)
+  ev.dataTransfer.effectAllowed = 'copy'
+}
+
+function onCanvasDragOver(ev: DragEvent) {
+  // 浏览器在 dragover 阶段常读不到自定义 MIME，一律允许落点
+  ev.preventDefault()
+  if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy'
+}
+
+function onCanvasDrop(ev: DragEvent) {
+  const raw = ev.dataTransfer?.getData(PROCESS_DND_MIME) || ev.dataTransfer?.getData('text/plain')
+  if (!raw) return
+  ev.preventDefault()
+  let payload: Row
+  try {
+    payload = JSON.parse(raw) as Row
+  } catch {
+    return
+  }
+  if (!payload.id && !payload.name) return
+  const pid = Number(payload.id) || 0
+  const p = processes.value.find((x) => Number(x.id) === pid) || payload
+  let position: { x: number; y: number } | undefined
+  try {
+    position = screenToFlowCoordinate({ x: ev.clientX, y: ev.clientY })
+  } catch {
+    position = undefined
+  }
+  addProcessNodeFromMaster(p, position)
+}
+
+function onProcessBindChange(pid: number) {
+  if (!selected.value) return
+  const p = processes.value.find((x) => Number(x.id) === pid)
+  if (!p) {
+    ;(selected.value.data as Row).process_id = pid
+    syncSelectedData()
+    return
+  }
+  const fields = processMasterFields(p)
+  Object.assign(selected.value.data as Row, {
+    process_id: fields.process_id,
+    label: fields.label,
+    step_code: fields.step_code,
+    step_name: fields.step_name,
+  })
+  syncSelectedData()
 }
 
 function nodeStyle(type: string): Record<string, string> {
@@ -529,7 +665,18 @@ function buildGraphJSON() {
     target: e.target,
     data: { is_default: (e.data as Row)?.is_default !== false },
   }))
-  return { nodes: outNodes, edges: outEdges, meta: { product_id: meta.value.product_id || 0 } }
+  return { nodes: outNodes, edges: outEdges, meta: buildMetaPayload() }
+}
+
+function buildMetaPayload(): Row {
+  const m: Row = { product_id: meta.value.product_id || 0 }
+  if (String(meta.value.kind || '').startsWith('purchase')) {
+    const caps: string[] = []
+    if (meta.value.require_weigh) caps.push('weigh')
+    m.capabilities = caps
+    m.field_pack = meta.value.field_pack || ''
+  }
+  return m
 }
 
 function publishErrorText(msg: string): string {
@@ -611,7 +758,10 @@ async function createNew() {
     kind,
     status: 'draft',
     routing_id: 0,
+    product_id: 0,
     version_no: 'V1',
+    require_weigh: kind.startsWith('purchase'),
+    field_pack: kind.startsWith('purchase') ? 'cassava_gate' : '',
   }
   nodes.value = [
     {
@@ -730,172 +880,226 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-else class="flow-editor">
-    <aside class="left">
-      <div class="toolbar">
-        <el-button size="small" @click="backToList">返回列表</el-button>
-        <el-button type="primary" size="small" @click="createNew">新建</el-button>
-        <el-button size="small" :loading="saving" @click="save(false)">保存草稿</el-button>
-        <el-button type="success" size="small" :loading="saving" @click="save(true)">发布</el-button>
-      </div>
-      <p v-if="meta.kind === 'production'" class="save-hint">
-        <strong>保存草稿</strong>：仅保存流程图，不过站生效。<strong>发布</strong>：编译为工艺步骤并启用，同类型其它流程自动降为草稿。
-      </p>
-      <el-form label-position="top" size="small" class="meta">
-        <el-form-item label="编码"><el-input v-model="meta.code" /></el-form-item>
-        <el-form-item label="名称"><el-input v-model="meta.name" /></el-form-item>
-        <el-form-item label="类型">
-          <el-select v-model="meta.kind" style="width:100%">
-            <el-option v-for="k in filteredKinds" :key="k.value" :label="k.label" :value="k.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="meta.status" style="width:100%">
-            <el-option label="草稿" value="draft" />
-            <el-option label="启用" value="active" />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="meta.kind === 'production'" label="绑定产品">
-          <el-select v-model="meta.product_id" clearable style="width:100%" placeholder="可选">
-            <el-option
-              v-for="p in products"
-              :key="String(p.id)"
-              :label="String(p.name || p.code || p.id)"
-              :value="Number(p.id)"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="meta.kind === 'production' && meta.routing_id" label="工艺ID">
-          <el-input :model-value="String(meta.routing_id)" disabled />
-        </el-form-item>
-      </el-form>
-      <div v-if="meta.kind === 'production'" class="compiled-steps">
-        <h4>已编译步骤（发布后生效）</h4>
-        <p v-if="!compiledSteps.length" class="muted">尚未编译或仍为草稿。点「发布」后同步到过站。</p>
-        <el-table v-else :data="compiledSteps" size="small" max-height="220">
-          <el-table-column prop="seq_no" label="序" width="44" />
-          <el-table-column prop="step_code" label="编码" width="64" />
-          <el-table-column prop="step_name" label="名称" min-width="100" />
-          <el-table-column label="计件" width="50">
-            <template #default="{ row }">{{ row.is_piecework ? '是' : '' }}</template>
-          </el-table-column>
-          <el-table-column label="卡点" width="50">
-            <template #default="{ row }">{{ row.is_inbound_checkpoint ? '是' : '' }}</template>
-          </el-table-column>
-          <el-table-column prop="output_product_name" label="产出产物" min-width="100" />
-          <el-table-column label="绑仓" width="50">
-            <template #default="{ row }">{{ row.checkpoint_bind_warehouse ? '是' : '' }}</template>
-          </el-table-column>
-        </el-table>
-      </div>
-      <div class="palette">
-        <div class="ph">节点库（点击添加）</div>
-        <el-button size="small" @click="addNode('start')">开始</el-button>
-        <el-button size="small" @click="addNode('end')">结束</el-button>
-        <el-button v-if="meta.kind === 'production'" size="small" @click="addNode('process_step')">工序</el-button>
-        <el-button v-if="meta.kind.startsWith('purchase')" size="small" @click="addNode('role_task')">岗位</el-button>
-        <el-button size="small" @click="addNode('gateway_xor')" title="多分支汇合/分叉，自动走标为「默认」的那条边">网关</el-button>
-      </div>
-      <p class="ph tip">提示：点击连线后可删除；Delete 键删除选中项；删线后可重新拖拽连线。</p>
-    </aside>
-    <main class="canvas">
-      <VueFlow
-        v-model:nodes="nodes"
-        v-model:edges="edges"
-        fit-view-on-init
-        :default-viewport="{ zoom: 0.9 }"
-        :edges-updatable="true"
-        :elements-selectable="true"
-        @node-click="onNodeClick"
-        @edge-click="onEdgeClick"
-        @pane-click="onPaneClick"
-        @connect="onConnectHandler"
-      >
-        <Background />
-        <Controls />
-        <MiniMap />
-      </VueFlow>
-    </main>
-    <aside class="right">
-      <h3>属性</h3>
-      <template v-if="selectedEdge">
-        <el-form label-position="top" size="small">
-          <el-form-item label="连线">
-            <el-input :model-value="`${selectedEdge.source} → ${selectedEdge.target}`" disabled />
+      <header class="editor-top">
+        <div class="toolbar">
+          <el-button size="small" @click="backToList">返回列表</el-button>
+          <el-button type="primary" size="small" @click="createNew">新建</el-button>
+          <el-button size="small" :loading="saving" @click="save(false)">保存草稿</el-button>
+          <el-button type="success" size="small" :loading="saving" @click="save(true)">发布</el-button>
+          <span v-if="meta.kind === 'production'" class="save-hint">
+            草稿仅存图；发布后编译为工艺步骤并启用（同类其它流程降为草稿）
+          </span>
+        </div>
+        <el-form :inline="true" size="small" class="meta-bar" @submit.prevent>
+          <el-form-item label="编码">
+            <el-input v-model="meta.code" style="width:120px" />
           </el-form-item>
-          <el-form-item label="默认路径">
-            <el-switch
-              :model-value="(selectedEdge.data as Row)?.is_default !== false"
-              @change="(v: string | number | boolean) => {
-                if (!selectedEdge) return
-                selectedEdge.data = { ...(selectedEdge.data as object), is_default: !!v }
-                syncSelectedEdge()
-              }"
-            />
-            <div class="hint">自动流转只走「默认」边；旁路需业务上传 next_node_id 才走。</div>
+          <el-form-item label="名称">
+            <el-input v-model="meta.name" style="width:160px" />
           </el-form-item>
-          <el-button type="danger" size="small" @click="removeSelectedEdge">删除连线</el-button>
+          <el-form-item label="类型">
+            <el-select v-model="meta.kind" style="width:120px">
+              <el-option v-for="k in filteredKinds" :key="k.value" :label="k.label" :value="k.value" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="状态">
+            <el-select v-model="meta.status" style="width:90px">
+              <el-option label="草稿" value="draft" />
+              <el-option label="启用" value="active" />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="meta.kind === 'production'" label="绑定产品">
+            <el-select v-model="meta.product_id" clearable style="width:160px" placeholder="可选">
+              <el-option
+                v-for="p in products"
+                :key="String(p.id)"
+                :label="String(p.name || p.code || p.id)"
+                :value="Number(p.id)"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="meta.kind === 'production' && meta.routing_id" label="工艺ID">
+            <el-input :model-value="String(meta.routing_id)" disabled style="width:80px" />
+          </el-form-item>
+          <el-form-item v-if="meta.kind.startsWith('purchase')" label="需要过磅">
+            <el-switch v-model="meta.require_weigh" />
+          </el-form-item>
+          <el-form-item v-if="meta.kind.startsWith('purchase')" label="扩展字段包">
+            <el-select v-model="meta.field_pack" clearable style="width:160px" placeholder="通用精简">
+              <el-option label="通用精简" value="" />
+              <el-option label="木薯入厂(cassava_gate)" value="cassava_gate" />
+            </el-select>
+          </el-form-item>
         </el-form>
-      </template>
-      <template v-else-if="selected">
-        <el-form label-position="top" size="small" @change="syncSelectedData">
-          <el-form-item label="节点ID"><el-input :model-value="selected.id" disabled /></el-form-item>
-          <el-form-item label="显示名">
-            <el-input v-model="(selected.data as Row).label" @change="syncSelectedData" />
-          </el-form-item>
-          <template v-if="semanticType(selected) === 'process_step'">
-            <el-form-item label="工序">
-              <el-select v-model="(selected.data as Row).process_id" filterable style="width:100%" @change="syncSelectedData">
-                <el-option v-for="p in processes" :key="String(p.id)" :label="String(p.name)" :value="Number(p.id)" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="产出产物">
-              <el-select v-model="(selected.data as Row).output_product_id" filterable style="width:100%" placeholder="发布必填" @change="syncSelectedData">
-                <el-option
-                  v-for="p in products"
+      </header>
+
+      <div class="editor-body">
+        <aside class="left">
+          <div class="palette">
+            <div class="ph">节点库</div>
+            <div class="palette-btns">
+              <el-button size="small" @click="addNode('start')">开始</el-button>
+              <el-button size="small" @click="addNode('end')">结束</el-button>
+              <el-button v-if="meta.kind.startsWith('purchase')" size="small" @click="addNode('role_task')">岗位</el-button>
+              <el-button size="small" @click="addNode('gateway_xor')" title="多分支汇合/分叉，自动走标为「默认」的那条边">网关</el-button>
+            </div>
+            <template v-if="meta.kind === 'production'">
+              <div class="ph process-ph">工序（拖到画布）</div>
+              <el-input
+                v-model="processFilter"
+                size="small"
+                clearable
+                placeholder="搜索工序"
+                class="process-filter"
+              />
+              <div class="process-list">
+                <div
+                  v-for="p in filteredProcesses"
                   :key="String(p.id)"
-                  :label="`${p.code || ''} · ${p.name || p.id}`"
-                  :value="Number(p.id)"
-                />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="计件"><el-switch v-model="(selected.data as Row).is_piecework" @change="syncSelectedData" /></el-form-item>
-            <el-form-item label="卡点"><el-switch v-model="(selected.data as Row).is_inbound_checkpoint" @change="syncSelectedData" /></el-form-item>
-            <el-form-item label="卡点绑仓(先入后出)">
-              <el-switch v-model="(selected.data as Row).checkpoint_bind_warehouse" @change="syncSelectedData" />
-            </el-form-item>
-            <el-form-item label="自动下步"><el-switch v-model="(selected.data as Row).auto_next" @change="syncSelectedData" /></el-form-item>
-            <el-form-item label="自动入库"><el-switch v-model="(selected.data as Row).auto_stock_in" @change="syncSelectedData" /></el-form-item>
-            <el-form-item label="自动出库"><el-switch v-model="(selected.data as Row).auto_stock_out" @change="syncSelectedData" /></el-form-item>
-            <el-form-item label="仓库">
-              <el-select v-model="(selected.data as Row).warehouse_id" clearable style="width:100%" @change="syncSelectedData">
-                <el-option v-for="w in warehouses" :key="String(w.id)" :label="String(w.name)" :value="Number(w.id)" />
-              </el-select>
-            </el-form-item>
-          </template>
-          <template v-if="semanticType(selected) === 'role_task'">
-            <el-form-item label="角色">
-              <el-select v-model="(selected.data as Row).role_code" style="width:100%" @change="syncSelectedData">
-                <el-option v-for="r in roleOptions" :key="r.value" :label="r.label" :value="r.value" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="动作">
-              <el-select v-model="(selected.data as Row).action" style="width:100%" @change="syncSelectedData">
-                <el-option v-for="a in actionOptions" :key="a.value" :label="a.label" :value="a.value" />
-              </el-select>
-            </el-form-item>
-          </template>
-          <template v-if="semanticType(selected) === 'gateway_xor'">
-            <p class="hint">
-              网关用于「一分多」：从网关拉出多条线到不同岗位/工序。
-              自动流转只走标为「默认」的那条；其它线作为人工改道（next_node_id）备用。
-              串行流程一般不需要网关，直接节点连节点即可。
-            </p>
-          </template>
-          <el-button type="danger" size="small" @click="removeSelected">删除节点</el-button>
-        </el-form>
-      </template>
-      <p v-else class="hint">点击节点或连线编辑；Delete 删除选中项；删线后可重新拖拽连线。</p>
-    </aside>
+                  class="process-chip"
+                  :class="{ used: usedProcessIds.has(Number(p.id)) }"
+                  draggable="true"
+                  @dragstart="onProcessDragStart($event, p)"
+                >
+                  <span class="process-chip-name">{{ p.name }}</span>
+                  <span class="process-chip-code">{{ p.code }}</span>
+                  <span v-if="usedProcessIds.has(Number(p.id))" class="process-chip-used">已用</span>
+                </div>
+                <p v-if="!filteredProcesses.length" class="muted process-empty">无匹配工序，请先在工序定义中维护</p>
+              </div>
+            </template>
+          </div>
+          <p class="ph tip">从左侧拖工序到画布；点连线可删；Delete 删除选中项</p>
+        </aside>
+
+        <main class="canvas" @dragover="onCanvasDragOver" @drop="onCanvasDrop">
+          <VueFlow
+            :id="FLOW_EDITOR_ID"
+            v-model:nodes="nodes"
+            v-model:edges="edges"
+            fit-view-on-init
+            :default-viewport="{ zoom: 0.9 }"
+            :edges-updatable="true"
+            :elements-selectable="true"
+            @node-click="onNodeClick"
+            @edge-click="onEdgeClick"
+            @pane-click="onPaneClick"
+            @connect="onConnectHandler"
+            @dragover="onCanvasDragOver"
+            @drop="onCanvasDrop"
+          >
+            <Background />
+            <Controls />
+            <MiniMap />
+          </VueFlow>
+        </main>
+
+        <aside class="right">
+          <h3>属性</h3>
+          <div class="right-scroll">
+            <template v-if="selectedEdge">
+              <el-form label-position="top" size="small">
+                <el-form-item label="连线">
+                  <el-input :model-value="`${selectedEdge.source} → ${selectedEdge.target}`" disabled />
+                </el-form-item>
+                <el-form-item label="默认路径">
+                  <el-switch
+                    :model-value="(selectedEdge.data as Row)?.is_default !== false"
+                    @change="(v: string | number | boolean) => {
+                      if (!selectedEdge) return
+                      selectedEdge.data = { ...(selectedEdge.data as object), is_default: !!v }
+                      syncSelectedEdge()
+                    }"
+                  />
+                  <div class="hint">自动流转只走「默认」边；旁路需业务上传 next_node_id 才走。</div>
+                </el-form-item>
+                <el-button type="danger" size="small" @click="removeSelectedEdge">删除连线</el-button>
+              </el-form>
+            </template>
+            <template v-else-if="selected">
+              <el-form label-position="top" size="small" @change="syncSelectedData">
+                <el-form-item label="节点ID"><el-input :model-value="selected.id" disabled /></el-form-item>
+                <el-form-item label="显示名">
+                  <el-input v-model="(selected.data as Row).label" @change="syncSelectedData" />
+                </el-form-item>
+                <template v-if="semanticType(selected) === 'process_step'">
+                  <el-form-item label="工序">
+                    <el-select
+                      v-model="(selected.data as Row).process_id"
+                      filterable
+                      style="width:100%"
+                      @change="(v: number) => onProcessBindChange(Number(v))"
+                    >
+                      <el-option v-for="p in processes" :key="String(p.id)" :label="`${p.name}（${p.code}）`" :value="Number(p.id)" />
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="产出产物">
+                    <el-select v-model="(selected.data as Row).output_product_id" filterable style="width:100%" placeholder="发布必填" @change="syncSelectedData">
+                      <el-option
+                        v-for="p in products"
+                        :key="String(p.id)"
+                        :label="`${p.code || ''} · ${p.name || p.id}`"
+                        :value="Number(p.id)"
+                      />
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="计件"><el-switch v-model="(selected.data as Row).is_piecework" @change="syncSelectedData" /></el-form-item>
+                  <el-form-item label="卡点"><el-switch v-model="(selected.data as Row).is_inbound_checkpoint" @change="syncSelectedData" /></el-form-item>
+                  <el-form-item label="卡点绑仓(先入后出)">
+                    <el-switch v-model="(selected.data as Row).checkpoint_bind_warehouse" @change="syncSelectedData" />
+                  </el-form-item>
+                  <el-form-item label="自动下步"><el-switch v-model="(selected.data as Row).auto_next" @change="syncSelectedData" /></el-form-item>
+                  <el-form-item label="自动入库"><el-switch v-model="(selected.data as Row).auto_stock_in" @change="syncSelectedData" /></el-form-item>
+                  <el-form-item label="自动出库"><el-switch v-model="(selected.data as Row).auto_stock_out" @change="syncSelectedData" /></el-form-item>
+                  <el-form-item label="仓库">
+                    <el-select v-model="(selected.data as Row).warehouse_id" clearable style="width:100%" @change="syncSelectedData">
+                      <el-option v-for="w in warehouses" :key="String(w.id)" :label="String(w.name)" :value="Number(w.id)" />
+                    </el-select>
+                  </el-form-item>
+                </template>
+                <template v-if="semanticType(selected) === 'role_task'">
+                  <el-form-item label="角色">
+                    <el-select v-model="(selected.data as Row).role_code" style="width:100%" @change="syncSelectedData">
+                      <el-option v-for="r in roleOptions" :key="r.value" :label="r.label" :value="r.value" />
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="动作">
+                    <el-select v-model="(selected.data as Row).action" style="width:100%" @change="syncSelectedData">
+                      <el-option v-for="a in actionOptions" :key="a.value" :label="a.label" :value="a.value" />
+                    </el-select>
+                  </el-form-item>
+                </template>
+                <template v-if="semanticType(selected) === 'gateway_xor'">
+                  <p class="hint">
+                    网关用于「一分多」：从网关拉出多条线到不同岗位/工序。
+                    自动流转只走标为「默认」的那条；其它线作为人工改道（next_node_id）备用。
+                    串行流程一般不需要网关，直接节点连节点即可。
+                  </p>
+                </template>
+                <el-button type="danger" size="small" @click="removeSelected">删除节点</el-button>
+              </el-form>
+            </template>
+            <p v-else class="hint">点击节点或连线编辑；Delete 删除选中项；删线后可重新拖拽连线。</p>
+
+            <div v-if="meta.kind === 'production'" class="compiled-steps">
+              <h4>已编译步骤（发布后生效）</h4>
+              <p v-if="!compiledSteps.length" class="muted">尚未编译或仍为草稿。点「发布」后同步到过站。</p>
+              <el-table v-else :data="compiledSteps" size="small" max-height="200">
+                <el-table-column prop="seq_no" label="序" width="44" />
+                <el-table-column prop="step_code" label="编码" width="64" />
+                <el-table-column prop="step_name" label="名称" min-width="80" />
+                <el-table-column label="计件" width="44">
+                  <template #default="{ row }">{{ row.is_piecework ? '是' : '' }}</template>
+                </el-table-column>
+                <el-table-column label="卡点" width="44">
+                  <template #default="{ row }">{{ row.is_inbound_checkpoint ? '是' : '' }}</template>
+                </el-table-column>
+                <el-table-column prop="output_product_name" label="产出" min-width="72" />
+              </el-table>
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
   </div>
   </DesktopOnlyGate>
@@ -1052,39 +1256,145 @@ onBeforeUnmount(() => {
   }
 }
 .flow-editor {
-  display: grid;
-  grid-template-columns: 260px 1fr 260px;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   min-height: 640px;
   height: calc(100vh - 160px);
+}
+.editor-top {
+  flex-shrink: 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.editor-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 220px 1fr 280px;
+  gap: 12px;
 }
 .left, .right {
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   padding: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.left {
+  gap: 8px;
+}
+.right-scroll {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
 }
 .canvas {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   background: #fafafa;
-  min-height: 560px;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
 }
-.toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.canvas :deep(.vue-flow) {
+  width: 100%;
+  height: 100%;
+}
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
 .save-hint {
-  margin: 0 0 10px;
+  margin: 0;
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.4;
+  color: #64748b;
+  flex: 1;
+  min-width: 180px;
+}
+.meta-bar {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 4px;
+}
+.meta-bar :deep(.el-form-item) {
+  margin-bottom: 0;
+  margin-right: 8px;
+}
+.palette {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 0;
+}
+.palette-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ph { width: 100%; font-size: 12px; color: #64748b; margin-bottom: 0; }
+.process-ph { margin-top: 4px; }
+.process-filter { width: 100%; flex-shrink: 0; }
+.process-list {
+  width: 100%;
+  flex: 1;
+  min-height: 120px;
+  max-height: none;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 0;
+}
+.process-chip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px dashed #94a3b8;
+  border-radius: 6px;
+  background: #f8fafc;
+  cursor: grab;
+  user-select: none;
+  font-size: 12px;
+}
+.process-chip:active { cursor: grabbing; }
+.process-chip.used {
+  border-style: solid;
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+.process-chip-name { font-weight: 600; color: #14352a; }
+.process-chip-code {
+  font-family: var(--factory-mono, monospace);
+  font-size: 11px;
   color: #64748b;
 }
-.save-hint strong { color: #334155; }
-.meta { margin-bottom: 8px; }
-.palette { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
-.ph { width: 100%; font-size: 12px; color: #64748b; margin-bottom: 4px; }
-.tip { margin-top: 8px; line-height: 1.4; }
+.process-chip-used {
+  margin-left: auto;
+  font-size: 10px;
+  color: #15803d;
+}
+.process-empty { margin: 4px 0; font-size: 12px; }
+.tip { margin: 0; line-height: 1.4; flex-shrink: 0; }
 .hint { color: #64748b; font-size: 13px; line-height: 1.5; }
-h3 { margin: 0 0 8px; font-size: 14px; }
+h3 { margin: 0 0 8px; font-size: 14px; flex-shrink: 0; }
 /* 连线盖在节点之上，避免被节点挡住看不清/点不到 */
 .canvas :deep(.vue-flow__edges) {
   z-index: 5 !important;

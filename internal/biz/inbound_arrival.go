@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 import (
 	"fmt"
@@ -54,10 +54,10 @@ func (s *Services) listArrivals(c *gin.Context) bool {
 	var total int
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pur_inbound_arrival a `+where, args...).Scan(&total)
 	args = append(args, pageSize, (pageNum-1)*pageSize)
-	rows, err := s.DB.Query(`SELECT a.id, a.doc_no, a.farmer_id, COALESCE(f.name,''), COALESCE(a.origin,''), COALESCE(a.variety,''),
+	rows, err := s.DB.Query(`SELECT a.id, a.doc_no, a.supplier_id, COALESCE(f.name,''), COALESCE(a.origin,''), COALESCE(a.variety,''),
 		a.estimate_weight, a.source_type, a.channel, COALESCE(a.qc_result,''), COALESCE(a.grade,''), a.status,
 		COALESCE(a.qc_image_url,''), a.biz_date, a.created_at
-		FROM pur_inbound_arrival a LEFT JOIN pur_farmer f ON f.id=a.farmer_id `+where+`
+		FROM pur_inbound_arrival a LEFT JOIN pur_supplier f ON f.id=a.supplier_id `+where+`
 		ORDER BY a.id DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -71,7 +71,7 @@ func (s *Services) listArrivals(c *gin.Context) bool {
 		var est float64
 		_ = rows.Scan(&id, &docNo, &farmerID, &fname, &origin, &variety, &est, &source, &channel, &qcRes, &grade, &status, &img, &bizDate, &created)
 		list = append(list, gin.H{
-			"id": id, "doc_no": docNo, "farmer_id": farmerID, "farmer_name": fname, "origin": origin, "variety": variety,
+			"id": id, "doc_no": docNo, "supplier_id": farmerID, "farmer_name": fname, "origin": origin, "variety": variety,
 			"estimate_weight": est, "source_type": source, "channel": channel, "qc_result": qcRes, "grade": grade,
 			"status": status, "qc_image_url": img, "biz_date": bizDate, "created_at": created,
 			"evidences": s.listEvidence("inbound_arrival", id),
@@ -83,7 +83,7 @@ func (s *Services) listArrivals(c *gin.Context) bool {
 
 func (s *Services) createArrival(c *gin.Context) bool {
 	body := bindBody(c)
-	farmerID, _ := asInt64(body["farmer_id"])
+	farmerID, _ := asInt64(body["supplier_id"])
 	if farmerID <= 0 {
 		api.FailJSON(c, "FARMER_REQUIRED")
 		return true
@@ -91,11 +91,16 @@ func (s *Services) createArrival(c *gin.Context) bool {
 	docNo := fmt.Sprintf("AR%s", time.Now().Format("20060102150405"))
 	bizDate := strOrDef(body["biz_date"], time.Now().Format("2006-01-02"))
 	est, _ := asFloat(body["estimate_weight"])
+	variety := strings.TrimSpace(strOr(body["variety"]))
+	if variety == "" {
+		api.FailJSON(c, "VARIETY_REQUIRED")
+		return true
+	}
 	freight, loading, weighFee, passRate, reject, plate, recvAddr := feeFieldsFromBody(body)
-	res, err := s.DB.Exec(`INSERT INTO pur_inbound_arrival(doc_no, farmer_id, origin, variety, estimate_weight, source_type, channel, status, biz_date, remark,
+	res, err := s.DB.Exec(`INSERT INTO pur_inbound_arrival(doc_no, supplier_id, origin, variety, estimate_weight, source_type, channel, status, biz_date, remark,
 		plate_no, receive_address, pass_rate, reject_weight, freight_fee, loading_fee, weigh_fee)
 		VALUES(?,?,?,?,?,?,?,'qc_pending',?,?,?,?,?,?,?,?,?)`,
-		docNo, farmerID, strOr(body["origin"]), strOrDef(body["variety"], "鲜木薯"), est,
+		docNo, farmerID, strOr(body["origin"]), variety, est,
 		strOrDef(body["source_type"], "self"), strOrDef(body["channel"], "internal"), bizDate, strOr(body["remark"]),
 		plate, recvAddr, passRate, reject, freight, loading, weighFee)
 	if err != nil {
@@ -178,19 +183,19 @@ func (s *Services) loadArrival(id int64) gin.H {
 	var plate, recvAddr string
 	var est, passRate, reject, freight, loading, weighFee float64
 	var farmerName string
-	err := s.DB.QueryRow(`SELECT a.doc_no, a.farmer_id, COALESCE(f.name,''), COALESCE(a.origin,''), COALESCE(a.variety,''),
+	err := s.DB.QueryRow(`SELECT a.doc_no, a.supplier_id, COALESCE(f.name,''), COALESCE(a.origin,''), COALESCE(a.variety,''),
 		a.estimate_weight, a.source_type, a.channel, COALESCE(a.qc_result,''), COALESCE(a.grade,''), a.status,
 		COALESCE(a.qc_image_url,''), a.biz_date, COALESCE(a.remark,''), a.created_at,
 		COALESCE(a.plate_no,''), COALESCE(a.receive_address,''), COALESCE(a.pass_rate,0), COALESCE(a.reject_weight,0),
 		COALESCE(a.freight_fee,0), COALESCE(a.loading_fee,0), COALESCE(a.weigh_fee,0)
-		FROM pur_inbound_arrival a LEFT JOIN pur_farmer f ON f.id=a.farmer_id WHERE a.id=?`, id).
+		FROM pur_inbound_arrival a LEFT JOIN pur_supplier f ON f.id=a.supplier_id WHERE a.id=?`, id).
 		Scan(&docNo, &farmerID, &farmerName, &origin, &variety, &est, &source, &channel, &qcRes, &grade, &status, &img, &bizDate, &remark, &created,
 			&plate, &recvAddr, &passRate, &reject, &freight, &loading, &weighFee)
 	if err != nil {
 		return gin.H{}
 	}
 	out := gin.H{
-		"id": id, "doc_no": docNo, "farmer_id": farmerID, "farmer_name": farmerName, "origin": origin, "variety": variety,
+		"id": id, "doc_no": docNo, "supplier_id": farmerID, "farmer_name": farmerName, "origin": origin, "variety": variety,
 		"estimate_weight": est, "source_type": source, "channel": channel, "qc_result": qcRes, "grade": grade,
 		"status": status, "qc_image_url": img, "biz_date": bizDate, "remark": remark, "created_at": created,
 		"evidences": s.listEvidence("inbound_arrival", id),

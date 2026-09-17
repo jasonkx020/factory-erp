@@ -13,8 +13,9 @@ import (
 )
 
 type flowGraphDoc struct {
-	Nodes []flowGraphNode `json:"nodes"`
-	Edges []flowGraphEdge `json:"edges"`
+	Nodes []flowGraphNode         `json:"nodes"`
+	Edges []flowGraphEdge         `json:"edges"`
+	Meta  map[string]interface{}  `json:"meta,omitempty"`
 }
 
 type flowGraphNode struct {
@@ -869,6 +870,7 @@ func (s *Services) handleWeighFlowNextOptions(c *gin.Context) bool {
 	}
 	catID := s.categoryIDByCode(catCode)
 	options := s.listNextRoleOptionsAfterAction(kind, from)
+	cfg := s.loadPurchaseFlowConfig(kind)
 	api.OK(c, gin.H{
 		"receive_kind":  kind,
 		"from_action":   from,
@@ -876,6 +878,10 @@ func (s *Services) handleWeighFlowNextOptions(c *gin.Context) bool {
 		"category_id":   catID,
 		"options":       options,
 		"pool":          s.resolveHandlerPool(catID),
+		"capabilities":  cfg.Capabilities,
+		"field_pack":    cfg.FieldPack,
+		"require_weigh": cfg.RequireWeigh,
+		"industry_pack": s.IndustryPack,
 	})
 	return true
 }

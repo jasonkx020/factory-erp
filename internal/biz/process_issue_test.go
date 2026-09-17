@@ -44,12 +44,12 @@ func openIssueDB(t *testing.T) *Services {
 			ref_type TEXT DEFAULT '', ref_id BIGINT DEFAULT 0, before_json TEXT, after_json TEXT, remark TEXT, payload_json TEXT,
 			created_at TIMESTAMPTZ DEFAULT NOW())`,
 		`ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS is_deleted INTEGER DEFAULT 0`,
-		`ALTER TABLE pd_process ADD COLUMN IF NOT EXISTS pay_mode TEXT DEFAULT 'none'`,
+		`ALTER TABLE pay_process_wage_rate ADD COLUMN IF NOT EXISTS pay_mode TEXT DEFAULT 'none'`,
 		`ALTER TABLE hr_employee ADD COLUMN IF NOT EXISTS emp_type TEXT DEFAULT ''`,
 		`UPDATE inv_box_code SET current_process_id=1, current_step_id=10, weight=100, qty=100, trace_code='T-ISSUE' WHERE code='BX-SMOKE'`,
-		`INSERT INTO pay_process_wage_rate(process_id, rate, status) SELECT 1, 0.5, 'active'
+		`INSERT INTO pay_process_wage_rate(process_id, rate, status, pay_mode) SELECT 1, 0.5, 'active', 'weight'
 			WHERE NOT EXISTS (SELECT 1 FROM pay_process_wage_rate WHERE process_id=1)`,
-		`UPDATE pd_process SET is_piecework=1, pay_mode='weight' WHERE id=1`,
+		`UPDATE pay_process_wage_rate SET pay_mode='weight' WHERE process_id=1 AND status='active'`,
 		`UPDATE pd_routing_step SET is_piecework=1, auto_next=1 WHERE id=10`,
 		`INSERT INTO hr_employee(id, name, badge_code, emp_no, emp_type, status) VALUES
 			(7,'工人甲','BADGE-A','E7','piece','active') ON CONFLICT (id) DO UPDATE SET emp_type='piece'`,

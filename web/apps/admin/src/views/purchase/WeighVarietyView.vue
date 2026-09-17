@@ -152,7 +152,7 @@ function exportExcel() {
   const rows = filtered.value
   if (!rows.length) return ElMessage.warning('当前筛选无品种可导出')
   const aoa: (string | number)[][] = [
-    ['过磅品种'],
+    ['采购品种'],
     ['排序', '编码', '名称', '默认产品', '状态', '备注'],
   ]
   for (const r of rows) {
@@ -166,7 +166,7 @@ function exportExcel() {
     ])
   }
   const today = new Date().toISOString().slice(0, 10)
-  downloadExcel([{ name: '过磅品种', rows: aoa }], `过磅品种_${today}_${rows.length}`)
+  downloadExcel([{ name: '采购品种', rows: aoa }], `采购品种_${today}_${rows.length}`)
   ElMessage.success(`已导出 Excel（${rows.length} 条）`)
 }
 
@@ -177,8 +177,8 @@ onMounted(refresh)
   <div class="page" v-loading="loading">
     <header class="page-head">
       <div>
-        <h2 class="title">过磅品种</h2>
-        <p class="desc">配置手机端/管理端过磅收货可选品种（如鲜木薯、半成品、成品入库），可关联默认产品。</p>
+        <h2 class="title">采购品种</h2>
+        <p class="desc">配置 App/管理端采购入厂可选品种，可关联默认产品。</p>
       </div>
       <div class="head-meta">
         <span class="meta-pill">筛选 {{ filtered.length }} / 共 {{ summary.total }}</span>
@@ -199,8 +199,8 @@ onMounted(refresh)
       <EnumSelect v-model="statusFilter" :options="STATUS_ACTIVE_OPTIONS" clearable placeholder="状态" style="width:120px" />
     </div>
 
-    <TableOrCards :data="filtered" :loading="loading" :columns="varietyCols" empty-text="暂无过磅品种，请点击「新建品种」">
-      <el-table :data="filtered" border stripe class="variety-table" empty-text="暂无过磅品种">
+    <TableOrCards :data="filtered" :loading="loading" :columns="varietyCols" empty-text="暂无采购品种，请点击「新建品种」">
+      <el-table :data="filtered" border stripe class="variety-table" empty-text="暂无采购品种">
         <el-table-column prop="sort_no" label="排序" width="80" align="center" />
         <el-table-column prop="code" label="编码" width="140">
           <template #default="{ row }">
@@ -255,7 +255,7 @@ onMounted(refresh)
       </template>
     </TableOrCards>
 
-    <el-dialog v-model="dlg" :title="editingId ? '编辑过磅品种' : '新建过磅品种'" width="520px" destroy-on-close>
+    <el-dialog v-model="dlg" :title="editingId ? '编辑采购品种' : '新建采购品种'" width="520px" destroy-on-close>
       <el-form label-width="100px">
         <el-form-item label="编码">
           <el-input v-model="form.code" placeholder="可空，保存时自动生成" maxlength="32" />
@@ -275,7 +275,7 @@ onMounted(refresh)
         <el-form-item label="备注">
           <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="可选说明" />
         </el-form-item>
-        <p class="form-hint">过磅收货选此品种时，可自动带出默认产品，便于入库与溯源。</p>
+        <p class="form-hint">采购入厂选此品种时，可自动带出默认产品，便于入库与溯源。</p>
       </el-form>
       <template #footer>
         <el-button @click="dlg = false">取消</el-button>

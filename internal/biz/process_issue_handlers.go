@@ -32,6 +32,9 @@ type boardState struct {
 }
 
 func (s *Services) handleBoardIssues(c *gin.Context, method, openapiPath, action string) bool {
+	if (action == "create" || method == "POST") && s.RequireSetupReady(c, "production_flow", "warehouse_raw", "product", "shift") {
+		return true
+	}
 	if !s.requireMobileClient(c) {
 		return true
 	}
@@ -966,9 +969,7 @@ func (s *Services) moveBoardKg(board *boardState, toWorkerID int64, kg float64, 
 	if kind == "next" {
 		doPiece := fromProcess > 0 && (fromStep == nil || fromStep.IsPiecework)
 		if fromStep == nil && fromProcess > 0 {
-			var pPiece int
-			_ = s.DB.QueryRow(`SELECT COALESCE(is_piecework,0) FROM pd_process WHERE id=?`, fromProcess).Scan(&pPiece)
-			doPiece = pPiece == 1
+			doPiece = s.processPaysYield(fromProcess)
 		}
 		pieceKg := 0.0
 		settledAmt := 0.0

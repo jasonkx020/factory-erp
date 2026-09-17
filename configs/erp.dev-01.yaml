@@ -1,0 +1,38 @@
+server:
+  addr: ":18080"
+  web_root: "web/dist"
+database:
+  driver: postgres
+  dsn: "postgres://erp:erp123456@127.0.0.1:5432/erp_factory?sslmode=disable"
+  init_schema: true
+  migrations_dir: migrations
+  schema_path: migrations/erp/schema.sql
+  data_path: migrations/erp/data-dev.sql
+seed:
+  demo: true
+jwt:
+  secret: "dev-only-change-me"
+  access_ttl_min: 120
+  refresh_ttl_min: 10080
+cors:
+  allow_origins:
+    - "*"
+trace:
+  hmac_secret: "dev-trace-hmac-change-me"
+mqtt:
+  enabled: true
+  broker: nanomq
+  broker_url: "tcp://127.0.0.1:1883"
+  ws_url: "ws://127.0.0.1:8083/mqtt"
+  http_auth_enabled: true
+  server_username: "erp-hub"
+  server_password: "change-me-hub"
+  client_prefix: "erp"
+  tenant: "default"
+  token_ttl_seconds: 43200
+  keep_alive_seconds: 60
+oauth:
+  enabled: false
+ocr:
+  enabled: false
+  provider: ""

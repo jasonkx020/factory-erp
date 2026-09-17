@@ -239,7 +239,7 @@ watch(() => route.fullPath, load)
   <SupplierView v-else-if="perm.isSupplierModule(moduleName)" />
   <FarmerInboundView
     v-else-if="perm.isFarmerInboundModule(moduleName)"
-    :section="moduleName === '农户档案' ? 'farmers' : moduleName === '农户结算' ? 'settlements' : 'weigh'"
+    :section="moduleName === '供应商结算' ? 'settlements' : 'records'"
   />
   <OnboardView v-else-if="perm.isOnboardModule(moduleName)" />
   <EmployeeView v-else-if="perm.isEmployeeModule(moduleName)" />

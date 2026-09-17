@@ -18,7 +18,7 @@ List<RoleStep> stepsForWorkbenchRole(WorkbenchRole role, {String codeLabel = '�
   switch (role) {
     case WorkbenchRole.receiving:
       return [
-        const RoleStep(title: '建过磅单', subtitle: '农户过磅建单', route: '/receiving'),
+        const RoleStep(title: '建采购单', subtitle: '供应商采购建单', route: '/receiving'),
         RoleStep(title: '出码推仓', subtitle: '生成$codeLabel并推送待入库', route: '/receiving'),
       ];
     case WorkbenchRole.qc:
@@ -28,7 +28,7 @@ List<RoleStep> stepsForWorkbenchRole(WorkbenchRole role, {String codeLabel = '�
       ];
     case WorkbenchRole.warehouse:
       return [
-        const RoleStep(title: '待入库', subtitle: '核对过磅推仓单据', route: '/warehouse'),
+        const RoleStep(title: '待入库', subtitle: '核对采购推仓单据', route: '/warehouse'),
         const RoleStep(title: '核对入库', subtitle: '扫码出入库过账', route: '/warehouse'),
         RoleStep(title: '库存与$codeLabel', subtitle: '查库存、$codeLabel管理', route: '/warehouse'),
       ];

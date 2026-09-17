@@ -28,7 +28,7 @@ func (s *Services) processWageRate(processID int64) float64 {
 }
 
 func (s *Services) isPieceworkProcess(processID, stepID int64) bool {
-	// Yield-pay process: pay_mode weight|piece (legacy is_piecework / step flag still honored via processPayMode).
+	// Yield-pay: active wage rate pay_mode in weight|piece.
 	if processID > 0 {
 		return s.processPaysYield(processID)
 	}
@@ -47,10 +47,9 @@ func (s *Services) workerLockedPieceworkKg(workerID, processID int64) float64 {
 	}
 	q := `SELECT COALESCE(SUM(i.issue_kg - i.returned_kg - COALESCE(i.wage_settled_kg,0)),0)
 		FROM pd_process_issue i
-		LEFT JOIN pd_process p ON p.id=i.process_id
 		WHERE i.worker_id=?
 		  AND (i.issue_kg - i.returned_kg - COALESCE(i.wage_settled_kg,0)) > 0
-		  AND (COALESCE(NULLIF(p.pay_mode,''),'') IN ('weight','piece') OR (COALESCE(NULLIF(p.pay_mode,''),'')='' AND COALESCE(p.is_piecework,0)=1))`
+		  AND ` + processYieldPaySQL
 	args := []interface{}{workerID}
 	if processID > 0 {
 		q += ` AND i.process_id=?`
@@ -96,7 +95,7 @@ func (s *Services) listWorkerPieceworkLocks(workerID int64) ([]gin.H, float64, f
 		LEFT JOIN pd_process p ON p.id=i.process_id
 		WHERE i.worker_id=?
 		  AND (i.issue_kg - i.returned_kg - COALESCE(i.wage_settled_kg,0)) > 0
-		  AND (COALESCE(NULLIF(p.pay_mode,''),'') IN ('weight','piece') OR (COALESCE(NULLIF(p.pay_mode,''),'')='' AND COALESCE(p.is_piecework,0)=1))
+		  AND `+processYieldPaySQL+`
 		GROUP BY i.process_id, p.name`, workerID)
 	if err != nil {
 		return nil, 0, 0
@@ -342,11 +341,10 @@ func (s *Services) handlePieceworkDaySettle(c *gin.Context) bool {
 		(i.issue_kg - i.returned_kg - COALESCE(i.wage_settled_kg,0)) AS rem
 		FROM pd_process_issue i
 		INNER JOIN hr_employee e ON e.id=i.worker_id AND COALESCE(e.emp_type,'')='piece'
-		INNER JOIN pd_process p ON p.id=i.process_id
 		WHERE COALESCE(i.worker_id,0)>0
 		  AND COALESCE(i.biz_status,'open')='work_done'
 		  AND (i.issue_kg - i.returned_kg - COALESCE(i.wage_settled_kg,0)) > 0
-		  AND (COALESCE(NULLIF(p.pay_mode,''),'') IN ('weight','piece') OR (COALESCE(NULLIF(p.pay_mode,''),'')='' AND COALESCE(p.is_piecework,0)=1))
+		  AND `+processYieldPaySQL+`
 		ORDER BY i.worker_id, i.process_id, i.id`)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())

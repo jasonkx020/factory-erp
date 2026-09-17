@@ -6,8 +6,8 @@ import (
 	"erp/internal/api"
 )
 
-// GetPlantLinePreview returns decorative plant-line steps from config (no hardcoded chain).
-// Preference: latest in-progress trace session routing → RT-CASSAVA-FRESH → latest active routing.
+// GetPlantLinePreview returns decorative plant-line steps from configured routing.
+// Preference: latest in-progress trace session → active production flow_graph routing → latest active routing.
 func (s *Services) GetPlantLinePreview(c *gin.Context) {
 	var routingID int64
 	source := "none"
@@ -16,10 +16,12 @@ func (s *Services) GetPlantLinePreview(c *gin.Context) {
 	if routingID > 0 {
 		source = "active_session"
 	} else {
-		_ = s.DB.QueryRow(`SELECT id FROM pd_routing
-			WHERE code=? AND status='active' AND COALESCE(is_deleted,0)=0 ORDER BY id DESC LIMIT 1`, freshCassavaRoutingCode).Scan(&routingID)
+		_ = s.DB.QueryRow(`SELECT COALESCE(routing_id,0) FROM pd_flow_graph
+			WHERE kind='production' AND status='active' AND COALESCE(is_deleted,0)=0
+			  AND COALESCE(routing_id,0)>0
+			ORDER BY id DESC LIMIT 1`).Scan(&routingID)
 		if routingID > 0 {
-			source = "fresh_cassava"
+			source = "active_flow_graph"
 		} else {
 			_ = s.DB.QueryRow(`SELECT id FROM pd_routing
 				WHERE status='active' AND COALESCE(is_deleted,0)=0 ORDER BY id DESC LIMIT 1`).Scan(&routingID)

@@ -5,8 +5,8 @@ export type MenuGroup = { title: string; modules: string[] }
 
 export const ERP_MENU_GROUPS: Record<string, MenuGroup[]> = {
   采购管理: [
-    { title: '农户与入场', modules: ['农户档案', '过磅收货', '过磅流程编排', '过磅品种', '溯源批号', '原料溯源', '来料质检'] },
-    { title: '结算', modules: ['农户结算'] },
+    { title: '供应商与入场', modules: ['供应商管理', '采购记录', '采购流程编排', '采购品种', '溯源批号', '原料溯源', '来料质检'] },
+    { title: '结算', modules: ['供应商结算'] },
   ],
   库存管理: [
     {
@@ -22,7 +22,7 @@ export const ERP_MENU_GROUPS: Record<string, MenuGroup[]> = {
   ],
   产品管理: [{ title: '产品主数据', modules: ['产品档案', '产品单位管理', '生产规格绑定'] }],
   财务管理: [
-    { title: '结算与资金', modules: ['农户应付', '资金管理', '交易流水账'] },
+    { title: '结算与资金', modules: ['供应商应付', '在线支付审批', '资金管理', '交易流水账'] },
     { title: '成本', modules: ['成本核算', '成本明细溯源表'] },
   ],
   工资管理: [
@@ -31,7 +31,7 @@ export const ERP_MENU_GROUPS: Record<string, MenuGroup[]> = {
   ],
   人事管理: [{ title: '组织人事', modules: ['员工档案', '岗位管理', '公司架构', '角色管理'] }],
   统计报表: [
-    { title: '经营看板', modules: ['生产看板', '生产实况', '三仓库存概览'] },
+    { title: '经营看板', modules: ['生产看板', '生产实况', '仓库库存概览', '三仓库存概览'] },
     { title: '日结对账', modules: ['日经营快照', '原料入场日报', '计件日结汇总'] },
     {
       title: '分析查询',
@@ -39,14 +39,14 @@ export const ERP_MENU_GROUPS: Record<string, MenuGroup[]> = {
         '工序扣损收率分析',
         '收发存明细',
         '溯源批进度查询',
-        '农户结算对账汇总',
+        '供应商结算对账汇总',
         '薪酬核算对账',
         '成本期间汇总',
       ],
     },
   ],
   系统管理: [
-    { title: '基础与权限', modules: ['基础设置', '自定义权限', '登录控制'] },
+    { title: '基础与权限', modules: ['基础设置', '支付配置', '自定义权限', '登录控制'] },
     { title: '产线运维', modules: ['生产设置', '批量核算工资', '操作日志'] },
   ],
 }

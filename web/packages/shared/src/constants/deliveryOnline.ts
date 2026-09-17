@@ -7,16 +7,13 @@ import { productScopePairs } from './productScope'
 
 /** 现场业务录入仅 App；Admin 对应模块为查询/配置/补单 */
 export const FIELD_INPUT_APP_ONLY: Array<[string, string]> = [
-  ['采购管理', '过磅收货'],
+  ['采购管理', '采购记录'],
   ['库存管理', '仓管待入库'],
 ]
 
-const ONLINE: Array<[string, string]> = productScopePairs()
-
-const onlineSet = new Set(ONLINE.map(([d, m]) => `${d}/${m}`))
-
-/** 是否在对外交付上线范围内 */
+/** 是否在对外交付上线范围内（随当前 product profile 变化） */
 export function isDeliveryOnlineModule(domain: string, module: string): boolean {
+  const onlineSet = new Set(productScopePairs().map(([d, m]) => `${d}/${m}`))
   if (onlineSet.has(`${domain}/${module}`)) return true
   return Boolean(ADMIN_SPECIAL_MODULE_PATHS[`${domain}/${module}`])
 }

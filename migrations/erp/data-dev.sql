@@ -27,27 +27,28 @@ ON CONFLICT DO NOTHING;
 INSERT INTO inv_warehouse(id, org_id, code, name, warehouse_type) VALUES
  (1, 1, 'WH-RAW', '保鲜库', 'raw'),
  (2, 1, 'WH-SEMI', '半成品库', 'semi'),
- (3, 1, 'WH-FG', '成品冷库', 'finished')
+ (3, 1, 'WH-FG', '成品库', 'fg')
 ON CONFLICT DO NOTHING;
+UPDATE inv_warehouse SET warehouse_role = warehouse_type WHERE id IN (1,2,3) AND COALESCE(warehouse_role,'')='';
 
 -- upgrade v1.0.21 先于 data-dev 写入 GATE_IN/SLICE/OUT_RAW 并占用自增 id，
 -- 会使下方固定 id 的工序种子被 ON CONFLICT 跳过，进而导致 routing_step.process_id 外键失败。
 DELETE FROM pd_process WHERE code IN ('GATE_IN', 'SLICE', 'OUT_RAW');
 
-INSERT INTO pd_process(id, code, name, process_type, is_piecework, is_handover_point) VALUES
- (1, 'PEEL', '去皮', 'peel', 1, 0),
- (2, 'HANDOVER', '收货卡点', 'other', 0, 1),
- (3, 'CUT', '切断', 'cut', 0, 0),
- (4, 'CORE', '去芯', 'core', 1, 0),
- (5, 'DICE', '切块', 'dice', 1, 0),
- (6, 'BAG', '过筛装袋', 'bag', 0, 0),
- (7, 'WASH', '清洗', 'wash', 0, 0),
- (8, 'IN_RAW', '原料入库', 'inbound', 0, 0),
- (9, 'IN_SEMI', '半成品入库', 'inbound', 0, 0),
- (10, 'OUT_DICE', '出库切块', 'outbound', 1, 0),
- (11, 'IN_FG', '成品入库', 'inbound', 0, 0),
- (12, 'SLICE', '切片', 'slice', 1, 0),
- (13, 'DRY', '烘干', 'dry', 0, 0)
+INSERT INTO pd_process(id, code, name, is_handover_point) VALUES
+ (1, 'PEEL', '去皮', 0),
+ (2, 'HANDOVER', '收货卡点', 1),
+ (3, 'CUT', '切断', 0),
+ (4, 'CORE', '去芯', 0),
+ (5, 'DICE', '切块', 0),
+ (6, 'BAG', '过筛装袋', 0),
+ (7, 'WASH', '清洗', 0),
+ (8, 'IN_RAW', '原料入库', 0),
+ (9, 'IN_SEMI', '半成品入库', 0),
+ (10, 'OUT_DICE', '出库切块', 0),
+ (11, 'IN_FG', '成品入库', 0),
+ (12, 'SLICE', '切片', 0),
+ (13, 'DRY', '烘干', 0)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO iam_login_policy(
@@ -257,17 +258,17 @@ WHERE v.default_product_id IS NULL AND COALESCE(v.is_deleted,0)=0
     OR (v.code = 'WV-FG' AND p.code = 'FG-DICED')
   );
 
--- 农户档案（过磅入厂搜索姓名/手机号）
-INSERT INTO pur_farmer(code, name, mobile, origin, trace_code, trace_code_prefix, status, remark, default_unit_price)
+-- 个人供应商（过磅入厂搜索姓名/手机号）
+INSERT INTO pur_supplier(code, name, party_kind, supplier_type, status, mobile, origin, trace_code_prefix, remark, default_unit_price)
 VALUES
- ('FM01', '黄桂生', '13807710001', '南宁武鸣', 'FM01', 'FM01', 'active', '开发种子·鲜薯入厂', 1.20),
- ('FM02', '李秀兰', '13807710002', '南宁横州', 'FM02', 'FM02', 'active', '开发种子·鲜薯入厂', 1.18),
- ('FM03', '韦建国', '13907710003', '南宁宾阳', 'FM03', 'FM03', 'active', '开发种子·鲜薯入厂', 1.22),
- ('FM04', '覃金莲', '13707710004', '钦州灵山', 'FM04', 'FM04', 'active', '开发种子·鲜薯入厂', 1.15),
- ('FM05', '陈木生', '13607710005', '北海合浦', 'FM05', 'FM05', 'active', '开发种子·鲜薯入厂', 1.25),
- ('FM06', '农福田', '13507710006', '崇左扶绥', 'FM06', 'FM06', 'active', '开发种子·鲜薯入厂', 1.16),
- ('FM07', '陆阿婆', '13407710007', '贵港桂平', 'FM07', 'FM07', 'active', '开发种子·鲜薯入厂', 1.10),
- ('FM08', '门口过磅点', '13307710008', '厂区地磅', 'FM08', 'FM08', 'active', '开发种子·现场临时户', 1.20)
+ ('FM01', '黄桂生', 'person', 'raw', 'qualified', '13807710001', '南宁武鸣', 'FM01', '开发种子·鲜薯入厂', 1.20),
+ ('FM02', '李秀兰', 'person', 'raw', 'qualified', '13807710002', '南宁横州', 'FM02', '开发种子·鲜薯入厂', 1.18),
+ ('FM03', '韦建国', 'person', 'raw', 'qualified', '13907710003', '南宁宾阳', 'FM03', '开发种子·鲜薯入厂', 1.22),
+ ('FM04', '覃金莲', 'person', 'raw', 'qualified', '13707710004', '钦州灵山', 'FM04', '开发种子·鲜薯入厂', 1.15),
+ ('FM05', '陈木生', 'person', 'raw', 'qualified', '13607710005', '北海合浦', 'FM05', '开发种子·鲜薯入厂', 1.25),
+ ('FM06', '农福田', 'person', 'raw', 'qualified', '13507710006', '崇左扶绥', 'FM06', '开发种子·鲜薯入厂', 1.16),
+ ('FM07', '陆阿婆', 'person', 'raw', 'qualified', '13407710007', '贵港桂平', 'FM07', '开发种子·鲜薯入厂', 1.10),
+ ('FM08', '门口过磅点', 'person', 'raw', 'qualified', '13307710008', '厂区地磅', 'FM08', '开发种子·现场临时户', 1.20)
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO prd_product_unit(product_id, unit_name, is_base, factor_to_base) VALUES
@@ -282,14 +283,14 @@ INSERT INTO inv_balance(warehouse_id, product_id, batch_no, qty) VALUES
  (3, 3, 'B0802', 3200)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO pay_process_wage_rate(process_id, rate, effective_from, status)
-SELECT v.process_id, v.rate, v.effective_from, 'active'
+INSERT INTO pay_process_wage_rate(process_id, rate, effective_from, status, pay_mode)
+SELECT v.process_id, v.rate, v.effective_from, 'active', v.pay_mode
 FROM (VALUES
-  (1::bigint, 0.18::double precision, '2026-07-01'::text),
-  (4, 0.25, '2026-07-01'),
-  (5, 0.22, '2026-07-01'),
-  (10, 0.22, '2026-07-01')
-) AS v(process_id, rate, effective_from)
+  (1::bigint, 0.18::double precision, '2026-07-01'::text, 'weight'::text),
+  (4, 0.25, '2026-07-01', 'weight'),
+  (5, 0.22, '2026-07-01', 'weight'),
+  (10, 0.22, '2026-07-01', 'weight')
+) AS v(process_id, rate, effective_from, pay_mode)
 WHERE NOT EXISTS (
   SELECT 1 FROM pay_process_wage_rate r WHERE r.process_id = v.process_id AND r.status = 'active'
 );
@@ -366,13 +367,13 @@ INSERT INTO inv_box_code(id, code, product_id, warehouse_id, batch_no, qty, weig
  (1, 'BX-RAW-DEMO', 1, 1, 'B0801', 1000, 1000, 8, 1, 'open')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO pur_supplier(id, code, name, short_name, supplier_type, status, rating, is_preferred, uscc, settle_method, payment_days, lead_time_days, moq, default_warehouse_id, contact_json, remark) VALUES
- (1, 'SUP-RAW-01', '广西木薯原料合作社', '桂薯原料', 'raw', 'qualified', 'A', 1, '91450000MA5XXXXX01', 'monthly', 30, 3, 1000, 1,
-  '[{"name":"张经理","mobile":"13800001111","wechat":"zhang_sup","is_primary":true}]', '主原料供应商'),
- (2, 'SUP-AUX-01', '包装袋辅料厂', '包材厂', 'pack', 'qualified', 'B', 0, '91450000MA5XXXXX02', 'cash', 0, 7, 100, 1,
-  '[{"name":"李主管","mobile":"13800002222","is_primary":true}]', '包装辅料'),
- (3, 'SUP-POT-01', '待准入产地商', '潜在产地', 'raw', 'potential', 'C', 0, NULL, 'cod', 0, 5, 500, 1,
-  '[{"name":"王联系人","mobile":"13800003333","is_primary":true}]', '尚未准入')
+INSERT INTO pur_supplier(id, code, name, short_name, party_kind, supplier_type, status, rating, is_preferred, uscc, legal_person, register_address, settle_method, payment_days, lead_time_days, moq, default_warehouse_id, contact_json, mobile, remark) VALUES
+ (1, 'SUP-RAW-01', '广西木薯原料合作社', '桂薯原料', 'enterprise', 'raw', 'qualified', 'A', 1, '91450000MA5XXXXX01', '张法人', '广西南宁', 'monthly', 30, 3, 1000, 1,
+  '[{"name":"张经理","mobile":"13800001111","wechat":"zhang_sup","is_primary":true}]', '13800001111', '主原料供应商'),
+ (2, 'SUP-AUX-01', '包装袋辅料厂', '包材厂', 'enterprise', 'pack', 'qualified', 'B', 0, '91450000MA5XXXXX02', '李法人', '广西柳州', 'cash', 0, 7, 100, 1,
+  '[{"name":"李主管","mobile":"13800002222","is_primary":true}]', '13800002222', '包装辅料'),
+ (3, 'SUP-POT-01', '待准入产地商', '潜在产地', 'enterprise', 'raw', 'potential', 'C', 0, NULL, '王联系人', NULL, 'cod', 0, 5, 500, 1,
+  '[{"name":"王联系人","mobile":"13800003333","is_primary":true}]', '13800003333', '尚未准入')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO pur_supplier_license(id, supplier_id, license_type, license_no, expire_date) VALUES
@@ -441,7 +442,6 @@ SELECT setval(pg_get_serial_sequence('pd_routing', 'id'), COALESCE((SELECT MAX(i
 SELECT setval(pg_get_serial_sequence('pd_flow_graph', 'id'), COALESCE((SELECT MAX(id) FROM pd_flow_graph), 1));
 SELECT setval(pg_get_serial_sequence('pd_work_team', 'id'), COALESCE((SELECT MAX(id) FROM pd_work_team), 1));
 SELECT setval(pg_get_serial_sequence('prd_product', 'id'), COALESCE((SELECT MAX(id) FROM prd_product), 1));
-SELECT setval(pg_get_serial_sequence('pur_farmer', 'id'), COALESCE((SELECT MAX(id) FROM pur_farmer), 1));
 SELECT setval(pg_get_serial_sequence('pur_supplier', 'id'), COALESCE((SELECT MAX(id) FROM pur_supplier), 1));
 SELECT setval(pg_get_serial_sequence('pur_supplier_license', 'id'), COALESCE((SELECT MAX(id) FROM pur_supplier_license), 1));
 SELECT setval(pg_get_serial_sequence('pur_supplier_supply_item', 'id'), COALESCE((SELECT MAX(id) FROM pur_supplier_supply_item), 1));

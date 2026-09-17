@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 import (
 	"encoding/json"
@@ -36,18 +36,17 @@ func (s *Services) listFarmers(c *gin.Context) bool {
 	mobileQ := strings.TrimSpace(c.Query("mobile"))
 	nameQ := strings.TrimSpace(c.Query("name"))
 	idQ := strings.TrimSpace(c.Query("id"))
-	where := `WHERE COALESCE(is_deleted,0)=0`
+	where := `WHERE COALESCE(is_deleted,0)=0 AND party_kind='person'`
 	args := []interface{}{}
 	searching := idQ != "" || mobileQ != "" || nameQ != "" || kw != ""
 	if searching {
-		where += ` AND status='active'`
+		where += ` AND status NOT IN ('eliminated','blacklist')`
 	}
 	if idQ != "" {
 		where += ` AND id=?`
 		args = append(args, idQ)
 	}
 	if mobileQ != "" {
-		// 手机号：精确或后缀/前缀模糊
 		where += ` AND mobile LIKE ?`
 		args = append(args, "%"+mobileQ+"%")
 	}
@@ -56,50 +55,31 @@ func (s *Services) listFarmers(c *gin.Context) bool {
 		args = append(args, "%"+nameQ+"%")
 	}
 	if kw != "" {
-		where += ` AND (name LIKE ? OR mobile LIKE ? OR code LIKE ? OR origin LIKE ?)`
+		where += ` AND (name LIKE ? OR mobile LIKE ? OR code LIKE ? OR COALESCE(origin,'') LIKE ?)`
 		like := "%" + kw + "%"
 		args = append(args, like, like, like, like)
 	}
 	var total int
-	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pur_farmer `+where, args...).Scan(&total)
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pur_supplier `+where, args...).Scan(&total)
 	args = append(args, pageSize, (pageNum-1)*pageSize)
-	rows, err := s.DB.Query(`SELECT id, code, name, COALESCE(mobile,''), COALESCE(origin,''), COALESCE(trace_code,''),
+	rows, err := s.DB.Query(`SELECT id, code, name, COALESCE(mobile,''), COALESCE(origin,''),
 		COALESCE(trace_code_prefix,''), status, COALESCE(remark,''), created_at, COALESCE(default_unit_price,0)
-		FROM pur_farmer `+where+` ORDER BY id DESC LIMIT ? OFFSET ?`, args...)
+		FROM pur_supplier `+where+` ORDER BY id DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
-		// fallback without default_unit_price
-		rows, err = s.DB.Query(`SELECT id, code, name, COALESCE(mobile,''), COALESCE(origin,''), COALESCE(trace_code,''),
-			COALESCE(trace_code_prefix,''), status, COALESCE(remark,''), created_at
-			FROM pur_farmer `+where+` ORDER BY id DESC LIMIT ? OFFSET ?`, args...)
-		if err != nil {
-			api.FailJSON(c, "DB_ERROR:"+err.Error())
-			return true
-		}
-		defer rows.Close()
-		list := []gin.H{}
-		for rows.Next() {
-			var id int64
-			var code, name, mobile, origin, trace, prefix, status, remark, created string
-			_ = rows.Scan(&id, &code, &name, &mobile, &origin, &trace, &prefix, &status, &remark, &created)
-			list = append(list, gin.H{
-				"id": id, "code": code, "name": name, "mobile": mobile, "origin": origin,
-				"trace_code": trace, "trace_code_prefix": prefix, "status": status, "remark": remark, "created_at": created,
-			})
-		}
-		api.PageOK(c, list, total, pageNum, pageSize)
+		api.FailJSON(c, "DB_ERROR:"+err.Error())
 		return true
 	}
 	defer rows.Close()
 	list := []gin.H{}
 	for rows.Next() {
 		var id int64
-		var code, name, mobile, origin, trace, prefix, status, remark, created string
+		var code, name, mobile, origin, prefix, status, remark, created string
 		var price float64
-		_ = rows.Scan(&id, &code, &name, &mobile, &origin, &trace, &prefix, &status, &remark, &created, &price)
+		_ = rows.Scan(&id, &code, &name, &mobile, &origin, &prefix, &status, &remark, &created, &price)
 		list = append(list, gin.H{
 			"id": id, "code": code, "name": name, "mobile": mobile, "origin": origin,
-			"trace_code": trace, "trace_code_prefix": prefix, "status": status, "remark": remark, "created_at": created,
-			"default_unit_price": price,
+			"trace_code": prefix, "trace_code_prefix": prefix, "status": status, "remark": remark, "created_at": created,
+			"default_unit_price": price, "party_kind": "person",
 		})
 	}
 	api.PageOK(c, list, total, pageNum, pageSize)
@@ -115,35 +95,32 @@ func (s *Services) createFarmer(c *gin.Context) bool {
 	}
 	code := strOr(body["code"])
 	if code == "" {
-		code = fmt.Sprintf("F%s", time.Now().Format("060102150405"))
+		code = fmt.Sprintf("P%s", time.Now().Format("060102150405"))
+	}
+	status := strOrDef(body["status"], "qualified")
+	if status == "active" {
+		status = "qualified"
 	}
 	mobile := strOr(body["mobile"])
 	origin := strOr(body["origin"])
 	prefix := strOrDef(body["trace_code_prefix"], "TR")
-	trace := strOr(body["trace_code"])
-	if trace == "" {
-		trace = fmt.Sprintf("%s-%s-%d", prefix, time.Now().Format("20060102"), time.Now().UnixNano()%1e6)
-	}
-	status := strOrDef(body["status"], "active")
 	remark := strOr(body["remark"])
 	price, _ := asFloat(body["default_unit_price"])
-	res, err := s.DB.Exec(`INSERT INTO pur_farmer(code, name, mobile, origin, trace_code, trace_code_prefix, status, remark, default_unit_price)
-		VALUES(?,?,?,?,?,?,?,?,?)`, code, name, mobile, origin, trace, prefix, status, remark, price)
+	res, err := s.DB.Exec(`INSERT INTO pur_supplier(code, name, party_kind, supplier_type, status, mobile, origin, trace_code_prefix, remark, default_unit_price)
+		VALUES(?,?,'person','raw',?,?,?,?,?,?)`, code, name, status, mobile, origin, prefix, remark, price)
 	if err != nil {
-		// fallback without price column
-		res, err = s.DB.Exec(`INSERT INTO pur_farmer(code, name, mobile, origin, trace_code, trace_code_prefix, status, remark)
-			VALUES(?,?,?,?,?,?,?,?)`, code, name, mobile, origin, trace, prefix, status, remark)
-		if err != nil {
-			api.FailJSON(c, "DB_ERROR:"+err.Error())
-			return true
-		}
+		api.FailJSON(c, "DB_ERROR:"+err.Error())
+		return true
 	}
 	id, _ := res.LastInsertId()
+	if id == 0 {
+		_ = s.DB.QueryRow(`SELECT id FROM pur_supplier WHERE code=?`, code).Scan(&id)
+	}
 	api.OK(c, s.loadFarmer(id))
 	return true
 }
 
-// ensureFarmerForWeigh 入厂建单时：无 farmer_id 则按手机号唯一匹配复用，否则新建档案。
+// ensureFarmerForWeigh 入厂建单：无 supplier_id 则按手机号匹配个人供应商，否则新建。
 func (s *Services) ensureFarmerForWeigh(name, mobile, origin string) (int64, error) {
 	name = strings.TrimSpace(name)
 	mobile = strings.TrimSpace(mobile)
@@ -152,27 +129,23 @@ func (s *Services) ensureFarmerForWeigh(name, mobile, origin string) (int64, err
 		return 0, fmt.Errorf("name required")
 	}
 	if mobile != "" {
-		var n int
-		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pur_farmer WHERE COALESCE(is_deleted,0)=0 AND status='active' AND mobile=?`, mobile).Scan(&n)
-		if n == 1 {
-			var id int64
-			_ = s.DB.QueryRow(`SELECT id FROM pur_farmer WHERE COALESCE(is_deleted,0)=0 AND status='active' AND mobile=? ORDER BY id LIMIT 1`, mobile).Scan(&id)
-			if id > 0 {
-				return id, nil
-			}
+		var id int64
+		_ = s.DB.QueryRow(`SELECT id FROM pur_supplier WHERE COALESCE(is_deleted,0)=0 AND party_kind='person'
+			AND status NOT IN ('eliminated','blacklist') AND mobile=? ORDER BY id LIMIT 1`, mobile).Scan(&id)
+		if id > 0 {
+			return id, nil
 		}
 	}
-	code := fmt.Sprintf("F%s", time.Now().Format("060102150405"))
+	code := fmt.Sprintf("P%s", time.Now().Format("060102150405"))
 	prefix := "TR"
-	trace := fmt.Sprintf("%s-%s-%d", prefix, time.Now().Format("20060102"), time.Now().UnixNano()%1e6)
-	res, err := s.DB.Exec(`INSERT INTO pur_farmer(code, name, mobile, origin, trace_code, trace_code_prefix, status, remark)
-		VALUES(?,?,?,?,?,?,'active','')`, code, name, mobile, origin, trace, prefix)
+	res, err := s.DB.Exec(`INSERT INTO pur_supplier(code, name, party_kind, supplier_type, status, mobile, origin, trace_code_prefix, remark)
+		VALUES(?,?,'person','raw','qualified',?,?,?,'')`, code, name, mobile, origin, prefix)
 	if err != nil {
 		return 0, err
 	}
 	id, _ := res.LastInsertId()
 	if id == 0 {
-		_ = s.DB.QueryRow(`SELECT id FROM pur_farmer WHERE code=?`, code).Scan(&id)
+		_ = s.DB.QueryRow(`SELECT id FROM pur_supplier WHERE code=?`, code).Scan(&id)
 	}
 	return id, nil
 }
@@ -190,12 +163,17 @@ func (s *Services) getFarmer(c *gin.Context) bool {
 func (s *Services) updateFarmer(c *gin.Context) bool {
 	id := paramID(c)
 	body := bindBody(c)
-	_, err := s.DB.Exec(`UPDATE pur_farmer SET name=COALESCE(NULLIF(?,''),name), mobile=COALESCE(NULLIF(?,''),mobile),
-		origin=COALESCE(NULLIF(?,''),origin), trace_code=COALESCE(NULLIF(?,''),trace_code),
+	status := strOr(body["status"])
+	if status == "active" {
+		status = "qualified"
+	}
+	_, err := s.DB.Exec(`UPDATE pur_supplier SET name=COALESCE(NULLIF(?,''),name), mobile=COALESCE(NULLIF(?,''),mobile),
+		origin=COALESCE(NULLIF(?,''),origin),
 		trace_code_prefix=COALESCE(NULLIF(?,''),trace_code_prefix), status=COALESCE(NULLIF(?,''),status),
-		remark=COALESCE(NULLIF(?,''),remark), updated_at=NOW() WHERE id=? AND COALESCE(is_deleted,0)=0`,
-		strOr(body["name"]), strOr(body["mobile"]), strOr(body["origin"]), strOr(body["trace_code"]),
-		strOr(body["trace_code_prefix"]), strOr(body["status"]), strOr(body["remark"]), id)
+		remark=COALESCE(NULLIF(?,''),remark), default_unit_price=COALESCE(NULLIF(?,0),default_unit_price),
+		updated_at=NOW() WHERE id=? AND COALESCE(is_deleted,0)=0 AND party_kind='person'`,
+		strOr(body["name"]), strOr(body["mobile"]), strOr(body["origin"]),
+		strOr(body["trace_code_prefix"]), status, strOr(body["remark"]), nullFloat(body["default_unit_price"]), id)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
 		return true
@@ -205,29 +183,19 @@ func (s *Services) updateFarmer(c *gin.Context) bool {
 }
 
 func (s *Services) loadFarmer(id int64) gin.H {
-	var code, name, mobile, origin, trace, prefix, status, remark, created string
+	var code, name, mobile, origin, prefix, status, remark, created string
 	var price float64
-	err := s.DB.QueryRow(`SELECT code, name, COALESCE(mobile,''), COALESCE(origin,''), COALESCE(trace_code,''),
+	err := s.DB.QueryRow(`SELECT code, name, COALESCE(mobile,''), COALESCE(origin,''),
 		COALESCE(trace_code_prefix,''), status, COALESCE(remark,''), created_at, COALESCE(default_unit_price,0)
-		FROM pur_farmer WHERE id=? AND COALESCE(is_deleted,0)=0`, id).
-		Scan(&code, &name, &mobile, &origin, &trace, &prefix, &status, &remark, &created, &price)
+		FROM pur_supplier WHERE id=? AND COALESCE(is_deleted,0)=0 AND party_kind='person'`, id).
+		Scan(&code, &name, &mobile, &origin, &prefix, &status, &remark, &created, &price)
 	if err != nil {
-		err = s.DB.QueryRow(`SELECT code, name, COALESCE(mobile,''), COALESCE(origin,''), COALESCE(trace_code,''),
-			COALESCE(trace_code_prefix,''), status, COALESCE(remark,''), created_at
-			FROM pur_farmer WHERE id=? AND COALESCE(is_deleted,0)=0`, id).
-			Scan(&code, &name, &mobile, &origin, &trace, &prefix, &status, &remark, &created)
-		if err != nil {
-			return gin.H{}
-		}
-		return gin.H{
-			"id": id, "code": code, "name": name, "mobile": mobile, "origin": origin,
-			"trace_code": trace, "trace_code_prefix": prefix, "status": status, "remark": remark, "created_at": created,
-		}
+		return gin.H{}
 	}
 	return gin.H{
 		"id": id, "code": code, "name": name, "mobile": mobile, "origin": origin,
-		"trace_code": trace, "trace_code_prefix": prefix, "status": status, "remark": remark, "created_at": created,
-		"default_unit_price": price,
+		"trace_code": prefix, "trace_code_prefix": prefix, "status": status, "remark": remark, "created_at": created,
+		"default_unit_price": price, "party_kind": "person",
 	}
 }
 
@@ -326,14 +294,14 @@ func (s *Services) listWeighTickets(c *gin.Context) bool {
 	var total int
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pur_weigh_ticket w `+where, args...).Scan(&total)
 	args = append(args, pageSize, (pageNum-1)*pageSize)
-	rows, err := s.DB.Query(`SELECT w.id, w.doc_no, w.farmer_id, COALESCE(f.name,''), w.channel, w.product_id,
+	rows, err := s.DB.Query(`SELECT w.id, w.doc_no, w.supplier_id, COALESCE(f.name,''), w.channel, w.product_id,
 		w.variety, w.gross_weight, w.deduct_rate, w.deduct_weight, w.net_weight, w.qc_result, w.status,
 		COALESCE(w.trace_code,''), COALESCE(w.origin,''), w.biz_date, COALESCE(w.source_type,'self'),
 		COALESCE(w.image_url,''), COALESCE(w.box_code,''), w.created_at,
 		COALESCE(w.receive_kind,''), COALESCE(w.batch_no,''), COALESCE(w.unit_price,0), COALESCE(w.settle_amount,0),
 		COALESCE(w.bag_qty,0), COALESCE(w.cold_store_type,''), COALESCE(w.party_name,''), COALESCE(w.party_mobile,''),
 		COALESCE(p.name,''),
-		COALESCE((SELECT s.status FROM pur_farmer_settlement s WHERE s.weigh_ticket_id=w.id AND COALESCE(s.status,'')!='void' ORDER BY s.id DESC LIMIT 1),''),
+		COALESCE((SELECT s.status FROM pur_supplier_settlement s WHERE s.weigh_ticket_id=w.id AND COALESCE(s.status,'')!='void' ORDER BY s.id DESC LIMIT 1),''),
 		COALESCE((SELECT COALESCE(NULLIF(e.name,''), u.login_name, '')
 			FROM wf_ticket t
 			LEFT JOIN iam_user u ON u.id=t.current_assignee_user_id
@@ -341,7 +309,7 @@ func (s *Services) listWeighTickets(c *gin.Context) bool {
 			WHERE t.biz_type='weigh_ticket' AND t.biz_id=w.id AND t.status IN ('open','in_progress')
 			ORDER BY t.id DESC LIMIT 1),'')
 		FROM pur_weigh_ticket w
-		LEFT JOIN pur_farmer f ON f.id=w.farmer_id
+		LEFT JOIN pur_supplier f ON f.id=w.supplier_id
 		LEFT JOIN prd_product p ON p.id=w.product_id
 		`+where+` ORDER BY w.id DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
@@ -361,7 +329,7 @@ func (s *Services) listWeighTickets(c *gin.Context) bool {
 			&settleStatus, &assigneeName)
 		phase := weighProcessPhase(kind, status, settleStatus)
 		row := gin.H{
-			"id": id, "doc_no": docNo, "farmer_id": farmerID, "farmer_name": farmerName, "channel": channel,
+			"id": id, "doc_no": docNo, "supplier_id": farmerID, "farmer_name": farmerName, "channel": channel,
 			"product_id": productID, "product_name": productName, "variety": variety,
 			"gross_weight": gross, "deduct_rate": deductRate, "deduct_weight": deductWeight, "net_weight": net,
 			"qc_result": qc, "status": status, "trace_code": trace, "origin": origin, "biz_date": bizDate,
@@ -502,6 +470,13 @@ func parseGateWeighPhotos(body map[string]interface{}) ([]gateWeighPhoto, string
 }
 
 func (s *Services) createWeighTicket(c *gin.Context) bool {
+	setupCodes := []string{"organization", "plant", "warehouse_raw", "product", "purchase_gate_flow"}
+	if s.purchaseFlowRequireWeigh("gate") {
+		setupCodes = append(setupCodes, "weigh_variety")
+	}
+	if s.RequireSetupReady(c, setupCodes...) {
+		return true
+	}
 	body := bindBody(c)
 	kind := strings.ToLower(strings.TrimSpace(strOr(body["receive_kind"])))
 	if kind == "stockin" {
@@ -512,6 +487,7 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 		api.FailJSON(c, "RECEIVE_KIND_REQUIRED")
 		return true
 	}
+	requireWeigh := s.purchaseFlowRequireWeigh(kind)
 	batchNo := strings.ToUpper(strings.TrimSpace(strOr(body["batch_no"])))
 	if batchNo == "" {
 		api.FailJSON(c, "BATCH_NO_REQUIRED")
@@ -539,10 +515,25 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 			return true
 		}
 	}
-	photos, photoErr := parseGateWeighPhotos(body)
-	if photoErr != "" {
-		api.FailJSON(c, photoErr)
-		return true
+	var photos []gateWeighPhoto
+	if requireWeigh {
+		var photoErr string
+		photos, photoErr = parseGateWeighPhotos(body)
+		if photoErr != "" {
+			api.FailJSON(c, photoErr)
+			return true
+		}
+	} else {
+		// optional site photos
+		if slots, err := parseGateWeighPhotos(body); err == "" {
+			photos = slots
+		} else if urls := collectImageURLs(body); len(urls) > 0 {
+			for _, u := range urls {
+				if isValidSitePhotoURL(u) {
+					photos = append(photos, gateWeighPhoto{Key: "closeup", EvidenceType: "site_photo", URL: u})
+				}
+			}
+		}
 	}
 	imgs := make([]string, 0, len(photos))
 	imageURL := ""
@@ -561,7 +552,7 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 
 	if arrivalID > 0 {
 		var status, qc string
-		err := s.DB.QueryRow(`SELECT farmer_id, status, COALESCE(qc_result,''), COALESCE(grade,''), COALESCE(origin,''),
+		err := s.DB.QueryRow(`SELECT supplier_id, status, COALESCE(qc_result,''), COALESCE(grade,''), COALESCE(origin,''),
 			source_type, channel, COALESCE(variety,''), biz_date FROM pur_inbound_arrival WHERE id=? AND COALESCE(is_deleted,0)=0`, arrivalID).
 			Scan(&farmerID, &status, &qc, &grade, &origin, &sourceType, &channel, &variety, &bizDate)
 		if err != nil {
@@ -577,12 +568,19 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 			return true
 		}
 	} else {
-		farmerID, _ = asInt64(body["farmer_id"])
+		farmerID, _ = asInt64(body["supplier_id"])
+		if farmerID <= 0 {
+			farmerID, _ = asInt64(body["farmer_id"])
+		}
 		grade = strings.ToUpper(strOrDef(body["grade"], "A"))
 		origin = strOr(body["origin"])
 		sourceType = strOrDef(body["source_type"], "self")
 		channel = strOrDef(body["channel"], "internal")
-		variety = strOrDef(body["variety"], "鲜木薯")
+		variety = strings.TrimSpace(strOr(body["variety"]))
+		if variety == "" {
+			api.FailJSON(c, "VARIETY_REQUIRED")
+			return true
+		}
 		bizDate = strOrDef(body["biz_date"], time.Now().Format("2006-01-02"))
 	}
 
@@ -593,17 +591,18 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 		}
 		id, err := s.ensureFarmerForWeigh(partyName, partyMobile, origin)
 		if err != nil || id <= 0 {
-			api.FailJSON(c, "FARMER_CREATE_FAILED")
+			api.FailJSON(c, "SUPPLIER_CREATE_FAILED")
 			return true
 		}
 		farmerID = id
 	}
 	if farmerID > 0 {
 		var farmerName, farmerOrigin, farmerMobile string
-		err := s.DB.QueryRow(`SELECT name, COALESCE(origin,''), COALESCE(mobile,'') FROM pur_farmer WHERE id=? AND status='active' AND COALESCE(is_deleted,0)=0`, farmerID).
+		err := s.DB.QueryRow(`SELECT name, COALESCE(origin,''), COALESCE(mobile,'') FROM pur_supplier
+			WHERE id=? AND COALESCE(is_deleted,0)=0 AND status NOT IN ('eliminated','blacklist','frozen')`, farmerID).
 			Scan(&farmerName, &farmerOrigin, &farmerMobile)
 		if err != nil {
-			api.FailJSON(c, "FARMER_NOT_FOUND")
+			api.FailJSON(c, "SUPPLIER_NOT_FOUND")
 			return true
 		}
 		if origin == "" {
@@ -623,21 +622,23 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 		channel = "internal"
 	}
 	productID, _ := asInt64(body["product_id"])
-	if productID <= 0 {
-		productID = 1
-	}
 	if variety == "" {
-		variety = strOrDef(body["variety"], "鲜木薯")
+		variety = strings.TrimSpace(strOr(body["variety"]))
 	}
 	s.resolveWeighVariety(body, &variety, &productID)
+	if variety == "" {
+		api.FailJSON(c, "VARIETY_REQUIRED")
+		return true
+	}
 	if productID <= 0 {
-		productID = 1
+		api.FailJSON(c, "PRODUCT_REQUIRED")
+		return true
 	}
 	// 过站中：强制同农户同产品；请求不一致则拒，空则回填首单锁定值
 	if isTraceBatchInProgress(st) {
 		var lockFarmer, lockProduct int64
 		var lockVariety string
-		_ = s.DB.QueryRow(`SELECT COALESCE(farmer_id,0), COALESCE(product_id,0), COALESCE(variety,'')
+		_ = s.DB.QueryRow(`SELECT COALESCE(supplier_id,0), COALESCE(product_id,0), COALESCE(variety,'')
 			FROM pur_trace_batch_code WHERE code=?`, batchNo).Scan(&lockFarmer, &lockProduct, &lockVariety)
 		if lockFarmer > 0 {
 			if farmerID > 0 && farmerID != lockFarmer {
@@ -646,7 +647,7 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 			}
 			farmerID = lockFarmer
 			if partyName == "" {
-				_ = s.DB.QueryRow(`SELECT COALESCE(name,'') FROM pur_farmer WHERE id=?`, lockFarmer).Scan(&partyName)
+				_ = s.DB.QueryRow(`SELECT COALESCE(name,'') FROM pur_supplier WHERE id=?`, lockFarmer).Scan(&partyName)
 			}
 		}
 		if lockProduct > 0 {
@@ -679,8 +680,17 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 			return true
 		}
 		gross, _ = asFloat(body["gross_weight"])
-		if gross <= 0 {
+		if requireWeigh && gross <= 0 {
 			api.FailJSON(c, "GROSS_WEIGHT_REQUIRED")
+			return true
+		}
+		if !requireWeigh && gross <= 0 {
+			if n, ok := asFloat(body["net_weight"]); ok && n > 0 {
+				gross = n
+			}
+		}
+		if gross <= 0 {
+			api.FailJSON(c, "NET_WEIGHT_REQUIRED")
 			return true
 		}
 		deductRate, hasRate := asFloat(body["deduct_rate"])
@@ -706,14 +716,25 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 		if sa, ok := asFloat(body["settle_amount"]); ok && sa > 0 {
 			settle = sa
 		}
-		// 鲜木薯→保鲜库；半成品→半成品库；成品→成品库（可显式传 cold_store_type）
+		// 仓库：优先请求 warehouse_id → 品种绑定仓 → 按 warehouse_role / cold_store_type 查主数据
 		coldStore = strings.ToLower(strOr(body["cold_store_type"]))
 		if coldStore == "" {
-			coldStore = inferColdStoreFromVariety(variety)
+			coldStore = s.inferColdStoreFromVarietyDB(variety)
 		}
-		warehouseID = ColdStoreWarehouse(coldStore)
+		warehouseID = 0
 		if wid, ok := asInt64(body["warehouse_id"]); ok && wid > 0 {
 			warehouseID = wid
+		} else {
+			var vWhID int64
+			var vRole string
+			_ = s.DB.QueryRow(`SELECT COALESCE(warehouse_id,0), COALESCE(warehouse_role,'') FROM pur_weigh_variety
+				WHERE status='active' AND COALESCE(is_deleted,0)=0 AND (name=? OR code=?) ORDER BY id LIMIT 1`,
+				variety, variety).Scan(&vWhID, &vRole)
+			warehouseID = s.ResolveWarehouseForWeighVariety(vWhID, vRole, coldStore)
+		}
+		if warehouseID <= 0 {
+			api.FailJSON(c, "WAREHOUSE_NOT_CONFIGURED")
+			return true
 		}
 	} else {
 		net, _ = asFloat(body["net_weight"])
@@ -731,13 +752,19 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 		}
 		bagQty, _ = asFloat(body["bag_qty"])
 		coldStore = strings.ToLower(strOr(body["cold_store_type"]))
-		if coldStore != "fresh" && coldStore != "semi" && coldStore != "fg" {
+		if coldStore == "" {
 			api.FailJSON(c, "COLD_STORE_TYPE_REQUIRED")
 			return true
 		}
-		warehouseID = ColdStoreWarehouse(coldStore)
+		warehouseID = 0
 		if wid, ok := asInt64(body["warehouse_id"]); ok && wid > 0 {
 			warehouseID = wid
+		} else {
+			warehouseID = s.ResolveWarehouseByStoreType(coldStore)
+		}
+		if warehouseID <= 0 {
+			api.FailJSON(c, "WAREHOUSE_NOT_CONFIGURED")
+			return true
 		}
 	}
 
@@ -757,7 +784,7 @@ func (s *Services) createWeighTicket(c *gin.Context) bool {
 		qcResult = "pass"
 		status = "pending_confirm" // 插入后立刻 bind；失败则整单回滚语义由后续删除保证
 	}
-	res, err := s.DB.Exec(`INSERT INTO pur_weigh_ticket(doc_no, farmer_id, channel, ticket_template, product_id, variety,
+	res, err := s.DB.Exec(`INSERT INTO pur_weigh_ticket(doc_no, supplier_id, channel, ticket_template, product_id, variety,
 		gross_weight, deduct_rate, deduct_weight, net_weight, qc_result, status, trace_code, origin, biz_date,
 		source_type, image_url, remark, arrival_id, grade, ocr_draft_json, batch_no,
 		plate_no, receive_address, pass_rate, reject_weight, freight_fee, loading_fee, weigh_fee,
@@ -1187,7 +1214,7 @@ func (s *Services) applyVerifiedWeighStockIn(c *gin.Context, id int64, body map[
 				Body: fmt.Sprintf("%s 农户 %s 净重 %.2f 单价 %v",
 					m["doc_no"], strOr(m["farmer_name"]), asFloatOr0(m["net_weight"]), m["unit_price"]),
 				Payload: gin.H{
-					"farmer_id": m["farmer_id"], "farmer_name": m["farmer_name"],
+					"supplier_id": m["supplier_id"], "farmer_name": m["farmer_name"],
 					"net_weight": m["net_weight"], "unit_price": m["unit_price"],
 					"trace_code": m["trace_code"], "doc_no": m["doc_no"],
 					"settlement_id": settleID, "settle_breakdown": breakdown,
@@ -1196,7 +1223,7 @@ func (s *Services) applyVerifiedWeighStockIn(c *gin.Context, id int64, body map[
 			if settleID > 0 {
 				payload := gin.H{
 					"net_weight": m["net_weight"], "doc_no": m["doc_no"], "trace_code": m["trace_code"],
-					"farmer_id": m["farmer_id"], "farmer_name": m["farmer_name"], "unit_price": m["unit_price"],
+					"supplier_id": m["supplier_id"], "farmer_name": m["farmer_name"], "unit_price": m["unit_price"],
 					"settlement_id": settleID, "settle_breakdown": breakdown,
 				}
 				s.Notify.NotifyNext(c, notify.Event{
@@ -1414,7 +1441,7 @@ func (s *Services) completeBoxStockInWeighTicket(c *gin.Context) bool {
 						tm["doc_no"], asFloatOr0(tm["net_weight"]), bd["amount"], strOr(tm["farmer_name"])),
 					Payload: gin.H{
 						"settlement_id": sid, "settle_breakdown": bd, "box_sum_kg": boxSum,
-						"farmer_id": tm["farmer_id"], "farmer_name": tm["farmer_name"],
+						"supplier_id": tm["supplier_id"], "farmer_name": tm["farmer_name"],
 						"net_weight": tm["net_weight"], "unit_price": tm["unit_price"],
 						"trace_code": trace,
 					},
@@ -1457,7 +1484,7 @@ func (s *Services) completeBoxStockInWeighTicket(c *gin.Context) bool {
 				Body: fmt.Sprintf("%s 农户 %s 合单净重 %.2f 分板 %.2f",
 					m["doc_no"], strOr(m["farmer_name"]), ticketNet, boxSum),
 				Payload: gin.H{
-					"farmer_id": m["farmer_id"], "farmer_name": m["farmer_name"],
+					"supplier_id": m["supplier_id"], "farmer_name": m["farmer_name"],
 					"net_weight": ticketNet, "unit_price": m["unit_price"],
 					"box_sum_kg": boxSum, "inbound_loss_kg": inboundLoss,
 					"trace_code": trace, "ticket_count": len(lotIDs),
@@ -1648,7 +1675,7 @@ func (s *Services) ensureWeighIssued(c *gin.Context, id int64, body map[string]i
 	}
 	// 扫码批号即溯源码（不再另签发 T1- 复合码）
 	trace := batch
-	farmerID, _ := asInt64(m["farmer_id"])
+	farmerID, _ := asInt64(m["supplier_id"])
 	arrivalID, _ := asInt64(m["arrival_id"])
 	in := TraceIssueInput{
 		BizDate: bizDate, BatchNo: batch, FarmerID: farmerID, Grade: grade,
@@ -1663,7 +1690,7 @@ func (s *Services) ensureWeighIssued(c *gin.Context, id int64, body map[string]i
 	}
 	snap := nowSnap(map[string]interface{}{
 		"gross_weight": gross, "deduct_rate": deductRate, "deduct_weight": deductWeight, "net_weight": net,
-		"grade": grade, "trace_code": trace, "batch_no": batch, "farmer_id": farmerID, "bind": "batch_as_trace",
+		"grade": grade, "trace_code": trace, "batch_no": batch, "supplier_id": farmerID, "bind": "batch_as_trace",
 	})
 	_, err := s.DB.Exec(`UPDATE pur_weigh_ticket SET gross_weight=?, deduct_rate=?, deduct_weight=?, net_weight=?, grade=?,
 		trace_code=?, batch_no=?, status='weighed', confirmed_by=?, confirmed_at=NOW(), confirmed_snapshot_json=?,
@@ -1676,7 +1703,7 @@ func (s *Services) ensureWeighIssued(c *gin.Context, id int64, body map[string]i
 	var lotID int64
 	_ = s.DB.QueryRow(`SELECT id FROM pur_trace_lot WHERE weigh_ticket_id=? ORDER BY id LIMIT 1`, id).Scan(&lotID)
 	if lotID <= 0 {
-		_, err = s.DB.Exec(`INSERT INTO pur_trace_lot(trace_code, biz_date, batch_no, farmer_id, grade, arrival_id, weigh_ticket_id, channel, source_type, net_weight, payload_canonical, signature, status)
+		_, err = s.DB.Exec(`INSERT INTO pur_trace_lot(trace_code, biz_date, batch_no, supplier_id, grade, arrival_id, weigh_ticket_id, channel, source_type, net_weight, payload_canonical, signature, status)
 			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'open')`,
 			trace, normalizeBizDate(bizDate), batch, farmerID, grade, nullIf0(arrivalID), id, strOr(m["channel"]), strOr(m["source_type"]), net, canonical, sig)
 		if err != nil {
@@ -2029,22 +2056,18 @@ func (s *Services) doWeighStockInBatch(c *gin.Context, id int64, body map[string
 		return false, "WEIGHT_MISMATCH", 0, nil
 	}
 
-	farmerID, _ := asInt64(m["farmer_id"])
+	farmerID, _ := asInt64(m["supplier_id"])
 	origin := strOr(m["origin"])
 	bizDate := strOr(m["biz_date"])
 	sourceType := strOrDef(m["source_type"], "self")
 	wh := stepWH
 	if wh <= 0 {
-		wh = 1
 		if wid := asInt64Or0(m["warehouse_id"]); wid > 0 {
 			wh = wid
-		} else if cw := ColdStoreWarehouse(strOr(m["cold_store_type"])); cw > 0 {
+		} else if cw := s.ResolveWarehouseByStoreType(strOr(m["cold_store_type"])); cw > 0 {
 			wh = cw
 		} else {
-			vname := strings.ToLower(strOr(m["variety"]) + " " + strOr(m["product_name"]))
-			if strings.Contains(vname, "半成品") || strings.Contains(vname, "semi") || sourceType == "outsource" {
-				wh = 2
-			}
+			return false, "WAREHOUSE_NOT_CONFIGURED", 0, nil
 		}
 	}
 
@@ -2055,12 +2078,12 @@ func (s *Services) doWeighStockInBatch(c *gin.Context, id int64, body map[string
 		if len(ln.ImageURLs) > 0 {
 			img0 = ln.ImageURLs[0]
 		}
-		res, err := s.DB.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, farmer_id, trace_code, origin, receive_date, source_type, status, current_process_id, current_step_id, image_url)
+		res, err := s.DB.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, supplier_id, trace_code, origin, receive_date, source_type, status, current_process_id, current_step_id, image_url)
 			VALUES(?,?,?,?,?,?,?,?,?,?,?,'open',?,?,?)`,
 			code, productID, wh, bizDate, ln.Weight, ln.Weight, farmerID, trace, origin, bizDate, sourceType, procID, stepID, img0)
 		if err != nil {
 			code = fmt.Sprintf("BD%d", time.Now().UnixNano()%1e12)
-			res, err = s.DB.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, farmer_id, trace_code, origin, receive_date, source_type, status, current_process_id, current_step_id, image_url)
+			res, err = s.DB.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, supplier_id, trace_code, origin, receive_date, source_type, status, current_process_id, current_step_id, image_url)
 				VALUES(?,?,?,?,?,?,?,?,?,?,?,'open',?,?,?)`,
 				code, productID, wh, bizDate, ln.Weight, ln.Weight, farmerID, trace, origin, bizDate, sourceType, procID, stepID, img0)
 			if err != nil {
@@ -2173,7 +2196,7 @@ func (s *Services) loadWeighTicket(id int64) gin.H {
 	var plate, recvAddr, kind, cold, partyName, partyMobile, productName string
 	var gross, deductRate, deductWeight, net, passRate, reject, freight, loading, weighFee, unitPrice, settle, bagQty float64
 	var farmerName string
-	err := s.DB.QueryRow(`SELECT w.doc_no, w.farmer_id, COALESCE(f.name,''), w.channel, COALESCE(w.ticket_template,''), w.product_id, w.variety,
+	err := s.DB.QueryRow(`SELECT w.doc_no, w.supplier_id, COALESCE(f.name,''), w.channel, COALESCE(w.ticket_template,''), w.product_id, w.variety,
 		w.gross_weight, w.deduct_rate, w.deduct_weight, w.net_weight, COALESCE(w.qc_result,''), w.status,
 		COALESCE(w.trace_code,''), COALESCE(w.origin,''), w.biz_date, COALESCE(w.source_type,'self'),
 		COALESCE(w.image_url,''), COALESCE(w.box_code,''), COALESCE(w.warehouse_id,0), COALESCE(w.remark,''), w.created_at,
@@ -2183,7 +2206,7 @@ func (s *Services) loadWeighTicket(id int64) gin.H {
 		COALESCE(w.receive_kind,''), COALESCE(w.unit_price,0), COALESCE(w.settle_amount,0), COALESCE(w.bag_qty,0),
 		COALESCE(w.cold_store_type,''), COALESCE(w.party_name,''), COALESCE(w.party_mobile,''), COALESCE(p.name,'')
 		FROM pur_weigh_ticket w
-		LEFT JOIN pur_farmer f ON f.id=w.farmer_id
+		LEFT JOIN pur_supplier f ON f.id=w.supplier_id
 		LEFT JOIN prd_product p ON p.id=w.product_id
 		WHERE w.id=?`, id).
 		Scan(&docNo, &farmerID, &farmerName, &channel, &template, &productID, &variety, &gross, &deductRate, &deductWeight, &net,
@@ -2194,7 +2217,7 @@ func (s *Services) loadWeighTicket(id int64) gin.H {
 		return gin.H{}
 	}
 	out := gin.H{
-		"id": id, "doc_no": docNo, "farmer_id": farmerID, "farmer_name": farmerName, "channel": channel,
+		"id": id, "doc_no": docNo, "supplier_id": farmerID, "farmer_name": farmerName, "channel": channel,
 		"ticket_template": template, "product_id": productID, "product_name": productName, "variety": variety,
 		"gross_weight": gross, "deduct_rate": deductRate, "deduct_weight": deductWeight, "net_weight": net,
 		"qc_result": qc, "status": status, "trace_code": trace, "origin": origin, "biz_date": bizDate,
@@ -2263,7 +2286,7 @@ func (s *Services) attachWeighProcessTrail(m gin.H, weighID int64) {
 	var settleStatus, settleDoc string
 	var settleAmt float64
 	_ = s.DB.QueryRow(`SELECT COALESCE(status,''), COALESCE(doc_no,''), COALESCE(amount,0)
-		FROM pur_farmer_settlement WHERE weigh_ticket_id=? AND COALESCE(status,'')!='void' ORDER BY id DESC LIMIT 1`, weighID).
+		FROM pur_supplier_settlement WHERE weigh_ticket_id=? AND COALESCE(status,'')!='void' ORDER BY id DESC LIMIT 1`, weighID).
 		Scan(&settleStatus, &settleDoc, &settleAmt)
 	if settleStatus != "" {
 		m["settlement_status"] = settleStatus
@@ -2354,12 +2377,12 @@ func (s *Services) handleFarmerSettlements(c *gin.Context, method, action string
 	if action == "list" || method == "GET" {
 		pageNum, pageSize := sqlutil.Page(c)
 		var total int
-		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pur_farmer_settlement`).Scan(&total)
-		rows, err := s.DB.Query(`SELECT s.id, s.doc_no, s.farmer_id, COALESCE(f.name,''), s.weigh_ticket_id, s.biz_date,
+		_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pur_supplier_settlement`).Scan(&total)
+		rows, err := s.DB.Query(`SELECT s.id, s.doc_no, s.supplier_id, COALESCE(f.name,''), s.weigh_ticket_id, s.biz_date,
 			s.net_weight, s.unit_price, s.amount, s.status, COALESCE(s.remark,''), s.created_at,
 			COALESCE(s.transfer_no,''), COALESCE(s.paid_at,''), COALESCE(s.pay_evidence_url,''),
 			COALESCE(s.freight_fee,0), COALESCE(s.loading_fee,0), COALESCE(s.weigh_fee,0), COALESCE(s.goods_amount,0)
-			FROM pur_farmer_settlement s LEFT JOIN pur_farmer f ON f.id=s.farmer_id
+			FROM pur_supplier_settlement s LEFT JOIN pur_supplier f ON f.id=s.supplier_id
 			ORDER BY s.id DESC LIMIT ? OFFSET ?`, pageSize, (pageNum-1)*pageSize)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -2374,7 +2397,7 @@ func (s *Services) handleFarmerSettlements(c *gin.Context, method, action string
 			_ = rows.Scan(&id, &docNo, &farmerID, &fname, &wtID, &bizDate, &net, &price, &amount, &status, &remark, &created, &transfer, &paidAt, &payURL,
 				&freight, &loading, &weighFee, &goods)
 			list = append(list, gin.H{
-				"id": id, "doc_no": docNo, "farmer_id": farmerID, "farmer_name": fname, "weigh_ticket_id": wtID,
+				"id": id, "doc_no": docNo, "supplier_id": farmerID, "farmer_name": fname, "weigh_ticket_id": wtID,
 				"biz_date": bizDate, "net_weight": net, "unit_price": price, "amount": amount, "status": status,
 				"remark": remark, "created_at": created, "transfer_no": transfer, "paid_at": paidAt, "pay_evidence_url": payURL,
 				"freight_fee": freight, "loading_fee": loading, "weigh_fee": weighFee, "goods_amount": goods,
@@ -2391,10 +2414,10 @@ func (s *Services) handleFarmerSettlements(c *gin.Context, method, action string
 		var net float64
 		var bizDate string
 		if wtID > 0 {
-			_ = s.DB.QueryRow(`SELECT farmer_id, net_weight, biz_date FROM pur_weigh_ticket WHERE id=?`, wtID).Scan(&farmerID, &net, &bizDate)
+			_ = s.DB.QueryRow(`SELECT supplier_id, net_weight, biz_date FROM pur_weigh_ticket WHERE id=?`, wtID).Scan(&farmerID, &net, &bizDate)
 		}
 		if farmerID == 0 {
-			farmerID, _ = asInt64(body["farmer_id"])
+			farmerID, _ = asInt64(body["supplier_id"])
 			net, _ = asFloat(body["net_weight"])
 			bizDate = strOrDef(body["biz_date"], time.Now().Format("2006-01-02"))
 		}
@@ -2403,7 +2426,7 @@ func (s *Services) handleFarmerSettlements(c *gin.Context, method, action string
 		goods, total := settleAmount(net, unitPrice, freight, loading, weighFee)
 		amount = total
 		docNo := fmt.Sprintf("FS%s", time.Now().Format("20060102150405"))
-		res, err := s.DB.Exec(`INSERT INTO pur_farmer_settlement(doc_no, farmer_id, weigh_ticket_id, biz_date, net_weight, unit_price, amount, status, remark,
+		res, err := s.DB.Exec(`INSERT INTO pur_supplier_settlement(doc_no, supplier_id, weigh_ticket_id, biz_date, net_weight, unit_price, amount, status, remark,
 			freight_fee, loading_fee, weigh_fee, goods_amount)
 			VALUES(?,?,?,?,?,?,?,'settle_pending',?,?,?,?,?)`, docNo, farmerID, nullIf0(wtID), bizDate, net, unitPrice, amount, strOr(body["remark"]),
 			freight, loading, weighFee, goods)
@@ -2412,7 +2435,11 @@ func (s *Services) handleFarmerSettlements(c *gin.Context, method, action string
 			return true
 		}
 		id, _ := res.LastInsertId()
-		api.OK(c, gin.H{"id": id, "doc_no": docNo, "amount": amount, "status": "settle_pending"})
+		out := gin.H{"id": id, "doc_no": docNo, "amount": amount, "status": "settle_pending"}
+		if payID, _ := s.maybeCreatePaymentOrderForSettlement(id); payID > 0 {
+			out["payment_order_id"] = payID
+		}
+		api.OK(c, out)
 		return true
 	}
 	return false
@@ -2436,7 +2463,7 @@ func (s *Services) payFarmerSettlement(c *gin.Context) bool {
 	}
 	var status string
 	var wtID int64
-	if err := s.DB.QueryRow(`SELECT status, COALESCE(weigh_ticket_id,0) FROM pur_farmer_settlement WHERE id=?`, id).Scan(&status, &wtID); err != nil {
+	if err := s.DB.QueryRow(`SELECT status, COALESCE(weigh_ticket_id,0) FROM pur_supplier_settlement WHERE id=?`, id).Scan(&status, &wtID); err != nil {
 		api.FailJSON(c, "NOT_FOUND")
 		return true
 	}
@@ -2451,6 +2478,9 @@ func (s *Services) payFarmerSettlement(c *gin.Context) bool {
 		api.FailJSON(c, "ALREADY_PAID")
 		return true
 	}
+	if s.blockManualPayIfOnlinePending(c, id) {
+		return true
+	}
 	s.ensureFinanceCashColumns()
 	if err := s.postFarmerSettlementCash(id, bindFundAccountID(body), transferNo); err != nil {
 		if failToJSON(c, err) {
@@ -2458,7 +2488,7 @@ func (s *Services) payFarmerSettlement(c *gin.Context) bool {
 		}
 	}
 	_, _ = s.addEvidence(c, "farmer_settlement", id, "pay_receipt", payURL, gin.H{"transfer_no": transferNo})
-	_, err := s.DB.Exec(`UPDATE pur_farmer_settlement SET status='settle_paid', transfer_no=?, paid_at=NOW(), pay_evidence_url=?,
+	_, err := s.DB.Exec(`UPDATE pur_supplier_settlement SET status='settle_paid', transfer_no=?, paid_at=NOW(), pay_evidence_url=?,
 		unit_price=COALESCE(NULLIF(?,0),unit_price), amount=COALESCE(NULLIF(?,0),amount), remark=COALESCE(NULLIF(?,''),remark)
 		WHERE id=?`, transferNo, payURL, asFloatOr0(body["unit_price"]), asFloatOr0(body["amount"]), strOr(body["remark"]), id)
 	if err != nil {
@@ -2494,14 +2524,14 @@ func (s *Services) payFarmerSettlement(c *gin.Context) bool {
 
 func (s *Services) summaryFarmerSettlements(c *gin.Context) bool {
 	bizDate := c.Query("biz_date")
-	q := `SELECT farmer_id, COALESCE(f.name,''), SUM(net_weight), SUM(amount), COUNT(1)
-		FROM pur_farmer_settlement s LEFT JOIN pur_farmer f ON f.id=s.farmer_id WHERE 1=1`
+	q := `SELECT supplier_id, COALESCE(f.name,''), SUM(net_weight), SUM(amount), COUNT(1)
+		FROM pur_supplier_settlement s LEFT JOIN pur_supplier f ON f.id=s.supplier_id WHERE 1=1`
 	args := []interface{}{}
 	if bizDate != "" {
 		q += ` AND s.biz_date=?`
 		args = append(args, bizDate)
 	}
-	q += ` GROUP BY farmer_id`
+	q += ` GROUP BY supplier_id`
 	rows, err := s.DB.Query(q, args...)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
@@ -2514,7 +2544,7 @@ func (s *Services) summaryFarmerSettlements(c *gin.Context) bool {
 		var name string
 		var net, amt float64
 		_ = rows.Scan(&fid, &name, &net, &amt, &cnt)
-		list = append(list, gin.H{"farmer_id": fid, "farmer_name": name, "net_weight": net, "amount": amt, "count": cnt})
+		list = append(list, gin.H{"supplier_id": fid, "farmer_name": name, "net_weight": net, "amount": amt, "count": cnt})
 	}
 	api.OK(c, gin.H{"list": list})
 	return true
@@ -2567,11 +2597,11 @@ func (s *Services) traceTimeline(c *gin.Context, code string) bool {
 	var lotID, farmerID, wtID, arrivalID int64
 	var trace, bizDate, batch, grade, canon, sig, lotStatus string
 	var net float64
-	err := s.DB.QueryRow(`SELECT id, trace_code, biz_date, batch_no, farmer_id, COALESCE(grade,''), COALESCE(arrival_id,0), COALESCE(weigh_ticket_id,0),
+	err := s.DB.QueryRow(`SELECT id, trace_code, biz_date, batch_no, supplier_id, COALESCE(grade,''), COALESCE(arrival_id,0), COALESCE(weigh_ticket_id,0),
 		net_weight, payload_canonical, signature, status FROM pur_trace_lot WHERE trace_code=?`, code).
 		Scan(&lotID, &trace, &bizDate, &batch, &farmerID, &grade, &arrivalID, &wtID, &net, &canon, &sig, &lotStatus)
 	if err == nil {
-		lot = gin.H{"id": lotID, "trace_code": trace, "biz_date": bizDate, "batch_no": batch, "farmer_id": farmerID,
+		lot = gin.H{"id": lotID, "trace_code": trace, "biz_date": bizDate, "batch_no": batch, "supplier_id": farmerID,
 			"grade": grade, "arrival_id": arrivalID, "weigh_ticket_id": wtID, "net_weight": net,
 			"payload_canonical": canon, "signature": sig, "status": lotStatus,
 			"signature_valid": VerifyCanonical([]string{TraceHMACSecret(s.TraceHMACSecret)}, canon, sig)}
@@ -2649,7 +2679,7 @@ func (s *Services) traceTimeline(c *gin.Context, code string) bool {
 	}
 	if len(weighIDs) > 0 {
 		for _, wid := range weighIDs {
-			srows, qerr := s.DB.Query(`SELECT id, doc_no, amount, status, COALESCE(transfer_no,''), COALESCE(paid_at,'') FROM pur_farmer_settlement WHERE weigh_ticket_id=?`, wid)
+			srows, qerr := s.DB.Query(`SELECT id, doc_no, amount, status, COALESCE(transfer_no,''), COALESCE(paid_at,'') FROM pur_supplier_settlement WHERE weigh_ticket_id=?`, wid)
 			if qerr != nil || srows == nil {
 				continue
 			}
@@ -2666,7 +2696,7 @@ func (s *Services) traceTimeline(c *gin.Context, code string) bool {
 	}
 	// audits
 	auditRows, _ := s.DB.Query(`SELECT action, reason, created_at, COALESCE(actor_user_id,0) FROM biz_audit_log
-		WHERE (biz_type='weigh_ticket' AND biz_id=?) OR (biz_type='inbound_arrival' AND biz_id=?) OR (biz_type='farmer_settlement' AND biz_id IN (SELECT id FROM pur_farmer_settlement WHERE weigh_ticket_id=?))
+		WHERE (biz_type='weigh_ticket' AND biz_id=?) OR (biz_type='inbound_arrival' AND biz_id=?) OR (biz_type='farmer_settlement' AND biz_id IN (SELECT id FROM pur_supplier_settlement WHERE weigh_ticket_id=?))
 		ORDER BY id`, wtID, arrivalID, wtID)
 	if auditRows != nil {
 		defer auditRows.Close()

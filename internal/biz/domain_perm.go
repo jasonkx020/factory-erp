@@ -23,18 +23,22 @@ var resourceDomainModule = map[string]domainModule{
 	"sales/orders": {"销售管理", "销售订单"}, "sales/inquiries": {"销售管理", "询价管理"},
 	"sales/contracts": {"销售管理", "合同管理"}, "sales/pre-ships": {"销售管理", "预发货管理"},
 	"sales/pre-shipments": {"销售管理", "预发货管理"},
-	"sales/deliveries":    {"销售管理", "发货审批"}, "sales/price-locks": {"销售管理", "销售锁价"},
+	"sales/deliveries":    {"销售管理", "销售出库"}, "sales/price-locks": {"销售管理", "销售锁价"},
 	"sales/quotes": {"销售管理", "历史报价查询"}, "sales/quote-histories": {"销售管理", "历史报价查询"},
 	"sales/quote-calculator": {"销售管理", "报价计算器"},
 	"sales/boms":             {"销售管理", "销售BOM"}, "sales/sales-boms": {"销售管理", "销售BOM"},
 	"sales/budgets": {"销售管理", "成本预算"}, "sales/cost-budgets": {"销售管理", "成本预算"},
 	"sales/outbound-settles": {"销售管理", "出厂结算"},
 	"sales/self-orders":      {"销售管理", "自助下单"}, "sales/my-orders": {"销售管理", "我的订单"},
+	"crm/customers":          {"销售管理", "客户档案"},
+	"hr/plants":              {"人事管理", "厂区管理"},
 	// purchase
-	"purchase/suppliers": {"采购管理", "供应商管理"}, "purchase/farmers": {"采购管理", "农户档案"},
-	"purchase/weigh-tickets": {"采购管理", "过磅收货"}, "purchase/weigh-varieties": {"采购管理", "过磅品种"}, "purchase/trace-batch-codes": {"采购管理", "溯源批号"}, "purchase/farmer-settlements": {"采购管理", "农户结算"},
-	"purchase/flow-graphs": {"采购管理", "过磅流程编排"},
-	"purchase/role-users": {"采购管理", "过磅收货"},
+	"purchase/suppliers": {"采购管理", "供应商管理"},
+	"purchase/weigh-tickets": {"采购管理", "采购记录"}, "purchase/weigh-varieties": {"采购管理", "采购品种"}, "purchase/trace-batch-codes": {"采购管理", "溯源批号"}, "purchase/supplier-settlements": {"采购管理", "供应商结算"},
+	"purchase/flow-graphs": {"采购管理", "采购流程编排"},
+	"purchase/role-users": {"采购管理", "采购记录"},
+	"purchase/inbound-form-schema": {"采购管理", "采购记录"},
+	"purchase/weigh-flow": {"采购管理", "采购流程编排"},
 	"purchase/trace":      {"采购管理", "原料溯源"}, "purchase/requests": {"采购管理", "采购申请"},
 	"purchase/plans": {"采购管理", "采购计划单"}, "purchase/inbounds": {"采购管理", "采购入库"},
 	"purchase/qcs": {"采购管理", "来料质检"}, "purchase/returns": {"采购管理", "采购退货"},
@@ -82,6 +86,8 @@ var resourceDomainModule = map[string]domainModule{
 	"finance/ledger-entries": {"财务管理", "交易流水账"},
 	"finance/cost-traces": {"财务管理", "成本明细溯源表"}, "finance/month-closes": {"财务管理", "月度结转"},
 	"finance/cost-period-preview": {"财务管理", "成本核算"},
+	"finance/payment-orders": {"财务管理", "在线支付审批"},
+	"system/payment-settings": {"系统管理", "支付配置"},
 	// hr / payroll
 	"hr/employees": {"人事管理", "员工档案"}, "hr/onboards": {"人事管理", "入职登记"},
 	"hr/departments": {"人事管理", "公司架构"}, "hr/work-teams": {"人事管理", "员工档案"},
@@ -91,17 +97,17 @@ var resourceDomainModule = map[string]domainModule{
 	"payroll/sheets":       {"工资管理", "薪酬核算"},
 	"payroll/work-records": {"工资管理", "员工工作台账"},
 	// crm / product / asset / approval / report
-	"crm/customers": {"客户管理", "CRM客户管理"}, "product/products": {"产品管理", "产品档案"},
+	"product/products": {"产品管理", "产品档案"},
 	"asset/fixed-assets": {"固定资产管理", "固定资产项目"}, "approval/tasks": {"审批管理", "任务管理"},
 	"report/dashboards/production":           {"统计报表", "生产看板"},
 	"report/dashboards/live":               {"统计报表", "生产实况"},
-	"report/dashboards/warehouse":          {"统计报表", "三仓库存概览"},
+	"report/dashboards/warehouse":          {"统计报表", "仓库库存概览"},
 	"report/daily":                         {"统计报表", "日经营快照"},
 	"report/inbound-daily":                 {"统计报表", "原料入场日报"},
 	"report/piecework-daily":               {"统计报表", "计件日结汇总"},
 	"report/yield-analysis":                {"统计报表", "工序扣损收率分析"},
 	"report/trace-progress":                {"统计报表", "溯源批进度查询"},
-	"report/farmer-settlement-summary":     {"统计报表", "农户结算对账汇总"},
+	"report/farmer-settlement-summary":     {"统计报表", "供应商结算对账汇总"},
 	"report/payroll-reconcile":             {"统计报表", "薪酬核算对账"},
 	"report/cost-period-summary":           {"统计报表", "成本期间汇总"},
 	"report/stock-ledger":                  {"统计报表", "收发存明细"},
@@ -132,25 +138,29 @@ var domainPrefixCN = map[string]string{
 	"workflow": "", // 工单 API 在 handler 内做可见性/配置鉴权
 }
 
-// allDomainMenus 用于幂等 seed（与前端 CASSAVA_PRODUCT_SCOPE 对齐）
+// allDomainMenus 用于幂等 seed（与前端 resolveProductScope 对齐，含扩展域模块）
 var allDomainMenus = []struct {
 	Domain  string
 	Modules []string
 }{
-	{"采购管理", []string{"农户档案", "过磅收货", "过磅流程编排", "过磅品种", "溯源批号", "农户结算", "原料溯源", "来料质检"}},
+	{"采购管理", []string{"供应商管理", "采购记录", "采购流程编排", "采购品种", "溯源批号", "供应商结算", "原料溯源", "来料质检"}},
 	{"库存管理", []string{"库存查询", "仓管待入库", "箱码管理", "出入库记录汇总", "可用量分析", "亏料预警", "过量预警", "在途量统计", "待用量统计"}},
 	{"生产管理", []string{"工序定义", "工艺流程", "产线班次", "例外派岗", "工序流水", "计件工资", "工序在制", "溯源生产", "工序扣损", "退库未用完还仓"}},
 	{"产品管理", []string{"产品档案", "产品单位管理", "生产规格绑定"}},
+	{"销售管理", []string{"客户档案", "销售订单", "销售出库", "出厂结算"}},
 	{"工资管理", []string{"工人信息管理", "工资批量管理", "工序工资", "薪酬核算", "员工工作台账"}},
-	{"人事管理", []string{"员工档案", "岗位管理", "公司架构", "角色管理"}},
-	{"财务管理", []string{"成本核算", "成本明细溯源表", "资金管理", "交易流水账", "农户应付"}},
+	{"人事管理", []string{"员工档案", "岗位管理", "公司架构", "厂区管理", "角色管理"}},
+	{"财务管理", []string{
+		"成本核算", "成本明细溯源表", "资金管理", "交易流水账", "供应商应付",
+		"账目管理", "凭证管理", "发票管理", "收款核单", "预收预付管理", "往来调整单", "月度结转", "财务报表", "销售认款",
+	}},
 	{"统计报表", []string{
-		"生产看板", "生产实况", "三仓库存概览",
+		"生产看板", "生产实况", "仓库库存概览", "三仓库存概览",
 		"日经营快照", "原料入场日报", "计件日结汇总",
-		"工序扣损收率分析", "收发存明细", "溯源批进度查询", "农户结算对账汇总",
+		"工序扣损收率分析", "收发存明细", "溯源批进度查询", "供应商结算对账汇总",
 		"薪酬核算对账", "成本期间汇总",
 	}},
-	{"系统管理", []string{"基础设置", "生产设置", "自定义权限", "登录控制", "批量核算工资", "操作日志"}},
+	{"系统管理", []string{"开厂配置", "基础设置", "生产设置", "自定义权限", "登录控制", "批量核算工资", "操作日志"}},
 }
 
 func resolveDomainModule(resourceKey string) (domainModule, bool) {
@@ -286,12 +296,15 @@ func claimsHasWeighWarehousePerm(perms []string, write bool) bool {
 	if write {
 		return claimsHasCode(perms,
 			"库存管理:仓管待入库:编辑",
+			"采购管理:采购记录:编辑",
 			"采购管理:过磅收货:编辑",
 		)
 	}
 	return claimsHasCode(perms,
 		"库存管理:仓管待入库:查看",
 		"库存管理:仓管待入库:编辑",
+		"采购管理:采购记录:查看",
+		"采购管理:采购记录:编辑",
 		"采购管理:过磅收货:查看",
 		"采购管理:过磅收货:编辑",
 	)

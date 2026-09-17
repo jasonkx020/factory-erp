@@ -219,8 +219,12 @@ func nullableBoolInt(v interface{}) interface{} {
 func (s *Services) handleProcesses(c *gin.Context, method, action string) bool {
 	switch action {
 	case "list":
-		rows, err := s.DB.Query(`SELECT id, code, name, process_type, COALESCE(NULLIF(pay_mode,''),'none'), is_piecework, is_handover_point,
-			COALESCE(NULLIF(status,''),'active') FROM pd_process WHERE COALESCE(is_deleted,0)=0 ORDER BY id`)
+		// 启用状态 = 是否已配置启用中工价；不再使用工序表独立 status 操作语义
+		rows, err := s.DB.Query(`SELECT p.id, p.code, p.name, p.is_handover_point,
+			COALESCE(NULLIF(r.pay_mode,''),'none'), r.id
+			FROM pd_process p
+			LEFT JOIN pay_process_wage_rate r ON r.process_id=p.id AND r.status='active'
+			WHERE COALESCE(p.is_deleted,0)=0 ORDER BY p.id`)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR")
 			return true
@@ -229,16 +233,20 @@ func (s *Services) handleProcesses(c *gin.Context, method, action string) bool {
 		list := []gin.H{}
 		for rows.Next() {
 			var id int64
-			var code, name, typ, payMode, status string
-			var piece, hand int
-			_ = rows.Scan(&id, &code, &name, &typ, &payMode, &piece, &hand, &status)
-			payMode = normalizePayMode(payMode, piece == 1)
-			if status != "inactive" {
+			var code, name, payMode string
+			var hand int
+			var rateID sql.NullInt64
+			_ = rows.Scan(&id, &code, &name, &hand, &payMode, &rateID)
+			payMode = normalizePayMode(payMode, false)
+			hasWage := rateID.Valid && rateID.Int64 > 0
+			status := "inactive"
+			if hasWage {
 				status = "active"
 			}
 			list = append(list, gin.H{
-				"id": id, "code": code, "name": name, "process_type": typ, "pay_mode": payMode,
-				"is_piecework": payModeToIsPiecework(payMode) == 1, "is_handover_point": hand == 1, "status": status,
+				"id": id, "code": code, "name": name, "pay_mode": payMode,
+				"is_piecework": payModeToIsPiecework(payMode) == 1, "is_handover_point": hand == 1,
+				"has_wage": hasWage, "status": status,
 			})
 		}
 		api.OK(c, gin.H{"list": list, "total": len(list)})
@@ -247,94 +255,70 @@ func (s *Services) handleProcesses(c *gin.Context, method, action string) bool {
 		body := bindBody(c)
 		code, _ := body["code"].(string)
 		name, _ := body["name"].(string)
-		typ, _ := body["process_type"].(string)
-		if typ == "" {
-			typ = "other"
-		}
-		pieceBool := asBool(body["is_piecework"])
-		payMode := normalizePayMode(strOr(body["pay_mode"]), pieceBool)
-		piece := payModeToIsPiecework(payMode)
-		status := strings.TrimSpace(strOrDef(body["status"], "active"))
-		if status != "inactive" {
-			status = "active"
-		}
-		res, err := s.DB.Exec(`INSERT INTO pd_process(code, name, process_type, pay_mode, is_piecework, is_handover_point, status) VALUES(?,?,?,?,?,0,?)`,
-			code, name, typ, payMode, piece, status)
+		res, err := s.DB.Exec(`INSERT INTO pd_process(code, name, is_handover_point, status) VALUES(?,?,0,'active')`,
+			code, name)
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR")
 			return true
 		}
 		id, _ := res.LastInsertId()
-		after := gin.H{"id": id, "code": code, "name": name, "process_type": typ, "pay_mode": payMode, "is_piecework": piece == 1, "status": status}
+		after := gin.H{"id": id, "code": code, "name": name, "pay_mode": "none", "is_piecework": false, "has_wage": false, "status": "inactive"}
 		s.writeAuditCtx(c, "pd_process", id, "create", "", nil, after)
 		api.OK(c, after)
 		return true
 	case "get", "update", "delete":
 		id := paramID(c)
 		if action == "get" {
-			var code, name, typ, payMode, status string
-			var piece, hand int
-			err := s.DB.QueryRow(`SELECT code, name, process_type, COALESCE(NULLIF(pay_mode,''),'none'), is_piecework, is_handover_point,
-				COALESCE(NULLIF(status,''),'active') FROM pd_process WHERE id=? AND COALESCE(is_deleted,0)=0`, id).
-				Scan(&code, &name, &typ, &payMode, &piece, &hand, &status)
+			var code, name string
+			var hand int
+			err := s.DB.QueryRow(`SELECT code, name, is_handover_point
+				FROM pd_process WHERE id=? AND COALESCE(is_deleted,0)=0`, id).
+				Scan(&code, &name, &hand)
 			if err != nil {
 				api.FailJSON(c, "NOT_FOUND")
 				return true
 			}
-			payMode = normalizePayMode(payMode, piece == 1)
-			if status != "inactive" {
+			payMode := s.processPayMode(id)
+			hasWage := s.processHasActiveWage(id)
+			status := "inactive"
+			if hasWage {
 				status = "active"
 			}
 			api.OK(c, gin.H{
-				"id": id, "code": code, "name": name, "process_type": typ, "pay_mode": payMode,
-				"is_piecework": payModeToIsPiecework(payMode) == 1, "is_handover_point": hand == 1, "status": status,
+				"id": id, "code": code, "name": name, "pay_mode": payMode,
+				"is_piecework": payModeToIsPiecework(payMode) == 1, "is_handover_point": hand == 1,
+				"has_wage": hasWage, "status": status,
 			})
 			return true
 		}
 		if action == "update" {
 			body := bindBody(c)
-			var beforeCode, beforeName, beforeTyp, beforeMode, beforeStatus string
-			var beforePiece, beforeHand int
-			_ = s.DB.QueryRow(`SELECT code, name, process_type, COALESCE(NULLIF(pay_mode,''),'none'), is_piecework, is_handover_point,
-				COALESCE(NULLIF(status,''),'active') FROM pd_process WHERE id=?`, id).
-				Scan(&beforeCode, &beforeName, &beforeTyp, &beforeMode, &beforePiece, &beforeHand, &beforeStatus)
+			var beforeCode, beforeName string
+			var beforeHand int
+			_ = s.DB.QueryRow(`SELECT code, name, is_handover_point FROM pd_process WHERE id=?`, id).
+				Scan(&beforeCode, &beforeName, &beforeHand)
+			beforePay := s.processPayMode(id)
+			beforeWage := s.processHasActiveWage(id)
+			beforeStatus := "inactive"
+			if beforeWage {
+				beforeStatus = "active"
+			}
 			before := gin.H{
-				"id": id, "code": beforeCode, "name": beforeName, "process_type": beforeTyp,
-				"pay_mode": normalizePayMode(beforeMode, beforePiece == 1), "is_piecework": beforePiece == 1,
-				"is_handover_point": beforeHand == 1, "status": beforeStatus,
+				"id": id, "code": beforeCode, "name": beforeName,
+				"pay_mode": beforePay, "is_piecework": payModeToIsPiecework(beforePay) == 1,
+				"is_handover_point": beforeHand == 1, "has_wage": beforeWage, "status": beforeStatus,
 			}
 			name := strOr(body["name"])
-			typ := strOr(body["process_type"])
 			sets := []string{}
 			args := []interface{}{}
 			if name != "" {
 				sets = append(sets, "name=?")
 				args = append(args, name)
 			}
-			if typ != "" {
-				sets = append(sets, "process_type=?")
-				args = append(args, typ)
-			}
-			if _, ok := body["pay_mode"]; ok {
-				mode := normalizePayMode(strOr(body["pay_mode"]), asBool(body["is_piecework"]))
-				sets = append(sets, "pay_mode=?", "is_piecework=?")
-				args = append(args, mode, payModeToIsPiecework(mode))
-			} else if _, ok := body["is_piecework"]; ok {
-				mode := normalizePayMode("", asBool(body["is_piecework"]))
-				sets = append(sets, "pay_mode=?", "is_piecework=?")
-				args = append(args, mode, payModeToIsPiecework(mode))
-			}
+			// 忽略 pay_mode / status（启用由工价决定）
 			if _, ok := body["is_handover_point"]; ok {
 				sets = append(sets, "is_handover_point=?")
 				args = append(args, boolToInt(asBool(body["is_handover_point"])))
-			}
-			if _, ok := body["status"]; ok {
-				st := strings.TrimSpace(strOr(body["status"]))
-				if st != "inactive" {
-					st = "active"
-				}
-				sets = append(sets, "status=?")
-				args = append(args, st)
 			}
 			if code := strings.TrimSpace(strOr(body["code"])); code != "" {
 				sets = append(sets, "code=?")
@@ -345,15 +329,20 @@ func (s *Services) handleProcesses(c *gin.Context, method, action string) bool {
 				args = append(args, id)
 				_, _ = s.DB.Exec(`UPDATE pd_process SET `+strings.Join(sets, ",")+` WHERE id=?`, args...)
 			}
-			var afterCode, afterName, afterTyp, afterMode, afterStatus string
-			var afterPiece, afterHand int
-			_ = s.DB.QueryRow(`SELECT code, name, process_type, COALESCE(NULLIF(pay_mode,''),'none'), is_piecework, is_handover_point,
-				COALESCE(NULLIF(status,''),'active') FROM pd_process WHERE id=?`, id).
-				Scan(&afterCode, &afterName, &afterTyp, &afterMode, &afterPiece, &afterHand, &afterStatus)
+			var afterCode, afterName string
+			var afterHand int
+			_ = s.DB.QueryRow(`SELECT code, name, is_handover_point FROM pd_process WHERE id=?`, id).
+				Scan(&afterCode, &afterName, &afterHand)
+			afterPay := s.processPayMode(id)
+			afterWage := s.processHasActiveWage(id)
+			afterStatus := "inactive"
+			if afterWage {
+				afterStatus = "active"
+			}
 			after := gin.H{
-				"id": id, "code": afterCode, "name": afterName, "process_type": afterTyp,
-				"pay_mode": normalizePayMode(afterMode, afterPiece == 1), "is_piecework": afterPiece == 1,
-				"is_handover_point": afterHand == 1, "status": afterStatus,
+				"id": id, "code": afterCode, "name": afterName,
+				"pay_mode": afterPay, "is_piecework": payModeToIsPiecework(afterPay) == 1,
+				"is_handover_point": afterHand == 1, "has_wage": afterWage, "status": afterStatus,
 			}
 			s.writeAuditCtx(c, "pd_process", id, "update", "", before, after)
 			api.OK(c, after)

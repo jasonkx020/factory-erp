@@ -10,6 +10,9 @@ database:
   data_path: migrations/erp/data-dev.sql
 seed:
   demo: true
+product:
+  profile: extended
+  industry_pack: cassava
 jwt:
   secret: "dev-only-change-me"
   access_ttl_min: 120

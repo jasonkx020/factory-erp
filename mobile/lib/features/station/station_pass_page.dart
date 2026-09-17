@@ -849,7 +849,7 @@ class _StationPassPageState extends State<StationPassPage> {
     final stepName = (p['process_name'] ?? '-').toString();
     final passerText = [if (workerName.isNotEmpty) workerName, if (badge.isNotEmpty) badge].join(' · ');
     final traceText = '${p['trace_code'] ?? _selectedTraceCode ?? '-'}';
-    final farmer = '${p['farmer_name'] ?? _selectedTraceRow()?['farmer_name'] ?? ''}'.trim();
+    final farmer = '${p['supplier_name'] ?? p['party_name'] ?? p['farmer_name'] ?? _selectedTraceRow()?['supplier_name'] ?? _selectedTraceRow()?['party_name'] ?? _selectedTraceRow()?['farmer_name'] ?? ''}'.trim();
     final pending = p['pending'] == true || _fromWarehouse;
     return ListView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -871,7 +871,7 @@ class _StationPassPageState extends State<StationPassPage> {
         const FormSectionHeader('材料'),
         _previewRow('来源', '${p['source_label'] ?? (_fromWarehouse ? '仓库' : '工序')}'),
         _previewRow('溯源码', traceText, emphasize: true),
-        if (farmer.isNotEmpty) _previewRow('农户', farmer),
+        if (farmer.isNotEmpty) _previewRow('供应商', farmer),
         if (!_fromWarehouse && (p['from_process_name'] ?? '').toString().isNotEmpty)
           _previewRow('来源工序', '${p['from_process_name']}'),
         if (!_fromWarehouse) _previewRow('在制(kg)', _fmtKg(p['source_limit_kg'] ?? p['wip_kg'] ?? p['available_kg'])),

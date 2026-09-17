@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 import { iamApi, ticketApi } from '@erp/shared'
 import TableOrCards from '../../components/mobile/TableOrCards.vue'
 import type { MobileCardColumn } from '../../components/mobile/MobileDataCards.vue'
+import { ProcessSelect } from '../../components/select'
 
 type Row = Record<string, unknown>
 
@@ -30,6 +31,7 @@ type FieldDef = {
   required?: boolean
   options?: string[]
   unit?: string
+  ref?: string
 }
 
 const tab = ref<'tickets' | 'categories'>('categories')
@@ -215,7 +217,8 @@ function poolPreviewNames(row: Row): string {
 function initPayload(schema: FieldDef[]) {
   const p: Record<string, unknown> = {}
   for (const f of schema) {
-    if (f.type === 'number') p[f.key] = null
+    if (f.ref === 'process') p[f.key] = null
+    else if (f.type === 'number') p[f.key] = null
     else if (f.type === 'date') p[f.key] = new Date().toISOString().slice(0, 10)
     else if (f.type === 'select' && f.options?.length) p[f.key] = f.options[0]
     else p[f.key] = ''
@@ -406,7 +409,7 @@ function openEditType(row: Row) {
     remark: String(row.remark || ''),
     biz_hint: String(row.biz_hint || ''),
     enabled: row.enabled !== false,
-    form_schema: schemaOf(row).map((f) => ({ ...f, options: [...(f.options || [])] })),
+    form_schema: schemaOf(row).map((f) => ({ ...f, options: [...(f.options || [])], ref: f.ref })),
   })
   if (!typeForm.form_schema.length) {
     typeForm.form_schema.push({ key: 'remark', label: '备注', type: 'textarea', required: false, options: [] })
@@ -433,6 +436,7 @@ function addField(preset?: Partial<FieldDef>) {
     required: preset?.required ?? false,
     options: [...(preset?.options || [])],
     unit: preset?.unit || '',
+    ref: preset?.ref,
   })
 }
 
@@ -467,7 +471,7 @@ function typeFormError(): string {
     }
     if (keys.has(key)) return `字段编码「${key}」重复了`
     keys.add(key)
-    if (f.type === 'select' && !(f.options || []).filter(Boolean).length) {
+    if (f.type === 'select' && f.ref !== 'process' && !(f.options || []).filter(Boolean).length) {
       return `「${lab}」是下拉，请填写选项，用逗号分隔`
     }
   }
@@ -489,8 +493,9 @@ async function saveType() {
         ...f,
         key: f.key.trim(),
         label: f.label.trim(),
-        options: f.type === 'select' ? (f.options || []).filter(Boolean) : undefined,
+        options: f.type === 'select' && f.ref !== 'process' ? (f.options || []).filter(Boolean) : undefined,
         unit: f.unit?.trim() || undefined,
+        ref: f.ref === 'process' ? 'process' : undefined,
       })),
     }
     const res = isEditType.value
@@ -651,6 +656,11 @@ onMounted(refresh)
                       v-else-if="f.type === 'number'"
                       v-model="createForm.payload[f.key]"
                       :controls="false"
+                      style="width:100%"
+                    />
+                    <ProcessSelect
+                      v-else-if="f.type === 'select' && f.ref === 'process'"
+                      v-model="(createForm.payload[f.key] as number | null)"
                       style="width:100%"
                     />
                     <el-select v-else-if="f.type === 'select'" v-model="createForm.payload[f.key]" style="width:100%">
@@ -833,14 +843,19 @@ onMounted(refresh)
                 @update:model-value="(v: string) => onFieldLabelInput(f, i, v)"
               />
               <el-input v-model="f.key" placeholder="如：plate_no" />
-              <el-select v-model="f.type" :placeholder="fieldTypeHint(f.type)">
+              <el-select v-model="f.type" :placeholder="fieldTypeHint(f.type)" @change="() => { if (f.type !== 'select') f.ref = undefined }">
                 <el-option v-for="t in FIELD_TYPES" :key="t.value" :label="t.label" :value="t.value">
                   <span>{{ t.label }}</span>
                   <span class="opt-hint">{{ t.hint }}</span>
                 </el-option>
               </el-select>
               <el-input
-                v-if="f.type === 'select'"
+                v-if="f.type === 'select' && f.ref === 'process'"
+                model-value="联动工序主数据"
+                disabled
+              />
+              <el-input
+                v-else-if="f.type === 'select'"
                 :model-value="(f.options || []).join('，')"
                 placeholder="选项用逗号分隔，如：A，B，C"
                 @update:model-value="(v: string) => (f.options = String(v).split(/[,，]/).map((x) => x.trim()).filter(Boolean))"
@@ -861,6 +876,12 @@ onMounted(refresh)
             <el-button size="small" @click="addField()">添加字段</el-button>
             <el-button size="small" text type="primary" @click="addField({ key: 'qty', label: '数量', type: 'number', unit: 'kg' })">+ 数量</el-button>
             <el-button size="small" text type="primary" @click="addField({ key: 'grade', label: '等级', type: 'select', options: ['A', 'B', 'C'] })">+ 下拉</el-button>
+            <el-button
+              size="small"
+              text
+              type="primary"
+              @click="addField({ key: 'process_id', label: '工序', type: 'select', ref: 'process', options: [] })"
+            >+ 工序（主数据）</el-button>
             <el-button size="small" text type="primary" @click="addField({ key: 'remark', label: '备注', type: 'textarea' })">+ 备注</el-button>
           </div>
         </section>

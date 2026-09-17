@@ -6,7 +6,7 @@ import '../../core/auth_state.dart';
 import '../../theme/plant_colors.dart';
 import '../../widgets/factory_kpi_card.dart';
 
-/// 产线结算财务：农户应付 / 资金 / 流水 / 成本期间预览（对齐 Web FinanceHub）。
+/// 产线结算财务：供应商应付 / 资金 / 流水 / 成本期间预览（对齐 Web FinanceHub）。
 class FinanceHubPage extends StatefulWidget {
   const FinanceHubPage({super.key, this.asTab = false});
 
@@ -178,7 +178,7 @@ class _FinanceHubPageState extends State<FinanceHubPage> with SingleTickerProvid
           labelColor: PlantColors.onForest,
           unselectedLabelColor: PlantColors.onForest.withValues(alpha: 0.65),
           tabs: const [
-            Tab(text: '农户应付'),
+            Tab(text: '供应商应付'),
             Tab(text: '资金账户'),
             Tab(text: '资金流水'),
             Tab(text: '成本预览'),
@@ -243,7 +243,7 @@ class _FinanceHubPageState extends State<FinanceHubPage> with SingleTickerProvid
 
   Widget _payablesTab() {
     if (_payables.isEmpty) {
-      return const Center(child: Text('暂无待付农户结算', style: TextStyle(color: PlantColors.muted)));
+      return const Center(child: Text('暂无待付供应商结算', style: TextStyle(color: PlantColors.muted)));
     }
     return ListView.separated(
       padding: const EdgeInsets.all(12),
@@ -253,7 +253,7 @@ class _FinanceHubPageState extends State<FinanceHubPage> with SingleTickerProvid
         final r = _payables[i];
         return Card(
           child: ListTile(
-            title: Text('${r['doc_no'] ?? '-'} · ${r['farmer_name'] ?? '农户'}'),
+            title: Text('${r['doc_no'] ?? '-'} · ${r['supplier_name'] ?? r['party_name'] ?? r['farmer_name'] ?? '供应商'}'),
             subtitle: Text('${r['biz_date'] ?? ''} · ${_money(r['amount'])} 元'),
             trailing: FilledButton(
               onPressed: () => _paySettlement(r),
@@ -351,7 +351,7 @@ class _FinanceHubPageState extends State<FinanceHubPage> with SingleTickerProvid
           FactoryKpiCard(label: '合计', value: _money(p['total_cost']), tone: FactoryKpiTone.ok),
           const SizedBox(height: 12),
           Text(
-            '农户已付 ${_money(p['farmer_paid'])}（${p['farmer_paid_count'] ?? 0}）'
+            '供应商已付 ${_money(p['farmer_paid'])}（${p['farmer_paid_count'] ?? 0}）'
             ' · 待付 ${_money(p['farmer_pending'])}'
             ' · 计件 ${_money(p['piecework_amount'])}',
             style: const TextStyle(fontSize: 12, color: PlantColors.muted),

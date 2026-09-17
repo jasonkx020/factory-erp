@@ -27,6 +27,21 @@ func Open(cfg *config.Config) (*DB, error) {
 	if dsn == "" {
 		return nil, fmt.Errorf("database.dsn required")
 	}
+
+	// init_schema drops all tables via a separate connection. Open the app pool only
+	// afterwards — otherwise idle Ping connections become stale and later Exec can
+	// hang forever (Go "all goroutines are asleep - deadlock").
+	if cfg.Database.InitSchema {
+		migrationsRoot := strings.TrimSpace(cfg.Database.MigrationsDir)
+		if migrationsRoot == "" {
+			migrationsRoot = "migrations"
+		}
+		seedPath := strings.TrimSpace(cfg.Database.DataPath)
+		if err := dbmigrate.InitDevDatabase(context.Background(), dsn, migrationsRoot, seedPath); err != nil {
+			return nil, fmt.Errorf("init_schema: %w", err)
+		}
+	}
+
 	sqlDB, err := sql.Open(driverName, dsn)
 	if err != nil {
 		return nil, err
@@ -37,19 +52,7 @@ func Open(cfg *config.Config) (*DB, error) {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("database ping: %w", err)
 	}
-	out := &DB{SQL: sqlDB, Driver: "postgres"}
-	if cfg.Database.InitSchema {
-		migrationsRoot := strings.TrimSpace(cfg.Database.MigrationsDir)
-		if migrationsRoot == "" {
-			migrationsRoot = "migrations"
-		}
-		seedPath := strings.TrimSpace(cfg.Database.DataPath)
-		if err := dbmigrate.InitDevDatabase(context.Background(), dsn, migrationsRoot, seedPath); err != nil {
-			_ = sqlDB.Close()
-			return nil, fmt.Errorf("init_schema: %w", err)
-		}
-	}
-	return out, nil
+	return &DB{SQL: sqlDB, Driver: "postgres"}, nil
 }
 
 func (d *DB) Close() error {

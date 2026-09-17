@@ -143,13 +143,13 @@ func (s *Services) handleWageRates(c *gin.Context, action string) bool {
 			where = ``
 		}
 		rows, err := s.DB.Query(`SELECT r.id, r.process_id, COALESCE(p.code,''), COALESCE(p.name,''), r.rate,
-			COALESCE(r.rate_unit,'kg'), r.effective_from, COALESCE(r.effective_to,''), r.status
+			COALESCE(r.rate_unit,'kg'), COALESCE(NULLIF(r.pay_mode,''),'none'), r.effective_from, COALESCE(r.effective_to,''), r.status
 			FROM pay_process_wage_rate r
 			LEFT JOIN pd_process p ON p.id=r.process_id
 			`+where+`
 			ORDER BY r.process_id, r.id DESC`)
 		if err != nil {
-			// fallback without rate_unit / join
+			// fallback without pay_mode / rate_unit
 			q2 := `SELECT id, process_id, rate, effective_from, COALESCE(effective_to,''), status FROM pay_process_wage_rate`
 			if !showAll {
 				q2 += ` WHERE status='active'`
@@ -167,7 +167,10 @@ func (s *Services) handleWageRates(c *gin.Context, action string) bool {
 				var rate float64
 				var from, to, status string
 				_ = rows.Scan(&id, &pid, &rate, &from, &to, &status)
-				list = append(list, gin.H{"id": id, "process_id": pid, "rate": rate, "effective_from": from, "effective_to": to, "status": status})
+				list = append(list, gin.H{
+					"id": id, "process_id": pid, "rate": rate, "effective_from": from, "effective_to": to, "status": status,
+					"pay_mode": s.processPayMode(pid),
+				})
 			}
 			api.OK(c, gin.H{"list": list, "total": len(list)})
 			return true
@@ -177,11 +180,13 @@ func (s *Services) handleWageRates(c *gin.Context, action string) bool {
 		for rows.Next() {
 			var id, pid int64
 			var rate float64
-			var pcode, pname, unit, from, to, status string
-			_ = rows.Scan(&id, &pid, &pcode, &pname, &rate, &unit, &from, &to, &status)
+			var pcode, pname, unit, payMode, from, to, status string
+			_ = rows.Scan(&id, &pid, &pcode, &pname, &rate, &unit, &payMode, &from, &to, &status)
+			payMode = normalizePayMode(payMode, false)
 			list = append(list, gin.H{
 				"id": id, "process_id": pid, "process_code": pcode, "process_name": pname,
-				"rate": rate, "rate_unit": unit, "effective_from": from, "effective_to": to, "status": status,
+				"rate": rate, "rate_unit": unit, "pay_mode": payMode, "is_piecework": payModeToIsPiecework(payMode) == 1,
+				"effective_from": from, "effective_to": to, "status": status,
 			})
 		}
 		api.OK(c, gin.H{"list": list, "total": len(list)})
@@ -196,18 +201,30 @@ func (s *Services) handleWageRates(c *gin.Context, action string) bool {
 		}
 		from := strOrDef(body["effective_from"], time.Now().Format("2006-01-02"))
 		unit := strOrDef(body["rate_unit"], "yuan/kg")
+		payMode := payModeFromRateUnit(unit)
 		// 同工序仅保留一条 active：新建前先停用旧费率
 		_, _ = s.DB.Exec(`UPDATE pay_process_wage_rate SET status='inactive' WHERE process_id=? AND status='active'`, pid)
-		res, err := s.DB.Exec(`INSERT INTO pay_process_wage_rate(process_id, rate, effective_from, status, rate_unit) VALUES(?,?,?,'active',?)`, pid, rate, from, unit)
+		res, err := s.DB.Exec(`INSERT INTO pay_process_wage_rate(process_id, rate, effective_from, status, rate_unit, pay_mode) VALUES(?,?,?,'active',?,?)`, pid, rate, from, unit, payMode)
+		if err != nil {
+			res, err = s.DB.Exec(`INSERT INTO pay_process_wage_rate(process_id, rate, effective_from, status, rate_unit) VALUES(?,?,?,'active',?)`, pid, rate, from, unit)
+			if err == nil {
+				id, _ := res.LastInsertId()
+				_, _ = s.DB.Exec(`UPDATE pay_process_wage_rate SET pay_mode=? WHERE id=?`, payMode, id)
+			}
+		}
 		if err != nil {
 			res, err = s.DB.Exec(`INSERT INTO pay_process_wage_rate(process_id, rate, effective_from, status) VALUES(?,?,?,'active')`, pid, rate, from)
+			if err == nil {
+				id, _ := res.LastInsertId()
+				_, _ = s.DB.Exec(`UPDATE pay_process_wage_rate SET rate_unit=?, pay_mode=? WHERE id=?`, unit, payMode, id)
+			}
 		}
 		if err != nil {
 			api.FailJSON(c, "DB_ERROR:"+err.Error())
 			return true
 		}
 		id, _ := res.LastInsertId()
-		api.OK(c, gin.H{"id": id, "process_id": pid, "rate": rate, "rate_unit": unit, "status": "active"})
+		api.OK(c, gin.H{"id": id, "process_id": pid, "rate": rate, "rate_unit": unit, "pay_mode": payMode, "status": "active"})
 		return true
 	case "get", "update", "delete":
 		id := paramID(c)
@@ -219,14 +236,24 @@ func (s *Services) handleWageRates(c *gin.Context, action string) bool {
 		if action == "get" {
 			var pid int64
 			var rate float64
-			var from, to, status string
-			err := s.DB.QueryRow(`SELECT process_id, rate, effective_from, COALESCE(effective_to,''), status FROM pay_process_wage_rate WHERE id=?`, id).
-				Scan(&pid, &rate, &from, &to, &status)
+			var from, to, status, payMode string
+			err := s.DB.QueryRow(`SELECT process_id, rate, effective_from, COALESCE(effective_to,''), status, COALESCE(NULLIF(pay_mode,''),'none')
+				FROM pay_process_wage_rate WHERE id=?`, id).
+				Scan(&pid, &rate, &from, &to, &status, &payMode)
 			if err != nil {
-				api.FailJSON(c, "NOT_FOUND")
+				var pid2 int64
+				var rate2 float64
+				var from2, to2, status2 string
+				err2 := s.DB.QueryRow(`SELECT process_id, rate, effective_from, COALESCE(effective_to,''), status FROM pay_process_wage_rate WHERE id=?`, id).
+					Scan(&pid2, &rate2, &from2, &to2, &status2)
+				if err2 != nil {
+					api.FailJSON(c, "NOT_FOUND")
+					return true
+				}
+				api.OK(c, gin.H{"id": id, "process_id": pid2, "rate": rate2, "effective_from": from2, "effective_to": to2, "status": status2, "pay_mode": s.processPayMode(pid2)})
 				return true
 			}
-			api.OK(c, gin.H{"id": id, "process_id": pid, "rate": rate, "effective_from": from, "effective_to": to, "status": status})
+			api.OK(c, gin.H{"id": id, "process_id": pid, "rate": rate, "effective_from": from, "effective_to": to, "status": status, "pay_mode": normalizePayMode(payMode, false)})
 			return true
 		}
 		body := bindBody(c)
@@ -239,10 +266,13 @@ func (s *Services) handleWageRates(c *gin.Context, action string) bool {
 			WHERE id=?`,
 			payrollNullFloat(body["rate"]), asInt64Or0(body["process_id"]), strOr(body["effective_from"]),
 			nullStr(strOr(body["effective_to"])), strOr(body["status"]), id)
-		if unit := strOr(body["rate_unit"]); unit != "" {
-			_, _ = s.DB.Exec(`UPDATE pay_process_wage_rate SET rate_unit=? WHERE id=?`, unit, id)
+		unit := strOr(body["rate_unit"])
+		if unit == "" {
+			_ = s.DB.QueryRow(`SELECT COALESCE(NULLIF(rate_unit,''),'yuan/kg') FROM pay_process_wage_rate WHERE id=?`, id).Scan(&unit)
 		}
-		api.OK(c, gin.H{"id": id})
+		payMode := payModeFromRateUnit(unit)
+		_, _ = s.DB.Exec(`UPDATE pay_process_wage_rate SET rate_unit=?, pay_mode=? WHERE id=?`, unit, payMode, id)
+		api.OK(c, gin.H{"id": id, "rate_unit": unit, "pay_mode": payMode})
 		return true
 	}
 	return true

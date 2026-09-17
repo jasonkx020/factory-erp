@@ -17,8 +17,43 @@ type Config struct {
 	Trace    TraceConfig    `yaml:"trace"`
 	Mqtt     MqttConfig     `yaml:"mqtt"`
 	Seed     SeedConfig     `yaml:"seed"`
+	Product  ProductConfig  `yaml:"product"`
 	OAuth    OAuthConfig    `yaml:"oauth"`
 	OCR      OCRConfig      `yaml:"ocr"`
+}
+
+// ProductConfig 部署层产品形态（非多租户）。
+// profile: core|extended；industry_pack: none|cassava。
+type ProductConfig struct {
+	Profile      string `yaml:"profile"`
+	IndustryPack string `yaml:"industry_pack"`
+}
+
+func (p ProductConfig) NormalizedProfile() string {
+	if strings.EqualFold(strings.TrimSpace(p.Profile), "extended") {
+		return "extended"
+	}
+	return "core"
+}
+
+func (p ProductConfig) NormalizedIndustryPack() string {
+	v := strings.ToLower(strings.TrimSpace(p.IndustryPack))
+	switch v {
+	case "none":
+		return "none"
+	case "cassava", "":
+		return "cassava"
+	default:
+		return v
+	}
+}
+
+func (p ProductConfig) IsCassavaPack() bool {
+	return p.NormalizedIndustryPack() == "cassava"
+}
+
+func (p ProductConfig) IsExtended() bool {
+	return p.NormalizedProfile() == "extended"
 }
 
 // OAuthConfig 第三方登录（默认关闭；启用后按 provider 交换 code）。
@@ -148,6 +183,13 @@ func Load(path string) (*Config, error) {
 	if c.Mqtt.KeepAliveSeconds <= 0 {
 		c.Mqtt.KeepAliveSeconds = 60
 	}
+	if strings.TrimSpace(c.Product.Profile) == "" {
+		c.Product.Profile = "core"
+	}
+	if strings.TrimSpace(c.Product.IndustryPack) == "" {
+		// 现网升级默认 cassava；新装示例配置应显式写 none|cassava
+		c.Product.IndustryPack = "cassava"
+	}
 	c.WarnInsecureIfNeeded()
 	return &c, nil
 }
@@ -246,5 +288,11 @@ func applyEnv(c *Config) {
 	}
 	if v := os.Getenv("ERP_OCR_PROVIDER"); v != "" {
 		c.OCR.Provider = v
+	}
+	if v := os.Getenv("ERP_PRODUCT_PROFILE"); v != "" {
+		c.Product.Profile = v
+	}
+	if v := os.Getenv("ERP_INDUSTRY_PACK"); v != "" {
+		c.Product.IndustryPack = v
 	}
 }

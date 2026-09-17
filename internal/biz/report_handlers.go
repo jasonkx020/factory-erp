@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 import (
 	"database/sql"
@@ -383,8 +383,8 @@ func (s *Services) reportDaily(c *gin.Context) bool {
 		"production_output_kg": s.queryFloat(`SELECT COALESCE(SUM(output_kg),0) FROM pd_trace_production WHERE date(completed_at)=?`, bizDate),
 		"flow_log_kg":     s.queryFloat(`SELECT COALESCE(SUM(kg),0) FROM pd_station_flow_log WHERE biz_date=?`, bizDate),
 		"piecework_amount": s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM pd_piecework_summary WHERE biz_date=?`, bizDate),
-		"farmer_payable":  s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM pur_farmer_settlement WHERE biz_date=? AND status NOT IN ('paid','settle_paid')`, bizDate),
-		"farmer_paid":     s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM pur_farmer_settlement WHERE biz_date=? AND status IN ('paid','settle_paid')`, bizDate),
+		"farmer_payable":  s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM pur_supplier_settlement WHERE biz_date=? AND status NOT IN ('paid','settle_paid')`, bizDate),
+		"farmer_paid":     s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM pur_supplier_settlement WHERE biz_date=? AND status IN ('paid','settle_paid')`, bizDate),
 		"stock_in":        s.queryFloat(`SELECT COALESCE(SUM(l.qty),0) FROM inv_stock_txn_line l JOIN inv_stock_txn t ON t.id=l.txn_id WHERE t.status='posted' AND l.direction='in' AND date(t.biz_date)=?`, bizDate),
 		"stock_out":       s.queryFloat(`SELECT COALESCE(SUM(l.qty),0) FROM inv_stock_txn_line l JOIN inv_stock_txn t ON t.id=l.txn_id WHERE t.status='posted' AND l.direction='out' AND date(t.biz_date)=?`, bizDate),
 	}

@@ -74,18 +74,19 @@ CREATE INDEX IF NOT EXISTS idx_pd_trace_process_log_session ON pd_trace_process_
 CREATE INDEX IF NOT EXISTS idx_pd_trace_process_log_trace ON pd_trace_process_log (trace_code, created_at);
 
 -- 种子工序补齐：入厂日志节点、切片（与清洗/切断/去芯/出入库并列）
-INSERT INTO pd_process(code, name, process_type, is_piecework, is_handover_point)
-SELECT 'GATE_IN', '入厂', 'gate', 0, 0
+-- 注：process_type 已由 v1.0.31 删除；出入库语义见工艺步骤 auto_stock_in/out
+INSERT INTO pd_process(code, name, is_handover_point)
+SELECT 'GATE_IN', '入厂', 1
 WHERE NOT EXISTS (SELECT 1 FROM pd_process WHERE code='GATE_IN');
 
-INSERT INTO pd_process(code, name, process_type, is_piecework, is_handover_point)
-SELECT 'SLICE', '切片', 'slice', 1, 0
+INSERT INTO pd_process(code, name, is_handover_point)
+SELECT 'SLICE', '切片', 0
 WHERE NOT EXISTS (SELECT 1 FROM pd_process WHERE code='SLICE');
 
-INSERT INTO pd_process(code, name, process_type, is_piecework, is_handover_point)
-SELECT 'OUT_RAW', '出库', 'outbound', 0, 0
+INSERT INTO pd_process(code, name, is_handover_point)
+SELECT 'OUT_RAW', '出库', 0
 WHERE NOT EXISTS (SELECT 1 FROM pd_process WHERE code='OUT_RAW');
 
 INSERT INTO erp_schema_migration (version, description, checksum)
-VALUES ('v1.0.21', 'material dispatch trace production session', '255f5b4160c9198baadfa1feb97474841bfa9a4c55abc621d297b55f7db970b8')
+VALUES ('v1.0.21', 'material dispatch trace production session', '3849d5517429b83cad0938cffb3748caa8048898d7001ea8bd0621f4b3b1f668')
 ON CONFLICT (version) DO NOTHING;

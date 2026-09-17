@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 import (
 	"database/sql"
@@ -86,8 +86,8 @@ func (s *Services) reportInboundDaily(c *gin.Context) bool {
 	gross := s.queryFloat(`SELECT COALESCE(SUM(gross_weight),0) FROM pur_weigh_ticket WHERE COALESCE(is_deleted,0)=0 AND biz_date=?`, bizDate)
 	deduct := s.queryFloat(`SELECT COALESCE(SUM(deduct_weight),0) FROM pur_weigh_ticket WHERE COALESCE(is_deleted,0)=0 AND biz_date=?`, bizDate)
 	net := s.queryFloat(`SELECT COALESCE(SUM(net_weight),0) FROM pur_weigh_ticket WHERE COALESCE(is_deleted,0)=0 AND biz_date=?`, bizDate)
-	settleAmt := s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM pur_farmer_settlement WHERE biz_date=?`, bizDate)
-	settlePending := s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM pur_farmer_settlement WHERE biz_date=? AND status NOT IN ('paid','settle_paid')`, bizDate)
+	settleAmt := s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM pur_supplier_settlement WHERE biz_date=?`, bizDate)
+	settlePending := s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM pur_supplier_settlement WHERE biz_date=? AND status NOT IN ('paid','settle_paid')`, bizDate)
 
 	summary := gin.H{
 		"biz_date": bizDate, "ticket_count": ticketCount,
@@ -99,7 +99,7 @@ func (s *Services) reportInboundDaily(c *gin.Context) bool {
 	rows, err := s.DB.Query(`SELECT t.id, t.doc_no, COALESCE(f.name,'') AS farmer_name, t.gross_weight, t.deduct_weight, t.net_weight,
 		t.qc_result, t.status, COALESCE(t.trace_code,'')
 		FROM pur_weigh_ticket t
-		LEFT JOIN pur_farmer f ON f.id=t.farmer_id
+		LEFT JOIN pur_supplier f ON f.id=t.supplier_id
 		WHERE COALESCE(t.is_deleted,0)=0 AND t.biz_date=?
 		ORDER BY t.id DESC LIMIT 200`, bizDate)
 	if err == nil {
@@ -216,15 +216,15 @@ func (s *Services) reportFarmerSettlementSummary(c *gin.Context) bool {
 		args = append(args, bizDate)
 	}
 	summary := gin.H{
-		"total_amount": s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM pur_farmer_settlement`+where, args...),
-		"paid_amount": s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM pur_farmer_settlement`+where+` AND status IN ('paid','settle_paid')`, args...),
-		"pending_amount": s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM pur_farmer_settlement`+where+` AND status NOT IN ('paid','settle_paid')`, args...),
-		"doc_count": s.queryCount(`SELECT COUNT(1) FROM pur_farmer_settlement`+where, args...),
+		"total_amount": s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM pur_supplier_settlement`+where, args...),
+		"paid_amount": s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM pur_supplier_settlement`+where+` AND status IN ('paid','settle_paid')`, args...),
+		"pending_amount": s.queryFloat(`SELECT COALESCE(SUM(amount),0) FROM pur_supplier_settlement`+where+` AND status NOT IN ('paid','settle_paid')`, args...),
+		"doc_count": s.queryCount(`SELECT COUNT(1) FROM pur_supplier_settlement`+where, args...),
 	}
 	rows, err := s.DB.Query(`SELECT s.id, s.doc_no, s.biz_date, COALESCE(f.name,'') AS farmer_name,
 		s.net_weight, s.unit_price, s.amount, s.status, COALESCE(wt.trace_code,'') AS trace_code
-		FROM pur_farmer_settlement s
-		LEFT JOIN pur_farmer f ON f.id=s.farmer_id
+		FROM pur_supplier_settlement s
+		LEFT JOIN pur_supplier f ON f.id=s.supplier_id
 		LEFT JOIN pur_weigh_ticket wt ON wt.id=s.weigh_ticket_id`+where+`
 		ORDER BY s.id DESC LIMIT 300`, args...)
 	if err != nil {

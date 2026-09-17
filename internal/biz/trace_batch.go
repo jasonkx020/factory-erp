@@ -13,20 +13,6 @@ const (
 	base36Digits     = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 )
 
-// ColdStoreWarehouse maps cold_store_type → default warehouse_id.
-func ColdStoreWarehouse(kind string) int64 {
-	switch strings.ToLower(strings.TrimSpace(kind)) {
-	case "fresh":
-		return 1
-	case "semi":
-		return 2
-	case "fg":
-		return 3
-	default:
-		return 0
-	}
-}
-
 func padLot2(lot string) string {
 	lot = strings.ToUpper(strings.TrimSpace(lot))
 	if lot == "" {

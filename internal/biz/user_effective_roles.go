@@ -2,23 +2,42 @@ package biz
 
 import (
 	"database/sql"
+	"sync"
 
 	"erp/internal/security"
 
 	"github.com/gin-gonic/gin"
 )
 
+var extraRoleBackfillOnce sync.Once
+
 func ensureExtraRoleTable(db *sql.DB) {
+	if db == nil {
+		return
+	}
 	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS iam_user_extra_role (
   user_id INTEGER NOT NULL,
   role_id INTEGER NOT NULL,
   PRIMARY KEY (user_id, role_id)
 )`)
-	services := &Services{DB: db}
-	services.ensureExtraRoleBackfill()
+}
+
+// EnsureExtraRoleMigrated creates iam_user_extra_role and backfills once (startup-safe, no re-entry).
+func EnsureExtraRoleMigrated(db *sql.DB) {
+	if db == nil {
+		return
+	}
+	ensureExtraRoleTable(db)
+	extraRoleBackfillOnce.Do(func() {
+		(&Services{DB: db}).ensureExtraRoleBackfill()
+	})
 }
 
 func (s *Services) ensureExtraRoleBackfill() {
+	if s == nil || s.DB == nil {
+		return
+	}
+	ensureExtraRoleTable(s.DB)
 	var n int
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM iam_user_extra_role`).Scan(&n)
 	if n > 0 {
@@ -47,12 +66,16 @@ ON CONFLICT DO NOTHING`)
 	if err != nil {
 		return
 	}
-	defer rows.Close()
+	uids := make([]int64, 0, 64)
 	for rows.Next() {
 		var uid int64
 		if err := rows.Scan(&uid); err != nil || uid <= 0 {
 			continue
 		}
+		uids = append(uids, uid)
+	}
+	_ = rows.Close()
+	for _, uid := range uids {
 		s.rebuildUserEffectiveRoles(uid)
 	}
 }

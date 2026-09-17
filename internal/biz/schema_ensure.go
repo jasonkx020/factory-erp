@@ -260,13 +260,13 @@ func seedFlowGraphs(db *sql.DB) {
 		rebuildProductionFlowGraph(db)
 	}
 	// migrate: 入厂默认图改为 采购→仓管→财务（去掉质检必经）
-	_, _ = db.Exec(`UPDATE pd_flow_graph SET graph_json=?, name='过磅入厂流程', version_no='V2', updated_at=NOW()
+	_, _ = db.Exec(`UPDATE pd_flow_graph SET graph_json=?, name='采购入厂流程', version_no='V2', updated_at=NOW()
 		WHERE code='PURCHASE_GATE' AND COALESCE(is_deleted,0)=0`, gateJSON)
 	_, _ = db.Exec(`UPDATE pd_flow_graph SET status='active' WHERE code='PURCHASE_GATE' AND COALESCE(is_deleted,0)=0`)
 }
 
 func purchaseGateFlowJSON() string {
-	return `{"nodes":[
+	return `{"meta":{"capabilities":["weigh"],"field_pack":"cassava_gate"},"nodes":[
 {"id":"start","type":"start","position":{"x":40,"y":80},"data":{}},
 {"id":"submit","type":"role_task","position":{"x":220,"y":80},"data":{"role_code":"purchase","action":"submit","label":"采购提交"}},
 {"id":"wh","type":"role_task","position":{"x":420,"y":80},"data":{"role_code":"warehouse","action":"warehouse_confirm","label":"仓管入库"}},
@@ -281,7 +281,7 @@ func purchaseGateFlowJSON() string {
 }
 
 func purchaseStockinFlowJSON() string {
-	return `{"nodes":[
+	return `{"meta":{"capabilities":["weigh"],"field_pack":"cassava_gate"},"nodes":[
 {"id":"start","type":"start","position":{"x":40,"y":80},"data":{}},
 {"id":"submit","type":"role_task","position":{"x":220,"y":80},"data":{"role_code":"purchase","action":"submit","label":"采购提交"}},
 {"id":"wh","type":"role_task","position":{"x":420,"y":80},"data":{"role_code":"warehouse","action":"warehouse_confirm","label":"仓管入库"}},
@@ -369,8 +369,8 @@ func seedFlowGraphsInitial(db *sql.DB, gateJSON, stockJSON string) {
 		"RT-CASSAVA", "木薯丁产线", "production", "active", 1, prodJSON, "V1")
 	_, _ = db.Exec(`UPDATE pd_routing SET graph_json=? WHERE id=1`, prodJSON)
 	_, _ = db.Exec(`INSERT INTO pd_flow_graph(code, name, kind, status, graph_json, version_no) VALUES(?,?,?,?,?,?)`,
-		"PURCHASE_GATE", "过磅入厂流程", "purchase_gate", "active", gateJSON, "V2")
+		"PURCHASE_GATE", "采购入厂流程", "purchase_gate", "active", gateJSON, "V2")
 	_, _ = db.Exec(`INSERT INTO pd_flow_graph(code, name, kind, status, graph_json, version_no) VALUES(?,?,?,?,?,?)`,
-		"PURCHASE_STOCKIN", "过磅入库流程", "purchase_stockin", "active", stockJSON, "V1")
+		"PURCHASE_STOCKIN", "采购入库流程", "purchase_stockin", "active", stockJSON, "V1")
 }
 

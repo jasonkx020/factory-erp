@@ -61,24 +61,23 @@ func EnsureFreshCassavaRouting(db *sql.DB) {
 		return
 	}
 
-	ensureProc := func(code, name, processType string, piecework int) int64 {
-		_, _ = db.Exec(`INSERT INTO pd_process(code, name, process_type, is_piecework, is_handover_point, status)
-			SELECT ?, ?, ?, ?, 0, 'active'
-			WHERE NOT EXISTS (SELECT 1 FROM pd_process WHERE code=?)`, code, name, processType, piecework, code)
+	ensureProc := func(code, name string) int64 {
+		_, _ = db.Exec(`INSERT INTO pd_process(code, name, is_handover_point, status)
+			SELECT ?, ?, 0, 'active'
+			WHERE NOT EXISTS (SELECT 1 FROM pd_process WHERE code=?)`, code, name, code)
 		var id int64
 		_ = db.QueryRow(`SELECT id FROM pd_process WHERE code=?`, code).Scan(&id)
 		if id > 0 {
-			_, _ = db.Exec(`UPDATE pd_process SET name=?, process_type=?, is_piecework=?, status='active' WHERE id=?`,
-				name, processType, piecework, id)
+			_, _ = db.Exec(`UPDATE pd_process SET name=?, status='active' WHERE id=?`, name, id)
 		}
 		return id
 	}
-	washID := ensureProc("WASH", "清洗", "wash", 0)
-	peelID := ensureProc("PEEL", "去皮", "peel", 1)
-	cutPID := ensureProc("CUT", "切断", "cut", 0)
-	coreID := ensureProc("CORE", "去芯", "core", 1)
-	sliceID := ensureProc("SLICE", "切片", "slice", 1)
-	dryID := ensureProc("DRY", "烘干", "dry", 0)
+	washID := ensureProc("WASH", "清洗")
+	peelID := ensureProc("PEEL", "去皮")
+	cutPID := ensureProc("CUT", "切断")
+	coreID := ensureProc("CORE", "去芯")
+	sliceID := ensureProc("SLICE", "切片")
+	dryID := ensureProc("DRY", "烘干")
 	if washID <= 0 || peelID <= 0 || cutPID <= 0 || coreID <= 0 || sliceID <= 0 || dryID <= 0 {
 		log.Printf("fresh cassava routing seed skipped: missing processes")
 		return

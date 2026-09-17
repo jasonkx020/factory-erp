@@ -17,6 +17,8 @@ func RegisterPurchaseExtra(r *gin.RouterGroup, h Handler) {
 	r.POST("/purchase/trace-batch-codes/end", h.Dispatch("POST", "/api/v1/purchase/trace-batch-codes/end", "/purchase/trace-batch-codes/end", "purchase/trace-batch-codes", "action:end"))
 
 	r.GET("/purchase/weigh-flow/next-options", h.Dispatch("GET", "/api/v1/purchase/weigh-flow/next-options", "/purchase/weigh-flow/next-options", "purchase/weigh-tickets", "list"))
+	r.GET("/purchase/weigh-flow/config", h.Dispatch("GET", "/api/v1/purchase/weigh-flow/config", "/purchase/weigh-flow/config", "purchase/weigh-tickets", "list"))
+	r.GET("/purchase/inbound-form-schema", h.Dispatch("GET", "/api/v1/purchase/inbound-form-schema", "/purchase/inbound-form-schema", "purchase/weigh-tickets", "list"))
 
 	// 完成本批分板（仓管）；须单独注册，Gin 不会把 /box-stock-in 匹配到 /box-stock-in/complete
 	r.POST("/purchase/weigh-tickets/:id/box-stock-in/complete", h.Dispatch(

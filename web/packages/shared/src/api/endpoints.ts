@@ -323,6 +323,8 @@ export const ticketApi = {
 
 export const systemApi = {
   settings: () => api.get('/system/settings'),
+  setupReadiness: () => api.get('/system/setup-readiness'),
+  productProfile: () => api.get('/system/product-profile'),
   logs: () => api.get<PageData>('/system/operation-logs'),
   logTrace: (traceId: string) => api.get(`/system/operation-logs/trace/${encodeURIComponent(traceId)}`),
   listRepairs: () => api.get<PageData>('/system/data-repairs'),
@@ -727,11 +729,36 @@ export const fieldLedgerApi = {
     api.put(`/inventory/weighbridges/${id}`, body),
 }
 
+/** 个人供应商查询参数：统一走 suppliers 并固定 party_kind=person */
+function personSupplierQuery(params?: string): string {
+  const qs = new URLSearchParams(params || '')
+  qs.set('party_kind', 'person')
+  const keyword = qs.get('keyword')
+  if (keyword && !qs.has('q')) {
+    qs.set('q', keyword)
+    qs.delete('keyword')
+  }
+  const mobile = qs.get('mobile')
+  if (mobile && !qs.has('q')) {
+    qs.set('q', mobile)
+    qs.delete('mobile')
+  }
+  const id = qs.get('id')
+  if (id && !qs.has('q')) {
+    qs.set('q', id)
+    qs.delete('id')
+  }
+  return qs.toString()
+}
+
 export const purchaseApi = {
-  farmers: (params?: string) => api.get<PageData>(`/purchase/farmers${params ? `?${params}` : ''}`),
-  createFarmer: (body: Record<string, unknown>) => api.post('/purchase/farmers', body),
-  getFarmer: (id: number) => api.get(`/purchase/farmers/${id}`),
-  updateFarmer: (id: number, body: Record<string, unknown>) => api.put(`/purchase/farmers/${id}`, body),
+  farmers: (params?: string) =>
+    api.get<PageData>(`/purchase/suppliers?${personSupplierQuery(params)}`),
+  createFarmer: (body: Record<string, unknown>) =>
+    api.post('/purchase/suppliers', { ...body, party_kind: 'person' }),
+  getFarmer: (id: number) => api.get(`/purchase/suppliers/${id}`),
+  updateFarmer: (id: number, body: Record<string, unknown>) =>
+    api.put(`/purchase/suppliers/${id}`, body),
   arrivals: (params?: string) =>
     api.get<PageData>(`/purchase/inbound-arrivals${params ? `?${params}` : ''}`),
   createArrival: (body: Record<string, unknown>) => api.post('/purchase/inbound-arrivals', body),
@@ -763,6 +790,14 @@ export const purchaseApi = {
   updateWeighVariety: (id: number, body: Record<string, unknown>) =>
     api.put(`/purchase/weigh-varieties/${id}`, body),
   removeWeighVariety: (id: number) => api.del(`/purchase/weigh-varieties/${id}`),
+  weighFlowConfig: (receiveKind = 'gate') =>
+    api.get(`/purchase/weigh-flow/config?receive_kind=${encodeURIComponent(receiveKind)}`),
+  weighFlowNextOptions: (receiveKind = 'gate', fromAction = 'submit') =>
+    api.get(
+      `/purchase/weigh-flow/next-options?receive_kind=${encodeURIComponent(receiveKind)}&from_action=${encodeURIComponent(fromAction)}`,
+    ),
+  inboundFormSchema: (receiveKind = 'gate') =>
+    api.get(`/purchase/inbound-form-schema?receive_kind=${encodeURIComponent(receiveKind)}`),
   traceBatchCodes: (params?: string) =>
     api.get<PageData>(`/purchase/trace-batch-codes${params ? `?${params}` : ''}`),
   generateTraceBatchCodes: (body: Record<string, unknown>) =>
@@ -773,11 +808,19 @@ export const purchaseApi = {
     api.post('/purchase/trace-batch-codes/void', body),
   endTraceBatchCode: (body: Record<string, unknown>) =>
     api.post('/purchase/trace-batch-codes/end', body),
-  farmerSettlements: () => api.get<PageData>('/purchase/farmer-settlements'),
-  farmerSettlementSummary: () => api.get('/purchase/farmer-settlements/summary'),
-  settleFarmer: (body: Record<string, unknown>) => api.post('/purchase/farmer-settlements', body),
+  supplierSettlements: (params?: string) =>
+    api.get<PageData>(`/purchase/supplier-settlements${params ? `?${params}` : ''}`),
+  supplierSettlementSummary: () => api.get('/purchase/supplier-settlements/summary'),
+  settleSupplier: (body: Record<string, unknown>) => api.post('/purchase/supplier-settlements', body),
+  paySupplierSettlement: (id: number, body: Record<string, unknown>) =>
+    api.post(`/purchase/supplier-settlements/${id}/pay`, body),
+  /** @deprecated 别名，走 supplier-settlements */
+  farmerSettlements: (params?: string) =>
+    api.get<PageData>(`/purchase/supplier-settlements${params ? `?${params}` : ''}`),
+  farmerSettlementSummary: () => api.get('/purchase/supplier-settlements/summary'),
+  settleFarmer: (body: Record<string, unknown>) => api.post('/purchase/supplier-settlements', body),
   payFarmerSettlement: (id: number, body: Record<string, unknown>) =>
-    api.post(`/purchase/farmer-settlements/${id}/pay`, body),
+    api.post(`/purchase/supplier-settlements/${id}/pay`, body),
   traceLot: (code: string) => api.get(`/purchase/trace-lots/${encodeURIComponent(code)}`),
   verifyTraceLot: (body: Record<string, unknown>) => api.post('/purchase/trace-lots/verify', body),
   suppliers: (params?: string) => api.get<PageData>(`/purchase/suppliers${params ? `?${params}` : ''}`),
@@ -929,6 +972,16 @@ export const financeApi = {
   monthCloses: () => api.get<PageData>('/finance/month-closes'),
   closeMonth: (body: Record<string, unknown>) => api.post('/finance/month-closes', body),
   reopenMonth: (id: number) => api.post(`/finance/month-closes/${id}/reopen`, {}),
+  // 供应商在线支付单
+  paymentOrders: (params?: string) =>
+    api.get<PageData>(`/finance/payment-orders${params ? `?${params}` : ''}`),
+  getPaymentOrder: (id: number) => api.get(`/finance/payment-orders/${id}`),
+  createPaymentOrder: (body: Record<string, unknown>) => api.post('/finance/payment-orders', body),
+  approvePaymentFinance: (id: number) => api.post(`/finance/payment-orders/${id}/approve-finance`, {}),
+  approvePaymentBoss: (id: number) => api.post(`/finance/payment-orders/${id}/approve-boss`, {}),
+  rejectPaymentOrder: (id: number, body?: Record<string, unknown>) =>
+    api.post(`/finance/payment-orders/${id}/reject`, body || {}),
+  retryPaymentOrder: (id: number) => api.post(`/finance/payment-orders/${id}/retry`, {}),
 }
 
 export const reportApi = {

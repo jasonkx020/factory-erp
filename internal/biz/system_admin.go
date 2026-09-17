@@ -27,6 +27,7 @@ var sysSettingKeys = map[string]string{
 	"system/doc-delete-rules":       "doc_delete",
 	"system/search-configs":         "search",
 	"system/finance-audit-controls": "finance_audit",
+	"system/payment-settings":       "payment",
 }
 
 var sysSettingDefaults = map[string]map[string]interface{}{
@@ -70,6 +71,20 @@ var sysSettingDefaults = map[string]map[string]interface{}{
 	"finance_audit": {
 		"require_finance_approve": true, "cost_visible_roles": []interface{}{"sys_admin", "finance"},
 		"amount_threshold": 10000,
+	},
+	"payment": {
+		"online_enabled": false,
+		"default_channel": "alipay_bank",
+		"require_boss_approve": true,
+		"boss_amount_threshold": 0,
+		"alipay": map[string]interface{}{
+			"app_id": "", "private_key_pem": "", "alipay_public_key": "", "notify_url": "",
+		},
+		"sms": map[string]interface{}{
+			"enabled": false, "provider": "aliyun", "access_key": "", "access_secret": "",
+			"sign_name": "", "template_pay_success": "",
+		},
+		"bank_direct": map[string]interface{}{"bank_code": ""},
 	},
 }
 
@@ -203,6 +218,9 @@ func (s *Services) handleSysSetting(c *gin.Context, key, method, action string) 
 	switch {
 	case method == "GET" && (action == "list" || action == "replace" || action == "get"):
 		m := s.loadSysSetting(key)
+		if key == "payment" {
+			m = maskPaymentSettingSecrets(m)
+		}
 		pageNum, pageSize := sqlutil.Page(c)
 		api.PageOK(c, []map[string]interface{}{m}, 1, pageNum, pageSize)
 		return true
@@ -213,8 +231,15 @@ func (s *Services) handleSysSetting(c *gin.Context, key, method, action string) 
 		}
 		delete(body, "id")
 		delete(body, "setting_key")
+		if key == "payment" {
+			body = mergePaymentSettingSecrets(s.loadSysSetting(key), body)
+		}
 		s.saveSysSetting(key, body, claimsUserID(c))
-		api.OK(c, s.loadSysSetting(key))
+		out := s.loadSysSetting(key)
+		if key == "payment" {
+			out = maskPaymentSettingSecrets(out)
+		}
+		api.OK(c, out)
 		return true
 	case method == "POST" && action == "create":
 		body := bindBody(c)
@@ -222,12 +247,83 @@ func (s *Services) handleSysSetting(c *gin.Context, key, method, action string) 
 		for k, v := range body {
 			cur[k] = v
 		}
+		if key == "payment" {
+			cur = mergePaymentSettingSecrets(s.loadSysSetting(key), cur)
+		}
 		s.saveSysSetting(key, cur, claimsUserID(c))
+		if key == "payment" {
+			cur = maskPaymentSettingSecrets(s.loadSysSetting(key))
+		}
 		api.OK(c, cur)
 		return true
 	default:
 		return false
 	}
+}
+
+func maskPaymentSettingSecrets(m map[string]interface{}) map[string]interface{} {
+	if m == nil {
+		return m
+	}
+	out := map[string]interface{}{}
+	for k, v := range m {
+		out[k] = v
+	}
+	if alipay, ok := out["alipay"].(map[string]interface{}); ok {
+		cp := map[string]interface{}{}
+		for k, v := range alipay {
+			cp[k] = v
+		}
+		if s := strings.TrimSpace(strOr(cp["private_key_pem"])); s != "" {
+			cp["private_key_pem"] = "***"
+			cp["private_key_set"] = true
+		}
+		out["alipay"] = cp
+	}
+	if sms, ok := out["sms"].(map[string]interface{}); ok {
+		cp := map[string]interface{}{}
+		for k, v := range sms {
+			cp[k] = v
+		}
+		if s := strings.TrimSpace(strOr(cp["access_secret"])); s != "" {
+			cp["access_secret"] = "***"
+			cp["access_secret_set"] = true
+		}
+		out["sms"] = cp
+	}
+	return out
+}
+
+// mergePaymentSettingSecrets keeps previous secrets when client sends "***" or empty with *_set.
+func mergePaymentSettingSecrets(prev, body map[string]interface{}) map[string]interface{} {
+	if body == nil {
+		return prev
+	}
+	prevAlipay, _ := prev["alipay"].(map[string]interface{})
+	bodyAlipay, _ := body["alipay"].(map[string]interface{})
+	if bodyAlipay == nil {
+		bodyAlipay = map[string]interface{}{}
+	}
+	if prevAlipay != nil {
+		pk := strings.TrimSpace(strOr(bodyAlipay["private_key_pem"]))
+		if pk == "" || pk == "***" {
+			bodyAlipay["private_key_pem"] = prevAlipay["private_key_pem"]
+		}
+	}
+	body["alipay"] = bodyAlipay
+	prevSms, _ := prev["sms"].(map[string]interface{})
+	bodySms, _ := body["sms"].(map[string]interface{})
+	if bodySms == nil {
+		bodySms = map[string]interface{}{}
+	}
+	if prevSms != nil {
+		sec := strings.TrimSpace(strOr(bodySms["access_secret"]))
+		if sec == "" || sec == "***" {
+			bodySms["access_secret"] = prevSms["access_secret"]
+		}
+	}
+	body["sms"] = bodySms
+	return body
 }
 
 func (s *Services) loadSysSetting(key string) map[string]interface{} {

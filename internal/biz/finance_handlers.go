@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 import (
 	"database/sql"
@@ -136,6 +136,8 @@ var financeCassavaLivePrefixes = []string{
 	"/api/v1/finance/fund-transfers",
 	"/api/v1/finance/ledger-entries",
 	"/api/v1/finance/income-expenses",
+	"/api/v1/finance/payment-orders",
+	"/api/v1/pay/alipay/notify",
 }
 
 func isFinanceCassavaLive(openapiPath string) bool {
@@ -167,6 +169,8 @@ func (s *Services) handleFinanceDomain(c *gin.Context, method, openapiPath, acti
 	switch {
 	case openapiPath == "/api/v1/finance/cost-period-preview" || strings.HasPrefix(openapiPath, "/api/v1/finance/cost-period-preview"):
 		return s.handleFinCostPeriodPreview(c)
+	case strings.HasPrefix(openapiPath, "/api/v1/finance/payment-orders"), strings.HasPrefix(openapiPath, "/api/v1/pay/"):
+		return s.handlePaymentOrders(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/finance/fund-accounts"):
 		return s.handleFinFundAccounts(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/finance/fund-transfers"):
@@ -1129,7 +1133,7 @@ func (s *Services) handleFinPrepays(c *gin.Context, method, action string) bool 
 			FROM fin_prepay_prepaid p
 			LEFT JOIN crm_customer c ON c.id=p.party_id AND p.party_type='customer'
 			LEFT JOIN pur_supplier s ON s.id=p.party_id AND p.party_type='supplier'
-			LEFT JOIN pur_farmer f ON f.id=p.party_id AND p.party_type='farmer'
+			LEFT JOIN pur_supplier f ON f.id=p.party_id AND p.party_type='supplier'
 			LEFT JOIN fin_fund_account a ON a.id=p.fund_account_id
 		) t`)
 	case "get":
@@ -1217,9 +1221,9 @@ func (s *Services) aggregateCostPeriod(period string, productID int64) finCostPe
 	like := period + "%"
 	agg := finCostPeriodAgg{Period: period, Traces: []gin.H{}}
 
-	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0), COUNT(1) FROM pur_farmer_settlement
+	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0), COUNT(1) FROM pur_supplier_settlement
 		WHERE status IN ('settle_paid','paid') AND biz_date LIKE ?`, like).Scan(&agg.FarmerPaid, &agg.FarmerPaidCount)
-	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0), COUNT(1) FROM pur_farmer_settlement
+	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0), COUNT(1) FROM pur_supplier_settlement
 		WHERE status NOT IN ('settle_paid','paid','void') AND biz_date LIKE ?`, like).Scan(&agg.FarmerPending, &agg.FarmerPendingCnt)
 	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0), COUNT(1) FROM pd_piecework_summary WHERE biz_date LIKE ?`, like).
 		Scan(&agg.PieceworkAmount, &agg.PieceworkCount)
@@ -1613,7 +1617,7 @@ func (s *Services) recalcPeriodFactoryProfit(period string) gin.H {
 	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(total_amount),0) FROM sl_sales_order WHERE COALESCE(is_deleted,0)=0 AND created_at LIKE ?`, like).Scan(&revenue)
 	_ = s.DB.QueryRow(`SELECT COALESCE(SUM(total_cost),0) FROM fin_cost_accounting WHERE status='calculated' AND period=?`, period).Scan(&cost)
 	if cost <= 0 {
-		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM pur_farmer_settlement WHERE status IN ('settle_paid','paid') AND biz_date LIKE ?`, like).Scan(&cost)
+		_ = s.DB.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM pur_supplier_settlement WHERE status IN ('settle_paid','paid') AND biz_date LIKE ?`, like).Scan(&cost)
 	}
 	return s.upsertContractProfit(0, revenue, cost, period)
 }

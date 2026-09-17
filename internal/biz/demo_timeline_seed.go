@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 import (
 	"database/sql"
@@ -38,7 +38,7 @@ func clearDemoTimeline(db *sql.DB) {
 		`DELETE FROM pur_trace_lot WHERE UPPER(trace_code) LIKE 'TR-DEMO-%'`,
 		`DELETE FROM pur_weigh_ticket WHERE doc_no LIKE 'DEMO-WT-TR-%' OR UPPER(trace_code) LIKE 'TR-DEMO-%'`,
 		`DELETE FROM pur_inbound_arrival WHERE doc_no LIKE 'DEMO-ARR-TR-%'`,
-		`DELETE FROM pur_farmer_settlement WHERE doc_no LIKE 'DEMO-FS-TR-%'`,
+		`DELETE FROM pur_supplier_settlement WHERE doc_no LIKE 'DEMO-FS-TR-%'`,
 		`DELETE FROM inv_stock_txn_line WHERE txn_id IN (SELECT id FROM inv_stock_txn WHERE doc_no LIKE 'DEMO-ST-WT-TR-%')`,
 		`DELETE FROM inv_stock_txn WHERE doc_no LIKE 'DEMO-ST-WT-TR-%'`,
 		`DELETE FROM inv_balance WHERE product_id IN (SELECT id FROM prd_product WHERE code='RM-DEMO-TRACE') AND batch_no LIKE 'TR-DEMO-%'`,
@@ -61,10 +61,10 @@ func demoDate(daysAgo int) string {
 	return time.Now().AddDate(0, 0, -daysAgo).Format("2006-01-02")
 }
 
-func ensureDemoProcess(db *sql.DB, code, name, processType string, piecework int) int64 {
-	_, _ = db.Exec(`INSERT INTO pd_process(code, name, process_type, is_piecework, is_handover_point, status)
-		SELECT ?, ?, ?, ?, 0, 'active'
-		WHERE NOT EXISTS (SELECT 1 FROM pd_process WHERE code=?)`, code, name, processType, piecework, code)
+func ensureDemoProcess(db *sql.DB, code, name string) int64 {
+	_, _ = db.Exec(`INSERT INTO pd_process(code, name, is_handover_point, status)
+		SELECT ?, ?, 0, 'active'
+		WHERE NOT EXISTS (SELECT 1 FROM pd_process WHERE code=?)`, code, name, code)
 	var id int64
 	_ = db.QueryRow(`SELECT id FROM pd_process WHERE code=?`, code).Scan(&id)
 	return id
@@ -74,7 +74,7 @@ func seedDemoTimeline(db *sql.DB) {
 	today := demoDate(0)
 	day7 := demoDate(7)
 
-	farmerID := demoID(db, `SELECT id FROM pur_farmer WHERE code='FM01'`)
+	farmerID := demoID(db, `SELECT id FROM pur_supplier WHERE code='FM01'`)
 	if farmerID == 0 {
 		farmerID = 1
 	}
@@ -104,8 +104,8 @@ func seedDemoTimeline(db *sql.DB) {
 	if prodID <= 0 || finalProdID <= 0 {
 		return
 	}
-	procSlice := ensureDemoProcess(db, "SLICE", "切片", "slice", 1)
-	procDry := ensureDemoProcess(db, "DRY", "烘干", "dry", 0)
+	procSlice := ensureDemoProcess(db, "SLICE", "切片")
+	procDry := ensureDemoProcess(db, "DRY", "烘干")
 	if procSlice <= 0 {
 		procSlice = demoID(db, `SELECT id FROM pd_process WHERE code='SLICE'`)
 	}
@@ -152,14 +152,22 @@ func seedDemoTimeline(db *sql.DB) {
 		var sid int64
 		_ = db.QueryRow(`SELECT id FROM pd_routing_step WHERE routing_id=? AND seq_no=?`, routingID, sd.seq).Scan(&sid)
 		if sid <= 0 {
+			autoIn := 0
+			if sd.checkpoint == 1 || sd.seq == 1 {
+				autoIn = 1
+			}
 			res, err := db.Exec(`INSERT INTO pd_routing_step(routing_id, seq_no, process_id, step_code, step_name, is_piecework, is_inbound_checkpoint, auto_next, auto_stock_in, auto_stock_out, warehouse_id, output_product_id)
-				VALUES(?,?,?,?,?,?,?,1,0,0,1,?)`, routingID, sd.seq, sd.proc, sd.code, sd.name, sd.piece, sd.checkpoint, sd.outProd)
+				VALUES(?,?,?,?,?,?,?,1,?,0,1,?)`, routingID, sd.seq, sd.proc, sd.code, sd.name, sd.piece, sd.checkpoint, autoIn, sd.outProd)
 			if err == nil {
 				sid, _ = res.LastInsertId()
 			}
 		} else {
-			_, _ = db.Exec(`UPDATE pd_routing_step SET process_id=?, step_code=?, step_name=?, is_piecework=?, is_inbound_checkpoint=?, output_product_id=? WHERE id=?`,
-				sd.proc, sd.code, sd.name, sd.piece, sd.checkpoint, sd.outProd, sid)
+			autoIn := 0
+			if sd.checkpoint == 1 || sd.seq == 1 {
+				autoIn = 1
+			}
+			_, _ = db.Exec(`UPDATE pd_routing_step SET process_id=?, step_code=?, step_name=?, is_piecework=?, is_inbound_checkpoint=?, auto_stock_in=?, output_product_id=? WHERE id=?`,
+				sd.proc, sd.code, sd.name, sd.piece, sd.checkpoint, autoIn, sd.outProd, sid)
 		}
 		stepIDs[sd.seq] = sid
 	}
@@ -188,13 +196,13 @@ func seedTraceCompleted7D(db *sql.DB, prodID, finalProdID, routingID, farmerID, 
 	seedDemoStockTxnIn(db, "DEMO-ST-WT-TR-7D", prodID, 1, trace, 850, bizDate, stockTS, "过磅分板入库")
 	seedDemoInvBalance(db, 1, prodID, trace, 850)
 
-	_, _ = db.Exec(`INSERT INTO pur_trace_lot(trace_code, biz_date, batch_no, farmer_id, grade, weigh_ticket_id, net_weight, payload_canonical, signature, status)
+	_, _ = db.Exec(`INSERT INTO pur_trace_lot(trace_code, biz_date, batch_no, supplier_id, grade, weigh_ticket_id, net_weight, payload_canonical, signature, status)
 		VALUES(?,?,?,?,'A',?,1000,'{"demo":true}','demo','closed')`, trace, bizDate, trace, farmerID, nullIf0(wtID))
 
-	_, _ = db.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, farmer_id, trace_code, status, current_process_id, current_step_id)
+	_, _ = db.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, supplier_id, trace_code, status, current_process_id, current_step_id)
 		VALUES('BX-TR-DEMO-7D-A',?,1,?,50,50,?,?,'open',?,?)`,
 		finalProdID, trace, farmerID, trace, procDry, nullIf0(stepIDs[7]))
-	_, _ = db.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, farmer_id, trace_code, status, current_process_id, current_step_id)
+	_, _ = db.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, supplier_id, trace_code, status, current_process_id, current_step_id)
 		VALUES('BX-TR-DEMO-7D-B',?,3,?,750,750,?,?,'in_stock',?,?)`,
 		finalProdID, trace, farmerID, trace, procDry, nullIf0(stepIDs[7]))
 	boardA := demoID(db, `SELECT id FROM inv_box_code WHERE code='BX-TR-DEMO-7D-A'`)
@@ -270,13 +278,13 @@ func seedTraceInProgressToday(db *sql.DB, prodID, boardProdID, routingID, farmer
 	seedDemoStockTxnIn(db, "DEMO-ST-WT-TR-T1", prodID, 1, trace, 500, bizDate, stockTS, "过磅分板入库")
 	seedDemoInvBalance(db, 1, prodID, trace, 500)
 
-	_, _ = db.Exec(`INSERT INTO pur_trace_lot(trace_code, biz_date, batch_no, farmer_id, grade, weigh_ticket_id, net_weight, status)
+	_, _ = db.Exec(`INSERT INTO pur_trace_lot(trace_code, biz_date, batch_no, supplier_id, grade, weigh_ticket_id, net_weight, status)
 		VALUES(?,?,?,?,'A',?,500,'open')`, trace, bizDate, trace, farmerID, nullIf0(wtID))
 
 	if boardProdID <= 0 {
 		boardProdID = prodID
 	}
-	_, _ = db.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, farmer_id, trace_code, status, current_process_id, current_step_id)
+	_, _ = db.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, supplier_id, trace_code, status, current_process_id, current_step_id)
 		VALUES('BX-TR-DEMO-T1-A',?,1,?,180,180,?,?,'open',3,?)`,
 		boardProdID, trace, farmerID, trace, nullIf0(stepIDs[4]))
 	boardA := demoID(db, `SELECT id FROM inv_box_code WHERE code='BX-TR-DEMO-T1-A'`)
@@ -331,9 +339,9 @@ func seedTraceInStockToday(db *sql.DB, prodID, farmerID int64, bizDate string) {
 	seedDemoStockTxnIn(db, "DEMO-ST-WT-TR-T2", prodID, 1, trace, 300, bizDate, stockTS, "过磅分板入库")
 	seedDemoInvBalance(db, 1, prodID, trace, 300)
 
-	_, _ = db.Exec(`INSERT INTO pur_trace_lot(trace_code, biz_date, batch_no, farmer_id, grade, weigh_ticket_id, net_weight, status)
+	_, _ = db.Exec(`INSERT INTO pur_trace_lot(trace_code, biz_date, batch_no, supplier_id, grade, weigh_ticket_id, net_weight, status)
 		VALUES(?,?,?,?,'B',?,300,'open')`, trace, bizDate, trace, farmerID, nullIf0(wtID))
-	_, _ = db.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, farmer_id, trace_code, status, current_process_id)
+	_, _ = db.Exec(`INSERT INTO inv_box_code(code, product_id, warehouse_id, batch_no, qty, weight, supplier_id, trace_code, status, current_process_id)
 		VALUES('BX-TR-DEMO-T2-A',?,1,?,300,300,?,?,'open',8)`,
 		prodID, trace, farmerID, trace)
 	_, _ = db.Exec(`INSERT INTO pd_station_flow_log(event_type, biz_date, trace_code, kg, remark, created_at)
@@ -350,7 +358,7 @@ func seedTraceAwaitGateToday(db *sql.DB, prodID, farmerID int64, bizDate string)
 		bizDate: bizDate, gross: 420, deduct: 70, net: 350, unitPrice: 1.2, whID: 0,
 		status: "weighed", remark: "今日过磅完成，待入厂确认", confirmedAt: "",
 	})
-	_, _ = db.Exec(`INSERT INTO pur_trace_lot(trace_code, biz_date, batch_no, farmer_id, grade, weigh_ticket_id, net_weight, status)
+	_, _ = db.Exec(`INSERT INTO pur_trace_lot(trace_code, biz_date, batch_no, supplier_id, grade, weigh_ticket_id, net_weight, status)
 		VALUES(?,?,?,?,'A',?,350,'open')`, trace, bizDate, trace, farmerID, nullIf0(wtID))
 	_, _ = db.Exec(`INSERT INTO pd_station_flow_log(event_type, biz_date, trace_code, kg, remark, created_at)
 		VALUES('weigh', ?, ?, 350, '过磅待入厂', ?)`, bizDate, trace, demoTS(0, 7, 45))
@@ -393,14 +401,14 @@ type demoWeighSeed struct {
 }
 
 func seedDemoInboundArrival(db *sql.DB, docNo string, farmerID int64, bizDate string, estimate float64, status, remark string) int64 {
-	_, _ = db.Exec(`INSERT INTO pur_inbound_arrival(doc_no, farmer_id, origin, variety, estimate_weight, status, biz_date, remark)
+	_, _ = db.Exec(`INSERT INTO pur_inbound_arrival(doc_no, supplier_id, origin, variety, estimate_weight, status, biz_date, remark)
 		VALUES(?, ?, '广西武鸣', '鲜木薯', ?, ?, ?, ?)`,
 		docNo, farmerID, estimate, status, bizDate, remark)
 	return demoID(db, `SELECT id FROM pur_inbound_arrival WHERE doc_no=?`, docNo)
 }
 
 func seedDemoWeighTicket(db *sql.DB, p demoWeighSeed) int64 {
-	_, _ = db.Exec(`INSERT INTO pur_weigh_ticket(doc_no, farmer_id, product_id, gross_weight, deduct_weight, net_weight, qc_result, status, biz_date, remark, receive_kind, batch_no, trace_code, arrival_id, warehouse_id, unit_price, confirmed_at)
+	_, _ = db.Exec(`INSERT INTO pur_weigh_ticket(doc_no, supplier_id, product_id, gross_weight, deduct_weight, net_weight, qc_result, status, biz_date, remark, receive_kind, batch_no, trace_code, arrival_id, warehouse_id, unit_price, confirmed_at)
 		VALUES(?, ?, ?, ?, ?, ?, 'pass', ?, ?, ?, 'gate', ?, ?, ?, ?, ?, NULLIF(?,''))`,
 		p.docNo, p.farmerID, p.prodID, p.gross, p.deduct, p.net, p.status, p.bizDate, p.remark,
 		p.trace, p.trace, nullIf0(p.arrivalID), nullIf0(p.whID), p.unitPrice, p.confirmedAt)
@@ -433,7 +441,7 @@ func seedDemoInvBalance(db *sql.DB, whID, prodID int64, batchNo string, qty floa
 
 func seedDemoFarmerSettlement(db *sql.DB, docNo string, farmerID, wtID int64, bizDate string, net, unitPrice float64, status, remark string) {
 	amount := net * unitPrice
-	_, _ = db.Exec(`INSERT INTO pur_farmer_settlement(doc_no, farmer_id, weigh_ticket_id, biz_date, net_weight, unit_price, amount, status, remark, goods_amount)
+	_, _ = db.Exec(`INSERT INTO pur_supplier_settlement(doc_no, supplier_id, weigh_ticket_id, biz_date, net_weight, unit_price, amount, status, remark, goods_amount)
 		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		docNo, farmerID, wtID, bizDate, net, unitPrice, amount, status, remark, amount)
 }

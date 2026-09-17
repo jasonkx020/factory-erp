@@ -12,18 +12,18 @@ INSERT OR IGNORE INTO inv_warehouse(id, org_id, code, name, warehouse_type) VALU
  (2, 1, 'WH-SEMI', '半成品库', 'semi'),
  (3, 1, 'WH-FG', '成品冷库', 'finished');
 
-INSERT OR IGNORE INTO pd_process(id, code, name, process_type, is_piecework, is_handover_point) VALUES
- (1, 'PEEL', '去皮', 'peel', 1, 0),
- (2, 'HANDOVER', '收货卡点', 'other', 0, 1),
- (3, 'CUT', '切断', 'cut', 0, 0),
- (4, 'CORE', '去芯', 'core', 1, 0),
- (5, 'DICE', '切块', 'dice', 1, 0),
- (6, 'BAG', '过筛装袋', 'bag', 0, 0),
- (7, 'WASH', '清洗', 'wash', 0, 0),
- (8, 'IN_RAW', '原料入库', 'inbound', 0, 0),
- (9, 'IN_SEMI', '半成品入库', 'inbound', 0, 0),
- (10, 'OUT_DICE', '出库切块', 'outbound', 1, 0),
- (11, 'IN_FG', '成品入库', 'inbound', 0, 0);
+INSERT OR IGNORE INTO pd_process(id, code, name, is_handover_point) VALUES
+ (1, 'PEEL', '去皮', 0),
+ (2, 'HANDOVER', '收货卡点', 1),
+ (3, 'CUT', '切断', 0),
+ (4, 'CORE', '去芯', 0),
+ (5, 'DICE', '切块', 0),
+ (6, 'BAG', '过筛装袋', 0),
+ (7, 'WASH', '清洗', 0),
+ (8, 'IN_RAW', '原料入库', 0),
+ (9, 'IN_SEMI', '半成品入库', 0),
+ (10, 'OUT_DICE', '出库切块', 0),
+ (11, 'IN_FG', '成品入库', 0);
 
 INSERT OR IGNORE INTO iam_login_policy(
   id, max_fail_count, lock_minutes, session_ttl_min, password_min_len,

@@ -24,6 +24,20 @@ type Services struct {
 	Notify          *notify.Service
 	OCREnabled      bool
 	OCRProvider     string
+	ProductProfile  string // core|extended
+	IndustryPack    string // none|cassava
+}
+
+func (s *Services) IsExtendedProfile() bool {
+	return s != nil && strings.EqualFold(strings.TrimSpace(s.ProductProfile), "extended")
+}
+
+func (s *Services) IsCassavaIndustryPack() bool {
+	if s == nil {
+		return true
+	}
+	v := strings.ToLower(strings.TrimSpace(s.IndustryPack))
+	return v == "" || v == "cassava"
 }
 
 func New(db *sql.DB, driver string, st *store.Store) *Services {
@@ -42,11 +56,17 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		}
 		return false
 	case strings.HasPrefix(openapiPath, "/api/v1/sales/"):
-		api.FailJSON(c, "FEATURE_REMOVED:sales")
-		return true
+		if !s.IsExtendedProfile() {
+			api.FailJSON(c, "FEATURE_DISABLED:sales_requires_extended_profile")
+			return true
+		}
+		return s.handleSales(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/crm/"):
-		api.FailJSON(c, "FEATURE_REMOVED:crm")
-		return true
+		if !s.IsExtendedProfile() {
+			api.FailJSON(c, "FEATURE_DISABLED:crm_requires_extended_profile")
+			return true
+		}
+		return s.handleCRM(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/asset/"):
 		api.FailJSON(c, "FEATURE_REMOVED:asset")
 		return true
@@ -57,6 +77,8 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		return s.handlePieceIssueSheets(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/production/process-reports"):
 		return s.listProcessReports(c)
+	case strings.HasPrefix(openapiPath, "/api/v1/hr/plants"):
+		return s.handlePlants(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/hr/tool-items"):
 		return s.handleToolItems(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/hr/tool-issues"):
@@ -177,7 +199,7 @@ func (s *Services) Handle(c *gin.Context, method, openapiPath, resourceKey, acti
 		return s.handleIAM(c, method, action, openapiPath)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/"):
 		return s.handlePurchase(c, method, openapiPath, resourceKey, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/finance/"):
+	case strings.HasPrefix(openapiPath, "/api/v1/finance/"), strings.HasPrefix(openapiPath, "/api/v1/pay/"):
 		return s.handleFinanceDomain(c, method, openapiPath, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/report/"):
 		return s.handleReportDomain(c, method, openapiPath, action)

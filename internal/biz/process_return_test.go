@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 import (
 	"bytes"
@@ -42,7 +42,7 @@ func openSmokeDB(t *testing.T) *sql.DB {
 		`CREATE TEMP TABLE IF NOT EXISTS inv_box_code(
 			id BIGSERIAL PRIMARY KEY, code TEXT UNIQUE, product_id INTEGER, warehouse_id INTEGER,
 			qty DOUBLE PRECISION, weight DOUBLE PRECISION, current_process_id INTEGER, current_step_id INTEGER,
-			task_id INTEGER, work_order_id INTEGER, farmer_id INTEGER, trace_code TEXT,
+			task_id INTEGER, work_order_id INTEGER, supplier_id INTEGER, trace_code TEXT,
 			origin TEXT, receive_date TEXT, source_type TEXT, status TEXT, parent_box_id INTEGER,
 			batch_no TEXT, updated_at TEXT)`,
 		`CREATE TEMP TABLE IF NOT EXISTS inv_stock_txn(
@@ -67,8 +67,8 @@ func openSmokeDB(t *testing.T) *sql.DB {
 			id BIGSERIAL PRIMARY KEY, worker_id INTEGER, process_id INTEGER, biz_date TEXT,
 			qty DOUBLE PRECISION, weight DOUBLE PRECISION, input_weight DOUBLE PRECISION, output_weight DOUBLE PRECISION, loss DOUBLE PRECISION, utilization DOUBLE PRECISION,
 			amount DOUBLE PRECISION, source_report_ids TEXT, status TEXT, updated_at TEXT)`,
-		`CREATE TEMP TABLE IF NOT EXISTS pay_process_wage_rate(id BIGSERIAL PRIMARY KEY, process_id INTEGER, rate DOUBLE PRECISION, status TEXT)`,
-		`CREATE TEMP TABLE IF NOT EXISTS pd_process(id BIGSERIAL PRIMARY KEY, is_piecework INTEGER)`,
+		`CREATE TEMP TABLE IF NOT EXISTS pay_process_wage_rate(id BIGSERIAL PRIMARY KEY, process_id INTEGER, rate DOUBLE PRECISION, status TEXT, pay_mode TEXT DEFAULT 'none')`,
+		`CREATE TEMP TABLE IF NOT EXISTS pd_process(id BIGSERIAL PRIMARY KEY)`,
 		`CREATE TEMP TABLE IF NOT EXISTS pd_process_return(
 			id BIGSERIAL PRIMARY KEY, doc_no TEXT UNIQUE, box_code TEXT, process_id INTEGER,
 			step_id INTEGER, warehouse_id INTEGER, return_weight DOUBLE PRECISION, reason TEXT, status TEXT,
@@ -102,8 +102,8 @@ func openSmokeDB(t *testing.T) *sql.DB {
 			VALUES(11,1,2,2,'PW','计件步',1,0,0,0,0,1,1)`,
 		`INSERT INTO pd_routing_step(id,routing_id,seq_no,process_id,step_code,step_name,is_piecework,is_inbound_checkpoint,checkpoint_bind_warehouse,auto_next,auto_stock_in,auto_stock_out,warehouse_id)
 			VALUES(12,1,3,3,'FX','非计件',0,0,0,0,0,0,NULL)`,
-		`INSERT INTO pay_process_wage_rate(id,process_id,rate,status) VALUES(1,2,0.2,'active')`,
-		`INSERT INTO pd_process(id,is_piecework) VALUES(1,0),(2,1),(3,0)`,
+		`INSERT INTO pay_process_wage_rate(id,process_id,rate,status,pay_mode) VALUES(1,2,0.2,'active','weight')`,
+		`INSERT INTO pd_process(id) VALUES(1),(2),(3)`,
 		`INSERT INTO iam_user(id,status) VALUES(8,'active'),(9,'active')`,
 		`INSERT INTO iam_role(id,code) VALUES(1,'foreman'),(2,'warehouse')`,
 		`INSERT INTO iam_user_role(user_id,role_id) VALUES(9,1),(8,2)`,

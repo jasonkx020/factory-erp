@@ -5,8 +5,12 @@ import {
   empTypeLabel,
   normalizeRateUnit,
   payrollApi,
+  productionApi,
   PAY_ADJUST_TYPE_OPTIONS,
   PAY_TYPE_OPTIONS,
+  PROCESS_PAY_MODE_OPTIONS,
+  formOptionLabel,
+  payModeFromRateUnit,
   paySheetStatusLabel,
   payTypeLabel,
   RATE_UNIT_OPTIONS,
@@ -43,10 +47,11 @@ const sheetCols: MobileCardColumn[] = [
 const rateCols: MobileCardColumn[] = [
   { prop: 'process_name', label: '工序', primary: true },
   { prop: 'process_code', label: '编码' },
-  { prop: 'rate_display', label: '工价' },
+  { prop: 'pay_mode_label', label: '计费' },
+  { prop: 'wage_set_label', label: '工价' },
+  { prop: 'rate_display', label: '单价' },
   { prop: 'rate_unit_label', label: '单位' },
   { prop: 'effective_from', label: '生效日' },
-  { prop: 'status_label', label: '状态' },
 ]
 const calcCols: MobileCardColumn[] = [
   { prop: 'doc_no', label: '单号', primary: true },
@@ -85,6 +90,7 @@ const sheetLineCols: MobileCardColumn[] = [
 const loading = ref(false)
 const exporting = ref(false)
 const list = ref<Row[]>([])
+const wageFilter = ref<'all' | 'unset' | 'billable'>('all')
 const sheetDetail = ref<Row | null>(null)
 const sheetDetailLines = ref<Row[]>([])
 const calcs = ref<Row[]>([])
@@ -94,6 +100,32 @@ const dlg = ref(false)
 const detailDlg = ref(false)
 const adjustDlg = ref(false)
 const editingId = ref<number | null>(null)
+const processLocked = ref(false)
+
+function processPayModeLabel(v: unknown) {
+  return formOptionLabel(PROCESS_PAY_MODE_OPTIONS, v)
+}
+
+function isBillableMode(mode: unknown) {
+  const m = String(mode || '')
+  return m === 'weight' || m === 'piece'
+}
+
+const wageListFiltered = computed(() => {
+  if (props.module !== '工序工资') return list.value
+  if (wageFilter.value === 'unset') return list.value.filter((r) => !r.has_wage)
+  if (wageFilter.value === 'billable') return list.value.filter((r) => isBillableMode(r.pay_mode))
+  return list.value
+})
+
+const wageStats = computed(() => {
+  if (props.module !== '工序工资') return { total: 0, set: 0, unset: 0, billableUnset: 0 }
+  const total = list.value.length
+  const set = list.value.filter((r) => r.has_wage).length
+  const unset = total - set
+  const billableUnset = list.value.filter((r) => isBillableMode(r.pay_mode) && !r.has_wage).length
+  return { total, set, unset, billableUnset }
+})
 
 function todayYM() {
   const d = new Date()
@@ -178,19 +210,57 @@ async function load() {
       const rows = ((res.data as { list?: Row[] })?.list) || []
       list.value = rows.map(mapSheetRow)
     } else if (m === '工序工资') {
-      const res = await payrollApi.wageRates()
-      const rows = ((res.data as { list?: Row[] })?.list) || []
-      list.value = rows.map((r) => {
-        const unit = normalizeRateUnit(r.rate_unit)
-        const rate = Number(r.rate ?? 0)
-        return {
-          ...r,
-          rate_unit: unit,
-          rate_unit_label: rateUnitLabel(unit),
-          status_label: statusActiveLabel(r.status),
-          rate_display: `${Number.isFinite(rate) ? rate.toFixed(4).replace(/\.?0+$/, '') : r.rate} ${rateUnitLabel(unit)}`,
-        }
-      })
+      const [procRes, rateRes] = await Promise.all([
+        productionApi.processes(),
+        payrollApi.wageRates(),
+      ])
+      const processes = ((procRes.data as { list?: Row[] })?.list) || []
+      const rates = ((rateRes.data as { list?: Row[] })?.list) || []
+      const rateByProcess = new Map<number, Row>()
+      for (const r of rates) {
+        if (String(r.status || '') !== 'active') continue
+        const pid = Number(r.process_id)
+        if (!pid || rateByProcess.has(pid)) continue
+        rateByProcess.set(pid, r)
+      }
+      list.value = processes
+        .filter((p) => Number(p.is_deleted || 0) === 0)
+        .map((p) => {
+          const pid = Number(p.id)
+          const rate = rateByProcess.get(pid)
+          const unit = normalizeRateUnit(rate?.rate_unit)
+          const rateNum = Number(rate?.rate ?? NaN)
+          const hasWage = !!rate
+          const payMode = hasWage ? payModeFromRateUnit(unit) : 'none'
+          const billable = isBillableMode(payMode)
+          return {
+            process_id: pid,
+            process_code: p.code,
+            process_name: p.name,
+            pay_mode: payMode,
+            pay_mode_label: processPayModeLabel(payMode),
+            is_piecework: billable,
+            has_wage: hasWage,
+            wage_set_label: hasWage ? '已设' : '未设',
+            id: rate ? Number(rate.id) : 0,
+            rate: hasWage ? rateNum : null,
+            rate_unit: unit,
+            rate_unit_label: hasWage ? rateUnitLabel(unit) : '—',
+            effective_from: hasWage ? rate?.effective_from : '—',
+            status: hasWage ? rate?.status : '',
+            status_label: hasWage ? statusActiveLabel(rate?.status) : '未设工价',
+            rate_display: hasWage
+              ? `${Number.isFinite(rateNum) ? rateNum.toFixed(4).replace(/\.?0+$/, '') : rate?.rate} ${rateUnitLabel(unit)}`
+              : '—',
+          }
+        })
+        .sort((a, b) => {
+          // 计费但未设工价优先，其次未设工价，再按编码
+          const score = (r: Row) => (isBillableMode(r.pay_mode) && !r.has_wage ? 0 : !r.has_wage ? 1 : 2)
+          const d = score(a) - score(b)
+          if (d !== 0) return d
+          return String(a.process_code || '').localeCompare(String(b.process_code || ''))
+        })
     } else if (m === '薪酬核算') {
       const res = await payrollApi.calculations()
       list.value = ((res.data as { list?: Row[] })?.list) || []
@@ -206,6 +276,7 @@ async function load() {
 
 function openCreate() {
   editingId.value = null
+  processLocked.value = false
   Object.keys(form).forEach((k) => delete form[k])
   const m = props.module
   if (m === '工人信息管理') Object.assign(form, { employee_id: null, pay_type: 'piece', monthly_base: 0, bank_account: '', tax_no: '', status: 'active' })
@@ -215,8 +286,28 @@ function openCreate() {
   dlg.value = true
 }
 
+/** 从工序列表行：未设则新建，已设则编辑 */
+function openRateForProcess(row: Row) {
+  Object.keys(form).forEach((k) => delete form[k])
+  processLocked.value = true
+  form.process_id = Number(row.process_id) || null
+  form.rate_unit = normalizeRateUnit(row.rate_unit || 'yuan/kg')
+  form.effective_from = row.has_wage && row.effective_from && row.effective_from !== '—'
+    ? String(row.effective_from)
+    : new Date().toISOString().slice(0, 10)
+  if (row.has_wage && Number(row.id) > 0) {
+    editingId.value = Number(row.id)
+    form.rate = Number(row.rate) || 0
+  } else {
+    editingId.value = null
+    form.rate = 0.22
+  }
+  dlg.value = true
+}
+
 function openEdit(row: Row) {
   editingId.value = Number(row.id || 0) || Number(row.employee_id)
+  processLocked.value = false
   Object.keys(form).forEach((k) => delete form[k])
   Object.assign(form, { ...row, employee_id: Number(row.employee_id) })
   if (props.module === '工人信息管理') {
@@ -229,9 +320,8 @@ function openEdit(row: Row) {
     form.status = String(row.status || 'active')
   }
   if (props.module === '工序工资') {
-    form.rate_unit = normalizeRateUnit(row.rate_unit)
-    form.process_id = Number(row.process_id) || null
-    form.rate = Number(row.rate) || 0
+    openRateForProcess(row)
+    return
   }
   if (props.module === '销售提成') form.mode = 'rule'
   dlg.value = true
@@ -254,10 +344,13 @@ async function save() {
     res = await payrollApi.calcSheet({ period_ym: form.period_ym, workshop_dept_id: form.workshop_dept_id || 0, force: !!form.force })
   } else if (m === '工序工资') {
     if (!form.process_id) return ElMessage.warning('请选择工序')
+    const unit = normalizeRateUnit(form.rate_unit)
+    const payMode = payModeFromRateUnit(unit)
     const payload = {
       process_id: Number(form.process_id),
+      pay_mode: payMode,
       rate: Number(form.rate) || 0,
-      rate_unit: normalizeRateUnit(form.rate_unit),
+      rate_unit: unit,
       effective_from: form.effective_from,
     }
     if (editingId.value) res = await payrollApi.updateWageRate(editingId.value, payload)
@@ -445,9 +538,16 @@ async function saveAdjust() {
 }
 
 async function removeRate(row: Row) {
-  await ElMessageBox.confirm('停用该工价？', '提示')
+  if (!row.has_wage || !Number(row.id)) {
+    return ElMessage.warning('该工序尚未设置工价')
+  }
+  await ElMessageBox.confirm(
+    `停用「${row.process_name || row.process_code}」的工价（停用后该工序不再计费）？`,
+    '提示',
+  )
   const res = await payrollApi.removeWageRate(Number(row.id))
   if (res.code !== 1) return ElMessage.error(res.msg)
+  ElMessage.success('已停用')
   await load()
 }
 
@@ -461,14 +561,14 @@ async function runCommission() {
 const titleBtn = computed(() => {
   if (props.module === '工资批量管理' || props.module === '薪酬核算') return '按月生成工资单'
   if (props.module === '销售提成') return '新建规则'
-  if (props.module === '工序工资') return '新建工价'
+  if (props.module === '工序工资') return '添加工价'
   if (props.module === '工人信息管理') return '新建档案'
   return '新建'
 })
 
 const pageDesc = computed(() => {
   if (props.module === '工序工资') {
-    return '按工序维护计件/计重工价；过站日结时按启用中的工价核算。同工序新建会自动停用旧费率。'
+    return '列出全部工序，配置工价与单位。计费由单位自动决定：元/千克→按重量，元/件→按件；停用工价即取消计费。'
   }
   if (props.module === '工人信息管理') {
     return '维护工人计薪方式、月薪基数与收款银行卡；与人事档案银行卡同源，供月结工资单使用。'
@@ -480,14 +580,17 @@ const pageDesc = computed(() => {
 })
 
 const dialogTitle = computed(() => {
-  if (props.module === '工序工资') return editingId.value ? '编辑工序工价' : '新建工序工价'
+  if (props.module === '工序工资') return editingId.value ? '调整工序工价' : '设置工序工价'
   if (props.module === '工人信息管理') return editingId.value ? '编辑薪资档案' : '新建薪资档案'
   if (props.module === '工资批量管理' || props.module === '薪酬核算') return '按月生成工资单'
   return props.module
 })
 
 const headMetaText = computed(() => {
-  if (props.module === '工序工资') return `启用 ${list.value.length} 条`
+  if (props.module === '工序工资') {
+    const s = wageStats.value
+    return `工序 ${s.total} · 已设 ${s.set} · 未设 ${s.unset}${s.billableUnset ? ` · 计费未设单价 ${s.billableUnset}` : ''}`
+  }
   if (props.module === '工人信息管理') return `共 ${list.value.length} 人`
   if (props.module === '工资批量管理') return `共 ${list.value.length} 单`
   return ''
@@ -652,52 +755,101 @@ onMounted(load)
       </template>
     </TableOrCards>
 
-    <!-- 工价 -->
-    <TableOrCards v-else-if="module === '工序工资'" :data="list" :loading="loading" :columns="rateCols" empty-text="暂无启用中的工序工价，请点击「新建工价」">
-      <el-table :data="list" border stripe class="rate-table" empty-text="暂无启用中的工序工价">
-        <el-table-column prop="process_code" label="工序编码" width="120" />
-        <el-table-column prop="process_name" label="工序名称" min-width="140">
-          <template #default="{ row }">
-            <div class="proc-cell">
-              <span class="proc-name">{{ row.process_name || '—' }}</span>
-              <span v-if="row.process_id" class="proc-id">#{{ row.process_id }}</span>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="工价" width="160" align="right">
-          <template #default="{ row }">
-            <span class="rate-num">{{ Number(row.rate ?? 0).toFixed(4).replace(/\.?0+$/, '') }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="单位" width="110" align="center">
-          <template #default="{ row }">
-            <el-tag size="small" effect="plain" type="warning">{{ row.rate_unit_label || rateUnitLabel(row.rate_unit) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="effective_from" label="生效日" width="120" />
-        <el-table-column label="状态" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag size="small" :type="statusTagType(row.status)">{{ row.status_label || statusActiveLabel(row.status) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button v-if="row.status === 'active'" link type="danger" @click="removeRate(row)">停用</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <template #field-rate_unit_label="{ row }">
-        <el-tag size="small" effect="plain" type="warning">{{ row.rate_unit_label }}</el-tag>
-      </template>
-      <template #field-status_label="{ row }">
-        <el-tag size="small" :type="statusTagType(row.status)">{{ row.status_label }}</el-tag>
-      </template>
-      <template #actions="{ row }">
-        <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-        <el-button v-if="row.status === 'active'" link type="danger" @click="removeRate(row)">停用</el-button>
-      </template>
-    </TableOrCards>
+    <!-- 工价：以工序为主列表 -->
+    <template v-else-if="module === '工序工资'">
+      <div class="wage-filters">
+        <el-radio-group v-model="wageFilter" size="small">
+          <el-radio-button value="all">全部工序</el-radio-button>
+          <el-radio-button value="unset">未设工价 ({{ wageStats.unset }})</el-radio-button>
+          <el-radio-button value="billable">仅计费工序</el-radio-button>
+        </el-radio-group>
+        <el-alert
+          v-if="wageStats.billableUnset > 0"
+          type="warning"
+          :closable="false"
+          show-icon
+          class="wage-alert"
+          :title="`有 ${wageStats.billableUnset} 个已计费工序尚未设置工价，过站后金额将为 0`"
+        />
+      </div>
+      <TableOrCards
+        :data="wageListFiltered"
+        :loading="loading"
+        :columns="rateCols"
+        empty-text="暂无工序，请先在「生产管理 → 工序定义」维护工序"
+      >
+        <el-table :data="wageListFiltered" border stripe class="rate-table" empty-text="暂无匹配的工序">
+          <el-table-column prop="process_code" label="工序编码" width="120" />
+          <el-table-column prop="process_name" label="工序名称" min-width="140">
+            <template #default="{ row }">
+              <div class="proc-cell">
+                <span class="proc-name">{{ row.process_name || '—' }}</span>
+                <span v-if="row.process_id" class="proc-id">#{{ row.process_id }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="计费" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag
+                size="small"
+                effect="plain"
+                :type="row.pay_mode === 'weight' ? 'warning' : row.pay_mode === 'piece' ? 'success' : 'info'"
+              >
+                {{ row.pay_mode_label }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="工价状态" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="row.has_wage ? 'success' : 'danger'">
+                {{ row.has_wage ? '已设' : '未设' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="单价" width="140" align="right">
+            <template #default="{ row }">
+              <span v-if="row.has_wage" class="rate-num">{{ Number(row.rate ?? 0).toFixed(4).replace(/\.?0+$/, '') }}</span>
+              <span v-else class="muted-cell">—</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="单位" width="110" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="row.has_wage" size="small" effect="plain" type="warning">{{ row.rate_unit_label }}</el-tag>
+              <span v-else class="muted-cell">—</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="effective_from" label="生效日" width="120" />
+          <el-table-column label="操作" width="160" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="openRateForProcess(row)">
+                {{ row.has_wage ? '调整' : '设置工价' }}
+              </el-button>
+              <el-button v-if="row.has_wage" link type="danger" @click="removeRate(row)">停用</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #field-pay_mode_label="{ row }">
+          <el-tag
+            size="small"
+            effect="plain"
+            :type="row.pay_mode === 'weight' ? 'warning' : row.pay_mode === 'piece' ? 'success' : 'info'"
+          >{{ row.pay_mode_label }}</el-tag>
+        </template>
+        <template #field-wage_set_label="{ row }">
+          <el-tag size="small" :type="row.has_wage ? 'success' : 'danger'">{{ row.wage_set_label }}</el-tag>
+        </template>
+        <template #field-rate_unit_label="{ row }">
+          <el-tag v-if="row.has_wage" size="small" effect="plain" type="warning">{{ row.rate_unit_label }}</el-tag>
+          <span v-else>—</span>
+        </template>
+        <template #actions="{ row }">
+          <el-button link type="primary" @click="openRateForProcess(row)">
+            {{ row.has_wage ? '调整' : '设置工价' }}
+          </el-button>
+          <el-button v-if="row.has_wage" link type="danger" @click="removeRate(row)">停用</el-button>
+        </template>
+      </TableOrCards>
+    </template>
 
     <!-- 核算日志 -->
     <TableOrCards v-else-if="module === '薪酬核算'" :data="list" :loading="loading" :columns="calcCols">
@@ -774,18 +926,27 @@ onMounted(load)
         </template>
         <template v-else-if="module === '工序工资'">
           <el-form-item label="工序" required>
-            <ProcessSelect v-model="form.process_id" style="width:100%" :disabled="!!editingId" />
+            <ProcessSelect v-model="form.process_id" style="width:100%" :disabled="processLocked || !!editingId" />
           </el-form-item>
           <el-form-item label="工价" required>
             <el-input-number v-model="form.rate" :min="0" :step="0.01" :precision="4" controls-position="right" style="width:100%" />
           </el-form-item>
           <el-form-item label="单位" required>
             <EnumSelect v-model="form.rate_unit" :options="RATE_UNIT_OPTIONS" :clearable="false" style="width:100%" />
+            <p class="hint" style="margin:6px 0 0">
+              计费自动：
+              <el-tag
+                size="small"
+                effect="plain"
+                :type="payModeFromRateUnit(form.rate_unit) === 'weight' ? 'warning' : payModeFromRateUnit(form.rate_unit) === 'piece' ? 'success' : 'info'"
+              >{{ processPayModeLabel(payModeFromRateUnit(form.rate_unit)) }}</el-tag>
+              （元/千克→按重量，元/件→按件；时薪/日薪不计产量工钱）
+            </p>
           </el-form-item>
           <el-form-item label="生效日">
             <el-date-picker v-model="form.effective_from" type="date" value-format="YYYY-MM-DD" style="width:100%" />
           </el-form-item>
-          <p class="hint rate-hint">展示示例：{{ Number(form.rate || 0).toFixed(4).replace(/\.?0+$/, '') || '0' }} {{ rateUnitLabel(form.rate_unit) }}</p>
+          <p class="hint rate-hint">展示示例：{{ Number(form.rate || 0).toFixed(4).replace(/\.?0+$/, '') || '0' }} {{ rateUnitLabel(form.rate_unit) }}；同工序重新设置会停用旧费率。</p>
         </template>
         <template v-else-if="module === '销售提成'">
           <el-form-item label="类型">
@@ -900,6 +1061,9 @@ onMounted(load)
   font-weight: 500;
 }
 .row { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.wage-filters { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.wage-alert { padding: 8px 12px; }
+.wage-alert :deep(.el-alert__title) { font-size: 13px; line-height: 1.4; }
 .sub { margin: 8px 0; font-size: 14px; }
 .hint { color: #5c6b75; font-size: 12px; margin: 0 0 0 110px; }
 .rate-hint { margin-top: 4px; }

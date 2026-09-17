@@ -10,6 +10,11 @@ database:
   data_path: migrations/erp/data-dev.sql
 seed:
   demo: false
+product:
+  # core = 产线闭环；extended = 含销售与完整财务
+  profile: extended
+  # 新装可改为 none；现网保持 cassava
+  industry_pack: cassava
 jwt:
   secret: "REPLACE_WITH_ENV_ERP_JWT_SECRET_32CHARS"
   access_ttl_min: 120

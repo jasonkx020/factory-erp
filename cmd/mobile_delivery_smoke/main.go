@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"bytes"
@@ -35,7 +35,7 @@ func main() {
 		optional           bool
 	}{
 		{"me", "GET", "/auth/me", nil, false},
-		{"farmers", "GET", "/purchase/farmers?page_size=5", nil, false},
+		{"suppliers_person", "GET", "/purchase/suppliers?party_kind=person&page_size=5", nil, false},
 		{"weigh_list", "GET", "/purchase/weigh-tickets?page_size=5", nil, false},
 		{"weigh_varieties", "GET", "/purchase/weigh-varieties?status=active", nil, false},
 		{"purchase_tasks", "GET", "/purchase/tasks?page_size=5", nil, false},
@@ -95,7 +95,7 @@ func main() {
 	}
 
 	// closed-loop: generate batch → upload → gate + stockin create → qc → confirm
-	farmerID := firstID(base, token, "/purchase/farmers?page_size=1", "id")
+	farmerID := firstID(base, token, "/purchase/suppliers?party_kind=person&page_size=1", "id")
 	bizDate := time.Now().Format("2006-01-02")
 	var gen map[string]any
 	if err := callJSON(base, token, "POST", "/purchase/trace-batch-codes/generate", map[string]any{
@@ -134,7 +134,7 @@ func main() {
 	if farmerID > 0 && len(codes) >= 2 && imgURL != "" {
 		var created map[string]any
 		if err := callJSON(base, token, "POST", "/purchase/weigh-tickets", map[string]any{
-			"receive_kind": "gate", "batch_no": codes[0], "farmer_id": farmerID,
+			"receive_kind": "gate", "batch_no": codes[0], "supplier_id": farmerID,
 			"channel": "internal", "product_id": 1, "variety": "鲜木薯",
 			"gross_weight": 1000, "deduct_rate": 5, "unit_price": 1.2, "grade": "A",
 			"image_url": imgURL, "biz_date": bizDate, "source_type": "self",
@@ -171,7 +171,7 @@ func main() {
 		}
 		var stockin map[string]any
 		if err := callJSON(base, token, "POST", "/purchase/weigh-tickets", map[string]any{
-			"receive_kind": "stockin", "batch_no": codes[1], "farmer_id": farmerID,
+			"receive_kind": "stockin", "batch_no": codes[1], "supplier_id": farmerID,
 			"product_id": 1, "variety": "鲜木薯", "net_weight": 200, "bag_qty": 10,
 			"cold_store_type": "fresh", "origin": "广西田东", "image_url": imgURL,
 			"biz_date": bizDate, "source_type": "self", "activate": true,
@@ -183,7 +183,7 @@ func main() {
 		}
 		// missing photo
 		if err := call(base, token, "POST", "/purchase/weigh-tickets", map[string]any{
-			"receive_kind": "gate", "batch_no": codes[2], "farmer_id": farmerID,
+			"receive_kind": "gate", "batch_no": codes[2], "supplier_id": farmerID,
 			"gross_weight": 100, "image_url": "mobile://fake",
 		}); err == nil {
 			fail("reject_fake_photo", fmt.Errorf("expected reject"))

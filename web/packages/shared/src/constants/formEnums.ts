@@ -27,23 +27,7 @@ export const CUSTOMER_SOURCE_OPTIONS: FormOption[] = [
   { value: 'other', label: '其他' },
 ]
 
-export const PROCESS_TYPE_OPTIONS: FormOption[] = [
-  { value: 'gate', label: '入厂' },
-  { value: 'wash', label: '清洗' },
-  { value: 'cut', label: '切断' },
-  { value: 'core', label: '去芯' },
-  { value: 'slice', label: '切片' },
-  { value: 'peel', label: '去皮' },
-  { value: 'dice', label: '切块' },
-  { value: 'bag', label: '装袋' },
-  { value: 'pack', label: '包装' },
-  { value: 'inbound', label: '入库' },
-  { value: 'outbound', label: '出库' },
-  { value: 'qc', label: '质检' },
-  { value: 'other', label: '其他' },
-]
-
-/** 工序产量计费：仅 weight|piece 且工人为计件工时才预计算/日结金额 */
+/** 工序产量计费：由工价单位推导，存于 pay_process_wage_rate.pay_mode；仅 weight|piece 且工人为计件工时才预计算/日结金额 */
 export const PROCESS_PAY_MODE_OPTIONS: FormOption[] = [
   { value: 'none', label: '不计费' },
   { value: 'weight', label: '按重量' },
@@ -243,6 +227,14 @@ export function normalizeRateUnit(value: unknown): string {
 
 export function rateUnitLabel(value: unknown): string {
   return formOptionLabel(RATE_UNIT_OPTIONS, normalizeRateUnit(value))
+}
+
+/** 工价单位 → 计费方式：元/千克→按重量，元/件→按件；时薪/日薪不计产量工钱 */
+export function payModeFromRateUnit(unit: unknown): 'none' | 'weight' | 'piece' {
+  const u = normalizeRateUnit(unit)
+  if (u === 'yuan/kg') return 'weight'
+  if (u === 'yuan/pcs') return 'piece'
+  return 'none'
 }
 
 export function statusActiveLabel(value: unknown): string {

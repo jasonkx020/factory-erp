@@ -19,7 +19,7 @@ import 'gate_inbound_wizard.dart';
 import 'trace_code_qr_sheet.dart';
 import 'weigh_ticket_local_store.dart';
 
-/// 现场过磅收货：选类型 → 填表预览 → 确认创建（批号即溯源码，绑定农户并推仓管）
+/// 现场过磅收货：选类型 → 填表预览 → 确认创建（批号即溯源码，绑定供应商并推仓管）
 /// [initialReceiveKind] / [lockKind]：供主壳「+」快捷入口锁定过磅入厂或入库表单
 class ReceivingPage extends StatefulWidget {
   const ReceivingPage({
@@ -91,9 +91,10 @@ class _ReceivingPageState extends State<ReceivingPage> {
   /// 底部提示是否为错误（必填未填、校验失败等）
   bool _msgIsError = false;
   bool _loading = false;
+  bool _requireWeigh = true;
   bool _batchOk = false;
   bool _searchingFarmer = false;
-  /// 溯源码过站中：农户/产品锁定
+  /// 溯源码过站中：供应商/产品锁定
   bool _bindingLocked = false;
   String _boundFarmerName = '';
   List<dynamic> _farmerCodes = [];
@@ -109,6 +110,16 @@ class _ReceivingPageState extends State<ReceivingPage> {
   final Set<int> _expandedTicketIds = {};
   final Map<int, Map<String, dynamic>> _ticketDetails = {};
   final Set<int> _ticketDetailLoading = {};
+
+  int? _readSupplierId(Map<String, dynamic> m) {
+    final sid = (m['supplier_id'] as num?)?.toInt();
+    if (sid != null && sid > 0) return sid;
+    return (m['farmer_id'] as num?)?.toInt();
+  }
+
+  String _readSupplierName(Map<String, dynamic> m) {
+    return (m['supplier_name'] ?? m['party_name'] ?? m['farmer_name'] ?? '').toString().trim();
+  }
 
   /// 必填未填 / 校验拦截：底部文案 + SnackBar，避免用户漏看。
   void _promptRequired(String msg) {
@@ -263,7 +274,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
       case 'BATCH_CODE_UNAVAILABLE':
         return '溯源码当前不可用';
       case 'TRACE_FARMER_LOCKED':
-        return '该溯源码已锁定农户，不可更换';
+        return '该溯源码已锁定供应商，不可更换';
       case 'TRACE_PRODUCT_LOCKED':
         return '该溯源码已锁定产品/品种，不可更换';
       case 'GATE_BINDING_REQUIRED':
@@ -273,7 +284,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
       case 'DATE_RANGE_INVALID':
         return '日期范围无效';
       case 'FARMER_CREATE_FAILED':
-        return '自动建农户档案失败，请检查姓名后重试';
+        return '自动建供应商档案失败，请检查姓名后重试';
       default:
         return c.isEmpty ? '操作失败' : c;
     }
@@ -355,7 +366,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
     }
     if (_kindLocked && _receiveKind == 'gate' && !canRecv) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无过磅入厂权限')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无采购入厂权限')));
         Navigator.of(context).pop();
       }
       return;
@@ -372,13 +383,21 @@ class _ReceivingPageState extends State<ReceivingPage> {
       api.get('/purchase/weigh-tickets?$q'),
       api.get('/purchase/tasks?page_size=50'),
       api.get('/purchase/weigh-varieties?status=active'),
+      api.get('/purchase/weigh-flow/config?receive_kind=gate'),
     ]);
     if (!mounted) return;
     final varietyRes = results[2];
     final ticketRes = results[0];
+    final cfgRes = results[3];
     final local = await _loadLocalTickets();
     setState(() {
       _loading = false;
+      if (cfgRes.ok && cfgRes.data is Map) {
+        final m = Map<String, dynamic>.from(cfgRes.data as Map);
+        if (m.containsKey('require_weigh')) {
+          _requireWeigh = m['require_weigh'] == true;
+        }
+      }
       if (ticketRes.ok) {
         _ticketsFromLocal = false;
         _tickets = _mergeTicketsWithLocal(ApiClient.listOf(ticketRes.data), local);
@@ -520,7 +539,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
       return;
     }
     final r = await context.read<AuthState>().api.get(
-          '/purchase/trace-batch-codes?farmer_id=$fid&page_size=50',
+          '/purchase/trace-batch-codes?supplier_id=$fid&page_size=50',
         );
     if (!mounted) return;
     final list = r.ok && r.data is Map ? ApiClient.listOf((r.data as Map)['list']) : <dynamic>[];
@@ -610,7 +629,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('复用溯源码'),
-        content: Text('该农户有可用溯源码 $code，是否继续使用？'),
+        content: Text('该供应商有可用溯源码 $code，是否继续使用？'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('否')),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('是')),
@@ -657,14 +676,14 @@ class _ReceivingPageState extends State<ReceivingPage> {
     final api = context.read<AuthState>().api;
     final useMobile = byMobile || RegExp(r'\d').hasMatch(q);
     final path = useMobile
-        ? '/purchase/farmers?mobile=${Uri.encodeQueryComponent(q)}&page_size=20'
-        : '/purchase/farmers?name=${Uri.encodeQueryComponent(q)}&page_size=20';
+        ? '/purchase/suppliers?party_kind=person&mobile=${Uri.encodeQueryComponent(q)}&page_size=20'
+        : '/purchase/suppliers?party_kind=person&name=${Uri.encodeQueryComponent(q)}&page_size=20';
     final r = await api.get(path);
     if (!mounted) return;
     setState(() {
       _searchingFarmer = false;
       _farmerHits = r.ok ? ApiClient.listOf(r.data) : [];
-      if (!r.ok) _msg = '农户搜索失败：${r.msg}';
+      if (!r.ok) _msg = '供应商搜索失败：${r.msg}';
     });
   }
 
@@ -695,7 +714,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
       return false;
     }
     final m = Map<String, dynamic>.from(r.data as Map);
-    final lockedFid = (m['farmer_id'] as num?)?.toInt() ?? 0;
+    final lockedFid = _readSupplierId(m) ?? 0;
     if (_receiveKind == 'gate' &&
         lockedFid > 0 &&
         _farmerId != null &&
@@ -706,7 +725,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
         _batchOk = false;
         _bindingLocked = false;
       });
-      _promptRequired('该溯源码已绑定其他农户，请换码或改选农户');
+      _promptRequired('该溯源码已绑定其他供应商，请换码或改选供应商');
       return false;
     }
     setState(() {
@@ -718,10 +737,10 @@ class _ReceivingPageState extends State<ReceivingPage> {
       if (_receiveKind == 'stockin') {
         _msg = bound.isEmpty
             ? '批号校验通过（入库）'
-            : '批号校验通过 · 已同步农户/产品：$bound';
+            : '批号校验通过 · 已同步供应商/产品：$bound';
       } else if (st == 'in_progress' || m['can_append'] == true) {
         _msg = bound.isEmpty
-            ? '批号过站中，可追加同农户同产品采购单'
+            ? '批号过站中，可追加同供应商同产品采购单'
             : '批号过站中 · 已锁定 $bound，可追加本单';
       } else {
         _msg = bound.isEmpty ? '批号校验通过（可入厂占用）' : '批号校验通过 · 已同步 $bound';
@@ -730,12 +749,12 @@ class _ReceivingPageState extends State<ReceivingPage> {
     return true;
   }
 
-  /// 校验通过后把入厂绑定的农户/产地/品种等写入表单
+  /// 校验通过后把入厂绑定的供应商/产地/品种等写入表单
   void _applyBatchBinding(Map<String, dynamic> m) {
-    final name = (m['farmer_name'] ?? m['party_name'] ?? '').toString().trim();
+    final name = _readSupplierName(m);
     final mobile = (m['party_mobile'] ?? '').toString().trim();
     final origin = (m['origin'] ?? '').toString().trim();
-    final fid = (m['farmer_id'] as num?)?.toInt() ?? 0;
+    final fid = _readSupplierId(m) ?? 0;
     _boundFarmerName = name;
     final st = (m['status'] ?? '').toString();
     _bindingLocked = m['binding_locked'] == true || st == 'in_progress' || m['can_append'] == true;
@@ -986,7 +1005,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
       return false;
     }
     if (_receiveKind == 'gate' && (_farmerId == null || _farmerId! <= 0) && _partyName.text.trim().isEmpty) {
-      _promptRequired('请关联农户或填写农户姓名');
+      _promptRequired('请关联供应商或填写供应商姓名');
       return false;
     }
     final varietyName = _varietyName() == '-' ? '鲜木薯' : _varietyName();
@@ -1018,7 +1037,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
     };
     if (_receiveKind == 'gate') {
       body.addAll({
-        'farmer_id': _farmerId ?? 0,
+        'supplier_id': _farmerId ?? 0,
         'party_name': _partyName.text.trim(),
         'party_mobile': _partyMobile.text.trim(),
         'origin': _origin.text.trim(),
@@ -1080,7 +1099,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
         'doc_no': docNo.isNotEmpty ? docNo : data['doc_no'],
         'trace_code': trace.isNotEmpty ? trace : _batchNo.text.trim().toUpperCase(),
         'batch_no': _batchNo.text.trim().toUpperCase(),
-        'farmer_id': data['farmer_id'] ?? _farmerId,
+        'supplier_id': data['supplier_id'] ?? data['farmer_id'] ?? _farmerId,
         'party_name': data['party_name'] ?? _partyName.text.trim(),
         'party_mobile': data['party_mobile'] ?? _partyMobile.text.trim(),
         'origin': data['origin'] ?? _origin.text.trim(),
@@ -1164,6 +1183,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
       searchingFarmer: _searchingFarmer,
       msg: _msg,
       msgIsError: _msgIsError,
+      requireWeigh: _requireWeigh,
       onBatchChanged: (_) => setState(() {
         _batchOk = false;
         _bindingLocked = false;
@@ -1388,7 +1408,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
           padding: const EdgeInsets.only(top: 8),
           child: Chip(
             avatar: const Icon(Icons.agriculture, size: 16),
-            label: Text('关联农户（入厂绑定）：$_boundFarmerName'),
+            label: Text('关联供应商（入厂绑定）：$_boundFarmerName'),
           ),
         ),
     ];
@@ -1399,7 +1419,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
       const Padding(
         padding: EdgeInsets.only(bottom: 4),
         child: Text(
-          '凭据及溯源批号关联，自动带出入厂绑定农户',
+          '凭据及溯源批号关联，自动带出入厂绑定供应商',
           style: TextStyle(fontSize: 12, color: Colors.black54),
         ),
       ),
@@ -1513,14 +1533,14 @@ class _ReceivingPageState extends State<ReceivingPage> {
         HubEntryTile(
           enabled: _canRecv,
           icon: Icons.login,
-          title: '过磅入厂',
-          subtitle: '扫溯源码过磅，建单即与农户绑定并推仓管',
+          title: '采购入厂',
+          subtitle: '扫溯源码建单，绑定供应商并推仓管',
           onTap: () => _chooseReceiveKind('gate'),
         ),
         HubEntryTile(
           icon: Icons.receipt_long_outlined,
           title: '单据',
-          subtitle: '查看过磅单与绑定状态',
+          subtitle: '查看采购单与绑定状态',
           onTap: () => _openSection(RecvHubSection.tickets),
         ),
         HubEntryTile(
@@ -1584,7 +1604,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
         const Text('请核对以下信息，有误请返回修改', style: TextStyle(fontSize: 12, color: Colors.black54)),
         const SizedBox(height: 8),
         _stockinPreviewRow('溯源批号', _batchNo.text.trim().toUpperCase()),
-        if (_boundFarmerName.isNotEmpty) _stockinPreviewRow('关联农户', _boundFarmerName),
+        if (_boundFarmerName.isNotEmpty) _stockinPreviewRow('关联供应商', _boundFarmerName),
         _stockinPreviewRow('品种', _varietyName()),
         _stockinPreviewRow('净重(kg)', _netWeight.text),
         _stockinPreviewRow('袋数', _bagQty.text.trim().isEmpty ? '0' : _bagQty.text),
@@ -1593,7 +1613,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
         _stockinPreviewRow('现场照片', '${_photoUrls.length} 张'),
         _stockinPreviewRow('备注', _remark.text.trim().isEmpty ? '-' : _remark.text.trim()),
         const SizedBox(height: 8),
-        const Text('确认后单据生效：溯源码与本单/农户唯一绑定，并推仓管。', style: TextStyle(fontSize: 12, color: Colors.black54)),
+        const Text('确认后单据生效：溯源码与本单/供应商唯一绑定，并推仓管。', style: TextStyle(fontSize: 12, color: Colors.black54)),
       ],
     );
   }
@@ -1750,7 +1770,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
         const SizedBox(height: 6),
         kv('业务日', '${d['biz_date'] ?? '-'}'),
         kv('模式', _kindLabel(kind)),
-        kv('农户', '${d['party_name'] ?? d['farmer_name'] ?? '-'}'),
+        kv('供应商', _readSupplierName(d).isEmpty ? '-' : _readSupplierName(d)),
         kv('品种', '${d['product_name'] ?? d['variety'] ?? '-'}'),
         kv('溯源码', '${d['trace_code'] ?? d['batch_no'] ?? '-'}'),
         kv('毛重', '${d['gross_weight'] ?? '-'} kg'),
@@ -1934,7 +1954,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
                     physics: const AlwaysScrollableScrollPhysics(),
                     children: const [
                       SizedBox(height: 80),
-                      Center(child: Text('暂无过磅单据')),
+                      Center(child: Text('暂无采购单据')),
                     ],
                   )
                 : ListView.builder(
@@ -1982,7 +2002,7 @@ class _ReceivingPageState extends State<ReceivingPage> {
                                     Icon(expanded ? Icons.expand_less : Icons.expand_more, color: Colors.black45),
                                   ],
                                 ),
-                                Text('${m['party_name'] ?? m['farmer_name'] ?? ''} · ${m['product_name'] ?? m['variety'] ?? ''}'),
+                                Text('${_readSupplierName(m)} · ${m['product_name'] ?? m['variety'] ?? ''}'),
                                 Text(
                                   code.isEmpty ? '溯源码 -' : '溯源码 $code',
                                   style: const TextStyle(color: Colors.teal),
@@ -2098,9 +2118,9 @@ class _ReceivingPageState extends State<ReceivingPage> {
       case RecvHubSection.home:
         return '采购';
       case RecvHubSection.gate:
-        return '过磅入厂';
+        return '采购入厂';
       case RecvHubSection.stockin:
-        return '过磅入库';
+        return '采购入库';
       case RecvHubSection.tickets:
         return '单据';
       case RecvHubSection.tasks:

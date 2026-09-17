@@ -26,19 +26,19 @@ func (s *Services) handlePurchase(c *gin.Context, method, openapiPath, resourceK
 		return s.handleSuppliers(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/inbound-arrivals"):
 		return s.handleInboundArrivals(c, method, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/purchase/farmers"):
-		return s.handleFarmers(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/weigh-varieties"):
 		return s.handleWeighVarieties(c, method, action)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/trace-batch-codes"):
 		return s.handleTraceBatchCodes(c, method, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/purchase/weigh-flow"):
-		return s.handleWeighFlowNextOptions(c)
+	case strings.HasPrefix(openapiPath, "/api/v1/purchase/weigh-flow"),
+		strings.HasPrefix(openapiPath, "/api/v1/purchase/inbound-form-schema"):
+		return s.handlePurchaseWeighFlow(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/role-users"):
 		return s.handlePurchaseRoleUsers(c)
 	case strings.HasPrefix(openapiPath, "/api/v1/purchase/weigh-tickets"):
 		return s.handleWeighTickets(c, method, action)
-	case strings.HasPrefix(openapiPath, "/api/v1/purchase/farmer-settlements"):
+	case strings.HasPrefix(openapiPath, "/api/v1/purchase/supplier-settlements"),
+		strings.HasPrefix(openapiPath, "/api/v1/purchase/farmer-settlements"):
 		return s.handleFarmerSettlements(c, method, action)
 	case openapiPath == "/api/v1/purchase/trace-lots/verify" || strings.HasSuffix(openapiPath, "/trace-lots/verify"):
 		return s.verifyTraceLot(c)
@@ -146,10 +146,26 @@ func (s *Services) listSuppliers(c *gin.Context) bool {
 		where += " AND supplier_type=?"
 		args = append(args, tp)
 	}
+	if pk := c.Query("party_kind"); pk != "" {
+		where += " AND party_kind=?"
+		args = append(args, pk)
+	}
+	if mobile := strings.TrimSpace(c.Query("mobile")); mobile != "" {
+		where += " AND COALESCE(mobile,'') LIKE ?"
+		args = append(args, "%"+mobile+"%")
+	}
+	if nameQ := strings.TrimSpace(c.Query("name")); nameQ != "" {
+		where += " AND name LIKE ?"
+		args = append(args, "%"+nameQ+"%")
+	}
 	if q := c.Query("q"); q != "" {
-		where += " AND (code LIKE ? OR name LIKE ? OR COALESCE(short_name,'') LIKE ?)"
+		where += " AND (code LIKE ? OR name LIKE ? OR COALESCE(short_name,'') LIKE ? OR COALESCE(mobile,'') LIKE ?)"
 		like := "%" + q + "%"
-		args = append(args, like, like, like)
+		args = append(args, like, like, like, like)
+	} else if kw := strings.TrimSpace(c.Query("keyword")); kw != "" {
+		where += " AND (code LIKE ? OR name LIKE ? OR COALESCE(short_name,'') LIKE ? OR COALESCE(mobile,'') LIKE ? OR COALESCE(origin,'') LIKE ?)"
+		like := "%" + kw + "%"
+		args = append(args, like, like, like, like, like)
 	}
 	var total int
 	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pur_supplier WHERE `+where, args...).Scan(&total)
@@ -168,17 +184,80 @@ func (s *Services) listSuppliers(c *gin.Context) bool {
 	return true
 }
 
+func supplierHasContactPhone(contact interface{}) bool {
+	switch v := contact.(type) {
+	case []interface{}:
+		for _, it := range v {
+			m, _ := it.(map[string]interface{})
+			if m == nil {
+				continue
+			}
+			if strings.TrimSpace(strOr(m["mobile"])) != "" || strings.TrimSpace(strOr(m["phone"])) != "" {
+				return true
+			}
+		}
+	case []map[string]interface{}:
+		for _, m := range v {
+			if strings.TrimSpace(strOr(m["mobile"])) != "" || strings.TrimSpace(strOr(m["phone"])) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func validateSupplierPartyFields(body map[string]interface{}, partyKind string) string {
+	name := strOr(body["name"])
+	if name == "" {
+		return "NAME_REQUIRED"
+	}
+	switch partyKind {
+	case "person":
+		return ""
+	case "enterprise":
+		if strOr(body["uscc"]) == "" && strOr(body["register_address"]) == "" && strOr(body["tax_no"]) == "" {
+			return "ENTERPRISE_INFO_REQUIRED"
+		}
+		if strOr(body["legal_person"]) == "" {
+			return "LEGAL_PERSON_REQUIRED"
+		}
+		if strOr(body["mobile"]) == "" && !supplierHasContactPhone(body["contact_json"]) {
+			return "CONTACT_PHONE_REQUIRED"
+		}
+		return ""
+	default:
+		return "INVALID_PARTY_KIND"
+	}
+}
+
 func (s *Services) createSupplier(c *gin.Context) bool {
 	body := bindBody(c)
+	partyKind := strOrDef(body["party_kind"], "enterprise")
+	if partyKind != "person" && partyKind != "enterprise" {
+		api.FailJSON(c, "INVALID_PARTY_KIND")
+		return true
+	}
+	if errCode := validateSupplierPartyFields(body, partyKind); errCode != "" {
+		api.FailJSON(c, errCode)
+		return true
+	}
 	code, _ := body["code"].(string)
 	name, _ := body["name"].(string)
-	if code == "" || name == "" {
-		api.FailJSON(c, "CODE_NAME_REQUIRED")
-		return true
+	if code == "" {
+		if partyKind == "person" {
+			code = fmt.Sprintf("P%s", time.Now().Format("060102150405"))
+		} else {
+			api.FailJSON(c, "CODE_NAME_REQUIRED")
+			return true
+		}
 	}
 	status, _ := body["status"].(string)
 	if status == "" {
-		status = "potential"
+		if partyKind == "person" {
+			status = "qualified"
+		} else {
+			status = "potential"
+		}
 	}
 	if status == "active" {
 		status = "qualified"
@@ -193,13 +272,18 @@ func (s *Services) createSupplier(c *gin.Context) bool {
 		return true
 	}
 	contact := jsonify(body["contact_json"])
+	price, _ := asFloat(body["default_unit_price"])
 	res, err := s.DB.Exec(`INSERT INTO pur_supplier(
-		code,name,short_name,mnemonic,supplier_type,status,rating,is_preferred,uscc,legal_person,register_address,
+		code,name,short_name,mnemonic,party_kind,supplier_type,status,rating,is_preferred,
+		mobile,origin,trace_code_prefix,default_unit_price,
+		uscc,legal_person,register_address,
 		invoice_title,tax_no,bank_name,bank_account,settle_method,payment_days,credit_limit,currency,tax_rate,
 		lead_time_days,moq,default_warehouse_id,contact_json,remark)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		code, name, strOr(body["short_name"]), strOr(body["mnemonic"]), strOrDef(body["supplier_type"], "raw"),
-		status, strOr(body["rating"]), pref, strOr(body["uscc"]), strOr(body["legal_person"]), strOr(body["register_address"]),
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		code, name, strOr(body["short_name"]), strOr(body["mnemonic"]), partyKind, strOrDef(body["supplier_type"], "raw"),
+		status, strOr(body["rating"]), pref,
+		strOr(body["mobile"]), strOr(body["origin"]), strOr(body["trace_code_prefix"]), price,
+		strOr(body["uscc"]), strOr(body["legal_person"]), strOr(body["register_address"]),
 		strOr(body["invoice_title"]), strOr(body["tax_no"]), strOr(body["bank_name"]), strOr(body["bank_account"]),
 		strOr(body["settle_method"]), nullInt(body["payment_days"]), nullFloat(body["credit_limit"]),
 		strOrDef(body["currency"], "CNY"), nullFloat(body["tax_rate"]), nullInt(body["lead_time_days"]),
@@ -227,12 +311,47 @@ func (s *Services) getSupplier(c *gin.Context) bool {
 
 func (s *Services) updateSupplier(c *gin.Context) bool {
 	id := paramID(c)
-	if s.loadSupplier(id) == nil {
+	cur := s.loadSupplier(id)
+	if cur == nil {
 		api.FailJSON(c, "NOT_FOUND")
 		return true
 	}
 	body := bindBody(c)
+	partyKind := strOrDef(body["party_kind"], strOrDef(cur["party_kind"], "enterprise"))
+	if partyKind != "person" && partyKind != "enterprise" {
+		api.FailJSON(c, "INVALID_PARTY_KIND")
+		return true
+	}
+	// merge name for validation when omitted
+	if strOr(body["name"]) == "" {
+		body["name"] = cur["name"]
+	}
+	if strOr(body["legal_person"]) == "" && cur["legal_person"] != nil {
+		body["legal_person"] = cur["legal_person"]
+	}
+	if strOr(body["uscc"]) == "" && cur["uscc"] != nil {
+		body["uscc"] = cur["uscc"]
+	}
+	if strOr(body["register_address"]) == "" && cur["register_address"] != nil {
+		body["register_address"] = cur["register_address"]
+	}
+	if strOr(body["tax_no"]) == "" && cur["tax_no"] != nil {
+		body["tax_no"] = cur["tax_no"]
+	}
+	if strOr(body["mobile"]) == "" && cur["mobile"] != nil {
+		body["mobile"] = cur["mobile"]
+	}
+	if body["contact_json"] == nil {
+		body["contact_json"] = cur["contact_json"]
+	}
+	if errCode := validateSupplierPartyFields(body, partyKind); errCode != "" {
+		api.FailJSON(c, errCode)
+		return true
+	}
 	status, _ := body["status"].(string)
+	if status == "active" {
+		status = "qualified"
+	}
 	if status != "" && !validSupplierStatus(status) {
 		api.FailJSON(c, "INVALID_STATUS")
 		return true
@@ -245,15 +364,20 @@ func (s *Services) updateSupplier(c *gin.Context) bool {
 		api.FailJSON(c, "PREFERRED_REQUIRES_QUALIFIED")
 		return true
 	}
+	price, _ := asFloat(body["default_unit_price"])
 	_, err := s.DB.Exec(`UPDATE pur_supplier SET
-		name=COALESCE(?,name), short_name=?, mnemonic=?, supplier_type=COALESCE(?,supplier_type),
-		status=COALESCE(NULLIF(?,''),status), rating=?, is_preferred=?, uscc=?, legal_person=?, register_address=?,
+		name=COALESCE(NULLIF(?,''),name), short_name=?, mnemonic=?, party_kind=?, supplier_type=COALESCE(NULLIF(?,''),supplier_type),
+		status=COALESCE(NULLIF(?,''),status), rating=?, is_preferred=?,
+		mobile=?, origin=?, trace_code_prefix=?, default_unit_price=?,
+		uscc=?, legal_person=?, register_address=?,
 		invoice_title=?, tax_no=?, bank_name=?, bank_account=?, settle_method=?, payment_days=?, credit_limit=?,
-		currency=COALESCE(?,currency), tax_rate=?, lead_time_days=?, moq=?, default_warehouse_id=?,
+		currency=COALESCE(NULLIF(?,''),currency), tax_rate=?, lead_time_days=?, moq=?, default_warehouse_id=?,
 		contact_json=?, remark=?, updated_at=NOW()
 		WHERE id=?`,
-		strOr(body["name"]), strOr(body["short_name"]), strOr(body["mnemonic"]), strOr(body["supplier_type"]),
-		status, strOr(body["rating"]), pref, strOr(body["uscc"]), strOr(body["legal_person"]), strOr(body["register_address"]),
+		strOr(body["name"]), strOr(body["short_name"]), strOr(body["mnemonic"]), partyKind, strOr(body["supplier_type"]),
+		status, strOr(body["rating"]), pref,
+		strOr(body["mobile"]), strOr(body["origin"]), strOr(body["trace_code_prefix"]), price,
+		strOr(body["uscc"]), strOr(body["legal_person"]), strOr(body["register_address"]),
 		strOr(body["invoice_title"]), strOr(body["tax_no"]), strOr(body["bank_name"]), strOr(body["bank_account"]),
 		strOr(body["settle_method"]), nullInt(body["payment_days"]), nullFloat(body["credit_limit"]),
 		strOr(body["currency"]), nullFloat(body["tax_rate"]), nullInt(body["lead_time_days"]),

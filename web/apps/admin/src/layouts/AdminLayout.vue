@@ -12,6 +12,10 @@ import {
   isDeliveryOnlineModule,
   OFFLINE_MENU_BADGE,
   productionApi,
+  systemApi,
+  hrApi,
+  setActiveProductProfile,
+  type ProductProfile,
 } from '@erp/shared'
 import { ElMessage } from 'element-plus'
 import NotifyBell from '../components/NotifyBell.vue'
@@ -40,6 +44,45 @@ let menusRo: ResizeObserver | null = null
 /** Plant line strip from published / session routing (API), not a hardcoded chain. */
 const plantLine = ref<Array<{ name: string; run?: boolean; end?: boolean }>>([])
 const plantLineEmpty = ref('未配置工艺')
+const brandName = ref('加工厂 ERP')
+const plantOptions = ref<Array<{ id: number; name: string }>>([])
+const currentPlantId = ref<number>(Number(localStorage.getItem('erp_plant_id') || 0))
+
+async function loadProductProfile() {
+  try {
+    const res = await systemApi.productProfile()
+    const d = (res.data || {}) as {
+      profile?: string
+      brand_name?: string
+      plant_display_name?: string
+    }
+    setActiveProductProfile((d.profile === 'extended' ? 'extended' : 'core') as ProductProfile)
+    if (d.brand_name) brandName.value = d.brand_name
+    else if (d.plant_display_name) brandName.value = String(d.plant_display_name)
+  } catch {
+    /* ignore */
+  }
+}
+
+async function loadPlants() {
+  try {
+    const res = await hrApi.plants()
+    const list = ((res.data as { list?: Array<{ id: number; name: string; is_default?: boolean }> })?.list) || []
+    plantOptions.value = list.map((p) => ({ id: Number(p.id), name: String(p.name) }))
+    if (!currentPlantId.value && list.length) {
+      const def = list.find((p) => p.is_default) || list[0]
+      currentPlantId.value = Number(def.id)
+      localStorage.setItem('erp_plant_id', String(currentPlantId.value))
+    }
+  } catch {
+    plantOptions.value = []
+  }
+}
+
+function onPlantChange(id: number) {
+  currentPlantId.value = id
+  localStorage.setItem('erp_plant_id', String(id))
+}
 
 async function loadPlantLine() {
   try {
@@ -79,6 +122,8 @@ function measureItems() {
 
 onMounted(() => {
   void loadCarrierCodeUnit()
+  void loadProductProfile()
+  void loadPlants()
   void loadPlantLine()
   if (auth.accessToken && (!auth.roles.length || !auth.permissions.length)) {
     void auth.fetchMe()
@@ -298,8 +343,8 @@ function openSideDrawer() {
       </button>
 
       <button type="button" class="brand" @click="goHome" title="工作台">
-        <span class="brand-mark">木薯</span>
-        <span v-if="!isMobile" class="brand-text">加工厂 ERP</span>
+        <span class="brand-mark">{{ brandName.slice(0, 2) }}</span>
+        <span v-if="!isMobile" class="brand-text">{{ brandName }}</span>
       </button>
 
       <nav ref="topMenusEl" class="top-menus">
@@ -398,6 +443,16 @@ function openSideDrawer() {
 
     <div class="factory-line-strip" aria-label="产线工艺预览">
       <span class="line-label">产线</span>
+      <el-select
+        v-if="plantOptions.length > 1"
+        :model-value="currentPlantId"
+        size="small"
+        class="plant-select"
+        placeholder="厂区"
+        @change="onPlantChange"
+      >
+        <el-option v-for="p in plantOptions" :key="p.id" :label="p.name" :value="p.id" />
+      </el-select>
       <template v-if="plantLine.length">
         <span
           v-for="s in plantLine"

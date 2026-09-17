@@ -50,7 +50,7 @@ typedef GateSubmitFn = Future<bool> Function({
   int? nextAssigneeUserId,
 });
 
-/// 过磅入厂四步向导（仅 gate）：农户 → 溯源码 → 过磅照片 → 预览确认。
+/// 采购入厂四步向导（仅 gate）：供应商 → 溯源码 → 称重/数量 → 预览确认。
 class GateInboundWizard extends StatefulWidget {
   const GateInboundWizard({
     super.key,
@@ -82,6 +82,7 @@ class GateInboundWizard extends StatefulWidget {
     required this.searchingFarmer,
     required this.msg,
     this.msgIsError = false,
+    this.requireWeigh = true,
     required this.onBatchChanged,
     required this.onValidateBatch,
     required this.onNameChanged,
@@ -116,7 +117,7 @@ class GateInboundWizard extends StatefulWidget {
   final TextEditingController origin;
 
   final bool batchOk;
-  /// 溯源码已过站中：农户/品种锁定为首单关联信息
+  /// 溯源码已过站中：供应商/品种锁定为首单关联信息
   final bool bindingLocked;
   final String? photoMaterial;
   final String? photoScale;
@@ -131,6 +132,8 @@ class GateInboundWizard extends StatefulWidget {
   final bool searchingFarmer;
   final String msg;
   final bool msgIsError;
+  /// From purchase flow graph meta.capabilities (weigh).
+  final bool requireWeigh;
 
   final ValueChanged<String> onBatchChanged;
   final Future<bool> Function() onValidateBatch;
@@ -165,12 +168,25 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
   String? _nextNodeId;
   int? _nextAssignee;
   bool _loadingOptions = false;
+  bool _requireWeigh = true;
 
-  static const _titles = ['农户与溯源', '费用确认', '照片与过磅', '预览确认'];
+  static List<String> _stepTitles(bool requireWeigh) => [
+        '供应商与溯源',
+        '费用确认',
+        requireWeigh ? '称重取证' : '数量确认',
+        '预览确认',
+      ];
+
+  String get _stepTitle {
+    final t = _stepTitles(_requireWeigh);
+    if (_step < 0 || _step >= t.length) return '';
+    return t[_step];
+  }
 
   @override
   void initState() {
     super.initState();
+    _requireWeigh = widget.requireWeigh;
     _loadPrefs();
   }
 
@@ -223,6 +239,9 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
     setState(() {
       _loadingOptions = false;
       _options = opts;
+      if (data.containsKey('require_weigh')) {
+        _requireWeigh = data['require_weigh'] == true;
+      }
       if (_nextRole == null || _nextRole!.isEmpty) {
         if (opts.isNotEmpty) {
           final first = Map<String, dynamic>.from(opts.first as Map);
@@ -294,20 +313,24 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
   String? _validateStep(int step) {
     switch (step) {
       case 0:
-        // 溯源码与农户/品种强关联：如果溯源码已校验通过，则允许跳过手工填写农户姓名
-        if (widget.partyName.text.trim().isEmpty && !widget.batchOk) return '请填写农户姓名';
-        if (widget.varieties.isEmpty) return '暂无过磅品种，请先在后台配置';
+        // 溯源码与供应商/品种强关联：如果溯源码已校验通过，则允许跳过手工填写供应商姓名
+        if (widget.partyName.text.trim().isEmpty && !widget.batchOk) return '请填写供应商姓名';
+        if (widget.varieties.isEmpty) return '暂无采购品种，请先在后台配置';
         if (widget.varietyId == null) return '请选择品种';
         return null;
       case 1:
-        if (widget.varieties.isEmpty) return '暂无过磅品种，请先在后台配置';
+        if (widget.varieties.isEmpty) return '暂无采购品种，请先在后台配置';
         if (widget.varietyId == null) return '请选择品种';
         return null;
       case 2:
-        if ((widget.photoMaterial ?? '').isEmpty) return '请拍摄材料过磅照片';
-        if ((widget.photoScale ?? '').isEmpty) return '请拍摄磅显数据特写';
-        if ((widget.photoCloseup ?? '').isEmpty) return '请拍摄近距离照片';
-        if ((double.tryParse(widget.gross.text) ?? 0) <= 0) return '请填写入场重量（kg）';
+        if (_requireWeigh) {
+          if ((widget.photoMaterial ?? '').isEmpty) return '请拍摄材料称重照片';
+          if ((widget.photoScale ?? '').isEmpty) return '请拍摄磅显数据特写';
+          if ((widget.photoCloseup ?? '').isEmpty) return '请拍摄近距离照片';
+          if ((double.tryParse(widget.gross.text) ?? 0) <= 0) return '请填写毛重（kg）';
+        } else {
+          if ((double.tryParse(widget.gross.text) ?? 0) <= 0) return '请填写数量/净重（kg）';
+        }
         return null;
       case 3:
         if (_nextRole == null || _nextRole!.isEmpty) return '请选择下一处理部门';
@@ -456,7 +479,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('步骤 ${_step + 1}/4 · ${_titles[_step]}', style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text('步骤 ${_step + 1}/4 · $_stepTitle', style: const TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               Row(
                 children: List.generate(4, (i) {
@@ -549,7 +572,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
         const Padding(
           padding: EdgeInsets.fromLTRB(4, 0, 4, 6),
           child: Text(
-            '先填农户与产地，再绑定或生成溯源码并选择品种；溯源与农户强绑定，输入已有码可自动带回档案',
+            '先填供应商与产地，再绑定或生成溯源码并选择品种；溯源与供应商强绑定，输入已有码可自动带回档案',
             style: TextStyle(fontSize: 13, color: Colors.black54),
           ),
         ),
@@ -578,14 +601,14 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text(
-              '已选过站中码：农户与品种锁定为首单信息，本单可追加重量等',
+              '已选过站中码：供应商与品种锁定为首单信息，本单可追加重量等',
               style: TextStyle(fontSize: 12, color: Colors.blue.shade800),
             ),
           ),
         if (widget.varieties.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text('暂无过磅品种，请先在后台配置', style: TextStyle(color: Colors.orange)),
+            child: Text('暂无采购品种，请先在后台配置', style: TextStyle(color: Colors.orange)),
           )
         else
           FormRow(
@@ -664,7 +687,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text(
-              '已选过站中码：农户与品种锁定为首单信息，本单可追加重量等',
+              '已选过站中码：供应商与品种锁定为首单信息，本单可追加重量等',
               style: TextStyle(fontSize: 12, color: Colors.blue.shade800),
             ),
           ),
@@ -672,7 +695,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
           if (widget.varieties.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('暂无过磅品种，请先在后台配置', style: TextStyle(color: Colors.orange)),
+              child: Text('暂无采购品种，请先在后台配置', style: TextStyle(color: Colors.orange)),
             )
           else
             FormRow(
@@ -730,7 +753,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
     if (widget.bindingLocked) {
       return [
         FormRow(
-          label: '已锁定农户',
+          label: '已锁定供应商',
           child: Align(
             alignment: Alignment.centerRight,
             child: InputChip(
@@ -812,7 +835,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
         const SizedBox(height: 8),
         _photoSlot(
           slot: 'material',
-          title: '1. 材料过磅照片',
+          title: '1. 材料称重照片',
           hint: '拍物料上磅的全景',
           url: widget.photoMaterial,
         ),
@@ -1028,8 +1051,8 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
       children: [
         const Text('请核对单据，有误请点「修改」或底栏「上一步」', style: TextStyle(fontSize: 12, color: Colors.black54)),
         const SizedBox(height: 8),
-        _previewSection('农户', 0, [
-          _previewRow('农户ID', widget.farmerId == null ? '提交时自动建档' : '#${widget.farmerId}'),
+        _previewSection('供应商', 0, [
+          _previewRow('供应商ID', widget.farmerId == null ? '提交时自动建档' : '#${widget.farmerId}'),
           _previewRow('姓名', widget.partyName.text.trim().isEmpty ? '-' : widget.partyName.text.trim()),
           _previewRow('电话', widget.partyMobile.text.trim().isEmpty ? '-' : widget.partyMobile.text.trim()),
           _previewRow('产地', widget.origin.text.trim().isEmpty ? '-' : widget.origin.text.trim()),
@@ -1041,12 +1064,12 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
           _previewRow('单价', unit.toString()),
           _previewRow('运/装/磅费', '$freight / $loading / $weigh'),
         ]),
-        _previewSection('照片与过磅', 2, [
-          _previewRow('渠道', widget.channel == 'external' ? '外磅' : '厂内'),
-          _previewRow('材料过磅照', (widget.photoMaterial ?? '').isEmpty ? '未拍' : '已拍'),
-          _previewRow('磅显特写', (widget.photoScale ?? '').isEmpty ? '未拍' : '已拍'),
-          _previewRow('近距离照片', (widget.photoCloseup ?? '').isEmpty ? '未拍' : '已拍'),
-          _previewRow('入场重量(kg)', gross.toString()),
+        _previewSection(_requireWeigh ? '称重取证' : '数量确认', 2, [
+          if (_requireWeigh) _previewRow('渠道', widget.channel == 'external' ? '外磅' : '厂内'),
+          if (_requireWeigh) _previewRow('材料称重照', (widget.photoMaterial ?? '').isEmpty ? '未拍' : '已拍'),
+          if (_requireWeigh) _previewRow('磅显特写', (widget.photoScale ?? '').isEmpty ? '未拍' : '已拍'),
+          if (_requireWeigh) _previewRow('近距离照片', (widget.photoCloseup ?? '').isEmpty ? '未拍' : '已拍'),
+          _previewRow(_requireWeigh ? '毛重(kg)' : '数量/净重(kg)', gross.toString()),
           _previewRow('预估净重(kg)', net.toStringAsFixed(2)),
           _previewRow('预估结算', settle.toStringAsFixed(2)),
           _previewRow('车牌', widget.plate.text.trim().isEmpty ? '-' : widget.plate.text.trim()),
@@ -1127,7 +1150,7 @@ class _GateInboundWizardState extends State<GateInboundWizard> {
           }),
         const SizedBox(height: 8),
         Text(
-          '确认后本张过磅单独立绑定并推仓管（结算按单）；同码追加须同农户同产品。扣损率按 $rate${rate > 1 ? '%' : ''} 估算净重。',
+          '确认后本张过磅单独立绑定并推仓管（结算按单）；同码追加须同供应商同产品。扣损率按 $rate${rate > 1 ? '%' : ''} 估算净重。',
           style: const TextStyle(fontSize: 12, color: Colors.black54),
         ),
       ],

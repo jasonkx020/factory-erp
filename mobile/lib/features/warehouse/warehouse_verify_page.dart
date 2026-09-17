@@ -936,7 +936,7 @@ class _WarehouseVerifyPageState extends State<WarehouseVerifyPage> {
                       const FormSectionHeader('单据信息'),
                       _kv('单号', '${_ticket['doc_no'] ?? '-'}'),
                       if ((_ticket['party_name'] ?? _ticket['farmer_name'] ?? '').toString().isNotEmpty)
-                        _kv('农户', '${_ticket['party_name'] ?? _ticket['farmer_name']}'),
+                        _kv('供应商', '${_ticket['party_name'] ?? _ticket['supplier_name'] ?? _ticket['farmer_name']}'),
                       if ((_ticket['product_name'] ?? _ticket['variety'] ?? '').toString().isNotEmpty)
                         _kv('品种', '${_ticket['product_name'] ?? _ticket['variety']}'),
                       _kv('溯源码', '${_ticket['trace_code'] ?? '-'}'),

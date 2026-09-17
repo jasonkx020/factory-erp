@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 import (
 	"encoding/json"
@@ -99,7 +99,7 @@ func (s *Services) voidBiz(bizType string, id int64) error {
 		_, err := s.DB.Exec(`UPDATE pur_inbound_arrival SET status='void', updated_at=NOW() WHERE id=?`, id)
 		return err
 	case "farmer_settlement":
-		_, err := s.DB.Exec(`UPDATE pur_farmer_settlement SET status='void', updated_at=NOW() WHERE id=?`, id)
+		_, err := s.DB.Exec(`UPDATE pur_supplier_settlement SET status='void', updated_at=NOW() WHERE id=?`, id)
 		return err
 	case "report_work":
 		_, err := s.DB.Exec(`UPDATE pd_report_work SET status='void' WHERE id=?`, id)
@@ -165,11 +165,11 @@ func (s *Services) applyCorrection(bizType string, id int64, fields map[string]i
 		}
 		var net float64
 		var status string
-		_ = s.DB.QueryRow(`SELECT net_weight, status FROM pur_farmer_settlement WHERE id=?`, id).Scan(&net, &status)
+		_ = s.DB.QueryRow(`SELECT net_weight, status FROM pur_supplier_settlement WHERE id=?`, id).Scan(&net, &status)
 		if status == "settle_paid" {
 			return fmt.Errorf("ALREADY_PAID")
 		}
-		_, err := s.DB.Exec(`UPDATE pur_farmer_settlement SET unit_price=?, amount=?, updated_at=NOW() WHERE id=?`,
+		_, err := s.DB.Exec(`UPDATE pur_supplier_settlement SET unit_price=?, amount=?, updated_at=NOW() WHERE id=?`,
 			price, net*price, id)
 		return err
 	case "report_work":
@@ -208,16 +208,16 @@ func (s *Services) loadSettlement(id int64) gin.H {
 	var farmerID, wtID int64
 	var docNo, fname, bizDate, status, remark, created, transfer, paidAt, payURL string
 	var net, price, amount float64
-	err := s.DB.QueryRow(`SELECT s.doc_no, s.farmer_id, COALESCE(f.name,''), s.weigh_ticket_id, s.biz_date,
+	err := s.DB.QueryRow(`SELECT s.doc_no, s.supplier_id, COALESCE(f.name,''), s.weigh_ticket_id, s.biz_date,
 		s.net_weight, s.unit_price, s.amount, s.status, COALESCE(s.remark,''), s.created_at,
 		COALESCE(s.transfer_no,''), COALESCE(s.paid_at,''), COALESCE(s.pay_evidence_url,'')
-		FROM pur_farmer_settlement s LEFT JOIN pur_farmer f ON f.id=s.farmer_id WHERE s.id=?`, id).
+		FROM pur_supplier_settlement s LEFT JOIN pur_supplier f ON f.id=s.supplier_id WHERE s.id=?`, id).
 		Scan(&docNo, &farmerID, &fname, &wtID, &bizDate, &net, &price, &amount, &status, &remark, &created, &transfer, &paidAt, &payURL)
 	if err != nil {
 		return nil
 	}
 	return gin.H{
-		"id": id, "doc_no": docNo, "farmer_id": farmerID, "farmer_name": fname, "weigh_ticket_id": wtID,
+		"id": id, "doc_no": docNo, "supplier_id": farmerID, "farmer_name": fname, "weigh_ticket_id": wtID,
 		"biz_date": bizDate, "net_weight": net, "unit_price": price, "amount": amount, "status": status,
 		"remark": remark, "created_at": created, "transfer_no": transfer, "paid_at": paidAt, "pay_evidence_url": payURL,
 	}

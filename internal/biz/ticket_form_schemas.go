@@ -14,6 +14,7 @@ type FormFieldDef struct {
 	Required bool     `json:"required"`
 	Options  []string `json:"options,omitempty"`
 	Unit     string   `json:"unit,omitempty"`
+	Ref      string   `json:"ref,omitempty"` // process = 联动工序主数据
 }
 
 func fieldText(key, label string, req bool) FormFieldDef {
@@ -28,6 +29,9 @@ func fieldDate(key, label string, req bool) FormFieldDef {
 func fieldSelect(key, label string, req bool, opts ...string) FormFieldDef {
 	return FormFieldDef{Key: key, Label: label, Type: "select", Required: req, Options: opts}
 }
+func fieldProcessRef(key, label string, req bool) FormFieldDef {
+	return FormFieldDef{Key: key, Label: label, Type: "select", Required: req, Ref: "process"}
+}
 
 type ticketCategorySeed struct {
 	Code    string
@@ -40,8 +44,8 @@ type ticketCategorySeed struct {
 func defaultTicketCategorySeeds() []ticketCategorySeed {
 	return []ticketCategorySeed{
 		{
-			Code: "farm_inbound", Name: "过磅入厂", Remark: "与过磅收货·入厂同字段（gate）",
-			BizHint: "/purchase/hub/weigh",
+			Code: "farm_inbound", Name: "采购入厂", Remark: "与采购入厂同字段（gate）",
+			BizHint: "/purchase/hub/records",
 			Fields: []FormFieldDef{
 				fieldText("batch_no", "溯源批号", true),
 				fieldText("party_name", "农户/供应商", true),
@@ -63,7 +67,7 @@ func defaultTicketCategorySeeds() []ticketCategorySeed {
 			},
 		},
 		{
-			Code: "stock_inbound", Name: "过磅入库", Remark: "与过磅收货·入库同字段（stockin）",
+			Code: "stock_inbound", Name: "采购入库", Remark: "与采购入库同字段（stockin）",
 			BizHint: "/inventory/hub/inbound",
 			Fields: []FormFieldDef{
 				fieldText("batch_no", "溯源批号", true),
@@ -84,7 +88,7 @@ func defaultTicketCategorySeeds() []ticketCategorySeed {
 				fieldNum("inout_qty", "出/入库量", true, ""),
 				fieldSelect("inout_unit", "出/入库单位", true, "kg", "袋"),
 				fieldText("lot_no", "产品批号", true),
-				fieldSelect("process_type", "加工类型", true, "去皮", "切断", "去芯", "过筛"),
+				fieldProcessRef("process_id", "工序", true),
 				fieldNum("process_qty_kg", "加工数量", true, "kg"),
 				fieldNum("scrap_unusable_kg", "不可用损耗", false, "kg"),
 				fieldSelect("scrap_type", "次品类型", false, "切断次品", "去芯次品", "切块次品", "筛选装袋次品"),
@@ -140,7 +144,7 @@ func defaultTicketCategorySeeds() []ticketCategorySeed {
 				fieldDate("biz_date", "日期", true),
 				fieldNum("seq_no", "序号", false, ""),
 				fieldText("employee_name", "员工姓名", true),
-				fieldSelect("process", "工序", true, "去皮", "去芯", "切块", "计时"),
+				fieldProcessRef("process_id", "工序", true),
 				fieldNum("unit_price", "工序单价", true, "元"),
 				fieldNum("qty", "重量/数量", true, ""),
 				fieldSelect("qty_unit", "单位", true, "斤", "时"),
@@ -177,6 +181,25 @@ func validatePayloadAgainstSchema(schema []FormFieldDef, payload map[string]inte
 		}
 		if s, ok := v.(string); ok && strings.TrimSpace(s) == "" {
 			return "FIELD_REQUIRED:" + f.Key
+		}
+		if f.Ref == "process" {
+			id := 0
+			switch x := v.(type) {
+			case float64:
+				id = int(x)
+			case int:
+				id = x
+			case int64:
+				id = int(x)
+			case json.Number:
+				n, _ := x.Int64()
+				id = int(n)
+			case string:
+				fmt.Sscanf(strings.TrimSpace(x), "%d", &id)
+			}
+			if id <= 0 {
+				return "FIELD_REQUIRED:" + f.Key
+			}
 		}
 	}
 	return ""

@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 import (
 	"crypto/hmac"
@@ -75,7 +75,7 @@ func (in TraceIssueInput) Canonical() string {
 	}
 	ch := strOrDef(in.Channel, "internal")
 	src := strOrDef(in.SourceType, "self")
-	return fmt.Sprintf("v=1|biz_date=%s|batch=%s|farmer_id=%d|grade=%s|channel=%s|source_type=%s|net_kg=%.2f|arrival_id=%d",
+	return fmt.Sprintf("v=1|biz_date=%s|batch=%s|supplier_id=%d|grade=%s|channel=%s|source_type=%s|net_kg=%.2f|arrival_id=%d",
 		biz, batch, in.FarmerID, grade, ch, src, in.NetKg, in.ArrivalID)
 }
 

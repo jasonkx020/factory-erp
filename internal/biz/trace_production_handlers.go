@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 import (
 	"strings"
@@ -17,36 +17,59 @@ func (s *Services) processName(processID int64) string {
 	return name
 }
 
-func (s *Services) processType(processID int64) string {
+// processIsStockIn: any routing step for this process has auto_stock_in or is_inbound_checkpoint.
+func (s *Services) processIsStockIn(processID int64) bool {
 	if processID <= 0 {
-		return ""
+		return false
 	}
-	var t string
-	_ = s.DB.QueryRow(`SELECT COALESCE(process_type,'') FROM pd_process WHERE id=?`, processID).Scan(&t)
-	return strings.ToLower(strings.TrimSpace(t))
+	var n int
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_routing_step
+		WHERE process_id=?
+		AND (COALESCE(auto_stock_in,0)=1 OR COALESCE(is_inbound_checkpoint,0)=1)`, processID).Scan(&n)
+	return n > 0
+}
+
+func (s *Services) processIsStockOut(processID int64) bool {
+	if processID <= 0 {
+		return false
+	}
+	var n int
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pd_routing_step
+		WHERE process_id=? AND COALESCE(auto_stock_out,0)=1`, processID).Scan(&n)
+	return n > 0
+}
+
+// processIsBoundary: stock-in / stock-out / handover — forbid repeating same process.
+func (s *Services) processIsBoundary(processID int64) bool {
+	if processID <= 0 {
+		return false
+	}
+	if s.processIsStockIn(processID) || s.processIsStockOut(processID) {
+		return true
+	}
+	var hand int
+	_ = s.DB.QueryRow(`SELECT COALESCE(is_handover_point,0) FROM pd_process WHERE id=?`, processID).Scan(&hand)
+	return hand == 1
 }
 
 func (s *Services) assertProcessTransitionAllowed(board *boardState, toProcessID int64) string {
 	if board == nil || toProcessID <= 0 {
 		return ""
 	}
-	toType := s.processType(toProcessID)
-	if toType == "inbound" {
+	if s.processIsStockIn(toProcessID) {
 		st := strings.ToLower(strings.TrimSpace(board.Status))
 		if st == "in_stock" || st == "stocked" || st == "stored" {
 			return "ALREADY_IN_STOCK"
 		}
-		fromType := s.processType(board.ProcessID)
-		if fromType == "inbound" && board.ProcessID == toProcessID {
+		if s.processIsStockIn(board.ProcessID) && board.ProcessID == toProcessID {
 			return "SAME_PROCESS_FORBIDDEN"
 		}
-		if fromType == "inbound" && board.Weight > kgEps && board.ProcessID > 0 && board.ProcessID != toProcessID {
+		if s.processIsStockIn(board.ProcessID) && board.Weight > kgEps && board.ProcessID > 0 && board.ProcessID != toProcessID {
 			return "ALREADY_IN_STOCK"
 		}
 	}
 	if board.ProcessID > 0 && board.ProcessID == toProcessID {
-		fromType := s.processType(board.ProcessID)
-		if fromType == "inbound" || fromType == "outbound" || fromType == "gate" {
+		if s.processIsBoundary(board.ProcessID) {
 			return "SAME_PROCESS_FORBIDDEN"
 		}
 		return ""
@@ -93,6 +116,10 @@ func (s *Services) requireTraceProductionOpen(trace string) string {
 }
 
 func (s *Services) handleTraceProduction(c *gin.Context, method, openapiPath, action string) bool {
+	if (strings.Contains(openapiPath, "/start") || action == "action:start") &&
+		s.RequireSetupReady(c, "production_flow", "product", "shift") {
+		return true
+	}
 	switch {
 	case method == "GET" && strings.Contains(openapiPath, "/logs"):
 		return s.listTraceProcessLogs(c)
@@ -647,7 +674,7 @@ func (s *Services) getTraceProductionReport(c *gin.Context) bool {
 	api.OK(c, gin.H{
 		"trace_code": trace, "session": session,
 		"trace_meta": gin.H{
-			"farmer_id": farmerID, "farmer_name": farmerName, "product_id": productID, "product_name": productName,
+			"supplier_id": farmerID, "farmer_name": farmerName, "product_id": productID, "product_name": productName,
 			"routing_id": routingID, "stock_kg": roundKg(stockKg), "board_count": boardCnt,
 		},
 		"routing_steps": routingSteps, "current_step_index": currentIdx, "can_complete_process_id": canPID,

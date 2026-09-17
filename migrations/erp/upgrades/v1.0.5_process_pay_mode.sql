@@ -1,11 +1,5 @@
--- v1.0.5: process pay_mode + station flow log
--- 工序计费方式（计重/计件/默认）与过站全流水；产量工钱与物料完成解耦。
-
-ALTER TABLE pd_process ADD COLUMN IF NOT EXISTS pay_mode TEXT NOT NULL DEFAULT 'none';
-
-UPDATE pd_process SET pay_mode='weight' WHERE COALESCE(is_piecework,0)=1 AND (pay_mode='' OR pay_mode='none');
-UPDATE pd_process SET is_piecework=1 WHERE pay_mode IN ('weight','piece');
-UPDATE pd_process SET is_piecework=0 WHERE pay_mode NOT IN ('weight','piece');
+-- v1.0.5: station flow log + process_issue wage_settled_kg
+-- （工序表 pay_mode 已废弃，计费迁至 pay_process_wage_rate；此处不再维护工序计费列）
 
 ALTER TABLE pd_process_issue ADD COLUMN IF NOT EXISTS wage_settled_kg DOUBLE PRECISION NOT NULL DEFAULT 0;
 
@@ -43,5 +37,5 @@ CREATE INDEX IF NOT EXISTS idx_pd_station_flow_board ON pd_station_flow_log (boa
 CREATE INDEX IF NOT EXISTS idx_pd_station_flow_worker ON pd_station_flow_log (worker_id, biz_date);
 
 INSERT INTO erp_schema_migration (version, description, checksum)
-VALUES ('v1.0.5', 'process pay_mode + station flow log', '3521f748257f60cda84c6290ec3996d4b05d89d8421fce48b80d344f6ec99361')
+VALUES ('v1.0.5', 'process pay_mode + station flow log', '99c856ceb2cf9c002774d12c634fa72faf62fb76b645c11fdea02c10efc99ff7')
 ON CONFLICT (version) DO NOTHING;

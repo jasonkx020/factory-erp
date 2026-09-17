@@ -61,10 +61,7 @@ func (s *Services) AfterReportWork(c *gin.Context, reportID, processID, workerID
 	// piecework summary: only piecework steps (worker × process × day)
 	doPiece := processID > 0 && workerID > 0 && (step == nil || step.IsPiecework)
 	if step == nil && processID > 0 && workerID > 0 {
-		// fallback: process-level is_piecework when step missing
-		var pPiece int
-		_ = s.DB.QueryRow(`SELECT COALESCE(is_piecework,0) FROM pd_process WHERE id=?`, processID).Scan(&pPiece)
-		doPiece = pPiece == 1
+		doPiece = s.processPaysYield(processID)
 	}
 	if doPiece {
 		s.upsertPieceworkSummary(workerID, processID, reportID, qty, inputWeight, qty, loss, utilization)

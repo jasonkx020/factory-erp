@@ -219,7 +219,7 @@ func (s *Services) handleInventoryExt(c *gin.Context, method, openapiPath, actio
 }
 
 func (s *Services) listWarehouses(c *gin.Context) bool {
-	rows, err := s.DB.Query(`SELECT id, code, name, COALESCE(warehouse_type,'') FROM inv_warehouse WHERE COALESCE(is_deleted,0)=0 ORDER BY id`)
+	rows, err := s.DB.Query(`SELECT id, code, name, COALESCE(warehouse_type,''), COALESCE(warehouse_role,''), COALESCE(plant_id,0) FROM inv_warehouse WHERE COALESCE(is_deleted,0)=0 ORDER BY id`)
 	if err != nil {
 		api.FailJSON(c, "DB_ERROR:"+err.Error())
 		return true
@@ -227,12 +227,18 @@ func (s *Services) listWarehouses(c *gin.Context) bool {
 	defer rows.Close()
 	list := []gin.H{}
 	for rows.Next() {
-		var id int64
-		var code, name, wtype string
-		if err := rows.Scan(&id, &code, &name, &wtype); err != nil {
+		var id, plantID int64
+		var code, name, wtype, role string
+		if err := rows.Scan(&id, &code, &name, &wtype, &role, &plantID); err != nil {
 			continue
 		}
-		list = append(list, gin.H{"id": id, "code": code, "name": name, "warehouse_type": wtype})
+		if role == "" {
+			role = wtype
+		}
+		list = append(list, gin.H{
+			"id": id, "code": code, "name": name, "warehouse_type": wtype,
+			"warehouse_role": role, "plant_id": plantID,
+		})
 	}
 	api.OK(c, gin.H{"list": list, "total": len(list)})
 	return true

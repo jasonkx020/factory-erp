@@ -7,7 +7,6 @@ CREATE TABLE IF NOT EXISTS pd_process (
   id                  BIGINT PRIMARY KEY AUTO_INCREMENT,
   code                VARCHAR(64) NOT NULL,
   name                VARCHAR(128) NOT NULL,
-  process_type        VARCHAR(32) NULL COMMENT 'wash/peel/cut/core/dice/bag/other',
   is_piecework        TINYINT(1) NOT NULL DEFAULT 0,
   is_handover_point   TINYINT(1) NOT NULL DEFAULT 0 COMMENT '收货卡点',
   status              VARCHAR(16) NOT NULL DEFAULT 'active',

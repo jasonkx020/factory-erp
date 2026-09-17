@@ -1,6 +1,7 @@
 package biz
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -12,27 +13,40 @@ import (
 	"erp/internal/persistence/sqlutil"
 )
 
-// processPayMode returns weight|piece|none from pd_process (falls back to is_piecework→weight).
+// processPayMode returns weight|piece|none from the active wage rate only.
+// No process-level fallback: billing is configured solely on pay_process_wage_rate.
 func (s *Services) processPayMode(processID int64) string {
 	if processID <= 0 {
 		return "none"
 	}
-	var mode string
-	var piece int
-	err := s.DB.QueryRow(`SELECT COALESCE(NULLIF(pay_mode,''),'none'), COALESCE(is_piecework,0) FROM pd_process WHERE id=?`, processID).
-		Scan(&mode, &piece)
+	var wageMode sql.NullString
+	err := s.DB.QueryRow(`SELECT pay_mode FROM pay_process_wage_rate
+		WHERE process_id=? AND status='active' ORDER BY id DESC LIMIT 1`, processID).Scan(&wageMode)
 	if err != nil {
 		return "none"
 	}
-	mode = strings.ToLower(strings.TrimSpace(mode))
-	if mode == "weight" || mode == "piece" || mode == "none" {
-		return mode
-	}
-	if piece == 1 {
-		return "weight"
+	m := strings.ToLower(strings.TrimSpace(wageMode.String))
+	if m == "weight" || m == "piece" || m == "none" {
+		return m
 	}
 	return "none"
 }
+
+func (s *Services) processHasActiveWage(processID int64) bool {
+	if processID <= 0 {
+		return false
+	}
+	var id int64
+	err := s.DB.QueryRow(`SELECT id FROM pay_process_wage_rate WHERE process_id=? AND status='active' ORDER BY id DESC LIMIT 1`, processID).Scan(&id)
+	return err == nil && id > 0
+}
+
+// processYieldPaySQL: issue rows whose process has an active billable wage rate.
+const processYieldPaySQL = `EXISTS (
+  SELECT 1 FROM pay_process_wage_rate wr
+  WHERE wr.process_id = i.process_id AND wr.status = 'active'
+    AND COALESCE(NULLIF(wr.pay_mode,''),'none') IN ('weight','piece')
+)`
 
 func (s *Services) processPaysYield(processID int64) bool {
 	m := s.processPayMode(processID)
@@ -73,6 +87,19 @@ func payModeToIsPiecework(mode string) int {
 		return 1
 	}
 	return 0
+}
+
+// payModeFromRateUnit maps wage unit → pay_mode (yuan/kg→weight, yuan/pcs→piece, else none).
+func payModeFromRateUnit(unit string) string {
+	u := strings.ToLower(strings.TrimSpace(unit))
+	switch u {
+	case "yuan/kg", "kg", "元/kg", "元/千克":
+		return "weight"
+	case "yuan/pcs", "pcs", "piece", "元/件":
+		return "piece"
+	default:
+		return "none"
+	}
 }
 
 type stationFlowEvent struct {

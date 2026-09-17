@@ -68,6 +68,8 @@ CREATE TABLE IF NOT EXISTS inv_warehouse (
   code TEXT NOT NULL,
   name TEXT NOT NULL,
   warehouse_type TEXT NOT NULL,
+  warehouse_role TEXT,
+  plant_id INTEGER,
   status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL DEFAULT NOW(),
   is_deleted INTEGER NOT NULL DEFAULT 0,
@@ -268,8 +270,6 @@ CREATE TABLE IF NOT EXISTS pd_process (
   id BIGSERIAL PRIMARY KEY,
   code TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
-  process_type TEXT,
-  is_piecework INTEGER NOT NULL DEFAULT 0,
   is_handover_point INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL DEFAULT NOW(),
@@ -940,10 +940,15 @@ CREATE TABLE IF NOT EXISTS pur_supplier (
   name TEXT NOT NULL,
   short_name TEXT,
   mnemonic TEXT,
+  party_kind TEXT NOT NULL DEFAULT 'enterprise',
   supplier_type TEXT NOT NULL DEFAULT 'raw',
   status TEXT NOT NULL DEFAULT 'potential',
   rating TEXT,
   is_preferred INTEGER NOT NULL DEFAULT 0,
+  mobile TEXT,
+  origin TEXT,
+  trace_code_prefix TEXT,
+  default_unit_price DOUBLE PRECISION NOT NULL DEFAULT 0,
   uscc TEXT,
   legal_person TEXT,
   register_address TEXT,
@@ -1392,6 +1397,34 @@ CREATE TABLE IF NOT EXISTS fin_cost_trace_line (
 CREATE TABLE IF NOT EXISTS fin_fund_account (
   id BIGSERIAL PRIMARY KEY, code TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
   currency TEXT NOT NULL DEFAULT 'CNY', balance DOUBLE PRECISION NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'active');
+
+CREATE TABLE IF NOT EXISTS fin_payment_order (
+  id BIGSERIAL PRIMARY KEY,
+  payment_no TEXT NOT NULL UNIQUE,
+  settlement_id INTEGER NOT NULL,
+  supplier_id INTEGER NOT NULL,
+  amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+  currency TEXT NOT NULL DEFAULT 'CNY',
+  channel TEXT NOT NULL DEFAULT 'alipay_bank',
+  status TEXT NOT NULL DEFAULT 'pending_finance',
+  payee_name TEXT,
+  payee_bank_account TEXT,
+  payee_bank_name TEXT,
+  payee_mobile TEXT,
+  channel_trade_no TEXT,
+  fail_reason TEXT,
+  fund_account_id INTEGER,
+  finance_approved_by INTEGER,
+  finance_approved_at TEXT,
+  boss_approved_by INTEGER,
+  boss_approved_at TEXT,
+  paid_at TEXT,
+  remark TEXT,
+  created_at TEXT NOT NULL DEFAULT NOW(),
+  updated_at TEXT NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_fin_payment_order_settlement ON fin_payment_order(settlement_id);
+CREATE INDEX IF NOT EXISTS idx_fin_payment_order_status ON fin_payment_order(status);
 
 CREATE TABLE IF NOT EXISTS fin_fund_transfer (
   id BIGSERIAL PRIMARY KEY, doc_no TEXT NOT NULL UNIQUE,
@@ -2212,25 +2245,10 @@ CREATE TABLE IF NOT EXISTS prd_product_spec (
   UNIQUE(product_id, spec_code)
 );
 
-CREATE TABLE IF NOT EXISTS pur_farmer (
-  id BIGSERIAL PRIMARY KEY,
-  code TEXT NOT NULL UNIQUE,
-  name TEXT NOT NULL,
-  mobile TEXT,
-  origin TEXT,
-  trace_code TEXT,
-  trace_code_prefix TEXT,
-  status TEXT NOT NULL DEFAULT 'active',
-  remark TEXT,
-  created_at TEXT NOT NULL DEFAULT NOW(),
-  updated_at TEXT NOT NULL DEFAULT NOW(),
-  is_deleted INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS pur_farmer_settlement (
+CREATE TABLE IF NOT EXISTS pur_supplier_settlement (
   id BIGSERIAL PRIMARY KEY,
   doc_no TEXT NOT NULL UNIQUE,
-  farmer_id INTEGER NOT NULL,
+  supplier_id INTEGER NOT NULL,
   weigh_ticket_id INTEGER,
   biz_date TEXT NOT NULL,
   net_weight DOUBLE PRECISION NOT NULL DEFAULT 0,
@@ -2256,7 +2274,7 @@ CREATE TABLE IF NOT EXISTS pur_grade_price (
 CREATE TABLE IF NOT EXISTS pur_inbound_arrival (
   id BIGSERIAL PRIMARY KEY,
   doc_no TEXT NOT NULL UNIQUE,
-  farmer_id INTEGER NOT NULL,
+  supplier_id INTEGER NOT NULL,
   origin TEXT,
   variety TEXT,
   estimate_weight DOUBLE PRECISION DEFAULT 0,
@@ -2285,7 +2303,7 @@ CREATE TABLE IF NOT EXISTS pur_trace_batch_code (
   status TEXT NOT NULL DEFAULT 'available',
   weigh_ticket_id INTEGER,
   first_weigh_ticket_id INTEGER,
-  farmer_id INTEGER,
+  supplier_id INTEGER,
   product_id INTEGER,
   variety TEXT,
   ended_at TEXT,
@@ -2299,7 +2317,7 @@ CREATE TABLE IF NOT EXISTS pur_trace_lot (
   trace_code TEXT NOT NULL,
   biz_date TEXT NOT NULL,
   batch_no TEXT NOT NULL,
-  farmer_id INTEGER NOT NULL,
+  supplier_id INTEGER NOT NULL,
   grade TEXT,
   arrival_id INTEGER,
   weigh_ticket_id INTEGER,
@@ -2317,7 +2335,7 @@ CREATE TABLE IF NOT EXISTS pur_trace_lot (
 CREATE TABLE IF NOT EXISTS pur_weigh_ticket (
   id BIGSERIAL PRIMARY KEY,
   doc_no TEXT NOT NULL UNIQUE,
-  farmer_id INTEGER NOT NULL,
+  supplier_id INTEGER NOT NULL,
   channel TEXT NOT NULL DEFAULT 'internal',
   ticket_template TEXT,
   product_id INTEGER NOT NULL DEFAULT 1,
@@ -2354,29 +2372,43 @@ CREATE TABLE IF NOT EXISTS pur_weigh_variety (
   sort_no INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'active',
   default_product_id INTEGER,
+  warehouse_id INTEGER,
+  warehouse_role TEXT,
+  cold_store_type TEXT,
   remark TEXT,
   created_at TEXT NOT NULL DEFAULT NOW(),
   updated_at TEXT NOT NULL DEFAULT NOW(),
   is_deleted INTEGER NOT NULL DEFAULT 0
 );
 
--- 木薯粗加工厂默认过磅品种（新装即有，可在后台改）
-INSERT INTO pur_weigh_variety(code, name, sort_no, status, remark)
-VALUES
- ('WV-FRESH', '鲜木薯', 10, 'active', '农户鲜薯过磅入厂，入保鲜库'),
- ('WV-SEMI', '半成品（去芯薯肉）', 20, 'active', '外购或厂内半成品过磅入厂，入半成品库'),
- ('WV-FG', '成品入库（袋装木薯丁）', 30, 'active', '成品过磅入库，入成品冷库')
-ON CONFLICT (code) DO NOTHING;
+-- 木薯行业包默认过磅品种由 EnsureCassavaIndustryPack 注入（industry_pack=cassava）
 
-UPDATE pur_weigh_variety v
-SET default_product_id = p.id, updated_at = NOW()
-FROM prd_product p
-WHERE v.default_product_id IS NULL AND COALESCE(v.is_deleted,0)=0
-  AND (
-    (v.code = 'WV-FRESH' AND p.code = 'RM-CASSAVA')
-    OR (v.code = 'WV-SEMI' AND p.code = 'SF-COREOUT')
-    OR (v.code = 'WV-FG' AND p.code = 'FG-DICED')
-  );
+CREATE TABLE IF NOT EXISTS sys_plant (
+  id BIGSERIAL PRIMARY KEY,
+  org_id INTEGER NOT NULL DEFAULT 1,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  is_default INTEGER NOT NULL DEFAULT 0,
+  remark TEXT,
+  created_at TEXT NOT NULL DEFAULT NOW(),
+  updated_at TEXT NOT NULL DEFAULT NOW(),
+  is_deleted INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS iam_role_plant_scope (
+  id BIGSERIAL PRIMARY KEY,
+  role_id INTEGER NOT NULL,
+  plant_id INTEGER NOT NULL,
+  UNIQUE(role_id, plant_id)
+);
+
+CREATE TABLE IF NOT EXISTS iam_user_plant_scope (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  plant_id INTEGER NOT NULL,
+  UNIQUE(user_id, plant_id)
+);
 
 CREATE TABLE IF NOT EXISTS rpt_dashboard_widget (
   id BIGSERIAL PRIMARY KEY,
@@ -2892,13 +2924,12 @@ ALTER TABLE hr_offboard ADD COLUMN IF NOT EXISTS offboard_date TEXT;
 ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS destroy_reason TEXT;
 ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS destroyed_at TEXT;
 ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS destroyed_by INTEGER;
-ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS farmer_id INTEGER;
+ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS supplier_id INTEGER;
 ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS trace_code TEXT NOT NULL DEFAULT '';
 ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS origin TEXT;
 ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS receive_date TEXT;
 ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS source_type TEXT;
 ALTER TABLE inv_box_code ADD COLUMN IF NOT EXISTS image_url TEXT NOT NULL DEFAULT '';
-ALTER TABLE pd_process ADD COLUMN IF NOT EXISTS pay_mode TEXT NOT NULL DEFAULT 'none';
 ALTER TABLE pd_process_issue ADD COLUMN IF NOT EXISTS wage_settled_kg DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE pd_process_issue ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_pd_process_issue_trace_proc ON pd_process_issue (trace_code, process_id, worker_id, status);
@@ -2908,6 +2939,7 @@ ALTER TABLE appr_task ADD COLUMN IF NOT EXISTS amount DOUBLE PRECISION NOT NULL 
 ALTER TABLE appr_task ADD COLUMN IF NOT EXISTS applicant_id BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE appr_task ADD COLUMN IF NOT EXISTS remark TEXT;
 ALTER TABLE pay_process_wage_rate ADD COLUMN IF NOT EXISTS rate_unit TEXT DEFAULT 'kg';
+ALTER TABLE pay_process_wage_rate ADD COLUMN IF NOT EXISTS pay_mode TEXT NOT NULL DEFAULT 'none';
 ALTER TABLE pd_piecework_summary ADD COLUMN IF NOT EXISTS input_weight DOUBLE PRECISION;
 ALTER TABLE pd_piecework_summary ADD COLUMN IF NOT EXISTS loss DOUBLE PRECISION;
 ALTER TABLE pd_piecework_summary ADD COLUMN IF NOT EXISTS output_weight DOUBLE PRECISION;
@@ -2923,20 +2955,20 @@ ALTER TABLE pd_report_work ADD COLUMN IF NOT EXISTS process_qc_result TEXT;
 ALTER TABLE pd_report_work ADD COLUMN IF NOT EXISTS utilization DOUBLE PRECISION;
 ALTER TABLE pd_routing_step ADD COLUMN IF NOT EXISTS checkpoint_bind_warehouse INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE pd_scrap_record ADD COLUMN IF NOT EXISTS scrap_type TEXT;
-ALTER TABLE pur_farmer ADD COLUMN IF NOT EXISTS default_unit_price DOUBLE PRECISION NOT NULL DEFAULT 0;
-ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS paid_at TEXT;
-ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS pay_evidence_url TEXT;
-ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS transfer_no TEXT;
-ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS goods_amount DOUBLE PRECISION NOT NULL DEFAULT 0;
-ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS freight_fee DOUBLE PRECISION NOT NULL DEFAULT 0;
-ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS loading_fee DOUBLE PRECISION NOT NULL DEFAULT 0;
-ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS weigh_fee DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE pur_supplier ADD COLUMN IF NOT EXISTS default_unit_price DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE pur_supplier_settlement ADD COLUMN IF NOT EXISTS paid_at TEXT;
+ALTER TABLE pur_supplier_settlement ADD COLUMN IF NOT EXISTS pay_evidence_url TEXT;
+ALTER TABLE pur_supplier_settlement ADD COLUMN IF NOT EXISTS transfer_no TEXT;
+ALTER TABLE pur_supplier_settlement ADD COLUMN IF NOT EXISTS goods_amount DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE pur_supplier_settlement ADD COLUMN IF NOT EXISTS freight_fee DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE pur_supplier_settlement ADD COLUMN IF NOT EXISTS loading_fee DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE pur_supplier_settlement ADD COLUMN IF NOT EXISTS weigh_fee DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE pur_inbound_arrival ADD COLUMN IF NOT EXISTS pass_rate DOUBLE PRECISION DEFAULT 0;
 ALTER TABLE pur_inbound_arrival ADD COLUMN IF NOT EXISTS receive_address TEXT;
 ALTER TABLE pur_inbound_arrival ADD COLUMN IF NOT EXISTS reject_weight DOUBLE PRECISION DEFAULT 0;
 ALTER TABLE pur_trace_batch_code ADD COLUMN IF NOT EXISTS reserved_at TEXT;
 ALTER TABLE pur_trace_batch_code ADD COLUMN IF NOT EXISTS reserved_by INTEGER;
-ALTER TABLE pur_trace_batch_code ADD COLUMN IF NOT EXISTS farmer_id INTEGER;
+ALTER TABLE pur_trace_batch_code ADD COLUMN IF NOT EXISTS supplier_id INTEGER;
 ALTER TABLE pur_trace_batch_code ADD COLUMN IF NOT EXISTS product_id INTEGER;
 ALTER TABLE pur_trace_batch_code ADD COLUMN IF NOT EXISTS variety TEXT;
 ALTER TABLE pur_trace_batch_code ADD COLUMN IF NOT EXISTS first_weigh_ticket_id INTEGER;
@@ -2967,7 +2999,7 @@ ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS weigh_fee DOUBLE PRECISION
 ALTER TABLE pur_weigh_ticket ADD COLUMN IF NOT EXISTS weighbridge_id INTEGER;
 ALTER TABLE wf_ticket_category ADD COLUMN IF NOT EXISTS biz_hint TEXT;
 ALTER TABLE wf_ticket_category ADD COLUMN IF NOT EXISTS form_schema_json TEXT;
-ALTER TABLE pur_farmer_settlement ADD COLUMN IF NOT EXISTS fund_account_id INTEGER;
+ALTER TABLE pur_supplier_settlement ADD COLUMN IF NOT EXISTS fund_account_id INTEGER;
 ALTER TABLE fin_prepay_prepaid ADD COLUMN IF NOT EXISTS fund_account_id INTEGER;
 ALTER TABLE fin_sales_return_finance ADD COLUMN IF NOT EXISTS fund_account_id INTEGER;
 ALTER TABLE sl_sales_order ADD COLUMN IF NOT EXISTS received_amount DOUBLE PRECISION NOT NULL DEFAULT 0;

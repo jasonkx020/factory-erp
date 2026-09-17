@@ -1,4 +1,4 @@
-package biz
+﻿package biz
 
 
 
@@ -130,7 +130,7 @@ func TestEnsureDemoTimelineData(t *testing.T) {
 
 	}
 
-	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pur_farmer_settlement WHERE doc_no='DEMO-FS-TR-7D' AND status='paid'`).Scan(&n)
+	_ = s.DB.QueryRow(`SELECT COUNT(1) FROM pur_supplier_settlement WHERE doc_no='DEMO-FS-TR-7D' AND status='paid'`).Scan(&n)
 
 	if n != 1 {
 

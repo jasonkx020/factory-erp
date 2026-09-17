@@ -488,7 +488,7 @@ Future<void> openTicketDetail(
               ListTile(dense: true, title: const Text('运费/装卸/过磅'), trailing: Text('${settle['freight_fee']}/${settle['loading_fee']}/${settle['weigh_fee']}')),
               ListTile(dense: true, title: const Text('应付合计'), trailing: Text('${settle['amount']}')),
               if (settle['farmer_name'] != null)
-                ListTile(dense: true, title: const Text('农户'), trailing: Text('${settle['farmer_name']}')),
+                ListTile(dense: true, title: const Text('供应商'), trailing: Text('${settle['supplier_name'] ?? settle['party_name'] ?? settle['farmer_name']}')),
             ],
           ] else
             ...schema.map((raw) {
