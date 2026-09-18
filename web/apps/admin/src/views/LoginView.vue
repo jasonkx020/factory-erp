@@ -55,7 +55,7 @@ async function onSubmit() {
     <div class="login-card">
       <a class="back" :href="portalUrl">← 返回入口</a>
       <div class="brand-row">
-        <span class="mark">木薯</span>
+        <img class="brand-logo" src="/brand-logo.png" width="56" height="56" alt="品牌标识" />
         <div>
           <h1>木薯加工厂 ERP</h1>
           <p class="sub">从田间鲜薯到烘干成品 · 管理端登录</p>
@@ -90,9 +90,10 @@ async function onSubmit() {
   position: relative;
   overflow: hidden;
   background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(244, 241, 234, 0.14), transparent 55%),
     radial-gradient(ellipse 90% 70% at 10% 20%, rgba(61, 155, 106, 0.35), transparent 55%),
-    radial-gradient(ellipse 70% 50% at 90% 80%, rgba(166, 124, 61, 0.22), transparent 50%),
-    linear-gradient(145deg, #0f2a21 0%, #145c38 48%, #1a4535 100%);
+    radial-gradient(ellipse 70% 50% at 90% 80%, rgba(139, 94, 60, 0.2), transparent 50%),
+    linear-gradient(145deg, #0f2a21 0%, #145c38 48%, #1b3d2f 100%);
 }
 .login-atmosphere {
   position: absolute;
@@ -102,7 +103,7 @@ async function onSubmit() {
 .leaf {
   position: absolute;
   border-radius: 60% 40% 55% 45%;
-  background: rgba(232, 245, 238, 0.08);
+  background: rgba(244, 241, 234, 0.1);
   filter: blur(2px);
   animation: drift 18s ease-in-out infinite;
 }
@@ -119,27 +120,25 @@ async function onSubmit() {
   background: rgba(255, 255, 255, 0.97);
   border-radius: 16px;
   padding: 28px 28px 22px;
-  box-shadow: 0 20px 48px rgba(15, 42, 33, 0.35);
+  box-shadow: 0 20px 48px rgba(15, 42, 33, 0.35), 0 0 0 1px rgba(139, 94, 60, 0.12);
   position: relative;
   box-sizing: border-box;
-  border: 1px solid rgba(232, 245, 238, 0.35);
+  border: 1px solid rgba(244, 241, 234, 0.55);
 }
 .brand-row {
   display: flex;
-  gap: 12px;
-  align-items: flex-start;
+  gap: 14px;
+  align-items: center;
   margin-bottom: 14px;
 }
-.mark {
+.brand-logo {
   flex-shrink: 0;
-  margin-top: 2px;
-  background: linear-gradient(135deg, var(--accent-leaf, #3d9b6a), var(--accent, #1f7a4d));
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 6px 8px;
-  border-radius: 6px;
-  letter-spacing: 0.04em;
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #f4f1ea;
+  box-shadow: inset 0 0 0 1px rgba(27, 61, 47, 0.08);
 }
 .chip-flow {
   list-style: none;
@@ -153,7 +152,7 @@ async function onSubmit() {
   font-size: 11px;
   padding: 3px 8px;
   border-radius: 999px;
-  background: var(--accent-soft, #e8f5ee);
+  background: var(--accent-soft, #e8f0e6);
   color: var(--accent-dark, #145c38);
 }
 .chip-flow li.end {

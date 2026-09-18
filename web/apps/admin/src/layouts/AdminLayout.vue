@@ -343,7 +343,7 @@ function openSideDrawer() {
       </button>
 
       <button type="button" class="brand" @click="goHome" title="工作台">
-        <span class="brand-mark">{{ brandName.slice(0, 2) }}</span>
+        <img class="brand-logo" src="/brand-logo.png" width="32" height="32" alt="" />
         <span v-if="!isMobile" class="brand-text">{{ brandName }}</span>
       </button>
 
@@ -597,15 +597,14 @@ function openSideDrawer() {
   cursor: pointer;
   flex-shrink: 0;
 }
-.brand-mark {
-  background: linear-gradient(135deg, var(--accent-leaf), var(--accent));
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 3px 7px;
-  border-radius: 4px;
-  letter-spacing: 0.5px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+.brand-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #f4f1ea;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
 }
 .brand-text {
   font-size: 13px;
@@ -741,8 +740,8 @@ function openSideDrawer() {
   width: 220px;
   flex-shrink: 0;
   background:
-    linear-gradient(180deg, rgba(232, 245, 238, 0.65) 0%, transparent 120px),
-    #f7fbf8;
+    linear-gradient(180deg, rgba(244, 241, 234, 0.9) 0%, transparent 120px),
+    var(--bg);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -837,6 +836,7 @@ function openSideDrawer() {
   background: var(--accent);
   color: #fff;
   font-weight: 500;
+  box-shadow: inset 3px 0 0 var(--accent-leaf);
 }
 .side-link.iam:not(.active) {
   color: var(--accent-soil);

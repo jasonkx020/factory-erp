@@ -1,24 +1,25 @@
 :root {
-  /* Cassava plant / factory palette */
-  --bg: #eef4f0;
+  /* Brand palette aligned with cassava processing logo */
+  --bg: #f4f1ea;
   --panel: #ffffff;
-  --sidebar: #14352a;
-  --sidebar-2: #1a4535;
+  --sidebar: #1b3d2f;
+  --sidebar-2: #145c38;
   --accent: #1f7a4d;
-  --accent-soft: #e8f5ee;
+  --accent-soft: #e8f0e6;
   --accent-dark: #145c38;
-  --accent-soil: #a67c3d;
+  --accent-soil: #8b5e3c;
   --accent-leaf: #3d9b6a;
+  --accent-process: #c48a4a;
   --warn: #c47a12;
   --danger: #c0392b;
   --ok: #1f7a3f;
   --text: #1a2e24;
   --muted: #5a6e64;
-  --border: #cfdcd4;
+  --border: #d4cfc4;
   --radius: 8px;
-  --topnav: #14352a;
+  --topnav: #1b3d2f;
   --topnav-2: #0f2a21;
-  --shadow-soft: 0 8px 24px rgba(20, 53, 42, 0.08);
+  --shadow-soft: 0 8px 24px rgba(27, 61, 47, 0.1);
 
   /* Element Plus bridge */
   --el-color-primary: var(--accent);
